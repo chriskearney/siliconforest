@@ -1,13 +1,28 @@
 # SiliconForest
 
-A personally maintained Apple Silicon kernel and m1n1 release project for
+A personally maintained Apple Silicon kernel, Mesa and m1n1 stack for
 existing Omarchy installations, maintained by [iconidentify](https://github.com/iconidentify).
-Independent of Omacom, Aurora Silicon, and Asahi Linux; derived from their work
-with its original history, attribution, and licenses preserved.
+Upstream history, attribution and licenses are preserved.
 
-**Development setup only. There is no qualified SiliconForest binary release or
-public install command yet.** The three-package installer is implemented and undergoing build and hardware
-qualification. Building a payload does not establish that a Mac boots it.
+Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.1)
+on an existing Apple Silicon Omarchy installation:
+
+```sh
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.1/install.sh | bash
+```
+
+Qualified pairs are **M1 Air J313 with OS firmware 13.5** and **M3 Pro 16-inch
+J516S with 14.7**, with the exact loader/U-Boot versions in their signed manifests.
+Default boot, the native desktop, OpenGL/Vulkan pixel readback and rebooted
+rollback passed on both. Other M1/M2 models, M3 Pro variants and M3 Air remain
+pending; the installer refuses unqualified combinations.
+
+The command downloads signed prebuilt packages from each component's own public
+GitHub release. It preserves recovery entries, installs the matched set and
+leaves the reboot to you. It does not build on the recipient's machine or perform
+a full system upgrade. [Installation, scope and recovery](release/README.md).
+
+Signing fingerprint: `97DC8D8AFCBC08DB7283EC3CFFB366AB95783E75`.
 
 ## Repositories
 
@@ -33,10 +48,10 @@ SiliconForest support claim.
 
 ## Developer setup
 
-The [minimal three-package installer candidate](release/README.md) adds Mesa
-to the source lock and targets the requested M1/M2, M3 Pro and M3 Air cohorts.
-It is under development: no qualified binary set or public install command is
-available yet. The target catalog does not claim that those machines were tested.
+The [three-package installer](release/README.md) uses pinned public sources and
+board/firmware qualification reports. The broader source target catalog is a
+build list; only the released, qualified pairs above are admitted by the public
+installer.
 
 On Linux, with Git and Python 3.11 or newer:
 

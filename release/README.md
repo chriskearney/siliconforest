@@ -1,8 +1,19 @@
 # SiliconForest installer and release qualification
 
 The installer replaces the kernel, Mesa and m1n1 stage 2 on an existing Apple
-Silicon Omarchy installation. There is no qualified public install command yet.
-Source profiles and signed attended candidates do not claim hardware support.
+Silicon Omarchy installation. The [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.1)
+is qualified for J313 on OS firmware 13.5 and J516S on 14.7, subject to the exact
+loader/U-Boot admission checks in each signed manifest:
+
+```sh
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.1/install.sh | bash
+```
+
+To download and verify the applicable release without installing, append
+`-s -- --dry-run` to `bash`. Hardware reports are
+[J313](reports/20261018-j313-layout1.json) and
+[J516S](reports/20261018-j516s-layout1.json). Source profiles and signed attended
+candidates do not independently claim hardware support.
 
 Exactly three packages form a release:
 
@@ -65,7 +76,8 @@ Python 3.11+, libarchive, dtc, pacman/makepkg, GnuPG and the pinned compiler too
 ```sh
 make sources
 make verify
-make build-kernel
+python3 sources/linux/tools/aurora-bindgen/build.py --output-dir "$PWD/build/kernel-bindgen"
+BINDGEN="$PWD/build/kernel-bindgen/rust-bindgen-0.73.2/target/release/bindgen" make build-kernel
 make build-m1n1
 make build-mesa   # provisioned ARM64 builder, main Mesa only
 make installer
