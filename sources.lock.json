@@ -7,7 +7,7 @@
     "linux": {
       "url": "https://github.com/iconidentify/siliconforest-linux.git",
       "branch": "siliconforest/j516s-native-gpu-20261018",
-      "commit": "734cd754d3bda17647f7dc2cadabe2e588c9ed7d",
+      "commit": "d68cf5c0040f77f72233b379bebba134082143a6",
       "upstream_url": "https://github.com/omacom/linux-aurora.git",
       "upstream_branch": "integration/aurora",
       "kernel_version": "7.1.12"
