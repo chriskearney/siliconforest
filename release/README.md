@@ -189,14 +189,26 @@ simulated pacman/boot commands. These are not real pacman or hardware tests.
 The real repo-add/unsigned assembler path was checked separately with temporary
 fixture archives; it emitted no installer. All fixtures are removed afterward.
 The packed installer is also checked to refuse this x86 builder. A real
-`m1n1-siliconforest-20261018.normal-1-aarch64.pkg.tar.zst` candidate was built
+`m1n1-siliconforest-20261018.normal2-1-aarch64.pkg.tar.zst` candidate was built
 without installation; its stage 2 hash matches the previously validated binary
 `c9d44f5cf54f3e30c6b651950cc8077e0757563fd8f8e02fea161012c62d5e9a`.
 The package architecture, source receipt, MIT/component notices and hooks were
 checked. This is a packaging check, not a fresh boot test.
 
-Still required before sharing an install command: complete ARM64 kernel/Mesa
-package builds; native library dependency and package-conflict inspection; the
+The real normal ARM64 kernel build also completed at source `17a9930f20a0`,
+including the built-in Rust Asahi GPU driver and all 1,878 modules. The uninstalled
+`linux-siliconforest-20261018.normal2-1-aarch64.pkg.tar.zst` candidate contains
+those modules and the 23 catalog M1/M2 DTBs under ABI
+`7.1.12-siliconforest-normal-17a9930f20a0`. Packaging checked every module's
+version magic and every board DTB's compatible string. The archive's Image and
+config match the build; no build/source links or PEM files are included. The
+kernel Image SHA256 is
+`0ad008defa3e779aa1dac7060ecb9621a0ab4ebe9db9c388a90b86c9290dd7ca`.
+These two local candidate packages have the same version and control-source
+receipt, but there is no matching production Mesa package or signed release.
+
+Still required before sharing an install command: production ARM64 Mesa and
+native M3 kernel/package builds; native library dependency and package-conflict inspection; the
 legacy M3 session-admission port; owner signing identity/channel publication;
 and install, update and rollback rehearsal for the requested machines. Source
 host checks and the old upstream installer's test history do not replace those
