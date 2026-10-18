@@ -285,6 +285,26 @@ class DatabaseTests(unittest.TestCase):
 
 
 class SignatureTests(unittest.TestCase):
+    def test_elevation_verifier_rechecks_bytes_before_executing(self):
+        import importlib.util
+        import sys
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        spec = importlib.util.spec_from_file_location('sf_release_script', ROOT / 'scripts/release.py')
+        tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tool)
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = Path(tmp) / 'fixture.pyz'
+            payload.write_text('print("ONLY A TEST FIXTURE")\n')
+            command = [sys.executable, '-I', '-c', tool.ROOT_VERIFIER, str(payload), digest(payload),
+                       'testing-fixture', 'A' * 40, '']
+            result = subprocess.run(command, check=True, text=True, capture_output=True)
+            self.assertIn('ONLY A TEST FIXTURE', result.stdout)
+            payload.write_text('raise SystemExit("UNVERIFIED CODE RAN")\n')
+            result = subprocess.run(command, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('hash changed before elevation', result.stderr)
+            self.assertNotIn('UNVERIFIED CODE RAN', result.stderr)
+
     def exercise_install(self, bundle, data, fingerprint, fail=False):
         """Run the coordinator with real signatures/files and sandboxed OS commands."""
         with tempfile.TemporaryDirectory(prefix='siliconforest-fake-host-') as tmp:

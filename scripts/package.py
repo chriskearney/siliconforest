@@ -81,7 +81,7 @@ def stage(component, source, build, tree, profile):
         installer_archive(tree / 'usr/lib/siliconforest/installer.pyz')
         command = tree / 'usr/bin/siliconforest-boot-update'
         command.parent.mkdir(parents=True, exist_ok=True)
-        command.write_text('#!/bin/sh\nexec python3 /usr/lib/siliconforest/installer.pyz --boot-update\n')
+        command.write_text('#!/bin/sh\nexec /usr/bin/python3 -I /usr/lib/siliconforest/installer.pyz --boot-update\n')
         command.chmod(0o755)
         hook = tree / 'usr/share/libalpm/hooks/99-siliconforest-stage2.hook'
         hook.parent.mkdir(parents=True, exist_ok=True)
@@ -95,7 +95,7 @@ def stage(component, source, build, tree, profile):
                          'Target = linux-siliconforest\nTarget = mesa-siliconforest\nTarget = m1n1-siliconforest\n'
                          '\n[Action]\nDescription = Checking SiliconForest rollback state...\n'
                          'When = PreTransaction\nAbortOnFail\n'
-                         'Exec = /usr/bin/python3 /usr/lib/siliconforest/installer.pyz --guard-transaction\n')
+                         'Exec = /usr/bin/python3 -I /usr/lib/siliconforest/installer.pyz --guard-transaction\n')
         for f in [*source.glob('LICENSE*'), *list((source / '3rdparty_licenses').glob('*'))]:
             if f.is_file():
                 copy(f, tree / 'usr/share/licenses/m1n1-siliconforest' / f.name)

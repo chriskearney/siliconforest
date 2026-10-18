@@ -13,6 +13,21 @@ sys.path.insert(0, str(ROOT))
 from installer.release import digest, validate, verify_packages, require, verify_database
 from package import installer_archive
 
+ROOT_VERIFIER = '''import hashlib, os, pathlib, subprocess, sys, tempfile
+os.environ['PATH'] = '/usr/sbin:/usr/bin:/sbin:/bin'
+with tempfile.TemporaryDirectory(prefix='siliconforest-root-', dir='/var/tmp') as temporary:
+    payload = pathlib.Path(sys.argv[1]).read_bytes()
+    if hashlib.sha256(payload).hexdigest() != sys.argv[2]:
+        raise SystemExit('SiliconForest installer hash changed before elevation')
+    protected = pathlib.Path(temporary) / 'installer.pyz'
+    protected.write_bytes(payload)
+    protected.chmod(0o700)
+    arguments = ['--release', sys.argv[3], '--fingerprint', sys.argv[4], '--install']
+    if sys.argv[5]:
+        arguments.append(sys.argv[5])
+    subprocess.run([sys.executable, '-I', str(protected), *arguments], check=True)
+'''
+
 
 def bootstrap(tag, fingerprint, sha, catalog=False):
     return '''#!/usr/bin/env bash
@@ -32,7 +47,8 @@ case ${1:---install} in
   --dry-run) python3 "$work/installer.pyz" ${selector:+"$selector"} --release "$tag" --fingerprint "$fingerprint" --dry-run ;;
   --install)
     python3 "$work/installer.pyz" ${selector:+"$selector"} --release "$tag" --fingerprint "$fingerprint" --dry-run
-    sudo python3 "$work/installer.pyz" ${selector:+"$selector"} --release "$tag" --fingerprint "$fingerprint" --install
+    sudo /usr/bin/python3 -I - "$work/installer.pyz" "$expected" "$tag" "$fingerprint" "$selector" <<'SF_ROOT_VERIFY'
+''' + ROOT_VERIFIER + '''SF_ROOT_VERIFY
     ;;
   *) echo 'Usage: install.sh [--check|--dry-run|--install]' >&2; exit 2 ;;
 esac

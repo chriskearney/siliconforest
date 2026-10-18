@@ -86,7 +86,9 @@ python3 scripts/package.py m1n1 --profile m1-m2 --source sources/m1n1 \
   --build sources/m1n1/build --version 20261018.normal --output dist/packages
 ```
 
-These commands create candidate packages, not qualified releases. Headers are a
+These commands create candidate packages, not qualified releases. Use a unique
+version for each configuration/source profile and bump it for every published
+rebuild; never replace a released package with different bytes at the same version. Headers are a
 separate future optional package; the installer does not require them to boot.
 The current preflight refuses installed DKMS modules until matching headers are
 packaged and that path is qualified.
@@ -133,7 +135,9 @@ The generated bootstrap supports `--check` and `--dry-run`. Installation checks
 the actual paired ESP PARTUUID, available space, pacman state, existing U-Boot
 and supported boot backend. Current overlay installations stop for qualification
 instead of silently dropping overlays. All three packages and the database must
-match the signed manifest before elevation/package changes. The bootstrap's
+match the signed manifest before elevation/package changes. The elevated step
+copies the installer into a root-owned directory and rechecks its pinned hash
+before execution; Python runs in isolated mode and root commands use a system PATH. The bootstrap's
 first version downloads once for preflight and again under elevation; eliminating
 that duplicate transfer is a later optimization, not a reason to skip verification.
 
@@ -158,7 +162,9 @@ On failure, configuration and saved boot files are restored, and the transaction
 records that packages may have changed. This is not an atomic rollback of an
 entire pacman system upgrade. The transaction directory contains the exact cached
 previous stack and hashes. Use the saved installer archive or a separately retained
-copy with `sudo python3 siliconforest.pyz --rollback /var/lib/siliconforest/transactions/ID`.
+copy whose hash has been verified, using Python isolated mode. While the package
+is still installed, its root-owned archive can run recovery directly:
+`sudo /usr/bin/python3 -I /usr/lib/siliconforest/installer.pyz --rollback /var/lib/siliconforest/transactions/ID`.
 The transaction guard requires this coordinated path for upgrades and removal of
 an active stack. Recovery before the boot menu requires restoring the old
 `m1n1/boot.bin`, saved UKIs and menu from the paired ESP's
@@ -168,7 +174,7 @@ automatically undone by stack rollback. Neither installation nor rollback reboot
 
 ## Checks completed and remaining
 
-The 19 host tests exercise real ephemeral GPG signatures, wrong identities,
+The 20 host tests exercise real ephemeral GPG signatures, wrong identities,
 tampering, source receipts, extra database packages, board/firmware restrictions,
 configuration preservation, boot-input changes, atomic-file refusal and stage 2
 assembly. A complete installation coordinator run and an initramfs-failure restore

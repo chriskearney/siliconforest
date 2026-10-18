@@ -264,6 +264,8 @@ def apply(directory, fingerprint):
 
 
 def main():
+    if os.geteuid() == 0:
+        os.environ['PATH'] = '/usr/sbin:/usr/bin:/sbin:/bin'
     parser = argparse.ArgumentParser(description=__doc__)
     action = parser.add_mutually_exclusive_group()
     action.add_argument('--check', action='store_true', help='read-only host preflight')
