@@ -1,18 +1,18 @@
 # SiliconForest installer and release qualification
 
 The installer replaces the kernel, Mesa and m1n1 stage 2 on an existing Apple
-Silicon Omarchy installation. The [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.1)
+Silicon Omarchy installation. The [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.2)
 is qualified for J313 on OS firmware 13.5 and J516S on 14.7, subject to the exact
 loader/U-Boot admission checks in each signed manifest:
 
 ```sh
-curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.1/install.sh | bash
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.2/install.sh | bash
 ```
 
 To download and verify the applicable release without installing, append
 `-s -- --dry-run` to `bash`. Hardware reports are
 [J313](reports/20261018-j313-layout1.json) and
-[J516S](reports/20261018-j516s-layout1.json). Source profiles and signed attended
+[J516S native GPU](reports/20261018-j516s-native-gpu.json). Source profiles and signed attended
 candidates do not independently claim hardware support.
 
 Exactly three packages form a release:
@@ -50,16 +50,19 @@ The available owner machines were inspected on 2026-10-18:
 | Target | Observed OS firmware | Release path |
 | --- | --- | --- |
 | M1 Air J313 | 13.5 | Normal kernel and main Mesa AGX2 |
-| M3 Pro 16-inch J516S | 14.7 | Normal kernel, legacy native OpenGL plus separately pinned legacy Vulkan |
+| M3 Pro 16-inch J516S | 14.7 | Native G15 GPU/UAPI with maintained normal display/USB4/PMP; single native Mesa GL/Vulkan build |
 | M1 Pro 14-inch J314S; M1 MBP 13-inch J293 | Not available for this qualification | Normal kernel and main Mesa; tests pending |
 | Other M1/M2 machines | Per-machine qualification pending | 23 catalog DTBs are build targets, not tested-support claims |
 | M3 Pro J514S, alternative native driver | Per-machine qualification pending | CONFIG_SILICONFOREST_M3 and main Mesa; USB4 is disabled in this variant |
 | M3 Air J613, 14.x | Not confirmed | compat/m3-legacy, reviewed handoff/session admission required |
 | M3 Air J613, 26.6.2 / 25G83 | Not confirmed | compat/m3-air-hal200; OpenGL only, no native Vulkan or external display in the pinned kernel |
 
-The alternative M3 display DTB set does not cover the owner's J516S. Its normal
-legacy profile preserves the working GPU ABI and native OpenGL path. The
-combined Pro Mesa package records both OpenGL and Vulkan source commits.
+The alternative full M3 display DTBs do not cover J516S. Its release therefore
+uses `CONFIG_SILICONFOREST_NATIVE_GPU=y`, retaining the normal J516S DTB and
+display/USB4/PMP while selecting the native GPU driver/UAPI. This requires the
+native Mesa pair; compatibility Vulkan must not be mixed into it. The older
+compatibility release remains available for recovery, with both source commits
+recorded in its original manifest.
 
 J613 DTBs at the current pin, including 25G83, require kernel 17a9930f or later
 and wait for atcphy1. An older kernel alone is not rollback for those DTBs:
@@ -198,22 +201,28 @@ signing keys are not removed by stack rollback.
 
 ## Evidence
 
-`make check` covers 28 installer tests with real ephemeral GPG signatures and
-signed package fixtures, source/package tampering, exact handoffs, isolated root
-elevation, UKI payload validation, cached epoch versions, a complete temporary
-filesystem install/failure restore and coordinated rollback. It also runs 51
-user-override cases and 10 compositor confirmation cases; a real headless Weston
-case runs when available. CI passes on Ubuntu 24.04. These are host controls,
-not hardware qualification.
+`make check` covers installer signatures, source/package tampering, exact
+handoffs, isolated root elevation, UKI validation, complete fixture
+install/failure restore and coordinated rollback. Session tests cover the native
+recovery guard and compatibility GL/session controls. These are host controls.
 
-The normal ARM64 kernel completed at 17a9930f20a0, including the built-in Rust
-Asahi GPU driver, all 1,878 modules and catalog DTBs. Its ABI is
-7.1.12-siliconforest-normal-17a9930f20a0 and its Image SHA256 is
-0ad008defa3e779aa1dac7060ecb9621a0ab4ebe9db9c388a90b86c9290dd7ca.
+The J516S native-GPU report records an installed `d68cf5c0040f` kernel, native
+Mesa `45c2718d` including Eryk's latest PR23 fix, and m1n1 `1d6743b2`.
+All 36 Asahi suites pass. OpenGL and Vulkan each passed three-second real GPU
+pixel checks; the actual compositor mapped the packaged `/usr/lib` Mesa. Five
+1920x1080 Quake demo1 samples have a 174.0 FPS median, 173.6–174.4 range, with
+zero GPU recoveries/hang kills. Display topology differs from older benchmark
+runs; these are observations of this installed profile, not a controlled A/B.
 
-ARM64 Mesa testing exposed a GCC 16.1.1 -O3 extension-chain aliasing problem.
-The fix is public in Mesa c8015f63608e6eb2f859a1739462a3c77eca600a;
-all 3,035 compression policy checks pass at -O0/-O2/-O3 on ARM64 and x86_64.
-Fresh complete ARM64 package builds and full-stack hardware qualification remain
-in progress. The available Air booted this kernel and passed boot-health; GUI
-runner permission failures are unresolved and are not recorded as graphics passes.
+The previous three-package stack and all 16 saved files were restored and
+rebooted, with its hardware desktop and GL/Vulkan checks passing again. Recovery
+entries remain. Duplicate compressed ESP archives may be moved to verified
+root-owned recovery storage during attended maintenance; bootable UKIs and
+paired stage-2/menu copies are preserved.
+
+The automatic OMT invocation still fails with exit126 in its private lab path.
+It is not reported as a pass. Direct hardware checks supply the scoped graphics
+qualification; suspend, dock/hotplug and longer workloads remain separate.
+
+The J313 release remains at its previous qualified source pins. The generic
+source target list does not qualify all M1/M2/M3 machines.

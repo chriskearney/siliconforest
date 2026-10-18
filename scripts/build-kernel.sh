@@ -34,7 +34,8 @@ variant=${KERNEL_VARIANT:-normal}
 case $variant in
   normal) output="$root/build/linux" ;;
   m3-native) output="$root/build/linux-m3-native" ;;
-  *) echo 'KERNEL_VARIANT must be normal or m3-native' >&2; exit 1 ;;
+  native-gpu) output="$root/build/linux-native-gpu" ;;
+  *) echo 'KERNEL_VARIANT must be normal, m3-native or native-gpu' >&2; exit 1 ;;
 esac
 mkdir -p "$output"
 cp "$root/configs/kernel.config" "$output/.config"
@@ -42,6 +43,10 @@ cp "$root/configs/kernel.config" "$output/.config"
 if [[ $variant == m3-native ]]; then
   "$root/sources/linux/scripts/config" --file "$output/.config" \
     --enable EXPERT --disable USB4 --enable SILICONFOREST_M3
+fi
+if [[ $variant == native-gpu ]]; then
+  "$root/sources/linux/scripts/config" --file "$output/.config" \
+    --enable EXPERT --enable SILICONFOREST_NATIVE_GPU --enable DRM_ASAHI_G15
 fi
 # Set a distinct module ABI name even for an otherwise identical source tree.
 export LOCALVERSION
@@ -54,6 +59,11 @@ make -C "$root/sources/linux" O="$output" BINDGEN="$BINDGEN" BINDGEN_LAYOUT_TEST
 if [[ $variant == m3-native ]]; then
   grep -qx 'CONFIG_SILICONFOREST_M3=y' "$output/.config" || { echo 'Native kernel option was not admitted' >&2; exit 1; }
   if grep -Eq '^CONFIG_USB4=[ym]$' "$output/.config"; then echo 'Native profile requires USB4 disabled' >&2; exit 1; fi
+fi
+if [[ $variant == native-gpu ]]; then
+  grep -qx 'CONFIG_SILICONFOREST_NATIVE_GPU=y' "$output/.config"
+  grep -qx 'CONFIG_DRM_ASAHI_G15=y' "$output/.config"
+  grep -qx '# CONFIG_SILICONFOREST_M3 is not set' "$output/.config"
 fi
 make -C "$root/sources/linux" O="$output" BINDGEN="$BINDGEN" BINDGEN_LAYOUT_TESTS=1 rustavailable
 make -C "$root/sources/linux" O="$output" BINDGEN="$BINDGEN" BINDGEN_LAYOUT_TESTS=1 -j"${JOBS:-4}" Image modules dtbs

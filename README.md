@@ -4,17 +4,20 @@ A personally maintained Apple Silicon kernel, Mesa and m1n1 stack for
 existing Omarchy installations, maintained by [iconidentify](https://github.com/iconidentify).
 Upstream history, attribution and licenses are preserved.
 
-Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.1)
+Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.2)
 on an existing Apple Silicon Omarchy installation:
 
 ```sh
-curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.1/install.sh | bash
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.2/install.sh | bash
 ```
 
 Qualified pairs are **M1 Air J313 with OS firmware 13.5** and **M3 Pro 16-inch
 J516S with 14.7**, with the exact loader/U-Boot versions in their signed manifests.
 Default boot, the native desktop, OpenGL/Vulkan pixel readback and rebooted
-rollback passed on both. Other M1/M2 models, M3 Pro variants and M3 Air remain
+rollback passed on both. The J516S now uses the latest reviewed native AGX
+kernel/Mesa pair; the Air retains its previously qualified baseline.
+[J516S native GPU evidence](release/reports/20261018-j516s-native-gpu.json)
+records a 174.0 FPS median over five Quake demo1 runs at 1920x1080. Other M1/M2 models, M3 Pro variants and M3 Air remain
 pending; the installer refuses unqualified combinations.
 
 The command downloads signed prebuilt packages from each component's own public
@@ -103,7 +106,8 @@ features as tested.
 Outputs:
 
 - `build/linux/arch/arm64/boot/Image`, modules, Apple DTBs, and `.config`.
-- `build/linux-m3-native/` when explicitly built with `KERNEL_VARIANT=m3-native`.
+- `build/linux-native-gpu/` with `KERNEL_VARIANT=native-gpu` for the qualified J516S GPU-only profile.
+- `build/linux-m3-native/` with `KERNEL_VARIANT=m3-native` for the separate full-stack development profile.
 - `dist/m1n1-<commit>/m1n1.bin`, build flags, source lock, and checksums.
 - `dist/mesa-root/` after `make build-mesa` on a provisioned ARM64 builder.
 
@@ -124,22 +128,25 @@ need separate qualification and recovery, as described in the plan.
 
 ## Publishing direction
 
-Eryk's M3 Pro stack and Naeem's M3 Max additions are integrated into
-`siliconforest/next` behind **`CONFIG_SILICONFOREST_M3` (default off)**, following
-[the adversarial review](https://github.com/iconidentify/siliconforest-linux/blob/siliconforest/next/SILICONFOREST-M3-REVIEW.md).
-The existing GPU/display implementations and normal board DTBs remain in place.
-The development profile selects a matched alternative GPU, display, power, PHY,
-Type-C and UAPI stack; USB4 is excluded pending its tunnel API port.
+The J516S/14.7 release selects **`CONFIG_SILICONFOREST_NATIVE_GPU`**: Eryk's
+current native G15 GPU driver and matching Mesa UAPI, with the maintained normal
+display, PHY, USB4 and PMP implementations. The source pins include Eryk's Mesa
+PR23 head `d593cfbf` (downstream `45c2718d`) and kernel PR358 head `79d6375f`,
+plus the reviewed downstream J516S memory, firmware and PMP handoff adaptations
+in `d68cf5c0040f`. OpenGL and Vulkan use the same native Mesa build.
 
-[The source manifest](candidates/m3-g15-20261018.json) records the merged source,
-original PRs, fixes and validation. All 43 host checks passed, along with arm64
-compilation of the enabled driver targets and Apple DTBs. This does not establish
-complete kernel/module linkage or hardware qualification. The reviewed m1n1 and
-Mesa sources are now pinned. The kernel's alternative native UAPI
-(`CONFIG_SILICONFOREST_M3=y`) is required by the native Mesa M3 Pro/Max/Neo
-profile; its normal UAPI is incompatible. Source-derived J516C board data and
-hardware qualification remain release requirements. The normal build helper keeps the maintained configuration (the experimental option stays off). See the
-review for the separate development profile and DTB paths.
+[The hardware report](release/reports/20261018-j516s-native-gpu.json) records
+complete Image/modules/DTBs, checked C/Rust layouts, 36 passing Asahi suites,
+installed desktop/pixel checks, Quake and rebooted package/boot rollback.
+The internal 120 Hz panel and an external 4K display were active. This does not
+qualify suspend, all docks or other boards and firmware.
+
+The larger Eryk/Naeem alternative GPU/display/PHY/PMP/Type-C stack remains behind
+**`CONFIG_SILICONFOREST_M3` (default off)**. Its display DTBs cover J514S/J516C;
+USB4 is excluded pending its separate tunnel API port. It remains a development
+profile rather than a release for every M3 model. The source manifest and
+[adversarial review](https://github.com/iconidentify/siliconforest-linux/blob/siliconforest/next/SILICONFOREST-M3-REVIEW.md)
+preserve the original PRs, contributors, local fixes and remaining limits.
 
 The target experience is one bootstrap command adding your signed pacman
 repository and installing `linux-siliconforest` plus the qualified boot components.
@@ -181,20 +188,18 @@ rather than the default M3 Pro/Max/Neo Mesa profile.
 The main m1n1 build and 54 Python tests pass (7 skips, 10 subtests), and the Neo
 build and 80 Python tests pass (7 skips). Ten inherited old G15 stand-in fixture
 failures reproduce identically at the original source pin; the complete G15
-suite is not green. The new normal kernel has booted on the M1 Air and passed boot-health.
-Full-stack installation, GPU rendering and rollback qualification remain in
-progress; no board has a qualified SiliconForest release yet.
+suite is not green. Signed releases cover J313/13.5 and J516S/14.7 only;
+the target catalog remains broader than the qualified installer matrix.
 
 [Bootloader review and evidence](https://github.com/iconidentify/siliconforest-m1n1/blob/siliconforest/next/SILICONFOREST-REVIEW.md)
 and [Mesa validation](https://github.com/iconidentify/siliconforest-mesa/blob/siliconforest/next/SILICONFOREST-VALIDATION.md)
-record the remaining limits. The package/installer milestones in the plan remain
-future release work; these public source repositories are not an installable
-replacement-kernel release.
+record source-level limits. The signed release catalog above supplies the
+qualified replacement stack; source profiles alone are not installation advice.
 
 
 ## J613 DTB and kernel pairing floor
 
-The lock now pairs kernel `17a9930f20a0895b5980385b0b2d67edda8a24be`
+The lock includes the pairing floor `17a9930f20a0895b5980385b0b2d67edda8a24be`
 with the bootloader's J613 external-firmware marker. The kernel includes the
 camera, thermal, HDMI-hold and lid-closed second-display carries in PRs #2–#6.
 Marius Gehrmann's public m1n1 patch is imported with author credit and its MIT
@@ -217,4 +222,4 @@ kernel display profile and require exactly three firmware compatibility cells:
 `14 7 0`. The paired kernel has no J613 external-display support on 26.6.2;
 camera support is separate. The alternative M3 drivers have no T8122/J613
 support. Roll back the kernel and DTBs together. The source lock records these
-rules; there is no binary installer that overrides them.
+rules; the installer refuses unqualified combinations.

@@ -30,4 +30,11 @@ def admit():
         require(receipt.get('additional_sources', []) == source.get('additional_sources', []),
                 'Installed additional graphics sources differ')
     boot.check_files(data)
+    if data['kernel_variant'] == 'native-gpu':
+        nodes = list(Path('/sys/class/drm').glob('renderD*'))
+        require(len(nodes) == 1 and
+                (nodes[0] / 'device/driver').resolve().name == 'asahi-g15',
+                'Native G15 render device is not ready')
+        compatibles = (nodes[0] / 'device/of_node/compatible').read_bytes().split(b'\0')
+        require(b'apple,agx-t6030' in compatibles, 'Native render device is not T6030')
     return data

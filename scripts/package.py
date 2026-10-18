@@ -52,6 +52,8 @@ def stage(component, source, build, tree, profile):
         config = (build / '.config').read_text()
         native = '\nCONFIG_SILICONFOREST_M3=y\n' in '\n' + config
         require(native == (profile['kernel_variant'] == 'm3-native'), 'Wrong kernel profile')
+        native_gpu = '\nCONFIG_SILICONFOREST_NATIVE_GPU=y\n' in '\n' + config
+        require(native_gpu == (profile['kernel_variant'] == 'native-gpu'), 'Wrong native GPU profile')
         modules = tree / 'usr/lib/modules' / release
         environment = {**os.environ, 'RUSTUP_TOOLCHAIN': json.loads(
             (ROOT / 'sources.lock.json').read_text())['toolchains']['kernel_rust']}
@@ -133,6 +135,11 @@ def stage(component, source, build, tree, profile):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(layout, indent=2) + '\n')
         installer_archive(tree / 'usr/lib/siliconforest/installer.pyz')
+        if profile['kernel_variant'] == 'native-gpu':
+            copy(ROOT / 'installer/native-gpu-session.sh',
+                 tree / 'usr/share/uwsm/env.d/49-siliconforest-native-gpu')
+            marker = tree / 'usr/share/siliconforest/native-gpu-session'
+            marker.write_text('Native GPU package; exact running admission required.\n')
         command = tree / 'usr/bin/siliconforest-boot-update'
         command.parent.mkdir(parents=True, exist_ok=True)
         command.write_text('#!/bin/sh\nexec /usr/bin/python3 -I /usr/lib/siliconforest/installer.pyz --boot-update\n')
