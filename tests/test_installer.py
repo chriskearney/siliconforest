@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: MIT
 """Host-only tests. No package install, host configuration write or boot operation."""
 import copy
+import builtins
 import gzip
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -29,6 +31,25 @@ def tar(path, contents):
             info = tarfile.TarInfo(name)
             info.size = len(data)
             out.addfile(info, io.BytesIO(data))
+
+
+def payload(data, component):
+    p = data['packages'][component]
+    files = {'.PKGINFO': f'pkgname = {p["name"]}\npkgver = {p["version"]}\narch = aarch64\n',
+             'usr/share/siliconforest/' + component + '.json': json.dumps({'source_commit': p['source']['commit']})}
+    modules = 'usr/lib/modules/' + data['kernel_release'] + '/'
+    critical = {'kernel': {modules + 'vmlinuz': 'kernel_image_sha256', modules + 'config': 'config_sha256',
+                           modules + 'dtbs/' + data['boot']['dtb']: 'dtb_sha256'},
+                'mesa': {}, 'm1n1': {'usr/lib/siliconforest/m1n1.bin': 'm1n1_sha256'}}[component]
+    for name, key in critical.items():
+        files[name] = 'TEST FIXTURE ONLY: ' + key
+        data['boot'][key] = hashlib.sha256(files[name].encode()).hexdigest()
+    required = {'kernel': [modules + 'pkgbase'],
+                'mesa': ['usr/lib/libEGL_mesa.so.0', 'usr/lib/libgbm.so.1', 'usr/lib/dri/asahi_dri.so'],
+                'm1n1': ['usr/lib/siliconforest/installer.pyz', 'usr/share/libalpm/hooks/99-siliconforest-stage2.hook',
+                         'usr/share/libalpm/hooks/00-siliconforest-transaction.hook']}[component]
+    files.update({name: 'TEST FIXTURE ONLY' for name in required})
+    return files
 
 
 class ReleaseTests(unittest.TestCase):
@@ -87,7 +108,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_qualified_bundle_needs_every_board_and_result(self):
         d = example()
-        d['qualification'].update(status='passed', report='hardware-report.txt', boards=d['boards'],
+        d['qualification'].update(status='passed', report='hardware-report.txt', boards=d['boards'], firmware=d['firmware'],
                                   desktop=True, hardware_renderer=True, boot_chain=True, rollback=True)
         validate(d, install=True)
         for key in ('desktop', 'hardware_renderer', 'boot_chain', 'rollback'):
@@ -104,8 +125,7 @@ class ReleaseTests(unittest.TestCase):
             root, d = Path(tmp), example()
             for component, name in PACKAGES.items():
                 p = d['packages'][component]
-                tar(root / p['file'], {'.PKGINFO': f'pkgname = {name}\npkgver = {p["version"]}\narch = aarch64\n',
-                    'usr/share/siliconforest/' + component + '.json': json.dumps({'source_commit': p['source']['commit']})})
+                tar(root / p['file'], payload(d, component))
                 p['sha256'] = digest(root / p['file'])
             verify_packages(root, d)
             (root / d['packages']['mesa']['file']).write_bytes(b'tampered')
@@ -172,10 +192,37 @@ class BootTests(unittest.TestCase):
             check.assert_not_called()
             snapshot.assert_not_called()
 
+    def test_active_stack_cannot_be_upgraded_outside_coordinated_transaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            active, installing = root / 'active', root / 'installing'
+            active.touch()
+            with patch.object(boot, 'ACTIVE', active), patch.object(boot, 'INSTALLING', installing), \
+                    patch('sys.argv', ['siliconforest', '--guard-transaction']):
+                with self.assertRaisesRegex(Refusal, 'matched installer'):
+                    cli.main()
+                installing.touch()
+                cli.main()
+
+    def test_restore_checks_all_backup_hashes_before_writing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first, second = root / 'first', root / 'second'
+            first.write_bytes(b'current-first')
+            second.write_bytes(b'current-second')
+            (root / 'saved-first').write_bytes(b'old-first')
+            (root / 'saved-second').write_bytes(b'CORRUPTED')
+            record = {'files': {str(first): {'saved': 'saved-first', 'sha256': digest(root / 'saved-first')},
+                                str(second): {'saved': 'saved-second', 'sha256': '0' * 64}}}
+            with self.assertRaisesRegex(Refusal, 'Rollback copy digest'):
+                cli.restore_files(root, record)
+            self.assertEqual(first.read_bytes(), b'current-first')
+            self.assertEqual(second.read_bytes(), b'current-second')
+
     def test_hook_checks_all_components_and_boot_entry_before_writing_stage2(self):
         with tempfile.TemporaryDirectory() as tmp:
             root, d = Path(tmp), example()
-            d['qualification'].update(status='passed', report='fixture', boards=d['boards'],
+            d['qualification'].update(status='passed', report='fixture', boards=d['boards'], firmware=d['firmware'],
                 desktop=True, hardware_renderer=True, boot_chain=True, rollback=True)
             active = root / 'active.json'
             active.write_text(json.dumps(d))
@@ -223,7 +270,7 @@ class DatabaseTests(unittest.TestCase):
             contents = {}
             for p in d['packages'].values():
                 contents[p['name'] + '/desc'] = ('%NAME%\n' + p['name'] + '\n\n%VERSION%\n' + p['version'] +
-                    '\n\n%FILENAME%\n' + p['file'] + '\n\n%SHA256SUM%\n' + p['sha256'] + '\n')
+                    '\n\n%FILENAME%\n' + p['file'] + '\n\n%SHA256SUM%\n' + p['sha256'] + '\n\n%ARCH%\naarch64\n')
             tar(root / 'siliconforest.db', contents)
             verify_database(root, d)
             contents['touchid/desc'] = '%NAME%\ntouchid\n'
@@ -238,6 +285,99 @@ class DatabaseTests(unittest.TestCase):
 
 
 class SignatureTests(unittest.TestCase):
+    def exercise_install(self, bundle, data, fingerprint, fail=False):
+        """Run the coordinator with real signatures/files and sandboxed OS commands."""
+        with tempfile.TemporaryDirectory(prefix='siliconforest-fake-host-') as tmp:
+            host = Path(tmp)
+            def mapped(value='.'):
+                value = Path(value)
+                if value.is_absolute() and value.parts[1] in ('etc', 'usr', 'var', 'run'):
+                    return host / str(value).lstrip('/')
+                return value
+            esp = host / 'esp'
+            (esp / 'm1n1').mkdir(parents=True)
+            (esp / 'm1n1/boot.bin').write_bytes(b'OLD-STAGE2')
+            (esp / 'EFI/Linux').mkdir(parents=True)
+            (esp / 'EFI/Linux/stock.efi').write_bytes(b'OLD-UKI')
+            (esp / data['boot']['entry']).write_text('stock kernel entry\n')
+            old_config = 'DTBS=stock\n'
+            for name, text in [('/etc/default/update-m1n1', old_config), ('/etc/m1n1.conf', 'display=test\n'),
+                               ('/etc/pacman.conf', '[options]\nSigLevel = Required\n[core]\nServer = fixture\n')]:
+                f = mapped(name)
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(text)
+            uboot = mapped(data['boot']['uboot_path'])
+            uboot.parent.mkdir(parents=True, exist_ok=True)
+            uboot.write_bytes(b'qualified-u-boot fixture')
+            active = mapped('/var/lib/siliconforest/active.json')
+            installing = mapped('/run/siliconforest-installing')
+            installing.parent.mkdir(parents=True, exist_ok=True)
+            previous = host / 'old-mesa.pkg.tar'
+            tar(previous, {'.PKGINFO': 'pkgname = mesa\npkgver = 1\narch = aarch64\n'})
+            commands = []
+            real_run, real_open = subprocess.run, builtins.open
+            def command(args, **kwargs):
+                commands.append(args)
+                if args[0] == 'pacman':
+                    if args[1] == '-Q':
+                        text = 'mesa 1\n' if len(args) == 2 else args[2] + ' ' + next(
+                            p['version'] for p in data['packages'].values() if p['name'] == args[2]) + '\n'
+                        return subprocess.CompletedProcess(args, 0, stdout=text)
+                    self.assertEqual(args, ['pacman', '-Syu', *['siliconforest/' + n for n in PACKAGES.values()]])
+                    # Simulate the package transaction in this temporary filesystem.
+                    for p in data['packages'].values():
+                        with tarfile.open(bundle / p['file']) as archive:
+                            for member in archive.getmembers():
+                                if member.name.startswith('usr/'):
+                                    archive.extract(member, host, filter='data')
+                    return subprocess.CompletedProcess(args, 0)
+                if args[0] == 'pacman-key':
+                    return subprocess.CompletedProcess(args, 0)
+                if args[0] == 'mkinitcpio':
+                    if fail:
+                        raise subprocess.CalledProcessError(1, args)
+                    (esp / data['boot']['image']).write_bytes(b'NEW-UKI-FIXTURE')
+                    return subprocess.CompletedProcess(args, 0)
+                if args[0] == 'limine-update':
+                    (esp / data['boot']['entry']).write_text('linux-siliconforest boot():/' + data['boot']['image'])
+                    return subprocess.CompletedProcess(args, 0)
+                self.assertIn(args[0], ('gpg', 'bsdtar'))
+                return real_run(args, **kwargs)
+            def opened(name, *args, **kwargs):
+                return io.StringIO() if name == '/dev/tty' else real_open(name, *args, **kwargs)
+            cache = mapped('/var/cache/pacman/pkg')
+            cache.mkdir(parents=True)
+            with patch.object(cli, 'Path', side_effect=mapped), patch.object(boot, 'Path', side_effect=mapped), \
+                    patch.object(cli.os, 'geteuid', return_value=0), patch.object(cli.os, 'sync'), \
+                    patch.object(cli, 'check_system', return_value=('apple,j313', data['firmware'][0], esp)), \
+                    patch.object(cli, 'cached_previous', return_value=[previous]), \
+                    patch.object(boot, 'ACTIVE', active), patch.object(boot, 'INSTALLING', installing), \
+                    patch.object(boot, 'CONFIG', mapped('/etc/siliconforest/m1n1.conf')), \
+                    patch.object(boot, 'identity', return_value=('apple,j313', data['firmware'][0])), \
+                    patch.object(boot, 'system_esp', return_value=esp), \
+                    patch.object(subprocess, 'run', side_effect=command), patch('builtins.open', side_effect=opened):
+                if fail:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        cli.apply(bundle, fingerprint)
+                else:
+                    cli.apply(bundle, fingerprint)
+            self.assertFalse(installing.exists())
+            records = list(mapped('/var/lib/siliconforest/transactions').glob('*/transaction.json'))
+            self.assertEqual(len(records), 1)
+            record = json.loads(records[0].read_text())
+            recovery = list((esp / 'siliconforest-recovery').iterdir())[0]
+            self.assertEqual((recovery / 'boot.bin').read_bytes(), b'OLD-STAGE2')
+            self.assertEqual((recovery / 'EFI/Linux/stock.efi').read_bytes(), b'OLD-UKI')
+            if fail:
+                self.assertEqual(record['status'], 'failed-config-and-stage2-restored')
+                self.assertEqual((esp / 'm1n1/boot.bin').read_bytes(), b'OLD-STAGE2')
+                self.assertEqual(mapped('/etc/default/update-m1n1').read_text(), old_config)
+                self.assertFalse(active.exists())
+            else:
+                self.assertEqual(record['status'], 'installed-awaiting-boot-test')
+                self.assertNotEqual((esp / 'm1n1/boot.bin').read_bytes(), b'OLD-STAGE2')
+                self.assertEqual(json.loads(active.read_text())['id'], data['id'])
+
     def test_real_signature_wrong_identity_and_tamper(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -264,11 +404,10 @@ class SignatureTests(unittest.TestCase):
             descriptions = {}
             for component, name in PACKAGES.items():
                 p = data['packages'][component]
-                tar(root / p['file'], {'.PKGINFO': f'pkgname = {name}\npkgver = {p["version"]}\narch = aarch64\n',
-                    'usr/share/siliconforest/' + component + '.json': json.dumps({'source_commit': p['source']['commit']})})
+                tar(root / p['file'], payload(data, component))
                 p['sha256'] = digest(root / p['file'])
                 descriptions[name + '/desc'] = ('%NAME%\n' + name + '\n\n%VERSION%\n' + p['version'] +
-                    '\n\n%FILENAME%\n' + p['file'] + '\n\n%SHA256SUM%\n' + p['sha256'] + '\n')
+                    '\n\n%FILENAME%\n' + p['file'] + '\n\n%SHA256SUM%\n' + p['sha256'] + '\n\n%ARCH%\naarch64\n')
             tar(root / 'siliconforest.db', descriptions)
             data['repository']['sha256'] = digest(root / 'siliconforest.db')
             manifest.write_text(json.dumps(data))
@@ -296,6 +435,15 @@ class SignatureTests(unittest.TestCase):
                 selected = cli.fetch_bundle('testing-catalog', out, fingerprint, catalog=True)
             self.assertEqual(selected['id'], data['id'])
             self.assertEqual(cli.verified_bundle(out, fingerprint)['id'], data['id'])
+            # 'passed' here is a fixture solely to reach sandboxed OS operations.
+            # No installer release or hardware evidence is produced by this test.
+            data['qualification'].update(status='passed', report='TEST FIXTURE ONLY', boards=data['boards'], firmware=data['firmware'],
+                desktop=True, hardware_renderer=True, boot_chain=True, rollback=True)
+            data['boot']['uboot_sha256'] = hashlib.sha256(b'qualified-u-boot fixture').hexdigest()
+            manifest.write_text(json.dumps(data))
+            subprocess.run(command + ['--yes', '--detach-sign', str(manifest)], check=True, capture_output=True)
+            self.exercise_install(root, data, fingerprint)
+            self.exercise_install(root, data, fingerprint, fail=True)
 
 
 if __name__ == '__main__':

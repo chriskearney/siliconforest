@@ -134,6 +134,8 @@ def validate(data, *, install=False):
         require(bool(qualification.get('report')), 'Require a hardware qualification report')
         require(set(qualification.get('boards', [])) == set(data['boards']),
                 'Qualification must cover every admitted board')
+        require(set(qualification.get('firmware', [])) == set(data['firmware']),
+                'Qualification must cover every admitted firmware identity')
         for check in ('desktop', 'hardware_renderer', 'boot_chain', 'rollback'):
             require(qualification.get(check) is True, 'Missing hardware result: ' + check)
     return data
@@ -156,6 +158,26 @@ def verify_packages(directory, data):
         receipt = json.loads(subprocess.check_output(['bsdtar', '-xOf', str(path),
             'usr/share/siliconforest/' + next(k for k, v in PACKAGES.items() if v == package['name']) + '.json'], text=True))
         require(receipt['source_commit'] == package['source']['commit'], 'Package source receipt differs')
+        members = set(subprocess.check_output(['bsdtar', '-tf', str(path)], text=True).splitlines())
+        for member in members:
+            relative(member.rstrip('/'))
+        component = next(k for k, v in PACKAGES.items() if v == package['name'])
+        modules = 'usr/lib/modules/' + data['kernel_release'] + '/'
+        critical = {'kernel': {modules + 'vmlinuz': 'kernel_image_sha256',
+                               modules + 'config': 'config_sha256',
+                               modules + 'dtbs/' + data['boot']['dtb']: 'dtb_sha256'},
+                    'mesa': {}, 'm1n1': {'usr/lib/siliconforest/m1n1.bin': 'm1n1_sha256'}}[component]
+        for member, key in critical.items():
+            require(member in members, 'Missing required payload: ' + member)
+            raw = subprocess.check_output(['bsdtar', '-xOf', str(path), member])
+            require(hashlib.sha256(raw).hexdigest() == data['boot'][key],
+                    'Archived boot component differs: ' + member)
+        required = {'kernel': {modules + 'pkgbase'},
+                    'mesa': {'usr/lib/libEGL_mesa.so.0', 'usr/lib/libgbm.so.1', 'usr/lib/dri/asahi_dri.so'},
+                    'm1n1': {'usr/lib/siliconforest/installer.pyz',
+                             'usr/share/libalpm/hooks/99-siliconforest-stage2.hook',
+                             'usr/share/libalpm/hooks/00-siliconforest-transaction.hook'}}[component]
+        require(required <= members, 'Incomplete ' + component + ' package payload')
 
 
 def verify_database(directory, data):
@@ -177,6 +199,7 @@ def verify_database(directory, data):
         require(name in expected and name not in seen, 'Extra or duplicate package in repository')
         seen.add(name)
         p = expected[name]
-        for field, value in [('VERSION', p['version']), ('FILENAME', p['file']), ('SHA256SUM', p['sha256'])]:
+        for field, value in [('VERSION', p['version']), ('FILENAME', p['file']), ('SHA256SUM', p['sha256']),
+                             ('ARCH', 'aarch64')]:
             require(fields.get(field) == [value], 'Repository package differs: ' + field)
     require(seen == set(expected), 'Signed repository is missing a required component')

@@ -39,6 +39,8 @@ def copy(source, target):
 
 def stage(component, source, build, tree, profile):
     if component == 'kernel':
+        with (build / 'arch/arm64/boot/Image').open('rb') as stream:
+            require(stream.read(64)[56:60] == b'ARMd', 'Require an ARM64 kernel Image')
         release = (build / 'kernelrelease').read_text().strip()
         require(TOKEN.fullmatch(release) and '-siliconforest-' in release, 'Wrong kernel ABI name')
         config = (build / '.config').read_text()
@@ -51,7 +53,10 @@ def stage(component, source, build, tree, profile):
         copy(build / '.config', modules / 'config')
         (modules / 'pkgbase').write_text(PACKAGES['kernel'] + '\n')
         for board in profile['boards']:
-            copy(build / 'arch/arm64/boot/dts' / board['dtb'], modules / 'dtbs' / board['dtb'])
+            dtb = build / 'arch/arm64/boot/dts' / board['dtb']
+            compatible = subprocess.check_output(['fdtget', '-t', 's', str(dtb), '/', 'compatible'], text=True).split()
+            require(board['compatible'] in compatible, 'Board DTB identity differs from catalog')
+            copy(dtb, modules / 'dtbs' / board['dtb'])
         for name in ('build', 'source'):
             (modules / name).unlink(missing_ok=True)
         copy(source / 'COPYING', tree / 'usr/share/licenses/linux-siliconforest/COPYING')
@@ -85,12 +90,12 @@ def stage(component, source, build, tree, profile):
                         'Target = usr/lib/siliconforest/*\n\n[Action]\n'
                         'Description = Verifying the matched SiliconForest stage 2...\n'
                         'When = PostTransaction\nExec = /usr/bin/siliconforest-boot-update\n')
-        guard = hook.with_name('00-siliconforest-remove.hook')
-        guard.write_text('[Trigger]\nType = Package\nOperation = Remove\n'
+        guard = hook.with_name('00-siliconforest-transaction.hook')
+        guard.write_text('[Trigger]\nType = Package\nOperation = Install\nOperation = Upgrade\nOperation = Remove\n'
                          'Target = linux-siliconforest\nTarget = mesa-siliconforest\nTarget = m1n1-siliconforest\n'
                          '\n[Action]\nDescription = Checking SiliconForest rollback state...\n'
                          'When = PreTransaction\nAbortOnFail\n'
-                         'Exec = /usr/bin/python3 /usr/lib/siliconforest/installer.pyz --guard-removal\n')
+                         'Exec = /usr/bin/python3 /usr/lib/siliconforest/installer.pyz --guard-transaction\n')
         for f in [*source.glob('LICENSE*'), *list((source / '3rdparty_licenses').glob('*'))]:
             if f.is_file():
                 copy(f, tree / 'usr/share/licenses/m1n1-siliconforest' / f.name)
@@ -167,6 +172,11 @@ def main():
             'package() { bsdtar -xf "$srcdir/payload.tar" -C "$pkgdir"; }\n')
         run('makepkg', '--nodeps', cwd=work,
             env={**os.environ, 'PKGDEST': str(a.output.resolve()), 'CARCH': 'aarch64'})
+        candidates = list(a.output.glob(PACKAGES[component] + '-' + a.version + '-1-aarch64.pkg.tar.*'))
+        candidates = [p for p in candidates if not p.name.endswith('.sig')]
+        require(len(candidates) == 1, 'Missing unambiguous aarch64 package output')
+        info = subprocess.check_output(['bsdtar', '-xOf', str(candidates[0]), '.PKGINFO'], text=True)
+        require('\narch = aarch64\n' in '\n' + info, 'makepkg output architecture differs')
         print('Created uninstalled candidate package; signing and qualification are separate.')
 
 

@@ -138,7 +138,8 @@ first version downloads once for preflight and again under elevation; eliminatin
 that duplicate transfer is a later optimization, not a reason to skip verification.
 
 Before the transaction, it records old packages/configuration, backs up existing
-UKIs, and places an old `boot.bin` plus recovery instructions on the paired ESP.
+UKIs, and places the old `boot.bin`, UKIs, boot menu and recovery instructions on
+the paired ESP.
 The currently installed replacement packages and stock kernel must be in pacman's
 cache for rollback. Missing cached versions stop before mutation. A signed
 SiliconForest channel is configured and one `pacman -Syu` transaction installs
@@ -158,18 +159,23 @@ records that packages may have changed. This is not an atomic rollback of an
 entire pacman system upgrade. The transaction directory contains the exact cached
 previous stack and hashes. Use the saved installer archive or a separately retained
 copy with `sudo python3 siliconforest.pyz --rollback /var/lib/siliconforest/transactions/ID`.
-The removal guard requires this coordinated path for an active stack. Recovery
-before the boot menu requires restoring the old `m1n1/boot.bin` from the paired
-ESP's `siliconforest-recovery/ID` directory and booting its matching old kernel.
+The transaction guard requires this coordinated path for upgrades and removal of
+an active stack. Recovery before the boot menu requires restoring the old
+`m1n1/boot.bin`, saved UKIs and menu from the paired ESP's
+`siliconforest-recovery/ID` directory and booting its matching old kernel.
 The previous OS package upgrade and any newly trusted public signing key are not
 automatically undone by stack rollback. Neither installation nor rollback reboots.
 
 ## Checks completed and remaining
 
-The host suite exercises real ephemeral GPG signatures, wrong identities,
+The 19 host tests exercise real ephemeral GPG signatures, wrong identities,
 tampering, source receipts, extra database packages, board/firmware restrictions,
 configuration preservation, boot-input changes, atomic-file refusal and stage 2
-assembly. It writes only test fixtures and does not exercise pacman installation.
+assembly. A complete installation coordinator run and an initramfs-failure restore
+also run against temporary filesystems, with real signed fixture packages and
+simulated pacman/boot commands. These are not real pacman or hardware tests.
+The real repo-add/unsigned assembler path was checked separately with temporary
+fixture archives; it emitted no installer. All fixtures are removed afterward.
 The packed installer is also checked to refuse this x86 builder. A real
 `m1n1-siliconforest-20261018.normal-1-aarch64.pkg.tar.zst` candidate was built
 without installation; its stage 2 hash matches the previously validated binary

@@ -116,7 +116,8 @@ def snapshot(esp, data, previous):
     files = ['/etc/default/update-m1n1', '/etc/m1n1.conf', '/etc/siliconforest/m1n1.conf',
              '/etc/limine-entry-tool.conf', '/etc/pacman.conf', str(boot.ACTIVE)]
     entry_root = esp if data['boot']['backend'] == 'limine' else Path('/boot')
-    files += [str(esp / 'm1n1/boot.bin'), str(entry_root / data['boot']['entry'])]
+    files += [str(esp / 'm1n1/boot.bin'), str(entry_root / data['boot']['entry']),
+              str(entry_root / data['boot']['image'])]
     files += [str(p) for p in (esp / 'EFI/Linux').glob('*.efi')]
     files = list(dict.fromkeys(files))
     record = {'files': {}, 'packages': [], 'status': 'prepared'}
@@ -139,9 +140,18 @@ def snapshot(esp, data, previous):
     recovery = esp / 'siliconforest-recovery' / state.name
     recovery.mkdir(parents=True)
     shutil.copy2(esp / 'm1n1/boot.bin', recovery / 'boot.bin')
+    for image in (esp / 'EFI/Linux').glob('*.efi'):
+        saved_image = recovery / 'EFI/Linux' / image.name
+        saved_image.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(image, saved_image)
+    menu = entry_root / data['boot']['entry']
+    if menu.is_file():
+        shutil.copy2(menu, recovery / 'boot-menu.cfg')
     (recovery / 'README.txt').write_text(
         'Stage 2 backup from before SiliconForest installation.\n'
         'With this paired ESP mounted, copy this boot.bin back to m1n1/boot.bin.\n'
+        'Restore the saved EFI/Linux/*.efi files to the same paths on the ESP.\n'
+        'Restore boot-menu.cfg to ' + str(menu) + ' (it may be on a separate /boot for GRUB).\n'
         'Then boot the retained previous kernel with its previous DTBs.\n'
         'Package/configuration rollback records on Linux: ' + str(state) + '\n')
     os.sync()
@@ -260,7 +270,7 @@ def main():
     action.add_argument('--dry-run', action='store_true', help='verify a release without installing')
     action.add_argument('--install', action='store_true')
     action.add_argument('--boot-update', action='store_true', help=argparse.SUPPRESS)
-    action.add_argument('--guard-removal', action='store_true', help=argparse.SUPPRESS)
+    action.add_argument('--guard-transaction', action='store_true', help=argparse.SUPPRESS)
     action.add_argument('--rollback', type=Path, help='restore a recorded previous stack')
     parser.add_argument('--release', help='immutable published release tag')
     parser.add_argument('--catalog', action='store_true', help='select a board/firmware release from a signed catalog')
@@ -271,9 +281,9 @@ def main():
     if args.boot_update:
         boot.boot_update()
         return
-    if args.guard_removal:
+    if args.guard_transaction:
         require(boot.INSTALLING.exists() or not boot.ACTIVE.exists(),
-                'Use the installer --rollback before removing an active stack component')
+                'Use the matched installer to upgrade or roll back an active stack component')
         return
     if args.rollback:
         with open('/run/lock/siliconforest-install.lock', 'a') as lock:

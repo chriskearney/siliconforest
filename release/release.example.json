@@ -70,6 +70,7 @@
     "desktop": false,
     "hardware_renderer": false,
     "boot_chain": false,
-    "rollback": false
+    "rollback": false,
+    "firmware": []
   }
 }
