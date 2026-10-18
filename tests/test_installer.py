@@ -252,12 +252,16 @@ class BootTests(unittest.TestCase):
                 p = next(p for p in d['packages'].values() if p['name'] == args[-1])
                 return p['name'] + ' ' + p['version']
             with patch.object(graphics, 'MANIFEST', manifest), patch.object(graphics, 'Path', side_effect=path), \
+                    patch.object(boot, 'dt_string', return_value=d['boot']['stage2_version']), \
                     patch.object(graphics.platform, 'release', return_value=d['kernel_release']), \
                     patch.object(boot, 'identity', return_value=(d['boards'][0], d['firmware'][0])), \
                     patch.object(graphics.subprocess, 'check_output', side_effect=query), \
                     patch.object(boot, 'check_files') as checked:
                 self.assertEqual(graphics.admit(), d)
                 checked.assert_called_once_with(d)
+                with patch.object(boot, 'dt_string', return_value='previous-stage2'):
+                    with self.assertRaisesRegex(Refusal, 'Running stage 2 differs'):
+                        graphics.admit()
                 with patch.object(graphics.platform, 'release', return_value='previous-stock-kernel'):
                     with self.assertRaisesRegex(Refusal, 'qualified SiliconForest kernel'):
                         graphics.admit()

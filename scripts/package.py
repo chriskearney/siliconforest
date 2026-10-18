@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -82,6 +83,9 @@ def stage(component, source, build, tree, profile):
         for name in ('build', 'source'):
             (modules / name).unlink(missing_ok=True)
         copy(source / 'COPYING', tree / 'usr/share/licenses/linux-siliconforest/COPYING')
+        shutil.copytree(source / 'LICENSES', tree / 'usr/share/licenses/linux-siliconforest/LICENSES')
+        copy(source / 'Documentation/process/license-rules.rst',
+             tree / 'usr/share/licenses/linux-siliconforest/Documentation/process/license-rules.rst')
     elif component == 'mesa':
         info = build / 'meson-info'
         require(Path(json.loads((info / 'meson-info.json').read_text())['directories']['source']).resolve() == source,
@@ -107,6 +111,12 @@ def stage(component, source, build, tree, profile):
                 symbols[fields[2]] = int(fields[0], 16)
         layout = {'file_end': symbols['_file_end'], 'payload_offset': symbols['_payload_start'],
                   'sha256': hashlib.sha256((build / 'm1n1.bin').read_bytes()).hexdigest()}
+        tag = re.fullmatch(r'#define BUILD_TAG "([A-Za-z0-9._+-]+)"\n',
+                           (build / 'build_tag.h').read_text())
+        require(tag, 'Missing loader build identity')
+        pin = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
+        require(tag[1].endswith('.g' + pin[:12]), 'Loader build identity does not name the source pin')
+        layout['version'] = tag[1]
         require(0 < layout['file_end'] <= layout['payload_offset'] <= (build / 'm1n1.bin').stat().st_size,
                 'Loader layout is inconsistent with the built binary')
         if {b['compatible'] for b in profile['boards']} & M3_BOARDS:

@@ -1,0 +1,6 @@
+MIT-licensed render/readback probes copied unchanged from iconidentify/siliconforest-linux at 17a9930f20a0895b5980385b0b2d67edda8a24be, tools/aurora-sep/recipes/mesa-m3-g15c/. Original source notices are preserved. Hardware tests are opt-in and do not install packages or change boot configuration.
+
+f85a3463970193d2f03f19306965427e21cd0071906393bc5dc10a2316f845f8  gl-render-check.c
+6406edc8c688c2ef56af73369a89404afda0d5fe6ca707147d4e6414734ed167  vk-render-check.c
+3177972580acecc051f9044c0a5c5915516673a250d5ca346f2d6914e8e5cc00  render-check.frag
+1004715f808be12c7cbca71922507215b8a86a5c1ea18b7b6f592e8b98a64060  render-check.vert

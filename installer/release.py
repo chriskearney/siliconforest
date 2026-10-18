@@ -114,6 +114,7 @@ def validate(data, *, install=False, testing=False):
     require(data['firmware'] and all(isinstance(f, str) and f and '*' not in f for f in data['firmware']),
             'Require exact firmware identities')
     boot = data['boot']
+    require(bool(TOKEN.fullmatch(boot.get('stage2_version', ''))), 'Require an exact stage 2 build identity')
     relative(boot['dtb'])
     require(boot['dtb'].endswith('.dtb'), 'Require a DTB')
     require(boot['backend'] in ('limine', 'grub'), 'Unknown boot backend')
@@ -206,7 +207,8 @@ def verify_packages(directory, data):
         if component == 'm1n1' and set(data['boards']) & M3_BOARDS:
             layout = json.loads(subprocess.check_output(['bsdtar', '-xOf', str(path),
                 'usr/share/siliconforest/m1n1-layout.json'], text=True))
-            require(layout['sha256'] == data['boot']['m1n1_sha256'] and
+            require(layout['version'] == data['boot']['stage2_version'] and
+                    layout['sha256'] == data['boot']['m1n1_sha256'] and
                     0 < layout['file_end'] <= 0x120000 and
                     layout['payload_offset'] >= layout['file_end'],
                     'M3 loader file part exceeds the reviewed stage-1 log-buffer boundary')

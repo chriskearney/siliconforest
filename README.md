@@ -6,8 +6,8 @@ Independent of Omacom, Aurora Silicon, and Asahi Linux; derived from their work
 with its original history, attribution, and licenses preserved.
 
 **Development setup only. There is no qualified SiliconForest binary release or
-public install command yet.** The installer and package repository are upcoming
-milestones. Building a payload does not establish that a Mac boots it.
+public install command yet.** The three-package installer is implemented and undergoing build and hardware
+qualification. Building a payload does not establish that a Mac boots it.
 
 ## Repositories
 
@@ -48,7 +48,8 @@ make verify
 make check
 ```
 
-`make check` also requires ShellCheck. Source fetching uses only the personal
+`make check` also requires ShellCheck, GnuPG, libarchive tools, a C compiler and
+Wayland development libraries. Weston enables the real headless compositor case. Source fetching uses only the personal
 repositories and pinned submodules. Existing source checkouts are verified rather than
 reset, switched, or cleaned. A failed initial clone can leave a partial directory;
 inspect it before removing it and retrying.
@@ -121,7 +122,8 @@ review for the separate development profile and DTB paths.
 
 The target experience is one bootstrap command adding your signed pacman
 repository and installing `linux-siliconforest` plus the qualified boot components.
-Afterward, normal package upgrades deliver the updates you choose to publish.
+Updates use a newly signed, matched three-package transaction; the guard refuses
+an independent component upgrade that would mix boot or graphics contracts.
 There will be an explicit testing channel and a stable channel.
 
 See [the implementation and maintenance plan](docs/PLAN.md) for packaging,
@@ -158,8 +160,9 @@ rather than the default M3 Pro/Max/Neo Mesa profile.
 The main m1n1 build and 54 Python tests pass (7 skips, 10 subtests), and the Neo
 build and 80 Python tests pass (7 skips). Ten inherited old G15 stand-in fixture
 failures reproduce identically at the original source pin; the complete G15
-suite is not green. No boot component has been installed and no hardware boot,
-GPU rendering, recovery or suspend qualification has been performed.
+suite is not green. The new normal kernel has booted on the M1 Air and passed boot-health.
+Full-stack installation, GPU rendering and rollback qualification remain in
+progress; no board has a qualified SiliconForest release yet.
 
 [Bootloader review and evidence](https://github.com/iconidentify/siliconforest-m1n1/blob/siliconforest/next/SILICONFOREST-REVIEW.md)
 and [Mesa validation](https://github.com/iconidentify/siliconforest-mesa/blob/siliconforest/next/SILICONFOREST-VALIDATION.md)

@@ -51,6 +51,7 @@
     }
   },
   "boot": {
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
     "dtb": "apple/t8103-j313.dtb",
     "backend": "limine",
     "entry": "limine.conf",

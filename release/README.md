@@ -1,220 +1,192 @@
-# Minimal SiliconForest installer candidate
+# SiliconForest installer and release qualification
 
-This branch implements release verification, candidate packaging and installation
-plumbing. **There is no qualified binary release or public install command yet.**
-Every profile in `profiles.json` is a target, not a support claim. The installer
-refuses an unsigned, unqualified, mismatched or incomplete release before changing
-packages or boot components. No Mac was installed, flashed or rebooted during
-this development.
+The installer replaces the kernel, Mesa and m1n1 stage 2 on an existing Apple
+Silicon Omarchy installation. There is no qualified public install command yet.
+Source profiles and signed attended candidates do not claim hardware support.
 
-The requested minimum is M1 MacBook Air J313, M1 13-inch MacBook Pro J293,
-M1 Pro 14-inch MacBook Pro J314S, and M3 Pro. M2 machines and M3 Air are targets
-too. The catalog lists the 23 existing M1/M2 board DTBs, the two normal M3 Pro
-DTBs, the alternative J514S native DTB, and the J613 Air profiles. J615 and other
-unqualified M3 boards are not admitted by similarity.
+Exactly three packages form a release:
 
-The owner's previously working **M3 Pro** is reported to have a 14.x stub;
-its exact OS firmware version still needs to be read from that machine. Restore
-the legacy Pro path first rather than switching it to the native profile. The
-M3 Air firmware is not confirmed. Neither installer selection nor qualification
-may treat this recollection as an exact firmware identity.
+| Package | Owned payload |
+| --- | --- |
+| linux-siliconforest | Unique kernel ABI, modules, configuration and matching DTBs |
+| mesa-siliconforest | ARM64 GLVND/EGL/GBM/DRI libraries, the selected Vulkan ICD and necessary graphics session safeguards |
+| m1n1-siliconforest | Separate stage 2 payload, matched installer and transaction hooks |
 
-## What the small installer owns
+The existing stage 1, machine firmware, calibration and qualified U-Boot remain
+in use. No Touch ID/SEP services, video bridges, performance daemons, APFS policy
+or themes are added. Replacing the old Mesa packages also replaces their owned
+session integration. Unrelated services are outside the package set.
 
-Exactly three release packages, plus their runtime dependencies:
+The three public source repositories provide the code. This control repository
+pins their combination and builds, verifies, signs and selects complete releases.
+Recipients must not combine independent moving releases from the source repos.
+Private Mesa source is excluded from public releases.
 
-| Package | Payload | Source |
+## Actual hardware and profile boundaries
+
+The available owner machines were inspected on 2026-10-18:
+
+| Target | Observed OS firmware | Release path |
 | --- | --- | --- |
-| linux-siliconforest | Unique kernel ABI, modules, config and matching board DTBs; installed alongside the distribution kernel | siliconforest-linux |
-| mesa-siliconforest | Production ARM64 GLVND/EGL/GBM/DRI libraries and the profile's actual Vulkan ICD, if present | siliconforest-mesa, with an explicit compatibility branch when required |
-| m1n1-siliconforest | Stage 2 payload at a separate owned path, installer archive and a hook that verifies the complete active set | siliconforest-m1n1; integration helper from this control repository |
+| M1 Air J313 | 13.5 | Normal kernel and main Mesa AGX2 |
+| M3 Pro 16-inch J516S | 14.7 | Normal kernel, legacy native OpenGL plus separately pinned legacy Vulkan |
+| M1 Pro 14-inch J314S; M1 MBP 13-inch J293 | Not available for this qualification | Normal kernel and main Mesa; tests pending |
+| Other M1/M2 machines | Per-machine qualification pending | 23 catalog DTBs are build targets, not tested-support claims |
+| M3 Pro J514S, alternative native driver | Per-machine qualification pending | CONFIG_SILICONFOREST_M3 and main Mesa; USB4 is disabled in this variant |
+| M3 Air J613, 14.x | Not confirmed | compat/m3-legacy, reviewed handoff/session admission required |
+| M3 Air J613, 26.6.2 / 25G83 | Not confirmed | compat/m3-air-hal200; OpenGL only, no native Vulkan or external display in the pinned kernel |
 
-The existing installed stage 1, machine firmware, machine calibration and U-Boot
-are retained. U-Boot must match the qualified package/file identity. The new
-installer does not install Touch ID/SEP services, libfprint, APFS write policy,
-video-decoder bridges, performance daemons, diagnostic runners or desktop themes.
-Previously installed services are not removed as a side effect of switching the
-graphics/boot stack.
+The alternative M3 display DTB set does not cover the owner's J516S. Its normal
+legacy profile preserves the working GPU ABI and native OpenGL path. The
+combined Pro Mesa package records both OpenGL and Vulkan source commits.
 
-The source repositories supply code. This existing `siliconforest` control
-repository locks their combination, builds packages, signs the package database
-and manifest, and supplies the bootstrap. Independent moving `latest` releases
-from the three source repositories must not be assembled on the recipient's Mac.
+J613 DTBs at the current pin, including 25G83, require kernel 17a9930f or later
+and wait for atcphy1. An older kernel alone is not rollback for those DTBs:
+restore its matching stage 2 and DTBs too. External display on the normal J613
+path requires exactly firmware-compat 14 7 0 and the transactional readiness
+marker. Camera support on 26.6.2 does not imply external-display support.
 
-## Board profiles are essential
+## Build without installing
 
-| Target | Kernel and Mesa selection | Current release gap |
-| --- | --- | --- |
-| M1/M2 | Normal kernel and existing AGX2 paths in main Mesa | ARM64 production package builds and per-board/firmware install and rollback tests |
-| M3 Pro, prior working path | Normal kernel and compat/m3-pro-legacy Mesa | Port the old launcher's release/firmware admission to an honest SiliconForest contract; preserve its required session integration |
-| M3 Pro J514S, new native path | CONFIG_SILICONFOREST_M3 and main native Mesa | Full kernel build and handoff/GPU qualification; USB4 is disabled in this variant |
-| M3 Air, 14.x path | Normal kernel and compat/m3-legacy Mesa | Existing handoff/session admission and calibration assumptions must be reviewed; do not enable power stand-ins by default |
-| M3 Air J613, 26.6.2 / 25G83 | Normal kernel and compat/m3-air-hal200 | Separate build and runtime admission; OpenGL only, no native Vulkan or external display in the pinned kernel |
-
-Normal and native kernel output directories and release suffixes are separate.
-The alternative display DTB set has J514S and J516C only; it is not a replacement
-for every normal M3 DTB. J613 DTBs at the current pin, including 25G83, need
-kernel 17a9930f or later and wait for atcphy1. An older kernel entry alone is not
-rollback for that new DTB: restore the previous stage 2/DTB set too.
-
-## Build candidates without installing
-
-Provision a dedicated ARM64 build environment with the dependencies documented
-in the root README and Mesa's source validation report. Installer/package tools
-need Python 3.11+, libarchive tools, dtc/fdtget, pacman/makepkg and GnuPG. Package preparation
-never runs sudo, installs builder dependencies or changes the host's boot chain.
+The ordinary local build/package tools do not install dependencies or change the
+builder's boot chain. Use a dedicated builder with the root README prerequisites,
+Python 3.11+, libarchive, dtc, pacman/makepkg, GnuPG and the pinned compiler tools.
 
 ```sh
 make sources
 make verify
-make build-kernel                     # normal, build/linux
-KERNEL_VARIANT=m3-native make build-kernel  # separate build/linux-m3-native
+make build-kernel
 make build-m1n1
-make build-mesa                       # main production GLVND build, ARM64 only
-make installer                       # standalone dist/siliconforest.pyz
-python3 dist/siliconforest.pyz --check # read-only, on an existing Omarchy Mac
+make build-mesa   # provisioned ARM64 builder, main Mesa only
+make installer
 ```
 
-The compatibility Mesa branches need their own isolated source checkout and
-qualified build options/session integration. The main build command is not a
-compatibility-branch builder. `package.py` checks the exact profile source,
-kernel variant, production GLVND prefix, ARM64 ELF headers and stage 2 flags.
-It rejects the x86/shim Mesa build used for source validation.
+`scripts/mesa-recipe.py` exports exact public profile commits and verified
+LLVM/SPIR-V inputs into a self-contained recipe. `lab package` builds that recipe
+inside a disposable Arch Linux ARM VM; only that VM provisions dependencies.
+For example, using already downloaded compiler inputs:
 
-After real builds, for example for the M1/M2 candidate:
+```sh
+python3 scripts/mesa-recipe.py --profile m3-pro-legacy --source sources/mesa \
+  --toolchain-inputs /path/to/verified-inputs --version UNIQUE_VERSION \
+  --output build/recipes/UNIQUE_RECIPE
+lab package build/recipes/UNIQUE_RECIPE --no-wait
+lab build-get BUILD_ID -o dist/builds/UNIQUE_RECIPE
+```
+
+Production builds use /usr, GLVND and ARM64. Assertions stay enabled for the test
+suite; software rasterization does not add an LLVM runtime dependency. Registered
+Asahi test dependencies are built explicitly, including executables invoked
+through DRM-shim wrappers. The runtime audit rejects build-directory search paths
+and derives library dependencies. Pinned SPIRV-Tools are statically linked with
+their license retained. Pro compatibility builds also test their native GL and
+separately sourced Vulkan compiler paths.
+
+Package the built kernel and m1n1 with the same unique bundle version:
 
 ```sh
 python3 scripts/package.py kernel --profile m1-m2 --source sources/linux \
-  --build build/linux --version 20261018.normal --output dist/packages
-python3 scripts/package.py mesa --profile m1-m2 --source sources/mesa \
-  --build build/mesa-package --version 20261018.normal --output dist/packages
+  --build build/linux --version UNIQUE_VERSION --output dist/packages
 python3 scripts/package.py m1n1 --profile m1-m2 --source sources/m1n1 \
-  --build sources/m1n1/build --version 20261018.normal --output dist/packages
+  --build sources/m1n1/build --version UNIQUE_VERSION --output dist/packages
 ```
 
-These commands create candidate packages, not qualified releases. Use a unique
-version for each configuration/source profile and bump it for every published
-rebuild; never replace a released package with different bytes at the same version. Headers are a
-separate future optional package; the installer does not require them to boot.
-The current preflight refuses installed DKMS modules until matching headers are
-packaged and that path is qualified.
+Packaging verifies kernel ABI, every module's version magic, DTB identities,
+ARM64 ELF headers and stage 2 release flags. Loader layout comes from
+m1n1-raw.elf; M3 file-part bounds are checked against the stage 1 log-buffer
+boundary. Rebuilding a published version with different bytes is forbidden.
+Headers remain optional future work; installed DKMS modules currently stop the
+installer until that path has matching headers and qualification.
 
-Copy `release.example.json` to a candidate manifest and record the actual package
-filenames, versions, hashes, source commits, exact board/OS-firmware identity,
-kernel release, DTB, U-Boot path/hash, configuration hash, loader hash, kernel
-image hash and installed boot paths. The template's placeholders are not release
-evidence. Each manifest currently selects one exact board DTB; use separate
-manifests for boards with different DTBs.
+## Signed attended candidates and qualified releases
+
+Copy release.example.json and replace every placeholder with actual package,
+source, board, firmware, kernel, DTB, U-Boot and boot-component identities.
+Every manifest identifies the stage 2 build version; graphics admission checks
+the running device-tree version, not just the file on disk. M3 manifests
+additionally require exact stage 1 and iBoot versions. A candidate
+must not mark tests passed before they run.
+
+An attended candidate has status `attended-testing`, one exact board/OS-firmware
+pair and a test plan/report location. Assemble it with an existing owner key:
 
 ```sh
 python3 scripts/release.py --manifest build/candidate.json \
-  --packages dist/packages --output dist/candidate
+  --packages dist/packages --output dist/candidate \
+  --signing-key FULL_FINGERPRINT --test-candidate
 ```
 
-An unsigned candidate emits no `install.sh`. Only after the exact set has an
-attended hardware report covering the desktop, actual hardware renderer, complete
-boot chain and recovery/rollback may its qualification fields become passed.
-Then use an existing owner signing identity:
+This signs packages, database and manifest and exports only the public key.
+It emits no install.sh. Explicit `--test-candidate` is required to install it.
+The ordinary public bootstrap continues to refuse candidates.
+
+After actual desktop, hardware-renderer, boot-chain and rollback tests pass,
+record their evidence and assemble a qualified release without --test-candidate.
+Only that path emits install.sh. A signed catalog selects exactly one qualified
+child release by board and OS firmware; an unsupported pair stops. The signer
+fingerprint and installer digest are pinned in the bootstrap. Root verifies and
+copies those exact installer bytes before running Python in isolated mode.
+
+## Installation and recovery
+
+Preflight checks the paired ESP, root/ESP free space, package-manager state,
+U-Boot identity and boot backend. Unqualified DT overlays, DKMS or M3 stage 1
+handoffs stop before mutation. All three packages, their provenance receipts,
+critical boot payloads, signatures and database contents must match.
+
+Current versions of packages being replaced must be cached for recovery. The
+installer records old package/configuration identities, saves every existing UKI
+on root, and places the old stage 2, menu and a compressed copy of the currently
+running kernel's UKI on the ESP. Historical recovery entries are retained.
+Space budgeting includes those copies and bounded new UKI/stage 2 sizes.
+
+The package transaction is local `pacman -U` of the three verified archives;
+there is no hidden full-system upgrade. The stock kernel remains installed.
+The existing generic m1n1 updater is frozen with a marked configuration block.
+SiliconForest's hook checks the entire active set and exact boot inputs.
+
+For Limine, BOOT_ORDER is managed in /etc/default/limine and the targeted
+limine-mkinitcpio backend builds the SiliconForest UKI using temporary root
+storage. It does not reinstall Limine or regenerate every installed kernel.
+The output must be an ARM64 UKI containing the exact pinned Linux Image and an
+initrd. Only then is stage 2 assembled from the matching DTB, loader, U-Boot and
+preserved handoff settings, replaced atomically and read back. These mechanisms
+still require real full-stack qualification; a maclab kernel-only boot retains
+the old device tree and cannot prove a new m1n1/DTB pair.
+
+On failure, saved configuration and boot files are restored; records explicitly
+state that packages may have changed. Coordinated rollback restores the previous
+boot files before package removal/reinstallation, then restores configuration:
 
 ```sh
-python3 scripts/release.py --manifest build/qualified.json \
-  --packages dist/packages --output dist/qualified --signing-key FULL_FINGERPRINT
+sudo /usr/bin/python3 -I /usr/lib/siliconforest/installer.pyz \
+  --rollback /var/lib/siliconforest/transactions/ID
 ```
 
-The assembler signs each package, the repository database and the manifest. It
-exports only the public key and renders an immutable-release bootstrap with the
-installer hash and full signing fingerprint embedded. It does not create a
-signing identity, upload releases, install anything or reboot. Publish the full
-fingerprint independently before distributing the bootstrap.
+A verified retained installer copy can run recovery if the installed package is
+unavailable. Before Linux boots, the ESP recovery directory contains stage 2,
+compressed old UKI, menu and instructions for restoring the paired old boot chain.
+Installation and rollback do not reboot automatically. Newly trusted public
+signing keys are not removed by stack rollback.
 
-A single public command for multiple models uses a signed catalog. Its input is
-`{"schema":1,"id":"RELEASE_TAG","releases":[{"release":"CHILD_TAG","boards":["apple,j313"],"firmware":["EXACT_VERSION"]}]}`.
-Create one child release per qualified board/firmware/profile combination, with
-the same signing identity. `scripts/release.py --catalog build/catalog.json
---output dist/catalog --signing-key FULL_FINGERPRINT` creates its bootstrap.
-The selector requires exactly one board/firmware match and re-verifies the child
-manifest, packages and database. It never guesses a profile or upgrades OS firmware.
+## Evidence
 
-## Installation and recovery behavior
+`make check` covers 27 installer tests with real ephemeral GPG signatures and
+signed package fixtures, source/package tampering, exact handoffs, isolated root
+elevation, UKI payload validation, cached epoch versions, a complete temporary
+filesystem install/failure restore and coordinated rollback. It also runs 51
+user-override cases and 10 compositor confirmation cases; a real headless Weston
+case runs when available. CI passes on Ubuntu 24.04. These are host controls,
+not hardware qualification.
 
-The generated bootstrap supports `--check` and `--dry-run`. Installation checks
-the actual paired ESP PARTUUID, available space, pacman state, existing U-Boot
-and supported boot backend. Current overlay installations stop for qualification
-instead of silently dropping overlays. All three packages and the database must
-match the signed manifest before elevation/package changes. The elevated step
-copies the installer into a root-owned directory and rechecks its pinned hash
-before execution; Python runs in isolated mode and root commands use a system PATH. The bootstrap's
-first version downloads once for preflight and again under elevation; eliminating
-that duplicate transfer is a later optimization, not a reason to skip verification.
+The normal ARM64 kernel completed at 17a9930f20a0, including the built-in Rust
+Asahi GPU driver, all 1,878 modules and catalog DTBs. Its ABI is
+7.1.12-siliconforest-normal-17a9930f20a0 and its Image SHA256 is
+0ad008defa3e779aa1dac7060ecb9621a0ab4ebe9db9c388a90b86c9290dd7ca.
 
-Before the transaction, it records old packages/configuration, backs up existing
-UKIs, and places the old `boot.bin`, UKIs, boot menu and recovery instructions on
-the paired ESP.
-The currently installed replacement packages and stock kernel must be in pacman's
-cache for rollback. Missing cached versions stop before mutation. A signed
-SiliconForest channel is configured and one `pacman -Syu` transaction installs
-the three packages; the stock kernel is retained. No signature bypass, forced
-overwrite or unrelated service enablement is used.
-
-The generic m1n1 updater is disabled with a marked configuration block while
-SiliconForest owns stage 2. Its own hook checks package versions and all boot
-hashes, preserving the exact DTB instead of choosing the newest module directory.
-Required handoff options are explicit in the signed manifest. Initramfs/boot-menu
-generation and the referenced output image are checked before stage 2 is replaced
-with an fsynced atomic rename and readback. The kernel menu is rebuilt by the
-existing Limine or GRUB tools; those layouts still need real-machine rehearsal.
-
-On failure, configuration and saved boot files are restored, and the transaction
-records that packages may have changed. This is not an atomic rollback of an
-entire pacman system upgrade. The transaction directory contains the exact cached
-previous stack and hashes. Use the saved installer archive or a separately retained
-copy whose hash has been verified, using Python isolated mode. While the package
-is still installed, its root-owned archive can run recovery directly:
-`sudo /usr/bin/python3 -I /usr/lib/siliconforest/installer.pyz --rollback /var/lib/siliconforest/transactions/ID`.
-The transaction guard requires this coordinated path for upgrades and removal of
-an active stack. Recovery before the boot menu requires restoring the old
-`m1n1/boot.bin`, saved UKIs and menu from the paired ESP's
-`siliconforest-recovery/ID` directory and booting its matching old kernel.
-The previous OS package upgrade and any newly trusted public signing key are not
-automatically undone by stack rollback. Neither installation nor rollback reboots.
-
-## Checks completed and remaining
-
-The 20 host tests exercise real ephemeral GPG signatures, wrong identities,
-tampering, source receipts, extra database packages, board/firmware restrictions,
-configuration preservation, boot-input changes, atomic-file refusal and stage 2
-assembly. A complete installation coordinator run and an initramfs-failure restore
-also run against temporary filesystems, with real signed fixture packages and
-simulated pacman/boot commands. These are not real pacman or hardware tests.
-The real repo-add/unsigned assembler path was checked separately with temporary
-fixture archives; it emitted no installer. All fixtures are removed afterward.
-The packed installer is also checked to refuse this x86 builder. A real
-`m1n1-siliconforest-20261018.normal2-1-aarch64.pkg.tar.zst` candidate was built
-without installation; its stage 2 hash matches the previously validated binary
-`c9d44f5cf54f3e30c6b651950cc8077e0757563fd8f8e02fea161012c62d5e9a`.
-The package architecture, source receipt, MIT/component notices and hooks were
-checked. This is a packaging check, not a fresh boot test.
-
-The real normal ARM64 kernel build also completed at source `17a9930f20a0`,
-including the built-in Rust Asahi GPU driver and all 1,878 modules. The uninstalled
-`linux-siliconforest-20261018.normal2-1-aarch64.pkg.tar.zst` candidate contains
-those modules and the 23 catalog M1/M2 DTBs under ABI
-`7.1.12-siliconforest-normal-17a9930f20a0`. Packaging checked every module's
-version magic and every board DTB's compatible string. The archive's Image and
-config match the build; no build/source links or PEM files are included. The
-kernel Image SHA256 is
-`0ad008defa3e779aa1dac7060ecb9621a0ab4ebe9db9c388a90b86c9290dd7ca`.
-These two local candidate packages have the same version and control-source
-receipt, but there is no matching production Mesa package or signed release.
-
-Still required before sharing an install command: production ARM64 Mesa and
-native M3 kernel/package builds; native library dependency and package-conflict inspection; the
-legacy M3 session-admission port; owner signing identity/channel publication;
-and install, update and rollback rehearsal for the requested machines. Source
-host checks and the old upstream installer's test history do not replace those
-results for these newly combined packages.
-
-References: [Asahi stage 2 format](https://asahilinux.org/docs/alt/boot-process-guide/),
-[pacman transactions](https://man.archlinux.org/man/pacman.8.en),
-[signature policy](https://man.archlinux.org/man/pacman.conf.5.en), and
-[Mesa installation](https://docs.mesa3d.org/install.html).
+ARM64 Mesa testing exposed a GCC 16.1.1 -O3 extension-chain aliasing problem.
+The fix is public in Mesa c8015f63608e6eb2f859a1739462a3c77eca600a;
+all 3,035 compression policy checks pass at -O0/-O2/-O3 on ARM64 and x86_64.
+Fresh complete ARM64 package builds and full-stack hardware qualification remain
+in progress. The available Air booted this kernel and passed boot-health; GUI
+runner permission failures are unresolved and are not recorded as graphics passes.

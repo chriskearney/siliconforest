@@ -19,6 +19,8 @@ def admit():
             'Running board/firmware is outside the qualified graphics set')
     require(platform.release() == data['kernel_release'], 'Boot the qualified SiliconForest kernel first')
     boot.check_stage1(data)
+    require(boot.dt_string('/proc/device-tree/chosen/asahi,m1n1-stage2-version') ==
+            data['boot']['stage2_version'], 'Running stage 2 differs from the matched graphics set')
     for component, name in PACKAGES.items():
         actual = subprocess.check_output(['pacman', '-Q', name], text=True).split()
         require(actual == [name, data['packages'][component]['version']], 'Mixed graphics package versions')
