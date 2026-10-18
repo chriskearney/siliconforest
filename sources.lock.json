@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "project": "omakernel",
+  "baseline_date": "2026-10-18",
+  "status": "development; no qualified binary release",
+  "sources": {
+    "linux": {
+      "url": "https://github.com/iconidentify/aurora-linux.git",
+      "branch": "omakernel/next",
+      "commit": "5d570a78a4ab29ac383ec8988be2356dfc6c8a75",
+      "upstream_url": "https://github.com/omacom/linux-aurora.git",
+      "upstream_branch": "integration/aurora",
+      "kernel_version": "7.1.12"
+    },
+    "m1n1": {
+      "url": "https://github.com/iconidentify/m1n1.git",
+      "branch": "omakernel/next",
+      "commit": "fec93c15a03b1f5243a3794b495b48ea6a596fcc",
+      "upstream_url": "https://github.com/omacom/m1n1.git",
+      "upstream_branch": "integration/aurora",
+      "upstream_commit": "d05ba17dfb771871d608225be42968bbb1e75a18",
+      "policy": "owner permits AI-assisted development; inherited AGENTS.md removed in personal branch"
+    }
+  },
+  "inputs": {
+    "configs/kernel.config": "c811698c5242d42850bef6669f29cd7b485e997d3ac1a423e2d3cbbb3fdc19b8",
+    "configs/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c"
+  },
+  "toolchains": {
+    "kernel_llvm": "22.1.8",
+    "kernel_rust": "1.93.1",
+    "m1n1_rust": "1.89.0",
+    "m1n1_llvm": "22.1.8"
+  },
+  "uboot": {
+    "policy": "retain target distribution package for first milestone; record exact package version and hash per qualified release"
+  }
+}
