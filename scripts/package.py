@@ -13,6 +13,7 @@ import sys
 import tarfile
 import tempfile
 import zipapp
+from kernel_layout import verify as verify_kernel_layout
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -45,8 +46,9 @@ def stage(component, source, build, tree, profile):
         release = (build / 'kernelrelease').read_text().strip()
         require(TOKEN.fullmatch(release) and '-siliconforest-' in release, 'Wrong kernel ABI name')
         pin = json.loads((ROOT / 'sources.lock.json').read_text())['sources']['linux']['commit']
-        require(release.endswith('-siliconforest-' + profile['kernel_variant'] + '-' + pin[:12]),
+        require(release.endswith('-siliconforest-' + profile['kernel_variant'] + '-' + pin[:12] + '-layout1'),
                 'Kernel build release does not identify the pinned source/profile')
+        layout = verify_kernel_layout(build)
         config = (build / '.config').read_text()
         native = '\nCONFIG_SILICONFOREST_M3=y\n' in '\n' + config
         require(native == (profile['kernel_variant'] == 'm3-native'), 'Wrong kernel profile')
@@ -60,8 +62,10 @@ def stage(component, source, build, tree, profile):
             environment['PATH'] = str(Path(llvm) / 'bin') + ':' + environment['PATH']
             environment['LIBCLANG_PATH'] = str(Path(llvm) / 'lib')
         run('make', '-C', source, 'O=' + str(build), 'ARCH=arm64', 'LLVM=1',
+            'BINDGEN=' + layout['bindgen']['path'], 'BINDGEN_LAYOUT_TESTS=1',
             'KERNELRELEASE=' + release, '-j' + os.environ.get('JOBS', '4'),
             'INSTALL_MOD_PATH=' + str(tree / 'usr'), 'INSTALL_MOD_STRIP=1', 'modules_install', env=environment)
+        verify_kernel_layout(build)
         require((build / '.config').read_text() == config, 'Kernel config changed during module staging')
         module_versions = [p.name for p in (tree / 'usr/lib/modules').iterdir()]
         require(module_versions == [release], 'Modules were staged under the wrong kernel ABI')
@@ -83,6 +87,10 @@ def stage(component, source, build, tree, profile):
         for name in ('build', 'source'):
             (modules / name).unlink(missing_ok=True)
         copy(source / 'COPYING', tree / 'usr/share/licenses/linux-siliconforest/COPYING')
+        evidence = {**layout, 'bindgen': {'sha256': layout['bindgen']['sha256']}}
+        evidence_path = tree / 'usr/share/siliconforest/kernel-layout-checks.json'
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence_path.write_text(json.dumps(evidence, indent=2) + '\n')
         shutil.copytree(source / 'LICENSES', tree / 'usr/share/licenses/linux-siliconforest/LICENSES')
         copy(source / 'Documentation/process/license-rules.rst',
              tree / 'usr/share/licenses/linux-siliconforest/Documentation/process/license-rules.rst')

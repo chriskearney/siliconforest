@@ -60,7 +60,7 @@ anything into its boot partition.
 
 | Build | Prerequisites |
 | --- | --- |
-| Kernel | LLVM/Clang/LLD 22.1.8, Rust 1.93.1 with rust-src, bindgen >= 0.71.1, make, host C compiler, bc, flex, bison, cpio, perl, Python, libelf, OpenSSL development files, pahole, kmod |
+| Kernel | LLVM/Clang/LLD 22.1.8, Rust 1.93.1 with rust-src, the corrected bindgen from `sources/linux/tools/aurora-bindgen/`, make, host C compiler, bc, flex, bison, cpio, perl, Python, libelf, OpenSSL development files, pahole, kmod |
 | m1n1 stage 2 | LLVM/Clang/LLD 22.1.8, llvm-objcopy, make, Rust 1.99.0 with `aarch64-unknown-none-softfloat` |
 
 For an already provisioned Rust builder:
@@ -69,7 +69,8 @@ For an already provisioned Rust builder:
 rustup toolchain install 1.93.1 --profile minimal --component rust-src
 rustup toolchain install 1.99.0 --profile minimal --target aarch64-unknown-none-softfloat
 make build-m1n1
-JOBS=8 make build-kernel
+python3 sources/linux/tools/aurora-bindgen/build.py --output-dir "$PWD/build/kernel-bindgen"
+BINDGEN="$PWD/build/kernel-bindgen/rust-bindgen-0.73.2/target/release/bindgen" JOBS=8 make build-kernel
 ```
 
 Set `LLVM_DIR` to a nonstandard LLVM installation prefix if needed. The kernel
@@ -77,7 +78,12 @@ script also recognizes `/usr/lib/llvm22`. m1n1 builds use the selected LLVM on
 `PATH`. The first kernel configuration is the inherited release20 configuration;
 the build removes its `-ARCH` suffix and adds a distinct SiliconForest development
 release suffix. It runs `olddefconfig`, so retain the generated `.config` with
-every artifact. Do not advertise the inherited experimental features as tested.
+every artifact. Every kernel build enables compile-time C/Rust layout assertions;
+the `-layout1` ABI suffix keeps it separate from the initial unchecked builds.
+Stock bindgen 0.73.1 produced incorrect task field offsets in the initial M3 Pro
+candidate and caused a kernel fault on GPU submissions. Those initial kernel
+packages must not be distributed. Do not advertise inherited experimental
+features as tested.
 
 Outputs:
 

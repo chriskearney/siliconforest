@@ -16,6 +16,8 @@ fi
 export RUSTUP_TOOLCHAIN=1.93.1
 export ARCH=arm64
 export LLVM=1
+: "${BINDGEN:?Set BINDGEN to the corrected generator built by sources/linux/tools/aurora-bindgen/build.py}"
+export BINDGEN
 for tool in make clang ld.lld llvm-ar rustc cargo bindgen bc flex bison cpio; do
   command -v "$tool" >/dev/null || { echo "Missing build dependency: $tool" >&2; exit 1; }
 done
@@ -43,17 +45,18 @@ if [[ $variant == m3-native ]]; then
 fi
 # Set a distinct module ABI name even for an otherwise identical source tree.
 export LOCALVERSION
-LOCALVERSION=-siliconforest-$variant-$(git -C "$root/sources/linux" rev-parse --short=12 HEAD)
+LOCALVERSION=-siliconforest-$variant-$(git -C "$root/sources/linux" rev-parse --short=12 HEAD)-layout1
 export KBUILD_BUILD_USER=siliconforest
 export KBUILD_BUILD_HOST=builder
 export KBUILD_BUILD_TIMESTAMP
 KBUILD_BUILD_TIMESTAMP=$(git -C "$root/sources/linux" show -s --format=%cD HEAD)
-make -C "$root/sources/linux" O="$output" olddefconfig
+make -C "$root/sources/linux" O="$output" BINDGEN="$BINDGEN" BINDGEN_LAYOUT_TESTS=1 olddefconfig
 if [[ $variant == m3-native ]]; then
   grep -qx 'CONFIG_SILICONFOREST_M3=y' "$output/.config" || { echo 'Native kernel option was not admitted' >&2; exit 1; }
   if grep -Eq '^CONFIG_USB4=[ym]$' "$output/.config"; then echo 'Native profile requires USB4 disabled' >&2; exit 1; fi
 fi
-make -C "$root/sources/linux" O="$output" rustavailable
-make -C "$root/sources/linux" O="$output" -j"${JOBS:-4}" Image modules dtbs
+make -C "$root/sources/linux" O="$output" BINDGEN="$BINDGEN" BINDGEN_LAYOUT_TESTS=1 rustavailable
+make -C "$root/sources/linux" O="$output" BINDGEN="$BINDGEN" BINDGEN_LAYOUT_TESTS=1 -j"${JOBS:-4}" Image modules dtbs
 make -s -C "$root/sources/linux" O="$output" kernelrelease > "$output/kernelrelease"
+python3 "$root/scripts/kernel_layout.py" "$output" "$(command -v "$BINDGEN")"
 printf 'Built %s\nOutput: %s\n' "$(cat "$output/kernelrelease")" "$output"

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "qualification": "passed",
+  "qualification": "withdrawn",
   "scope": {
     "boards": [
       "apple,j313"
@@ -114,5 +114,6 @@
     "Internal display; no attached dock/display was connected during this run.",
     "Pixel readback and compositor smoke checks, not a complete API conformance or suspend qualification.",
     "Desktop captures remain private on the test Mac; no raw journals or device serials are published."
-  ]
+  ],
+  "withdrawal_reason": "Although the recorded J313 boot/readback/rollback checks passed, this unchecked kernel build uses bindgen 0.73.1, which generated incorrect task field offsets and caused M3 Pro GPU submission faults. Do not distribute; rebuild with checked corrected bindings and repeat qualification."
 }
