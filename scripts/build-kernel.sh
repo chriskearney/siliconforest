@@ -28,18 +28,31 @@ case $(uname -m) in
   *) echo 'Use a Linux aarch64 or x86_64 builder.' >&2; exit 1 ;;
 esac
 
-output="$root/build/linux"
+variant=${KERNEL_VARIANT:-normal}
+case $variant in
+  normal) output="$root/build/linux" ;;
+  m3-native) output="$root/build/linux-m3-native" ;;
+  *) echo 'KERNEL_VARIANT must be normal or m3-native' >&2; exit 1 ;;
+esac
 mkdir -p "$output"
 cp "$root/configs/kernel.config" "$output/.config"
 "$root/sources/linux/scripts/config" --file "$output/.config" --set-str LOCALVERSION '' --disable LOCALVERSION_AUTO
+if [[ $variant == m3-native ]]; then
+  "$root/sources/linux/scripts/config" --file "$output/.config" \
+    --enable EXPERT --disable USB4 --enable SILICONFOREST_M3
+fi
 # Set a distinct module ABI name even for an otherwise identical source tree.
 export LOCALVERSION
-LOCALVERSION=-siliconforest-dev-$(git -C "$root/sources/linux" rev-parse --short=12 HEAD)
+LOCALVERSION=-siliconforest-$variant-$(git -C "$root/sources/linux" rev-parse --short=12 HEAD)
 export KBUILD_BUILD_USER=siliconforest
 export KBUILD_BUILD_HOST=builder
 export KBUILD_BUILD_TIMESTAMP
 KBUILD_BUILD_TIMESTAMP=$(git -C "$root/sources/linux" show -s --format=%cD HEAD)
 make -C "$root/sources/linux" O="$output" olddefconfig
+if [[ $variant == m3-native ]]; then
+  grep -qx 'CONFIG_SILICONFOREST_M3=y' "$output/.config" || { echo 'Native kernel option was not admitted' >&2; exit 1; }
+  if grep -Eq '^CONFIG_USB4=[ym]$' "$output/.config"; then echo 'Native profile requires USB4 disabled' >&2; exit 1; fi
+fi
 make -C "$root/sources/linux" O="$output" rustavailable
 make -C "$root/sources/linux" O="$output" -j"${JOBS:-4}" Image modules dtbs
 make -s -C "$root/sources/linux" O="$output" kernelrelease > "$output/kernelrelease"

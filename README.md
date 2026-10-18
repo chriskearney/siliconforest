@@ -33,7 +33,12 @@ SiliconForest support claim.
 
 ## Developer setup
 
-On Linux, with Git and Python 3.9 or newer:
+The [minimal three-package installer candidate](release/README.md) adds Mesa
+to the source lock and targets the requested M1/M2, M3 Pro and M3 Air cohorts.
+It is under development: no qualified binary set or public install command is
+available yet. The target catalog does not claim that those machines were tested.
+
+On Linux, with Git and Python 3.11 or newer:
 
 ```sh
 git clone https://github.com/iconidentify/siliconforest.git
@@ -76,7 +81,9 @@ every artifact. Do not advertise the inherited experimental features as tested.
 Outputs:
 
 - `build/linux/arch/arm64/boot/Image`, modules, Apple DTBs, and `.config`.
+- `build/linux-m3-native/` when explicitly built with `KERNEL_VARIANT=m3-native`.
 - `dist/m1n1-<commit>/m1n1.bin`, build flags, source lock, and checksums.
+- `dist/mesa-root/` after `make build-mesa` on a provisioned ARM64 builder.
 
 The m1n1 helper runs `make clean` in its dedicated source checkout to prevent
 old build flags from being reused. Its output is a **stage 2 payload**, not a

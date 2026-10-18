@@ -1,0 +1,251 @@
+{
+  "schema": 1,
+  "status": "targets, not a hardware qualification claim",
+  "minimum_boards": [
+    "apple,j314s",
+    "apple,j313",
+    "apple,j293",
+    "apple,j514s"
+  ],
+  "profiles": {
+    "m1-m2": {
+      "boards": [
+        {
+          "compatible": "apple,j314s",
+          "model": "Apple MacBook Pro (14-inch, M1 Pro, 2021)",
+          "dtb": "apple/t6000-j314s.dtb"
+        },
+        {
+          "compatible": "apple,j316s",
+          "model": "Apple MacBook Pro (16-inch, M1 Pro, 2021)",
+          "dtb": "apple/t6000-j316s.dtb"
+        },
+        {
+          "compatible": "apple,j314c",
+          "model": "Apple MacBook Pro (14-inch, M1 Max, 2021)",
+          "dtb": "apple/t6001-j314c.dtb"
+        },
+        {
+          "compatible": "apple,j316c",
+          "model": "Apple MacBook Pro (16-inch, M1 Max, 2021)",
+          "dtb": "apple/t6001-j316c.dtb"
+        },
+        {
+          "compatible": "apple,j375c",
+          "model": "Apple Mac Studio (M1 Max, 2022)",
+          "dtb": "apple/t6001-j375c.dtb"
+        },
+        {
+          "compatible": "apple,j375d",
+          "model": "Apple Mac Studio (M1 Ultra, 2022)",
+          "dtb": "apple/t6002-j375d.dtb"
+        },
+        {
+          "compatible": "apple,j414s",
+          "model": "Apple MacBook Pro (14-inch, M2 Pro, 2023)",
+          "dtb": "apple/t6020-j414s.dtb"
+        },
+        {
+          "compatible": "apple,j416s",
+          "model": "Apple MacBook Pro (16-inch, M2 Pro, 2023)",
+          "dtb": "apple/t6020-j416s.dtb"
+        },
+        {
+          "compatible": "apple,j474s",
+          "model": "Apple Mac mini (M2 Pro, 2023)",
+          "dtb": "apple/t6020-j474s.dtb"
+        },
+        {
+          "compatible": "apple,j414c",
+          "model": "Apple MacBook Pro (14-inch, M2 Max, 2023)",
+          "dtb": "apple/t6021-j414c.dtb"
+        },
+        {
+          "compatible": "apple,j416c",
+          "model": "Apple MacBook Pro (16-inch, M2 Max, 2023)",
+          "dtb": "apple/t6021-j416c.dtb"
+        },
+        {
+          "compatible": "apple,j475c",
+          "model": "Apple Mac Studio (M2 Max, 2023)",
+          "dtb": "apple/t6021-j475c.dtb"
+        },
+        {
+          "compatible": "apple,j180d",
+          "model": "Apple Mac Pro (M2 Ultra, 2023)",
+          "dtb": "apple/t6022-j180d.dtb"
+        },
+        {
+          "compatible": "apple,j475d",
+          "model": "Apple Mac Studio (M2 Ultra, 2023)",
+          "dtb": "apple/t6022-j475d.dtb"
+        },
+        {
+          "compatible": "apple,j274",
+          "model": "Apple Mac mini (M1, 2020)",
+          "dtb": "apple/t8103-j274.dtb"
+        },
+        {
+          "compatible": "apple,j293",
+          "model": "Apple MacBook Pro (13-inch, M1, 2020)",
+          "dtb": "apple/t8103-j293.dtb"
+        },
+        {
+          "compatible": "apple,j313",
+          "model": "Apple MacBook Air (M1, 2020)",
+          "dtb": "apple/t8103-j313.dtb"
+        },
+        {
+          "compatible": "apple,j456",
+          "model": "Apple iMac (24-inch, 4x USB-C, M1, 2021)",
+          "dtb": "apple/t8103-j456.dtb"
+        },
+        {
+          "compatible": "apple,j457",
+          "model": "Apple iMac (24-inch, 2x USB-C, M1, 2021)",
+          "dtb": "apple/t8103-j457.dtb"
+        },
+        {
+          "compatible": "apple,j413",
+          "model": "Apple MacBook Air (13-inch, M2, 2022)",
+          "dtb": "apple/t8112-j413.dtb"
+        },
+        {
+          "compatible": "apple,j415",
+          "model": "Apple MacBook Air (15-inch, M2, 2023)",
+          "dtb": "apple/t8112-j415.dtb"
+        },
+        {
+          "compatible": "apple,j473",
+          "model": "Apple Mac mini (M2, 2023)",
+          "dtb": "apple/t8112-j473.dtb"
+        },
+        {
+          "compatible": "apple,j493",
+          "model": "Apple MacBook Pro (13-inch, M2, 2022)",
+          "dtb": "apple/t8112-j493.dtb"
+        }
+      ],
+      "kernel_variant": "normal",
+      "mesa": {
+        "branch": "siliconforest/next",
+        "commit": "b670e85194845a8c8e7f1dea1807ab82c03563e5",
+        "apis": [
+          "OpenGL",
+          "Vulkan"
+        ]
+      },
+      "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
+      "firmware_policy": "Exact versions must be recorded by per-board qualification; no wildcard admission.",
+      "qualified": false,
+      "blockers": [
+        "Build and sign the aarch64 package set, then qualify the listed boards with their exact OS firmware."
+      ]
+    },
+    "m3-pro-native": {
+      "boards": [
+        {
+          "compatible": "apple,j514s",
+          "model": "MacBook Pro 14-inch M3 Pro",
+          "dtb": "apple/m3-g15/t6030-j514s.dtb"
+        }
+      ],
+      "kernel_variant": "m3-native",
+      "mesa": {
+        "branch": "siliconforest/next",
+        "commit": "b670e85194845a8c8e7f1dea1807ab82c03563e5",
+        "apis": [
+          "OpenGL",
+          "Vulkan"
+        ]
+      },
+      "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
+      "firmware_policy": "Requires the reviewed native J514S handoff and matching DCP/GPU firmware identities.",
+      "qualified": false,
+      "blockers": [
+        "Full native kernel/package build and exact boot-chain hardware qualification.",
+        "Native display/PHY integration disables USB4; do not advertise feature parity with the normal kernel.",
+        "J516S is not covered by the alternative display DTB set."
+      ]
+    },
+    "m3-air-hal200": {
+      "boards": [
+        {
+          "compatible": "apple,j613",
+          "model": "MacBook Air 13-inch M3",
+          "dtb": "apple/t8122-j613-25g83.dtb"
+        }
+      ],
+      "kernel_variant": "normal",
+      "mesa": {
+        "branch": "compat/m3-air-hal200",
+        "commit": "7446b6810fc620f999680841e6a6209f6d0e7101",
+        "apis": [
+          "OpenGL"
+        ]
+      },
+      "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
+      "firmware_policy": "26.6.2 / 25G83 only; exact board, GPU firmware, handoff and machine calibration still required.",
+      "qualified": false,
+      "blockers": [
+        "Separate compatibility Mesa source/build and session admission are required; main Mesa refuses this GPU.",
+        "No native Vulkan and no external display on this firmware in the pinned kernel.",
+        "J615 remains a separate experimental board, not automatically admitted."
+      ]
+    },
+    "m3-pro-legacy": {
+      "boards": [
+        {
+          "compatible": "apple,j514s",
+          "model": "MacBook Pro 14-inch M3 Pro",
+          "dtb": "apple/t6030-j514s.dtb"
+        },
+        {
+          "compatible": "apple,j516s",
+          "model": "MacBook Pro 16-inch M3 Pro",
+          "dtb": "apple/t6030-j516s.dtb"
+        }
+      ],
+      "kernel_variant": "normal",
+      "mesa": {
+        "branch": "compat/m3-pro-legacy",
+        "commit": "f7d09448e2ee398047a5b1ab4de13e37be00486d",
+        "apis": [
+          "OpenGL"
+        ]
+      },
+      "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
+      "firmware_policy": "Preserve the previously working legacy handoff; exact firmware must be qualified.",
+      "qualified": false,
+      "blockers": [
+        "The previous launcher checks Aurora release/profile identities. Replace that admission with a real SiliconForest contract; do not forge upstream markers.",
+        "A fresh package build and exact boot-chain qualification are required."
+      ]
+    },
+    "m3-air-legacy": {
+      "boards": [
+        {
+          "compatible": "apple,j613",
+          "model": "MacBook Air 13-inch M3",
+          "dtb": "apple/t8122-j613.dtb"
+        }
+      ],
+      "kernel_variant": "normal",
+      "mesa": {
+        "branch": "compat/m3-legacy",
+        "commit": "1acd44ee395324c1f8c7af37b3bec5d9ff5d658f",
+        "apis": [
+          "OpenGL via Zink",
+          "Vulkan legacy profile"
+        ]
+      },
+      "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
+      "firmware_policy": "14.x boot profile; exact firmware and per-machine admission must be qualified.",
+      "qualified": false,
+      "blockers": [
+        "Do not enable stand-in GPU power/calibration assumptions automatically.",
+        "The inherited M3 session/profile admission must be ported and tested, not bypassed."
+      ]
+    }
+  }
+}

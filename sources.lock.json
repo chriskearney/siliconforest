@@ -25,11 +25,17 @@
         "branch": "integration/aurora",
         "commit": "d05ba17dfb771871d608225be42968bbb1e75a18"
       }
+    },
+    "mesa": {
+      "url": "https://github.com/iconidentify/siliconforest-mesa.git",
+      "branch": "siliconforest/next",
+      "commit": "b670e85194845a8c8e7f1dea1807ab82c03563e5"
     }
   },
   "inputs": {
     "configs/kernel.config": "c811698c5242d42850bef6669f29cd7b485e997d3ac1a423e2d3cbbb3fdc19b8",
-    "configs/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c"
+    "configs/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c",
+    "release/profiles.json": "7c11875e43a129ea38e1ebb0e139c77f157a2d3992e61ec165f5b668d4eeb675"
   },
   "toolchains": {
     "kernel_llvm": "22.1.8",

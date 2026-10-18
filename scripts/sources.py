@@ -77,7 +77,7 @@ def fetch(name, item):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["lock", "fetch", "verify"])
-    parser.add_argument("source", nargs="?", choices=["linux", "m1n1", "all"], default="all")
+    parser.add_argument("source", nargs="?", choices=["linux", "m1n1", "mesa", "all"], default="all")
     args = parser.parse_args()
     lock = read_lock()
     if args.command == "lock":
