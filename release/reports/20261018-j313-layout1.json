@@ -1,0 +1,154 @@
+{
+  "schema": 1,
+  "qualification": "passed",
+  "scope": {
+    "boards": [
+      "apple,j313"
+    ],
+    "firmware": [
+      "13.5"
+    ]
+  },
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261018.normal7-1",
+      "file": "linux-siliconforest-20261018.normal7-1-aarch64.pkg.tar.zst",
+      "sha256": "c10bb54b85193a24450a9b24d2bbaacd93170b6ec9e45034f847fcd21f6fefbc",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "17a9930f20a0895b5980385b0b2d67edda8a24be"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.18-layout1.1"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.normal4-1",
+      "file": "mesa-siliconforest-20261018.normal4-1-aarch64.pkg.tar.zst",
+      "sha256": "5fa6b8d9438eaf739251e80de7765396bc40ed0b61945eeb43e6167c4aa2dd67",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "c8015f63608e6eb2f859a1739462a3c77eca600a"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-m1-m2.1"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.normal8-1",
+      "file": "m1n1-siliconforest-20261018.normal8-1-aarch64.pkg.tar.zst",
+      "sha256": "780ebc38ff8bd202b92a18b9611d534292fc164f920f8323698817485edf2dab",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "1d6743b21c133a4522e6a3fc74183bad7a11e446"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.18-stage2.1"
+      }
+    }
+  },
+  "boot_contract": {
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "dtb": "apple/t8103-j313.dtb",
+    "backend": "limine",
+    "entry": "limine.conf",
+    "image": "EFI/Linux/omarchy_linux-siliconforest.efi",
+    "max_image_bytes": 67108864,
+    "max_stage2_bytes": 8388608,
+    "stage1_versions": [
+      "v1.5.2"
+    ],
+    "iboot_versions": [
+      "iBoot-8422.141.2"
+    ],
+    "m1n1_config": [],
+    "uboot_path": "/usr/lib/asahi-boot/u-boot-nodtb.bin",
+    "uboot_sha256": "b8d52d16a56f4bc9640e6c210a1414f94f06d1aa0e1fa9845b69979b006c52b1",
+    "kernel_image_sha256": "105293bef1b7206cec99a94dbe4926663d41b7981707313317ade3c3f875e50c",
+    "dtb_sha256": "7f63ce6c5a5cbaf5994372aaa00c84198f3f7ccd4753a3e998179948cc4168f3",
+    "m1n1_sha256": "318a05c9b4e81f76ec2b3f7a6f180334f665a37dca931a2a1a4a1db505ab6c95",
+    "config_sha256": "1a440913424ceaaa0eab17ce340103b69b9a7374640a03342942bb7656114f1f"
+  },
+  "kernel_layout_checks": {
+    "checked": true,
+    "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0",
+    "kernel_image_sha256": "105293bef1b7206cec99a94dbe4926663d41b7981707313317ade3c3f875e50c"
+  },
+  "candidate_default_boot": {
+    "board": "apple,j313",
+    "os_firmware": "13.5",
+    "kernel_release": "7.1.12-siliconforest-normal-17a9930f20a0-layout1",
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 2560,
+        "height": 1600,
+        "refreshRate": 60.0
+      }
+    ],
+    "packages": {
+      "linux-siliconforest": "20261018.normal7-1",
+      "mesa-siliconforest": "20261018.normal4-1",
+      "m1n1-siliconforest": "20261018.normal8-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "9bd0085d934848025e9e04b3fb5a564ab4415eec8cb296f54dd95417ee1e09ad"
+    },
+    "OpenGL": "Renderer: Apple M1 (G13G B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7428 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M1 (G13G B1) (deviceID 0x0)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6245 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-18T21:54:35Z"
+  },
+  "rebooted_rollback": {
+    "board": "apple,j313",
+    "os_firmware": "13.5",
+    "kernel_release": "7.1.12-2-20261015.19-sep-ARCH",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 2560,
+        "height": 1600,
+        "refreshRate": 60.0
+      }
+    ],
+    "OpenGL": "Renderer: Apple M1 (G13G B1)\nVersion: OpenGL ES 3.2 Mesa 26.2.3-arch1.1\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7437 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M1 (G13G B1) (deviceID 0x0)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6012 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-18T21:57:09Z"
+  },
+  "recovery_checks": {
+    "all_saved_boot_file_hashes_restored": true,
+    "historical_recovery_entries_retained": true,
+    "old_kernel_and_Mesa_restored": true
+  },
+  "limits": [
+    "Only this exact board and OS firmware were qualified.",
+    "Internal panel desktop and GPU readback checks; other boards, firmware, external displays and suspend need separate qualification."
+  ],
+  "private_evidence": "Desktop captures and raw host logs remain local and are not published."
+}
