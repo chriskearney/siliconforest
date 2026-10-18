@@ -208,11 +208,14 @@ def main():
             for child in sorted(tree.iterdir()):
                 archive.add(child, arcname=child.name)
         sha = hashlib.sha256(tar.read_bytes()).hexdigest()
+        llvm_runtime = (['llvm-libs>=22', 'llvm-libs<23']
+                        if profile['mesa'].get('runtime_llvm_owner') == 'llvm-libs'
+                        else ['llvm22-libs'])
         depends = {'kernel': ['kmod', 'mkinitcpio'],
                    'mesa': ['expat', 'gcc-libs', 'libdisplay-info', 'libdrm', 'libelf', 'libglvnd', 'libunwind',
                             'libx11', 'libxcb', 'libxext', 'libxfixes', 'libxshmfence',
                             'libxrandr', 'libxxf86vm', 'xcb-util-keysyms', 'systemd-libs',
-                            'vulkan-icd-loader', 'wayland', 'zlib', 'zstd', 'llvm22-libs'],
+                            'vulkan-icd-loader', 'wayland', 'zlib', 'zstd', *llvm_runtime],
                    'm1n1': ['python']}[component]
         def array(values):
             return '(' + ' '.join("'" + v + "'" for v in values) + ')'
