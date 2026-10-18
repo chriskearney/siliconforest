@@ -90,10 +90,12 @@ The next work is packaging these outputs and recording a reproducible builder:
    installed kernel releases together.
    For J613, the DTB's new disabled internal Type-C route requires kernel
    17a9930f20a0895b5980385b0b2d67edda8a24be or a descendant. Ship kernel and
-   DTBs from one source pin. Its panel also depends on atcphy1 probing. The
-   m1n1 external-firmware marker is a reservation promise; the kernel enables
-   the controller and suppliers. The normal 14.7 display profile and 26.6.2
-   camera support are separate qualification cases.
+   DTBs from one source pin and roll them back together. The panel waits for
+   atcphy1, including the 25G83 tree that includes the same base DT. The m1n1
+   external-firmware marker is a reservation promise; the kernel enables
+   the controller and suppliers. The normal gate requires exactly 14 7 0
+   firmware compatibility. The 26.6.2 camera support supplies no external
+   display, and the alternative M3 profile intentionally excludes T8122/J613.
 
 Boot-chain reference:
 

@@ -15,7 +15,7 @@
     "m1n1": {
       "url": "https://github.com/iconidentify/siliconforest-m1n1.git",
       "branch": "siliconforest/next",
-      "commit": "7539477b16a46f66064345c9570d0abaebc45d3e",
+      "commit": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
       "upstream_url": "https://github.com/AsahiLinux/m1n1.git",
       "upstream_branch": "main",
       "upstream_commit": "25b1d89ca50be848b136ce771ce7167244852a91",
@@ -71,8 +71,27 @@
       "dtb": "apple/t8122-j613.dtb",
       "minimum_kernel_commit": "17a9930f20a0895b5980385b0b2d67edda8a24be",
       "policy": "J613 DTBs containing the disabled internal Type-C route must accompany a kernel descended from this commit. Assemble kernel and DTBs from the same locked source revision.",
-      "external_display_firmware": "14.7.0 in the normal display gate; 26.6.2 camera support does not qualify external display on 26.6.2",
-      "profile": "normal kernel display path; the alternative M3 copies do not contain the clamshell carry"
+      "external_display_firmware": "Exactly three u32 cells: 14 7 0. The paired kernel has no J613 external-display support on 26.6.2; camera support is separate.",
+      "profile": "Normal kernel display path only. Both display gates depend on !SILICONFOREST_M3; the alternative M3 copies intentionally have no T8122/J613 support.",
+      "additional_dtbs": [
+        "apple/t8122-j613-25g83.dtb"
+      ],
+      "panel_phy_dependency": "The panel waits for atcphy1. The 25G83 tree includes t8122-j613.dts, so this dependency and the kernel pairing floor apply to both DTBs.",
+      "handoff": {
+        "apple,t8122-dcpext-firmware-ready": "u32 = 1, published only after successful firmware reservation and version publication",
+        "apple,firmware-compat": [
+          14,
+          7,
+          0
+        ],
+        "memory-region": "required; loader also publishes iommu-addresses",
+        "status": "dcpext, DARTs, mailbox and route crossbars remain disabled; the kernel gate enables the group in one changeset"
+      },
+      "rollback": {
+        "old_loader_new_kernel": "No readiness marker; external-display gate refuses activation.",
+        "new_loader_old_kernel": "External controller remains disabled; use that kernel's matching older DTB.",
+        "new_dtb_old_kernel": "Unsupported: the older panel driver rejects the new Type-C route container and the J613 panel goes down."
+      }
     }
   ]
 }

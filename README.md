@@ -177,10 +177,13 @@ reservation/publication leaves no new readiness marker or partial DT update.
 **Build the J613 DTB and kernel from one locked source revision.** J613 DTBs
 containing the new disabled internal Type-C route must not accompany kernels
 older than the pairing floor above. Those older panel drivers reject the route
-container. The new panel driver also waits for atcphy1 to probe.
+container. The new panel driver also waits for atcphy1 to probe. The 25G83
+DT includes the same base tree, so its panel has the same dependency and
+kernel pairing floor.
 
-These external-display/clamshell changes are in the normal kernel display
-profile and admit firmware compatibility 14.7.0. The 26.6.2 camera changes do
-not qualify external display on that firmware, and the alternative M3 driver
-copies do not include the clamshell carry. The source lock records this rule;
-there is no binary installer that overrides it.
+These external-display/clamshell changes are intentionally limited to the normal
+kernel display profile and require exactly three firmware compatibility cells:
+`14 7 0`. The paired kernel has no J613 external-display support on 26.6.2;
+camera support is separate. The alternative M3 drivers have no T8122/J613
+support. Roll back the kernel and DTBs together. The source lock records these
+rules; there is no binary installer that overrides them.
