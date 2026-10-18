@@ -15,7 +15,7 @@ import zipapp
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from installer.release import PACKAGES, TOKEN, require
+from installer.release import M3_BOARDS, PACKAGES, TOKEN, require
 
 
 def run(*args, **kwargs):
@@ -100,6 +100,20 @@ def stage(component, source, build, tree, profile):
                                                         'J700_CDC_PROXY', 'T8140_KIS_PROXY')),
                 'Refuse stage 1/proxy bootloader flags')
         copy(build / 'm1n1.bin', tree / 'usr/lib/siliconforest/m1n1.bin')
+        symbols = {}
+        for line in subprocess.check_output(['llvm-nm', '-n', str(build / 'm1n1-raw.elf')], text=True).splitlines():
+            fields = line.split()
+            if len(fields) == 3 and fields[2] in ('_file_end', '_payload_start'):
+                symbols[fields[2]] = int(fields[0], 16)
+        layout = {'file_end': symbols['_file_end'], 'payload_offset': symbols['_payload_start'],
+                  'sha256': hashlib.sha256((build / 'm1n1.bin').read_bytes()).hexdigest()}
+        require(0 < layout['file_end'] <= layout['payload_offset'] <= (build / 'm1n1.bin').stat().st_size,
+                'Loader layout is inconsistent with the built binary')
+        if {b['compatible'] for b in profile['boards']} & M3_BOARDS:
+            require(layout['file_end'] <= 0x120000, 'M3 loader exceeds the reviewed file-part limit')
+        target = tree / 'usr/share/siliconforest/m1n1-layout.json'
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(layout, indent=2) + '\n')
         installer_archive(tree / 'usr/lib/siliconforest/installer.pyz')
         command = tree / 'usr/bin/siliconforest-boot-update'
         command.parent.mkdir(parents=True, exist_ok=True)

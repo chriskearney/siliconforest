@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import platform
 import pwd
+import re
 import shutil
 import stat
 import subprocess
@@ -21,9 +22,32 @@ from .release import (PACKAGES, Refusal, asset_name, digest, download, require,
                       validate, verify_packages, verify_signature, verify_detached, verify_database)
 
 
-def recovery_image_sizes(esp):
+def recovery_uki(esp, data):
+    if data['boot']['backend'] != 'limine':
+        return None
+    lines = (esp / data['boot']['entry']).read_text().splitlines()
+    result = set()
+    for index, line in enumerate(lines):
+        if line.strip() != 'comment: Kernel version: ' + platform.release():
+            continue
+        for value in lines[index + 1:]:
+            if value.strip().startswith(('/', 'comment: Kernel version:')):
+                break
+            match = re.fullmatch(r'\s*path:\s*boot\(\):/(EFI/Linux/[^/#\s]+\.efi)(?:#[0-9a-fA-F]+)?\s*', value)
+            if match:
+                result.add(esp / match[1])
+    require(len(result) == 1, 'Identify one retained UKI for the currently running kernel before installing')
+    image = result.pop()
+    require(image.is_file() and not image.is_symlink(), 'Retained recovery UKI is missing or a symlink')
+    return image
+
+
+def recovery_image_sizes(esp, data=None):
     sizes = {}
-    for path in sorted((esp / 'EFI/Linux').glob('*.efi')):
+    images = sorted((esp / 'EFI/Linux').glob('*.efi')) if data is None else [recovery_uki(esp, data)]
+    for path in images:
+        if path is None:
+            continue
         require(path.is_file() and not path.is_symlink(), 'Recovery UKI must be a regular file')
         compressor = zlib.compressobj(6, zlib.DEFLATED, 31)
         size = 0
@@ -40,13 +64,10 @@ def esp_space_required(esp, data):
     # the atomic stage-2 replacement and filesystem overhead simultaneously.
     old_loader = (esp / 'm1n1/boot.bin').stat().st_size
     new_image = data['boot']['max_image_bytes']
-    previous_image = max((p.stat().st_size for p in (esp / 'EFI/Linux').glob('*.efi')), default=0)
-    final = sum(recovery_image_sizes(esp).values()) + new_image + data['boot']['max_stage2_bytes']
-    # Copy the compressed UKI backups after menu generation. Before then the
-    # root transaction holds the originals, leaving room for an atomic rebuild
-    # of another installed UKI while the new kernel image is already present.
-    staging = new_image + max(new_image, previous_image)
-    return old_loader + max(final, staging) + 8 * 1024**2
+    final = sum(recovery_image_sizes(esp, data).values()) + new_image + data['boot']['max_stage2_bytes']
+    # The qualified backend builds only our UKI in a temporary directory on
+    # root. It does not regenerate every installed kernel or reinstall Limine.
+    return old_loader + final + 8 * 1024**2
 
 
 def check_system(data=None):
@@ -67,13 +88,14 @@ def check_system(data=None):
     require(not dkms.is_dir() or not any(p.is_dir() for p in dkms.iterdir()),
             'Installed DKMS modules require matching headers; this candidate does not ship headers yet')
     if data:
+        boot.check_stage1(data)
         required = esp_space_required(esp, data)
         require(shutil.disk_usage(esp).free >= required,
                 'Paired ESP needs ' + str((required + 1024**2 - 1) // 1024**2) +
                 ' MiB free for compressed recovery copies and the qualified image limits')
         require(board in data['boards'], 'Release does not cover this exact board: ' + board)
         require(firmware in data['firmware'], 'Release does not cover OS firmware: ' + firmware)
-        command = 'limine-update' if data['boot']['backend'] == 'limine' else 'update-grub'
+        command = 'limine-mkinitcpio' if data['boot']['backend'] == 'limine' else 'update-grub'
         require(shutil.which(command), 'Missing qualified boot backend: ' + command)
         require(digest(data['boot']['uboot_path']) == data['boot']['uboot_sha256'],
                 'Existing U-Boot differs from the qualified release')
@@ -137,10 +159,18 @@ def cached_previous():
         if installed.returncode:
             continue
         package, version = installed.stdout.split()
-        candidates = list(Path('/var/cache/pacman/pkg').glob(f'{package}-{version}-aarch64.pkg.tar.*'))
-        candidates = [p for p in candidates if not p.name.endswith('.sig')]
+        candidates = set()
+        for spelling in {version, version.split(':', 1)[-1]}:
+            for path in Path('/var/cache/pacman/pkg').glob(f'{package}-{spelling}-aarch64.pkg.tar.*'):
+                if path.name.endswith('.sig') or not path.is_file() or path.is_symlink():
+                    continue
+                text = subprocess.check_output(['bsdtar', '-xOf', str(path), '.PKGINFO'], text=True)
+                fields = dict(line.split(' = ', 1) for line in text.splitlines()
+                              if line.startswith(('pkgname = ', 'pkgver = ', 'arch = ')))
+                if fields == {'pkgname': package, 'pkgver': version, 'arch': 'aarch64'}:
+                    candidates.add(path)
         require(len(candidates) == 1, 'Cache the current rollback package before installing: ' + installed.stdout.strip())
-        result.append(candidates[0])
+        result.append(candidates.pop())
     return result
 
 
@@ -148,13 +178,18 @@ def snapshot(esp, data, previous):
     state = Path('/var/lib/siliconforest/transactions') / (str(time.time_ns()) + '-' + data['id'])
     state.mkdir(parents=True, mode=0o700)
     files = ['/etc/default/update-m1n1', '/etc/m1n1.conf', '/etc/siliconforest/m1n1.conf',
-             '/etc/limine-entry-tool.conf', '/etc/pacman.conf', str(boot.ACTIVE), str(graphics.MANIFEST)]
+             '/etc/limine-entry-tool.conf', '/etc/default/limine', '/etc/pacman.conf', str(boot.ACTIVE), str(graphics.MANIFEST)]
     entry_root = esp if data['boot']['backend'] == 'limine' else Path('/boot')
     files += [str(esp / 'm1n1/boot.bin'), str(entry_root / data['boot']['entry']),
               str(entry_root / data['boot']['image'])]
     files += [str(p) for p in (esp / 'EFI/Linux').glob('*.efi')]
     files = list(dict.fromkeys(files))
-    record = {'files': {}, 'packages': [], 'status': 'prepared'}
+    selected = recovery_uki(esp, data)
+    record = {'files': {}, 'packages': [], 'status': 'prepared',
+              'recovery_image': str(selected) if selected else None,
+              'boot_files': [str(esp / 'm1n1/boot.bin'), str(entry_root / data['boot']['entry']),
+                             str(entry_root / data['boot']['image']),
+                             *[str(p) for p in (esp / 'EFI/Linux').glob('*.efi')]]}
     for index, name in enumerate(files):
         path = Path(name)
         require(not path.is_symlink(), 'Refuse a symlink configuration: ' + name)
@@ -193,7 +228,7 @@ def complete_esp_recovery(esp, state, record):
     recovery = esp / 'siliconforest-recovery' / state.name
     for name, item in record['files'].items():
         path = Path(name)
-        if item and path.parent == esp / 'EFI/Linux' and path.suffix == '.efi':
+        if item and name == record.get('recovery_image'):
             source = state / item['saved']
             require(digest(source) == item['sha256'], 'Recovery UKI snapshot digest differs')
             saved_image = recovery / 'EFI/Linux' / (path.name + '.gz')
@@ -204,11 +239,13 @@ def complete_esp_recovery(esp, state, record):
     os.sync()
 
 
-def restore_files(state, record):
+def restore_files(state, record, names=None):
     for item in record['files'].values():
         if item:
             require(digest(state / item['saved']) == item['sha256'], 'Rollback copy digest differs')
     for name, item in record['files'].items():
+        if names is not None and name not in names:
+            continue
         path = Path(name)
         if item:
             saved = state / item['saved']
@@ -228,7 +265,9 @@ def rollback(state):
     previous = []
     previous_names = set()
     for package in record['packages']:
-        path = state / asset_name(package['file'])
+        require(bool(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+:-]*', package['file'])),
+                'Unsafe rollback package filename')
+        path = state / package['file']
         require(digest(path) == package['sha256'], 'Rollback package hash differs')
         info = subprocess.check_output(['bsdtar', '-xOf', str(path), '.PKGINFO'], text=True)
         name = next(l.split(' = ', 1)[1] for l in info.splitlines() if l.startswith('pkgname = '))
@@ -237,6 +276,7 @@ def rollback(state):
     require(previous, 'No previous package set was recorded')
     boot.INSTALLING.touch(mode=0o600, exist_ok=False)
     try:
+        restore_files(state, record, names=record.get('boot_files', []))
         # New package names can be removed without suppressing dependency checks.
         remove = [n for n in ('m1n1-siliconforest', 'linux-siliconforest') if n not in previous_names and
                   subprocess.run(['pacman', '-Q', n], capture_output=True).returncode == 0]
@@ -276,6 +316,10 @@ def apply(directory, fingerprint, testing=False):
             for package in data['packages'].values():
                 for name in (package['file'], package['file'] + '.sig'):
                     shutil.copyfile(trusted / name, Path('/var/cache/pacman/pkg') / name)
+            if data['boot']['backend'] == 'limine':
+                limine = Path('/etc/default/limine')
+                text = limine.read_text() if limine.exists() else ''
+                boot.atomic(limine, boot.managed(text, 'BOOT_ORDER="linux-siliconforest, *, *fallback, Snapshots"').encode())
             with open('/dev/tty') as tty:
                 subprocess.run(['pacman', '-U', *[str(trusted / data['packages'][k]['file']) for k in PACKAGES]],
                                check=True, stdin=tty)
@@ -284,11 +328,13 @@ def apply(directory, fingerprint, testing=False):
             boot.atomic('/etc/siliconforest/m1n1.conf', boot.config_lines(
                 old_config.read_text() if old_config.exists() else '', data['boot']['m1n1_config']))
             if data['boot']['backend'] == 'limine':
-                limine = Path('/etc/limine-entry-tool.conf')
-                text = limine.read_text() if limine.exists() else ''
-                boot.atomic(limine, boot.managed(text, 'BOOT_ORDER="linux-siliconforest, *, *fallback, Snapshots"').encode())
-            boot.run('mkinitcpio', '-P')
-            boot.run('limine-update' if data['boot']['backend'] == 'limine' else 'update-grub')
+                try:
+                    boot.check_boot_image(data, esp)
+                except (OSError, Refusal):
+                    boot.run('limine-mkinitcpio', 'linux-siliconforest')
+            else:
+                boot.run('mkinitcpio', '-p', 'linux-siliconforest')
+                boot.run('update-grub')
             complete_esp_recovery(esp, state, record)
             boot.atomic(boot.ACTIVE, json.dumps(data, indent=2).encode(), 0o600)
             boot.atomic(graphics.MANIFEST, json.dumps(data, indent=2).encode(), 0o644)

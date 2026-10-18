@@ -18,6 +18,7 @@ def admit():
     require(board in data['boards'] and firmware in data['firmware'],
             'Running board/firmware is outside the qualified graphics set')
     require(platform.release() == data['kernel_release'], 'Boot the qualified SiliconForest kernel first')
+    boot.check_stage1(data)
     for component, name in PACKAGES.items():
         actual = subprocess.check_output(['pacman', '-Q', name], text=True).split()
         require(actual == [name, data['packages'][component]['version']], 'Mixed graphics package versions')

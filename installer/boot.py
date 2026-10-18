@@ -9,7 +9,8 @@ import re
 import subprocess
 import tempfile
 
-from .release import Refusal, digest, require, validate, PACKAGES
+from . import uki
+from .release import Refusal, digest, require, validate, PACKAGES, M3_BOARDS
 
 BEGIN = '# >>> SiliconForest managed stage 2'
 END = '# <<< SiliconForest managed stage 2'
@@ -34,6 +35,18 @@ def identity():
     board = next((c for c in compatibles if re.fullmatch(r'apple,j[0-9]+[a-z]?', c)), None)
     require(board, 'This is not an identified Apple Silicon Mac')
     return board, dt_string(root / 'chosen/asahi,os-fw-version')
+
+
+def check_stage1(data):
+    if not set(data['boards']) & M3_BOARDS:
+        return
+    chosen = Path('/proc/device-tree/chosen')
+    for key, property_name in [('stage1_versions', 'asahi,m1n1-stage1-version'),
+                               ('iboot_versions', 'asahi,iboot2-version')]:
+        require(dt_string(chosen / property_name) in data['boot'][key],
+                'Stage 1 / iBoot differs from the qualified M3 handoff: ' + property_name)
+    require(not (chosen / 'asahi,m1n1-oslog-overlap').exists(),
+            'Running M3 reports an unqualified stage-1/log-buffer overlap')
 
 
 def system_esp():
@@ -131,21 +144,7 @@ def image(data, files, configuration):
             gzip.compress(buffers['uboot_sha256'], mtime=0) + configuration)
 
 
-def boot_update():
-    require(os.geteuid() == 0, 'Boot update requires root')
-    if INSTALLING.exists() or not ACTIVE.exists():
-        return
-    data = json.loads(ACTIVE.read_text())
-    validate(data, install=True, testing=data['qualification'].get('status') == 'attended-testing')
-    board, firmware = identity()
-    require(board in data['boards'] and firmware in data['firmware'],
-            'Active release does not cover this board/firmware')
-    for component, name in PACKAGES.items():
-        actual = subprocess.check_output(['pacman', '-Q', name], text=True).split()
-        require(actual == [name, data['packages'][component]['version']],
-                'Mixed package set; rerun the matched-release installer')
-    files = check_files(data)
-    esp = system_esp()
+def check_boot_image(data, esp):
     boot = data['boot']
     entry_root = esp if boot['backend'] == 'limine' else Path('/boot')
     entry, kernel_image = entry_root / boot['entry'], entry_root / boot['image']
@@ -158,11 +157,33 @@ def boot_update():
     require('linux-siliconforest' in text, 'Boot menu has no SiliconForest kernel')
     if boot['backend'] == 'limine':
         require(boot['image'] in text, 'Boot menu does not reference the qualified UKI path')
+        require('Kernel version: ' + data['kernel_release'] in text,
+                'Boot menu does not identify the release kernel')
+        uki.check(kernel_image, data['boot']['kernel_image_sha256'])
     else:
         require(data['kernel_release'] in text, 'GRUB does not reference the release kernel')
+
+
+def boot_update():
+    require(os.geteuid() == 0, 'Boot update requires root')
+    if INSTALLING.exists() or not ACTIVE.exists():
+        return
+    data = json.loads(ACTIVE.read_text())
+    validate(data, install=True, testing=data['qualification'].get('status') == 'attended-testing')
+    board, firmware = identity()
+    require(board in data['boards'] and firmware in data['firmware'],
+            'Active release does not cover this board/firmware')
+    check_stage1(data)
+    for component, name in PACKAGES.items():
+        actual = subprocess.check_output(['pacman', '-Q', name], text=True).split()
+        require(actual == [name, data['packages'][component]['version']],
+                'Mixed package set; rerun the matched-release installer')
+    files = check_files(data)
+    esp = system_esp()
+    check_boot_image(data, esp)
     configuration = CONFIG.read_bytes()
     expected = image(data, files, configuration)
-    require(len(expected) <= boot['max_stage2_bytes'], 'Stage 2 exceeds its qualified space limit')
+    require(len(expected) <= data['boot']['max_stage2_bytes'], 'Stage 2 exceeds its qualified space limit')
     target = esp / 'm1n1/boot.bin'
     require(target.resolve().is_relative_to(esp.resolve()), 'Stage 2 escapes its partition')
     if target.read_bytes() != expected:

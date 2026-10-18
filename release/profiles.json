@@ -5,7 +5,8 @@
     "apple,j314s",
     "apple,j313",
     "apple,j293",
-    "apple,j514s"
+    "apple,j514s",
+    "apple,j516s"
   ],
   "profiles": {
     "m1-m2": {
@@ -211,7 +212,8 @@
         "branch": "compat/m3-pro-legacy",
         "commit": "f7d09448e2ee398047a5b1ab4de13e37be00486d",
         "apis": [
-          "OpenGL"
+          "OpenGL",
+          "Vulkan"
         ],
         "additional_sources": [
           {
@@ -223,11 +225,11 @@
         ]
       },
       "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
-      "firmware_policy": "Preserve the previously working legacy handoff; exact firmware must be qualified.",
+      "firmware_policy": "The owner machine is J516S with OS firmware 14.7. Preserve the legacy handoff; the exact stage 1, iBoot, GPU ABI and package set require qualification.",
       "qualified": false,
       "blockers": [
-        "The previous launcher checks Aurora release/profile identities. Replace that admission with a real SiliconForest contract; do not forge upstream markers.",
-        "A fresh package build and exact boot-chain qualification are required."
+        "Build the combined production native OpenGL and separately pinned legacy Vulkan package; preserve the ported admission/session checks.",
+        "Complete the attended boot, hardware readback and coordinated rollback tests; J514S qualification remains separate."
       ]
     },
     "m3-air-legacy": {

@@ -132,7 +132,7 @@ package() {
     chmod 755 "$prefix/libexec/"*
     [[ $_profile != m3-air-hal200 ]] || gl_only=(-DMESA_M3_GL_ONLY)
     cc -O2 "${gl_only[@]}" session/mesa-m3-loadcheck.c -ldl -o "$prefix/libexec/mesa-m3-loadcheck"
-    cc -O2 session/mesa-m3-wlcheck.c -o "$prefix/libexec/mesa-m3-wlcheck"
+    cc -O2 session/mesa-m3-wlcheck.c -lwayland-client -o "$prefix/libexec/mesa-m3-wlcheck"
     cc -O2 $(pkg-config --cflags libdrm) -I"$_src/include" session/mesa-m3-abi-check.c \
       -ldrm -o "$prefix/libexec/mesa-m3-abi-check"
     install -Dm644 session/50-siliconforest-mesa "$pkgdir/usr/share/uwsm/env.d/50-siliconforest-mesa"

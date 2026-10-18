@@ -11,6 +11,7 @@ from urllib.request import urlopen
 
 PACKAGES = {'kernel': 'linux-siliconforest', 'mesa': 'mesa-siliconforest',
             'm1n1': 'm1n1-siliconforest'}
+M3_BOARDS = {'apple,j514s', 'apple,j516s', 'apple,j514c', 'apple,j516c', 'apple,j613', 'apple,j615'}
 SHA = re.compile(r'[0-9a-f]{64}')
 COMMIT = re.compile(r'[0-9a-f]{40}')
 TOKEN = re.compile(r'[A-Za-z0-9][A-Za-z0-9._+-]*')
@@ -138,6 +139,12 @@ def validate(data, *, install=False, testing=False):
         require(data['kernel_variant'] == 'normal', 'Air requires the normal kernel path')
         require(data['packages']['mesa']['source']['branch'].startswith('compat/'),
                 'Main native Mesa does not support M3 Air')
+    if set(data['boards']) & M3_BOARDS:
+        for key in ('stage1_versions', 'iboot_versions'):
+            values = boot.get(key)
+            require(isinstance(values, list) and values and
+                    all(isinstance(v, str) and v and '*' not in v for v in values),
+                    'M3 requires exact qualified loader handoffs: ' + key)
     qualification = data['qualification']
     if install and testing:
         require(qualification.get('status') == 'attended-testing', 'Require an explicit attended test candidate')
@@ -196,6 +203,13 @@ def verify_packages(directory, data):
                              'usr/share/libalpm/hooks/99-siliconforest-stage2.hook',
                              'usr/share/libalpm/hooks/00-siliconforest-transaction.hook'}}[component]
         require(required <= members, 'Incomplete ' + component + ' package payload')
+        if component == 'm1n1' and set(data['boards']) & M3_BOARDS:
+            layout = json.loads(subprocess.check_output(['bsdtar', '-xOf', str(path),
+                'usr/share/siliconforest/m1n1-layout.json'], text=True))
+            require(layout['sha256'] == data['boot']['m1n1_sha256'] and
+                    0 < layout['file_end'] <= 0x120000 and
+                    layout['payload_offset'] >= layout['file_end'],
+                    'M3 loader file part exceeds the reviewed stage-1 log-buffer boundary')
 
 
 def verify_database(directory, data):

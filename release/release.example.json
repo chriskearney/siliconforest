@@ -57,6 +57,8 @@
     "image": "EFI/Linux/omarchy_linux-siliconforest.efi",
     "max_image_bytes": 100663296,
     "max_stage2_bytes": 16777216,
+    "stage1_versions": ["EXACT-M3-STAGE1-REQUIRED"],
+    "iboot_versions": ["EXACT-M3-IBOOT-REQUIRED"],
     "m1n1_config": [],
     "uboot_path": "/usr/lib/asahi-boot/u-boot-nodtb.bin",
     "uboot_sha256": "0000000000000000000000000000000000000000000000000000000000000000",

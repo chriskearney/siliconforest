@@ -8,16 +8,35 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import struct
 import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from installer import boot, graphics
+from installer import boot, graphics, uki
 from installer import __main__ as cli
 from installer.release import Refusal, PACKAGES, digest, validate, verify_signature, verify_packages, verify_database
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def fixture_uki(kernel):
+    """A non-executable standard PE fixture with Linux and initrd sections."""
+    out = bytearray(1024)
+    out[:2] = b'MZ'
+    struct.pack_into('<I', out, 60, 64)
+    out[64:68] = b'PE\0\0'
+    struct.pack_into('<HH', out, 68, 0xAA64, 2)
+    struct.pack_into('<H', out, 84, 112)
+    struct.pack_into('<H', out, 88, 0x20B)
+    for index, (name, payload, offset) in enumerate([(b'.linux', kernel, 512), (b'.initrd', b'FIXTURE INITRD', 896)]):
+        header = 200 + index * 40
+        out[header:header + len(name)] = name
+        struct.pack_into('<I', out, header + 8, len(payload))
+        struct.pack_into('<II', out, header + 16, len(payload), offset)
+        out[offset:offset + len(payload)] = payload
+    return bytes(out)
 
 
 def example():
@@ -145,6 +164,34 @@ class ReleaseTests(unittest.TestCase):
 
 
 class BootTests(unittest.TestCase):
+    def test_uki_contains_the_exact_kernel_and_bounded_sections(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / 'image.efi'
+            p.write_bytes(fixture_uki(b'KERNEL FIXTURE'))
+            expected = hashlib.sha256(b'KERNEL FIXTURE').hexdigest()
+            uki.check(p, expected)
+            with self.assertRaisesRegex(Refusal, 'pinned kernel'):
+                uki.check(p, '0' * 64)
+            wrong = bytearray(p.read_bytes())
+            struct.pack_into('<I', wrong, 220, 2**31)
+            p.write_bytes(wrong)
+            with self.assertRaisesRegex(Refusal, 'payload section'):
+                uki.check(p, expected)
+
+    def test_recovery_uki_identifies_the_running_kernel_from_its_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            esp, d = Path(tmp), example()
+            image = esp / 'EFI/Linux/previous.efi'
+            image.parent.mkdir(parents=True)
+            image.write_bytes(b'previous fixture')
+            (esp / 'limine.conf').write_text('  //previous\n  comment: Kernel version: fixture-release\n'
+                '  protocol: efi\n  path: boot():/EFI/Linux/previous.efi#abcd\n  //other\n')
+            with patch.object(cli.platform, 'release', return_value='fixture-release'):
+                self.assertEqual(cli.recovery_uki(esp, d), image)
+            with patch.object(cli.platform, 'release', return_value='different-kernel'):
+                with self.assertRaisesRegex(Refusal, 'currently running kernel'):
+                    cli.recovery_uki(esp, d)
+
     def test_graphics_admission_requires_the_running_kernel_and_all_sources(self):
         with tempfile.TemporaryDirectory() as tmp:
             root, d = Path(tmp), example()
@@ -189,9 +236,9 @@ class BootTests(unittest.TestCase):
             (esp / 'EFI/Linux/stock.efi').write_bytes(raw)
             sizes = cli.recovery_image_sizes(esp)
             self.assertLess(sizes['stock.efi'], len(raw) // 10)
-            self.assertEqual(cli.esp_space_required(esp, data), 10 + 8 * 1024**2 + max(
-                sizes['stock.efi'] + data['boot']['max_image_bytes'] + data['boot']['max_stage2_bytes'],
-                2 * data['boot']['max_image_bytes']))
+            with patch.object(cli, 'recovery_uki', return_value=esp / 'EFI/Linux/stock.efi'):
+                self.assertEqual(cli.esp_space_required(esp, data), 10 + 8 * 1024**2 +
+                    sizes['stock.efi'] + data['boot']['max_image_bytes'] + data['boot']['max_stage2_bytes'])
             for value in (0, 'unlimited', 1024**3):
                 data['boot']['max_image_bytes'] = value
                 with self.assertRaisesRegex(Refusal, 'bounded qualified boot-file size'):
@@ -296,8 +343,10 @@ class BootTests(unittest.TestCase):
             target = esp / 'm1n1/boot.bin'
             target.write_bytes(b'known-good')
             (esp / d['boot']['image']).parent.mkdir(parents=True)
-            (esp / d['boot']['image']).write_bytes(b'UKI fixture')
-            (esp / d['boot']['entry']).write_text('linux-siliconforest boot():/' + d['boot']['image'])
+            (esp / d['boot']['image']).write_bytes(fixture_uki(b'kernel fixture'))
+            d['boot']['kernel_image_sha256'] = hashlib.sha256(b'kernel fixture').hexdigest()
+            (esp / d['boot']['entry']).write_text('linux-siliconforest boot():/' + d['boot']['image'] +
+                                                '\ncomment: Kernel version: ' + d['kernel_release'])
             files = {}
             for key in ('m1n1_sha256', 'dtb_sha256', 'uboot_sha256'):
                 files[key] = root / key
@@ -328,7 +377,7 @@ class BootTests(unittest.TestCase):
                 with self.assertRaisesRegex(Refusal, 'boot image exceeds'):
                     boot.boot_update()
                 self.assertEqual(target.read_bytes(), b'known-good')
-                (esp / d['boot']['image']).write_bytes(b'UKI fixture')
+                (esp / d['boot']['image']).write_bytes(fixture_uki(b'kernel fixture'))
                 boot.boot_update()
                 self.assertEqual(target.read_bytes(), boot.image(d, files, config.read_bytes()))
 
@@ -430,8 +479,13 @@ class SignatureTests(unittest.TestCase):
                         raise subprocess.CalledProcessError(1, args)
                     (esp / data['boot']['image']).write_bytes(b'NEW-UKI-FIXTURE')
                     return subprocess.CompletedProcess(args, 0)
-                if args[0] == 'limine-update':
-                    (esp / data['boot']['entry']).write_text('linux-siliconforest boot():/' + data['boot']['image'])
+                if args[0] == 'limine-mkinitcpio':
+                    if fail:
+                        raise subprocess.CalledProcessError(1, args)
+                    kernel = mapped('/usr/lib/modules/' + data['kernel_release'] + '/vmlinuz').read_bytes()
+                    (esp / data['boot']['image']).write_bytes(fixture_uki(kernel))
+                    (esp / data['boot']['entry']).write_text('linux-siliconforest boot():/' + data['boot']['image'] +
+                        '\ncomment: Kernel version: ' + data['kernel_release'])
                     return subprocess.CompletedProcess(args, 0)
                 self.assertIn(args[0], ('gpg', 'bsdtar'))
                 return real_run(args, **kwargs)
@@ -443,6 +497,7 @@ class SignatureTests(unittest.TestCase):
                     patch.object(cli.os, 'geteuid', return_value=0), patch.object(cli.os, 'sync'), \
                     patch.object(cli, 'check_system', return_value=('apple,j313', data['firmware'][0], esp)), \
                     patch.object(cli, 'cached_previous', return_value=[previous]), \
+                    patch.object(cli, 'recovery_uki', return_value=esp / 'EFI/Linux/stock.efi'), \
                     patch.object(boot, 'ACTIVE', active), patch.object(boot, 'INSTALLING', installing), \
                     patch.object(boot, 'CONFIG', mapped('/etc/siliconforest/m1n1.conf')), \
                     patch.object(boot, 'identity', return_value=('apple,j313', data['firmware'][0])), \

@@ -35,7 +35,7 @@
   "inputs": {
     "configs/kernel.config": "c811698c5242d42850bef6669f29cd7b485e997d3ac1a423e2d3cbbb3fdc19b8",
     "configs/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c",
-    "release/profiles.json": "d16922904d796fc24d96b544f1a5abda90b9469fa0c6163bdeacb87e61e22f05"
+    "release/profiles.json": "19da180e702a4883f75b51edd52237f40f7658b5938821bc1343fbfcd612f58e"
   },
   "toolchains": {
     "kernel_llvm": "22.1.8",
