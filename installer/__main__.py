@@ -202,9 +202,10 @@ def install_runtime_dependencies(directory, data):
 
 
 def snapshot(esp, data, previous):
+    from . import session
     state = Path('/var/lib/siliconforest/transactions') / (str(time.time_ns()) + '-' + data['id'])
     state.mkdir(parents=True, mode=0o700)
-    files = ['/var/lib/pacman/sync/siliconforest.db', '/var/lib/pacman/sync/siliconforest.db.sig',
+    files = [str(session.OVERRIDE), '/var/lib/pacman/sync/siliconforest.db', '/var/lib/pacman/sync/siliconforest.db.sig',
              '/etc/default/update-m1n1', '/etc/m1n1.conf', '/etc/siliconforest/m1n1.conf',
              '/etc/limine-entry-tool.conf', '/etc/default/limine', '/etc/pacman.conf', str(boot.ACTIVE), str(graphics.MANIFEST)]
     entry_root = esp if data['boot']['backend'] == 'limine' else Path('/boot')
@@ -284,6 +285,7 @@ def restore_files(state, record, names=None):
 
 
 def rollback(state):
+    from . import session
     require(os.geteuid() == 0, 'Rollback requires root')
     root = Path('/var/lib/siliconforest/transactions').resolve()
     state = state.resolve()
@@ -316,6 +318,7 @@ def rollback(state):
                 subprocess.run(['pacman', '-R', *remove], check=True, stdin=tty)
             subprocess.run(['pacman', '-U', *previous], check=True, stdin=tty)
         restore_files(state, record)
+        session.apply(record.get('user_session'), restore=True)
         record['status'] = 'rolled-back-awaiting-boot-test'
         boot.atomic(state / 'transaction.json', json.dumps(record, indent=2).encode(), 0o600)
     finally:
@@ -324,6 +327,7 @@ def rollback(state):
 
 
 def apply(directory, fingerprint, testing=False):
+    from . import session
     require(os.geteuid() == 0, 'Install requires root; use the generated release bootstrap')
     with tempfile.TemporaryDirectory(prefix='siliconforest-install-', dir='/var/tmp') as tmp:
         trusted = Path(tmp) / 'bundle'
@@ -331,7 +335,10 @@ def apply(directory, fingerprint, testing=False):
         data = verified_bundle(trusted, fingerprint, install=True, testing=testing)
         _, _, esp = check_system(data)
         previous = cached_previous()
+        migration = session.plan(data)
         state, record = snapshot(esp, data, previous)
+        record['user_session'] = migration
+        boot.atomic(state / 'transaction.json', json.dumps(record, indent=2).encode(), 0o600)
         boot.INSTALLING.touch(mode=0o600, exist_ok=False)
         try:
             record['added_runtime_dependencies'] = install_runtime_dependencies(trusted, data)
@@ -372,6 +379,7 @@ def apply(directory, fingerprint, testing=False):
             complete_esp_recovery(esp, state, record)
             boot.atomic(boot.ACTIVE, json.dumps(data, indent=2).encode(), 0o600)
             boot.atomic(graphics.MANIFEST, json.dumps(data, indent=2).encode(), 0o644)
+            session.apply(migration)
             boot.INSTALLING.unlink()
             boot.boot_update()
             record['status'] = 'installed-awaiting-boot-test'
@@ -379,6 +387,7 @@ def apply(directory, fingerprint, testing=False):
             record['status'] = 'failed-restore-incomplete'
             try:
                 restore_files(state, record)
+                session.apply(migration, restore=True)
                 record['status'] = 'failed-config-and-stage2-restored'
                 print('Configuration and stage 2 restored. Packages may have changed; recovery records: ' + str(state), file=sys.stderr)
             except BaseException:
