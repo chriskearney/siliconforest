@@ -135,6 +135,11 @@ def stage(component, source, build, tree, profile):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(layout, indent=2) + '\n')
         installer_archive(tree / 'usr/lib/siliconforest/installer.pyz')
+        if profile['kernel_variant'] == 'native-gpu':
+            copy(ROOT / 'installer/native-gpu-session.sh',
+                 tree / 'usr/share/uwsm/env.d/49-siliconforest-native-gpu')
+            marker = tree / 'usr/share/siliconforest/native-gpu-session'
+            marker.write_text('Native GPU package; exact running admission required.\n')
         command = tree / 'usr/bin/siliconforest-boot-update'
         command.parent.mkdir(parents=True, exist_ok=True)
         command.write_text('#!/bin/sh\nexec /usr/bin/python3 -I /usr/lib/siliconforest/installer.pyz --boot-update\n')
