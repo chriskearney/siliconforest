@@ -28,6 +28,13 @@ in use. No Touch ID/SEP services, video bridges, performance daemons, APFS polic
 or themes are added. Replacing the old Mesa packages also replaces their owned
 session integration. Unrelated services are outside the package set.
 
+The current M1/M2 recipe targets the retained LLVM 22 Omarchy base: its LLVM
+runtime dependency is `llvm-libs>=22` and `llvm-libs<23`. This uses the Air's
+existing ABI rather than installing the renamed `llvm22-libs` over files owned
+by `llvm-libs`. The J516S release uses its separately qualified versioned LLVM
+runtime package. A different base/runtime combination needs qualification;
+the installer refuses dependency plans that upgrade installed base packages.
+
 The three public source repositories provide the code. This control repository
 pins their combination and builds, verifies, signs and selects complete releases.
 Recipients must not combine independent moving releases from the source repos.

@@ -14,7 +14,9 @@ needs-derive.py PKGDIR LIBDIR OUT_TSV OUT_NEEDS [--libdir-label PATH] [--linked 
   an error, so the tables below get extended rather than guessed.
 - --linked PKG=VERSION sets the minimum for a library whose soname carries no
   version and whose symbols carry none (the version it was linked against).
-- A NEEDED libLLVM.so.N pins llvm-libs to that soname major.
+- A NEEDED libLLVM.so.N pins its runtime owner to that soname major.
+- --llvm-runtime-owner PKG selects a target distribution's LLVM package name
+  while retaining the linked soname major and an exclusive next-major bound.
 - --extra PKG=WHY adds a dependency that is not an ELF library (an
   interpreter), without a minimum, with WHY recorded.
 - Everything else is left without a minimum: its soname is the ABI promise.
@@ -45,6 +47,7 @@ def run(*a):
 args = sys.argv[1:]
 pkgdir, libdir, out_tsv, out_needs = args[:4]
 linked, declared, extra = {}, [], {}
+llvm_runtime_owner = None
 libdir_label = None
 rest = args[4:]
 while rest:
@@ -60,6 +63,10 @@ while rest:
     elif flag == '--extra':
         k, v = val.split('=', 1)
         extra[k] = v
+    elif flag == '--llvm-runtime-owner':
+        if val not in ('llvm-libs', 'llvm22-libs'):
+            sys.exit('needs-derive: unsupported target LLVM runtime owner')
+        llvm_runtime_owner = val
     else:
         sys.exit(f'needs-derive: unknown option {flag}')
 
@@ -67,8 +74,10 @@ elfs = []
 for d, _, files in os.walk(pkgdir):
     for f in files:
         p = os.path.join(d, f)
-        if not os.path.islink(p) and open(p, 'rb').read(4) == b'\x7fELF':
-            elfs.append(p)
+        if not os.path.islink(p):
+            with open(p, 'rb') as stream:
+                if stream.read(4) == b'\x7fELF':
+                    elfs.append(p)
 internal = set(os.listdir(libdir))
 
 needed = collections.defaultdict(set)      # soname -> files
@@ -96,6 +105,7 @@ for e in sorted(elfs):
             versions[cur].add(m.group(1))
 
 rows, mins, why = [], {}, {}
+upper_bounds = {}
 def want(pkg, v, reason):
     if v is None:
         mins.setdefault(pkg, None)
@@ -137,6 +147,10 @@ for so in sorted(needed):
     elif re.match(r'libLLVM\.so\.(\d+)', so):
         v = re.match(r'libLLVM\.so\.(\d+)', so).group(1)
         reason = f'soname major {v}'
+        if llvm_runtime_owner:
+            reason += f'; target runtime {llvm_runtime_owner}, build owner {owner}'
+            owner = llvm_runtime_owner
+            upper_bounds[owner] = str(int(v) + 1)
     if owner in linked:
         if v is None or vkey(linked[owner]) > vkey(v):
             v, reason = linked[owner], 'linked against ' + linked[owner] + ' (soname carries no version)'
@@ -152,6 +166,8 @@ with open(out_tsv, 'w') as f:
     for so, owner, v, reason, files, vs in rows:
         f.write(f'{so}\t{owner}\t{v}\t{reason}\t{",".join(sorted(files))}\t{",".join(sorted(vs)) or "-"}\n')
 needs = ' '.join(f'{p}>={mins[p]}' if mins[p] else p for p in sorted(mins))
+if upper_bounds:
+    needs += ' ' + ' '.join(f'{p}<{upper_bounds[p]}' for p in sorted(upper_bounds))
 with open(out_needs, 'w') as f:
     f.write(needs + '\n')
 print('needs:', needs)

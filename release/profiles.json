@@ -134,7 +134,8 @@
         "apis": [
           "OpenGL",
           "Vulkan"
-        ]
+        ],
+        "runtime_llvm_owner": "llvm-libs"
       },
       "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
       "firmware_policy": "Exact versions must be recorded by per-board qualification; no wildcard admission.",
