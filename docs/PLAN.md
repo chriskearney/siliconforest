@@ -1,5 +1,12 @@
 # SiliconForest implementation and maintenance plan
 
+The signed 2026-10-18 update qualifies J516S/14.7 with the native G15 GPU and
+matching Mesa while keeping the normal display/USB4/PMP path. Its exact
+installed boot, graphics, Quake and rebooted rollback evidence is in
+[the native GPU report](../release/reports/20261018-j516s-native-gpu.json).
+J313 retains the prior qualified baseline. The larger development-profile
+work and hardware expansion below remain separate from those scoped releases.
+
 ## Intended result
 
 An independently maintained kernel for **existing Apple Silicon Omarchy

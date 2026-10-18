@@ -1,0 +1,225 @@
+{
+  "schema": 1,
+  "qualification": "passed",
+  "scope": {
+    "boards": [
+      "apple,j516s"
+    ],
+    "firmware": [
+      "14.7"
+    ],
+    "observed_gpu": "Apple M3 Pro G15S B1, T6030, 18 enabled cores (9 per cluster)"
+  },
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261018.nativegpu5-1",
+      "file": "linux-siliconforest-20261018.nativegpu5-1-aarch64.pkg.tar.zst",
+      "sha256": "ec794198b466db967f102586b467755948552b9bb4dea4496a5f9fd9f5810d62",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/j516s-native-gpu-20261018",
+        "commit": "d68cf5c0040f77f72233b379bebba134082143a6"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.nativegpu1-1",
+      "file": "mesa-siliconforest-20261018.nativegpu1-1-aarch64.pkg.tar.zst",
+      "sha256": "13a044d35ff28e14ca45aaab5237912bb08f63af00f431b376f73513e9ae1ec8",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "mesa/native-update-20261018",
+        "commit": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.nativegpu2-1",
+      "file": "m1n1-siliconforest-20261018.nativegpu2-1-aarch64.pkg.tar.zst",
+      "sha256": "51338c4279c0de57c4938d62a9e64980c456d1b4b07274e2cead77e63c75b728",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "1d6743b21c133a4522e6a3fc74183bad7a11e446"
+      }
+    }
+  },
+  "boot_contract": {
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "dtb": "apple/t6030-j516s.dtb",
+    "backend": "limine",
+    "entry": "limine.conf",
+    "image": "EFI/Linux/omarchy_linux-siliconforest.efi",
+    "max_image_bytes": 69206016,
+    "max_stage2_bytes": 8388608,
+    "stage1_versions": [
+      "v1.6.1-dirty"
+    ],
+    "iboot_versions": [
+      "iBoot-10151.140.19.700.2"
+    ],
+    "m1n1_config": [
+      "chosen.asahi,t6030-gpu=1",
+      "chosen.asahi,t6030-dcp=1",
+      "chosen.asahi,t6030-dcpext=1"
+    ],
+    "uboot_path": "/usr/lib/asahi-boot/u-boot-nodtb.bin",
+    "uboot_sha256": "11c09b0de3cdb03406de09e1782aa5a30b097f1e228de7b558ca88626c87f8c5",
+    "kernel_image_sha256": "e7f047e85bb82be342f2945c2895b95f102d2fdeafd462bc98f6522c27ab6651",
+    "dtb_sha256": "029d0b8e419b4e99778abc7c235b02b8397a5cc14ab3fa315b321a983db693df",
+    "m1n1_sha256": "318a05c9b4e81f76ec2b3f7a6f180334f665a37dca931a2a1a4a1db505ab6c95",
+    "config_sha256": "0136d0f414238edceebf562a850152951055b6e690d8879d64d716886715e88e"
+  },
+  "kernel_layout_checks": {
+    "checked": true,
+    "bindgen_version": "0.73.2 corrected",
+    "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0",
+    "kernel_image_sha256": "e7f047e85bb82be342f2945c2895b95f102d2fdeafd462bc98f6522c27ab6651"
+  },
+  "source_provenance": {
+    "Eryk_kernel_PR358": "79d6375f4b03c70b71ac2fa3c27e5695a559516f",
+    "Naeem_kernel_PR363": "e30d702e3722aba6114c67ee86505cea0ce76117",
+    "Eryk_Mesa_PR23": "d593cfbf95585b711b8296bad6357c2900931c1c",
+    "upstream_heads_rechecked_utc": "2026-10-18T23:03:50Z"
+  },
+  "selection": "CONFIG_SILICONFOREST_NATIVE_GPU=y and DRM_ASAHI_G15=y; normal display/PHY/PMP/USB4 and apple/t6030-j516s.dtb; full SILICONFOREST_M3 disabled. Native GPU UAPI; no compatibility Vulkan driver.",
+  "candidate_default_boot": {
+    "schema": 1,
+    "board": "apple,j516s",
+    "os_firmware": "14.7",
+    "kernel_release": "7.1.12-siliconforest-native-gpu-d68cf5c0040f-layout1",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "graphics_admission": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 3456,
+        "height": 2234,
+        "refreshRate": 120.0
+      },
+      {
+        "name": "DP-1",
+        "width": 3840,
+        "height": 2160,
+        "refreshRate": 59.997
+      }
+    ],
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "packages": {
+      "linux-siliconforest": "20261018.nativegpu5-1",
+      "mesa-siliconforest": "20261018.nativegpu1-1",
+      "m1n1-siliconforest": "20261018.nativegpu2-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "ed1ccced9fee00ad6de56e9429fbe71b02f2b0510d15197c3dd46daa33e013f6"
+    },
+    "OpenGL": "Renderer: Apple M3 Pro (G15S B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7093 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M3 Pro (G15S B1) (deviceID 0x6030)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7485 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-18T22:58:26Z"
+  },
+  "rebooted_rollback": {
+    "schema": 1,
+    "board": "apple,j516s",
+    "os_firmware": "14.7",
+    "kernel_release": "7.1.12-siliconforest-normal-17a9930f20a0-layout1",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "graphics_admission": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 3456,
+        "height": 2234,
+        "refreshRate": 120.0
+      },
+      {
+        "name": "DP-1",
+        "width": 3840,
+        "height": 2160,
+        "refreshRate": 59.997
+      }
+    ],
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "packages": {
+      "linux-siliconforest": "20261018.pro14.7-1",
+      "mesa-siliconforest": "20261018.pro14.5-1",
+      "m1n1-siliconforest": "20261018.pro14.10-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.1.4.so": "67a56b6b595dc0da28e4f5d622b2d19f67f63054731ff849f0e20a94af886a74"
+    },
+    "OpenGL": "Renderer: Apple M3 Pro (G15S B1)\nVersion: OpenGL ES 3.2 Mesa 26.1.4\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 3492 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M3 Pro (G15S B1) (deviceID 0x6030)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 2613 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-18T23:03:39Z"
+  },
+  "recovery_checks": {
+    "all_saved_file_hashes_restored": true,
+    "saved_files_checked": 16,
+    "saved_boot_files_checked": 6,
+    "historical_bootable_recovery_entries_retained": true,
+    "old_kernel_Mesa_and_loader_tools_restored": true,
+    "rebooted_hardware_GL_and_Vulkan_passed": true
+  },
+  "build_validation": {
+    "Mesa_Asahi_suites_passed": 36,
+    "Mesa_Asahi_suites_failed": 0,
+    "kernel_complete_Image_modules_DTBS": true,
+    "native_kernel_Mesa_wire_layout_check": true,
+    "host_checks": "18 RAM mapping cases, production UAT ownership, two PMP bridges, two current14 readiness selection configurations, three UAPI selectors, 24 Rust tests"
+  },
+  "quake": {
+    "kernel": "7.1.12-siliconforest-native-gpu-d68cf5c0040f-layout1",
+    "mesa_source": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68",
+    "samples_fps": [
+      174.3,
+      173.6,
+      173.6,
+      174.0,
+      174.4
+    ],
+    "median_fps": 174.0,
+    "min_fps": 173.6,
+    "max_fps": 174.4,
+    "frames": 969,
+    "pixel_extent": [
+      1920,
+      1080
+    ],
+    "logical_window": [
+      960,
+      540
+    ],
+    "vulkan_elf_sha256": "bfcf5992b2f82340d3b220cc9c560f4c5cba666331c8b9cbb0f04bd321e30f7b",
+    "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+    "config": "vid_fullscreen 0\nvid_desktopfullscreen 0\nvid_borderless 0\nvid_vsync 0\nvid_fsaa 0\nvid_fsaamode 0\nvid_maxframelatency 2\nr_scale 1\nr_oit 1\nr_waterwarpcompute 1\nr_rtshadows 0\nhost_maxfps 200\ngamma 0.9\ncontrast 1.4\n",
+    "gpu_recoveries": 0,
+    "hang_kills": 0,
+    "display_context": "3456x2234@120 scale2 internal plus3840x2160@60 external; earlier comparison used a different desktop topology.",
+    "scope": "Installed native default; five sequential runs. No software renderer or test Mesa prefix."
+  },
+  "limits": [
+    "Only the exact J516S/14.7 loader and package contract was qualified. Other boards, firmware and GPU revisions need separate qualification.",
+    "Desktop and GPU pixel readback, five Quake demo1 runs, matched installed boot chain and rebooted rollback were verified. This is not suspend, dock/hotplug or prolonged workload qualification.",
+    "Internal 3456x2234@120 and external3840x2160@60 were active. Earlier benchmark comparisons used a different desktop display topology.",
+    "The automatic OMT runner failed with exit126 in the private lab execution path; no complete OMT pass is claimed. Manual direct tests supplied the hardware evidence.",
+    "The full alternative M3 display/PMP profile remains separate. This GPU-only selection retains the maintained normal display/USB4/PMP implementations.",
+    "The M1 Air remains on its previously qualified baseline; this report does not update or requalify it."
+  ],
+  "private_evidence": "Desktop captures, raw journals, user paths and host identities stay local; only selected evidence is published."
+}

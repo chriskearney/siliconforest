@@ -2,7 +2,7 @@
   "schema": 1,
   "project": "siliconforest",
   "baseline_date": "2026-10-18",
-  "status": "development; no qualified binary release",
+  "status": "pinned public source integration; support is scoped by signed board/firmware release reports",
   "sources": {
     "linux": {
       "url": "https://github.com/iconidentify/siliconforest-linux.git",
