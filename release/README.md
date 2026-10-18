@@ -170,7 +170,12 @@ The host suite exercises real ephemeral GPG signatures, wrong identities,
 tampering, source receipts, extra database packages, board/firmware restrictions,
 configuration preservation, boot-input changes, atomic-file refusal and stage 2
 assembly. It writes only test fixtures and does not exercise pacman installation.
-The packed installer is also checked to refuse this x86 builder.
+The packed installer is also checked to refuse this x86 builder. A real
+`m1n1-siliconforest-20261018.normal-1-aarch64.pkg.tar.zst` candidate was built
+without installation; its stage 2 hash matches the previously validated binary
+`c9d44f5cf54f3e30c6b651950cc8077e0757563fd8f8e02fea161012c62d5e9a`.
+The package architecture, source receipt, MIT/component notices and hooks were
+checked. This is a packaging check, not a fresh boot test.
 
 Still required before sharing an install command: complete ARM64 kernel/Mesa
 package builds; native library dependency and package-conflict inspection; the
