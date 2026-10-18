@@ -138,6 +138,9 @@ in `d68cf5c0040f`. OpenGL and Vulkan use the same native Mesa build.
 [The hardware report](release/reports/20261018-j516s-native-gpu.json) records
 complete Image/modules/DTBs, checked C/Rust layouts, 36 passing Asahi suites,
 installed desktop/pixel checks, Quake and rebooted package/boot rollback.
+The [public installer follow-up](release/reports/20261018-j516s-native-public.json)
+also verifies downloads from all three component repositories, the actual default
+boot, hardware pixel checks and a 173.9 FPS Quake smoke run.
 The internal 120 Hz panel and an external 4K display were active. This does not
 qualify suspend, all docks or other boards and firmware.
 
