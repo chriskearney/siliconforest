@@ -13,13 +13,18 @@
       "kernel_version": "7.1.12"
     },
     "m1n1": {
-      "url": "https://github.com/iconidentify/m1n1.git",
+      "url": "https://github.com/iconidentify/siliconforest-m1n1.git",
       "branch": "siliconforest/next",
-      "commit": "fec93c15a03b1f5243a3794b495b48ea6a596fcc",
-      "upstream_url": "https://github.com/omacom/m1n1.git",
-      "upstream_branch": "integration/aurora",
-      "upstream_commit": "d05ba17dfb771871d608225be42968bbb1e75a18",
-      "policy": "owner permits AI-assisted development; inherited AGENTS.md removed in personal branch"
+      "commit": "a9e30c0863495f6c3446dded5f29dda1cdad59e3",
+      "upstream_url": "https://github.com/AsahiLinux/m1n1.git",
+      "upstream_branch": "main",
+      "upstream_commit": "25b1d89ca50be848b136ce771ce7167244852a91",
+      "policy": "owner explicitly authorizes AI-assisted maintenance under the downstream AGENTS.md",
+      "initial_baseline": {
+        "url": "https://github.com/omacom/m1n1.git",
+        "branch": "integration/aurora",
+        "commit": "d05ba17dfb771871d608225be42968bbb1e75a18"
+      }
     }
   },
   "inputs": {
@@ -29,10 +34,35 @@
   "toolchains": {
     "kernel_llvm": "22.1.8",
     "kernel_rust": "1.93.1",
-    "m1n1_rust": "1.89.0",
+    "m1n1_rust": "1.99.0",
     "m1n1_llvm": "22.1.8"
   },
   "uboot": {
     "policy": "retain target distribution package for first milestone; record exact package version and hash per qualified release"
-  }
+  },
+  "paired_mesa": {
+    "repository": "https://github.com/iconidentify/siliconforest-mesa",
+    "branch": "siliconforest/next",
+    "commit": "b670e85194845a8c8e7f1dea1807ab82c03563e5"
+  },
+  "m1n1_profiles": [
+    {
+      "branch": "experimental/neo",
+      "commit": "c57f27f473de3d75266cf4d3f17e02866acd0edb",
+      "source_commit": "1b36287e04788f4a028e6180c64d3d96e49f06b1",
+      "tested": true
+    },
+    {
+      "branch": "experimental/m4",
+      "commit": "3ab0a733ae8d12fc62e6091c3261956670b46697",
+      "source_commit": "9be380c8a5a94609fdbe62d693c7b2121478ad8f",
+      "tested": false
+    },
+    {
+      "branch": "experimental/m5-t6050",
+      "commit": "a5cd88166aa90237466fadc5ea294aa92f91c997",
+      "source_commit": "26bc1ad0b28e503b88f82721025b05d500f01a3a",
+      "tested": false
+    }
+  ]
 }

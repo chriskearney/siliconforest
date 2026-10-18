@@ -15,7 +15,8 @@ milestones. Building a payload does not establish that a Mac boots it.
 | --- | --- |
 | Release tooling, source lock, configuration, plan | [iconidentify/siliconforest](https://github.com/iconidentify/siliconforest) |
 | Kernel source | [iconidentify/siliconforest-linux — siliconforest/next](https://github.com/iconidentify/siliconforest-linux/tree/siliconforest/next) |
-| m1n1 source | [iconidentify/m1n1 — siliconforest/next](https://github.com/iconidentify/m1n1/tree/siliconforest/next) |
+| m1n1 source | [iconidentify/siliconforest-m1n1 — siliconforest/next](https://github.com/iconidentify/siliconforest-m1n1/tree/siliconforest/next) |
+| Mesa source | [iconidentify/siliconforest-mesa — siliconforest/next](https://github.com/iconidentify/siliconforest-mesa/tree/siliconforest/next) |
 | Existing hardware test infrastructure | [iconidentify/maclab](https://github.com/iconidentify/maclab) |
 
 The kernel lives in a separate, independently maintained repository with the full
@@ -24,8 +25,9 @@ outside this project's workflow.
 
 The initial sources come from Omacom's `integration/aurora` branches on
 2026-10-18. `sources.lock.json` records full commits rather than following moving
-branches. The kernel starts at 7.1.12. The m1n1 fork drops the inherited
-`AGENTS.md` at its owner's direction; its source code matches the pinned baseline.
+branches. The kernel starts at 7.1.12. The maintained m1n1 now combines the current Asahi upstream with the reviewed M3
+handoffs and an owner-authorized AI policy. Neo, M4 and M5 research is preserved
+in explicit separate profiles; see its source review and validation reports.
 Neither a current branch name nor an old upstream validation result is a
 SiliconForest support claim.
 
@@ -53,13 +55,13 @@ anything into its boot partition.
 | Build | Prerequisites |
 | --- | --- |
 | Kernel | LLVM/Clang/LLD 22.1.8, Rust 1.93.1 with rust-src, bindgen >= 0.71.1, make, host C compiler, bc, flex, bison, cpio, perl, Python, libelf, OpenSSL development files, pahole, kmod |
-| m1n1 stage 2 | LLVM/Clang/LLD 22.1.8, llvm-objcopy, make, Rust 1.89.0 with `aarch64-unknown-none-softfloat` |
+| m1n1 stage 2 | LLVM/Clang/LLD 22.1.8, llvm-objcopy, make, Rust 1.99.0 with `aarch64-unknown-none-softfloat` |
 
 For an already provisioned Rust builder:
 
 ```sh
 rustup toolchain install 1.93.1 --profile minimal --component rust-src
-rustup toolchain install 1.89.0 --profile minimal --target aarch64-unknown-none-softfloat
+rustup toolchain install 1.99.0 --profile minimal --target aarch64-unknown-none-softfloat
 make build-m1n1
 JOBS=8 make build-kernel
 ```
@@ -103,9 +105,11 @@ Type-C and UAPI stack; USB4 is excluded pending its tunnel API port.
 [The source manifest](candidates/m3-g15-20261018.json) records the merged source,
 original PRs, fixes and validation. All 43 host checks passed, along with arm64
 compilation of the enabled driver targets and Apple DTBs. This does not establish
-complete kernel/module linkage or hardware qualification. Matching m1n1, Mesa and
-source-derived J516C board data remain release requirements; the m1n1 pin has not
-changed. The normal build helper keeps the maintained configuration. See the
+complete kernel/module linkage or hardware qualification. The reviewed m1n1 and
+Mesa sources are now pinned. The kernel's alternative native UAPI
+(`CONFIG_SILICONFOREST_M3=y`) is required by the native Mesa M3 Pro/Max/Neo
+profile; its normal UAPI is incompatible. Source-derived J516C board data and
+hardware qualification remain release requirements. The normal build helper keeps the maintained configuration (the experimental option stays off). See the
 review for the separate development profile and DTB paths.
 
 The target experience is one bootstrap command adding your signed pacman
@@ -124,3 +128,34 @@ configuration and Rust toolchain settings are documented in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Linux and m1n1 keep their original
 licenses in their respective source repositories. Public binaries must include
 the applicable notices and corresponding source references.
+
+
+## Current bootloader and graphics source profiles
+
+The source repos use one namespace: `siliconforest-linux`, `siliconforest-mesa`
+and `siliconforest-m1n1`. The archived historical kernel repository stays frozen.
+
+The default m1n1 integrates upstream through 2026-10-18, Eryk's J514S native
+panel/external display/HDMI/SIO work, the four M3 Max handoff commits, and the
+public M3 Air 26.6.2 ISP heap fix. It preserves exact firmware/board admission,
+adds transactional J514S DT publication, and requires explicit
+`chosen.asahi,t6031-gpu=1` before the Max GPU powered probe.
+
+`experimental/neo` is a separate built and host-tested m1n1 profile; use it for
+J700 research rather than substituting its broad boot-path changes for the M3
+firmware profile. `experimental/m4` and `experimental/m5-t6050` retain public
+research without a build or graphics support claim. The lock records exact tips.
+M3 Air firmware families use their corresponding Mesa compatibility branch,
+rather than the default M3 Pro/Max/Neo Mesa profile.
+
+The main m1n1 build and 53 Python tests pass (7 skips, 10 subtests), and the Neo
+build and 80 Python tests pass (7 skips). Ten inherited old G15 stand-in fixture
+failures reproduce identically at the original source pin; the complete G15
+suite is not green. No boot component has been installed and no hardware boot,
+GPU rendering, recovery or suspend qualification has been performed.
+
+[Bootloader review and evidence](https://github.com/iconidentify/siliconforest-m1n1/blob/siliconforest/next/SILICONFOREST-REVIEW.md)
+and [Mesa validation](https://github.com/iconidentify/siliconforest-mesa/blob/siliconforest/next/SILICONFOREST-VALIDATION.md)
+record the remaining limits. The package/installer milestones in the plan remain
+future release work; these public source repositories are not an installable
+replacement-kernel release.

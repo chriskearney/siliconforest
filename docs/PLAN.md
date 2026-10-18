@@ -45,9 +45,22 @@ isolated development variant, selected by `CONFIG_SILICONFOREST_M3` and disabled
 in the normal configuration. Its separate UAPI header, Type-C dependencies and
 DTB paths preserve the current implementations. The source manifest and review
 record the exact merged commit and local fixes. Host checks and enabled driver
-object/DTB compilation passed; full kernel/module linkage, matching bootloader
-handoffs, Mesa, J516C board data and target hardware qualification remain before
-an M3 binary release. Do not enable this profile in the public bootstrap by default.
+object/DTB compilation passed. Current m1n1 and Mesa source profiles are now
+reviewed and pinned in sources.lock.json. Full kernel/module linkage,
+source-derived J516C board data and target hardware qualification remain before
+an M3 binary release. Native Mesa requires the alternative native UAPI, including
+its G17 driver on Neo; the default kernel configuration remains unchanged. Do not enable this profile in the public bootstrap by default.
+
+### Current source and toolchain update
+
+The canonical source names are siliconforest-linux, siliconforest-m1n1 and
+siliconforest-mesa. The default bootloader now includes current Asahi upstream,
+Eryk's J514S handoffs, the Max handoff and the Air ISP fix. Its upstream GPL
+transition and older MIT/component notices are retained. Default bootloader
+builds now use Rust 1.99.0; the separate older Neo profile uses 1.89.0. M4/M5
+profiles are source snapshots and are not qualified. Ten inherited G15 stand-in
+fixture failures remain documented; do not represent the complete suite as green.
+The original baseline above is historical, not the current release pin.
 
 ## 2. Build and package
 
