@@ -132,7 +132,8 @@ require((esp/'m1n1/boot.bin').read_bytes()==expected,'Installed stage 2 differs;
     for library in libraries:
         assert run(['pacman', '-Qqo', library]) == 'mesa-siliconforest'
     report['compositor_graphics_libraries'] = {lib: sha(lib) for lib in sorted(libraries)}
-    if data['packages']['mesa']['source']['branch'].startswith('compat/'):
+    if (data['packages']['mesa']['source']['branch'].startswith('compat/') or
+            data['kernel_variant'] == 'native-gpu'):
         run(['/usr/bin/python3', '-I', '/usr/lib/siliconforest/installer.pyz', '--graphics-admit'])
         report['checks']['graphics_admission'] = True
 
