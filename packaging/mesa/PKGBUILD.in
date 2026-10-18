@@ -74,7 +74,7 @@ build() {
   esac
   CFLAGS= CXXFLAGS= LDFLAGS= meson setup build "$_src" \
     --native-file llvm22.ini --prefix=/usr --libdir=lib --wrap-mode=nofallback \
-    --buildtype=release "-Dc_args=['-DMESA_DYNAMIC_TLS']" "-Dcpp_args=['-DMESA_DYNAMIC_TLS']" \
+    --buildtype=release -Db_ndebug=false "-Dc_args=['-DMESA_DYNAMIC_TLS']" "-Dcpp_args=['-DMESA_DYNAMIC_TLS']" \
     -Dgallium-drivers="$gallium" -Dvulkan-drivers="$vulkan" -Dbuild-tests="$tests" \
     -Dplatforms=x11,wayland -Dglx=dri -Degl=enabled -Dgbm=enabled -Dglvnd=enabled \
     -Dllvm=enabled -Dtools=drm-shim -Dmesa-clc=enabled -Dprecomp-compiler=enabled \
@@ -91,7 +91,7 @@ build() {
     done
     CFLAGS= CXXFLAGS= LDFLAGS= meson setup build-vulkan mesa-vulkan \
       --native-file llvm22.ini --prefix=/usr --libdir=lib --wrap-mode=nofallback \
-      --buildtype=release "-Dc_args=['-DMESA_DYNAMIC_TLS']" "-Dcpp_args=['-DMESA_DYNAMIC_TLS']" \
+      --buildtype=release -Db_ndebug=false "-Dc_args=['-DMESA_DYNAMIC_TLS']" "-Dcpp_args=['-DMESA_DYNAMIC_TLS']" \
       -Dvulkan-drivers=asahi -Dgallium-drivers= -Dglx=disabled -Dglvnd=disabled \
       -Degl=disabled -Dgbm=disabled -Dgles1=disabled -Dgles2=disabled -Dopengl=false \
       -Dplatforms=x11,wayland -Dllvm=enabled -Dmesa-clc=enabled -Dprecomp-compiler=enabled \

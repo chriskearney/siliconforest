@@ -9,7 +9,7 @@ if [[ -n ${LLVM_DIR:-} ]]; then export PATH="$LLVM_DIR/bin:$PATH"; fi
 build="$root/build/mesa-package"
 [[ ! -e $build ]] || { echo "Use a fresh build directory: $build" >&2; exit 1; }
 meson setup "$build" "$root/sources/mesa" --prefix=/usr --libdir=lib \
-  --buildtype=release -Dgallium-drivers=asahi,zink,softpipe -Dvulkan-drivers=asahi \
+  --buildtype=release -Db_ndebug=false -Dgallium-drivers=asahi,zink,softpipe -Dvulkan-drivers=asahi \
   -Dplatforms=x11,wayland -Dglx=dri -Degl=enabled -Dgbm=enabled \
   -Dglvnd=enabled -Dllvm=enabled -Dbuild-tests=true \
   -Dmesa-clc=enabled -Dprecomp-compiler=enabled -Dvideo-codecs= -Dgallium-va=disabled
