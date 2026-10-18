@@ -165,6 +165,34 @@ class ReleaseTests(unittest.TestCase):
 
 
 class BootTests(unittest.TestCase):
+    def test_runtime_dependencies_cannot_upgrade_the_installed_base(self):
+        d = example()
+        for upgrades_base in (False, True):
+            with self.subTest(upgrades_base=upgrades_base):
+                installed = []
+                def output(args, **kwargs):
+                    if args[0] == 'bsdtar':
+                        return 'depend = llvm22-libs>=22\n'
+                    self.assertEqual(args[:5], ['pacman', '-Sp', '--needed', '--print-format', '%n'])
+                    return 'llvm22-libs\nglibc\n' if upgrades_base else 'llvm22-libs\n'
+                def command(args, **kwargs):
+                    if args[:2] == ['pacman', '-T']:
+                        return subprocess.CompletedProcess(args, 127, stdout='llvm22-libs>=22\n')
+                    if args[:2] == ['pacman', '-Q']:
+                        return subprocess.CompletedProcess(args, 0 if args[-1] == 'glibc' else 1)
+                    installed.append(args)
+                    return subprocess.CompletedProcess(args, 0)
+                with patch.object(cli.subprocess, 'check_output', side_effect=output), \
+                     patch.object(cli.subprocess, 'run', side_effect=command), \
+                     patch('builtins.open', return_value=io.StringIO()):
+                    if upgrades_base:
+                        with self.assertRaisesRegex(Refusal, 'Update the Omarchy base first'):
+                            cli.install_runtime_dependencies(Path('/fixture'), d)
+                        self.assertEqual(installed, [])
+                    else:
+                        self.assertEqual(cli.install_runtime_dependencies(Path('/fixture'), d), ['llvm22-libs'])
+                        self.assertEqual(installed, [['pacman', '-S', '--needed', '--asdeps', 'llvm22-libs>=22']])
+
     def test_rollback_cache_accepts_real_epoch_metadata_with_either_filename(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = Path(tmp)
@@ -510,6 +538,8 @@ class SignatureTests(unittest.TestCase):
             def command(args, **kwargs):
                 commands.append(args)
                 if args[0] == 'pacman':
+                    if args[1] == '-T':
+                        return subprocess.CompletedProcess(args, 0, stdout='')
                     if args[1] == '-Q':
                         text = 'mesa 1\n' if len(args) == 2 else args[2] + ' ' + next(
                             p['version'] for p in data['packages'].values() if p['name'] == args[2]) + '\n'

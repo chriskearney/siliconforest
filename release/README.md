@@ -140,8 +140,13 @@ on root, and places the old stage 2, menu and a compressed copy of the currently
 running kernel's UKI on the ESP. Historical recovery entries are retained.
 Space budgeting includes those copies and bounded new UKI/stage 2 sizes.
 
-The package transaction is local `pacman -U` of the three verified archives;
-there is no hidden full-system upgrade. The stock kernel remains installed.
+Missing runtime dependencies are resolved against existing distribution indexes.
+The installer refuses any dependency plan that upgrades an installed package;
+update the Omarchy base separately if required. Only absent required runtime
+packages are added with pacman -S --needed --asdeps. The stack transaction is
+local `pacman -U` of the three verified archives; there is no hidden system
+upgrade. Added runtime dependencies are recorded and retained on stack rollback,
+as is the newly trusted signing key. The stock kernel remains installed.
 The existing generic m1n1 updater is frozen with a marked configuration block.
 SiliconForest's hook checks the entire active set and exact boot inputs.
 
@@ -171,7 +176,7 @@ signing keys are not removed by stack rollback.
 
 ## Evidence
 
-`make check` covers 27 installer tests with real ephemeral GPG signatures and
+`make check` covers 28 installer tests with real ephemeral GPG signatures and
 signed package fixtures, source/package tampering, exact handoffs, isolated root
 elevation, UKI payload validation, cached epoch versions, a complete temporary
 filesystem install/failure restore and coordinated rollback. It also runs 51

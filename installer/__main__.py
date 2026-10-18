@@ -178,6 +178,29 @@ def cached_previous():
     return result
 
 
+def install_runtime_dependencies(directory, data):
+    requirements = set()
+    for item in data['packages'].values():
+        info = subprocess.check_output(['bsdtar', '-xOf', str(directory / item['file']), '.PKGINFO'], text=True)
+        requirements.update(l.split(' = ', 1)[1] for l in info.splitlines() if l.startswith('depend = '))
+    checked = subprocess.run(['pacman', '-T', *sorted(requirements)], text=True, capture_output=True)
+    require(checked.returncode in (0, 127), 'Runtime dependency check failed')
+    missing = checked.stdout.splitlines()
+    if not missing:
+        return []
+    # Resolve against existing distribution indexes, without synchronizing or
+    # upgrading the OS. Refuse any plan that changes an installed package.
+    planned = subprocess.check_output(['pacman', '-Sp', '--needed', '--print-format', '%n', *missing], text=True).splitlines()
+    require(planned, 'Missing runtime dependencies did not resolve')
+    for name in planned:
+        require(bool(re.fullmatch(r'[a-zA-Z0-9@._+-]+', name)), 'Unexpected dependency resolver output')
+        require(subprocess.run(['pacman', '-Q', name], capture_output=True).returncode != 0,
+                'Update the Omarchy base first; this runtime dependency would upgrade an installed package: ' + name)
+    with open('/dev/tty') as tty:
+        subprocess.run(['pacman', '-S', '--needed', '--asdeps', *missing], check=True, stdin=tty)
+    return planned
+
+
 def snapshot(esp, data, previous):
     state = Path('/var/lib/siliconforest/transactions') / (str(time.time_ns()) + '-' + data['id'])
     state.mkdir(parents=True, mode=0o700)
@@ -311,6 +334,7 @@ def apply(directory, fingerprint, testing=False):
         state, record = snapshot(esp, data, previous)
         boot.INSTALLING.touch(mode=0o600, exist_ok=False)
         try:
+            record['added_runtime_dependencies'] = install_runtime_dependencies(trusted, data)
             conf = Path('/etc/default/update-m1n1')
             text = conf.read_text() if conf.exists() else ''
             boot.atomic(conf, boot.managed(text, 'M1N1_UPDATE_DISABLED=1').encode())
@@ -412,7 +436,15 @@ def main():
         if not args.bundle:
             fetch_bundle(args.release, directory, args.fingerprint, args.catalog)
         data = verified_bundle(directory, args.fingerprint, install=args.install, testing=args.test_candidate)
-        board, firmware, esp = check_system(data)
+        if os.geteuid() == 0:
+            board, firmware, esp = check_system(data)
+        else:
+            # The paired ESP may legitimately be mounted root-only. Verify
+            # signatures and exact selection here; apply repeats full target
+            # preflight as root before taking a snapshot or changing packages.
+            board, firmware = boot.identity()
+            require(board in data['boards'] and firmware in data['firmware'], 'Release does not cover this board/firmware')
+            print('Bundle verified; complete ESP/dependency preflight runs after elevation.', flush=True)
         print(json.dumps({'release': data['id'], 'board': board, 'firmware': firmware,
                           'packages': {k: v['name'] for k, v in data['packages'].items()},
                           'qualification': data['qualification']['status']}, indent=2), flush=True)
