@@ -80,7 +80,10 @@ build() {
     -Dllvm=enabled -Ddraw-use-llvm=false -Dtools=drm-shim -Dmesa-clc=enabled -Dprecomp-compiler=enabled \
     -Dvideo-codecs= -Dgallium-va=disabled
   meson compile -C build -j4
-  if [[ $tests == true ]]; then meson test -C build --no-rebuild --suite asahi --print-errorlogs; fi
+  if [[ $tests == true ]]; then
+    python3 "$srcdir/build-registered-tests.py" build
+    meson test -C build --no-rebuild --suite asahi --print-errorlogs
+  fi
   if [[ $_profile == m3-pro-legacy ]]; then
     meson compile -C build -j4 asahi-native-mrt-clear asahi-native-mediump-opt
     build/src/gallium/drivers/asahi/asahi-native-mediump-opt

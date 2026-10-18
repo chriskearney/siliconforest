@@ -29,13 +29,13 @@
     "mesa": {
       "url": "https://github.com/iconidentify/siliconforest-mesa.git",
       "branch": "siliconforest/next",
-      "commit": "b670e85194845a8c8e7f1dea1807ab82c03563e5"
+      "commit": "c8015f63608e6eb2f859a1739462a3c77eca600a"
     }
   },
   "inputs": {
     "configs/kernel.config": "c811698c5242d42850bef6669f29cd7b485e997d3ac1a423e2d3cbbb3fdc19b8",
     "configs/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c",
-    "release/profiles.json": "19da180e702a4883f75b51edd52237f40f7658b5938821bc1343fbfcd612f58e"
+    "release/profiles.json": "e80c07543f0b82186ee22c6783a28b7b376dbd786c9e2f4cbc505f6d1d6f15a7"
   },
   "toolchains": {
     "kernel_llvm": "22.1.8",
@@ -49,7 +49,7 @@
   "paired_mesa": {
     "repository": "https://github.com/iconidentify/siliconforest-mesa",
     "branch": "siliconforest/next",
-    "commit": "b670e85194845a8c8e7f1dea1807ab82c03563e5"
+    "commit": "c8015f63608e6eb2f859a1739462a3c77eca600a"
   },
   "m1n1_profiles": [
     {

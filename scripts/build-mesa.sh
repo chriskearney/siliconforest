@@ -14,6 +14,7 @@ meson setup "$build" "$root/sources/mesa" --prefix=/usr --libdir=lib \
   -Dglvnd=enabled -Dllvm=enabled -Ddraw-use-llvm=false -Dbuild-tests=true \
   -Dmesa-clc=enabled -Dprecomp-compiler=enabled -Dvideo-codecs= -Dgallium-va=disabled
 meson compile -C "$build" -j "${JOBS:-4}"
+python3 "$root/packaging/mesa/build-registered-tests.py" "$build"
 meson test -C "$build" --suite asahi --print-errorlogs
 DESTDIR="$root/dist/mesa-root" meson install -C "$build" --no-rebuild
 printf 'Staged production libraries: %s/dist/mesa-root\n' "$root"

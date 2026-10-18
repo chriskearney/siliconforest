@@ -10,6 +10,7 @@ check:
 	$(SHELLCHECK) scripts/build-kernel.sh scripts/build-m1n1.sh scripts/build-mesa.sh
 	$(SHELLCHECK) -s sh packaging/mesa/session/mesa-m3-session-env packaging/mesa/session/mesa-m3-session-confirm packaging/mesa/session/50-siliconforest-mesa packaging/mesa/session/siliconforest-graphics-admit
 	python3 -m unittest discover -s tests -v
+	python3 tests/run-mesa-session.py
 
 sources:
 	python3 scripts/sources.py fetch all

@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import struct
@@ -164,6 +165,44 @@ class ReleaseTests(unittest.TestCase):
 
 
 class BootTests(unittest.TestCase):
+    def test_rollback_cache_accepts_real_epoch_metadata_with_either_filename(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp)
+            package = cache / 'mesa-26.2.4-1-aarch64.pkg.tar.zst'
+            tar(package, {'.PKGINFO': 'pkgname = mesa\npkgver = 1:26.2.4-1\narch = aarch64\n'})
+            real_run = subprocess.run
+            def query(args, **kwargs):
+                if args[0] == 'pacman':
+                    return subprocess.CompletedProcess(args, 0 if args[-1] == 'mesa' else 1,
+                        stdout='mesa 1:26.2.4-1\n' if args[-1] == 'mesa' else '')
+                return real_run(args, **kwargs)
+            def path(value):
+                return cache if str(value) == '/var/cache/pacman/pkg' else Path(value)
+            with patch.object(cli, 'Path', side_effect=path), patch.object(cli.subprocess, 'run', side_effect=query):
+                self.assertEqual(cli.cached_previous(), [package])
+                renamed = cache / 'mesa-1:26.2.4-1-aarch64.pkg.tar.zst'
+                package.rename(renamed)
+                self.assertEqual(cli.cached_previous(), [renamed])
+
+    def test_m3_stage1_handoff_must_match_exactly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            chosen, d = Path(tmp), example()
+            d['boards'] = ['apple,j516s']
+            d['boot'].update(stage1_versions=['stage1-exact'], iboot_versions=['iboot-exact'])
+            (chosen / 'asahi,m1n1-stage1-version').write_bytes(b'stage1-exact\0')
+            (chosen / 'asahi,iboot2-version').write_bytes(b'iboot-exact\0')
+            def path(value):
+                return chosen if str(value) == '/proc/device-tree/chosen' else Path(value)
+            with patch.object(boot, 'Path', side_effect=path):
+                boot.check_stage1(d)
+                (chosen / 'asahi,iboot2-version').write_bytes(b'other-iboot\0')
+                with self.assertRaisesRegex(Refusal, 'qualified M3 handoff'):
+                    boot.check_stage1(d)
+                (chosen / 'asahi,iboot2-version').write_bytes(b'iboot-exact\0')
+                (chosen / 'asahi,m1n1-oslog-overlap').touch()
+                with self.assertRaisesRegex(Refusal, 'log-buffer overlap'):
+                    boot.check_stage1(d)
+
     def test_uki_contains_the_exact_kernel_and_bounded_sections(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / 'image.efi'
@@ -424,7 +463,7 @@ class SignatureTests(unittest.TestCase):
             self.assertIn('hash changed before elevation', result.stderr)
             self.assertNotIn('UNVERIFIED CODE RAN', result.stderr)
 
-    def exercise_install(self, bundle, data, fingerprint, fail=False):
+    def exercise_install(self, bundle, data, fingerprint, fail=False, rollback=False):
         """Run the coordinator with real signatures/files and sandboxed OS commands."""
         with tempfile.TemporaryDirectory(prefix='siliconforest-fake-host-') as tmp:
             host = Path(tmp)
@@ -451,9 +490,10 @@ class SignatureTests(unittest.TestCase):
             active = mapped('/var/lib/siliconforest/active.json')
             installing = mapped('/run/siliconforest-installing')
             installing.parent.mkdir(parents=True, exist_ok=True)
-            previous = host / 'old-mesa.pkg.tar'
-            tar(previous, {'.PKGINFO': 'pkgname = mesa\npkgver = 1\narch = aarch64\n'})
+            previous = host / 'mesa-1:1-1-aarch64.pkg.tar.zst'
+            tar(previous, {'.PKGINFO': 'pkgname = mesa\npkgver = 1:1-1\narch = aarch64\n'})
             commands = []
+            phase = {'rollback': False}
             real_run, real_open = subprocess.run, builtins.open
             def command(args, **kwargs):
                 commands.append(args)
@@ -462,6 +502,14 @@ class SignatureTests(unittest.TestCase):
                         text = 'mesa 1\n' if len(args) == 2 else args[2] + ' ' + next(
                             p['version'] for p in data['packages'].values() if p['name'] == args[2]) + '\n'
                         return subprocess.CompletedProcess(args, 0, stdout=text)
+                    if phase['rollback']:
+                        self.assertEqual((esp / 'm1n1/boot.bin').read_bytes(), b'OLD-STAGE2')
+                        self.assertEqual((esp / data['boot']['entry']).read_text(), 'stock kernel entry\n')
+                        if args[1] == '-R':
+                            self.assertEqual(set(args[2:]), {'linux-siliconforest', 'm1n1-siliconforest'})
+                        else:
+                            self.assertEqual(args, ['pacman', '-U', str(phase['state'] / previous.name)])
+                        return subprocess.CompletedProcess(args, 0)
                     self.assertEqual(args[:2], ['pacman', '-U'])
                     self.assertEqual([Path(p).name for p in args[2:]],
                                      [data['packages'][k]['file'] for k in PACKAGES])
@@ -508,6 +556,21 @@ class SignatureTests(unittest.TestCase):
                         cli.apply(bundle, fingerprint)
                 else:
                     cli.apply(bundle, fingerprint)
+                    if rollback:
+                        state = next(mapped('/var/lib/siliconforest/transactions').iterdir())
+                        phase.update(rollback=True, state=state)
+                        # The sandbox runs as an ordinary user. Model only the
+                        # transaction-directory ownership; all bytes and paths
+                        # still come from this temporary fake filesystem.
+                        class OwnedState(type(state)):
+                            def stat(self, **kwargs):
+                                result = super().stat(**kwargs)
+                                if str(self) == str(state):
+                                    values = list(result)
+                                    values[4] = 0
+                                    return os.stat_result(values)
+                                return result
+                        cli.rollback(OwnedState(state))
             self.assertFalse(installing.exists())
             records = list(mapped('/var/lib/siliconforest/transactions').glob('*/transaction.json'))
             self.assertEqual(len(records), 1)
@@ -519,6 +582,12 @@ class SignatureTests(unittest.TestCase):
                 self.assertEqual(record['status'], 'failed-config-and-stage2-restored')
                 self.assertEqual((esp / 'm1n1/boot.bin').read_bytes(), b'OLD-STAGE2')
                 self.assertEqual(mapped('/etc/default/update-m1n1').read_text(), old_config)
+                self.assertFalse(active.exists())
+            elif rollback:
+                self.assertEqual(record['status'], 'rolled-back-awaiting-boot-test')
+                self.assertEqual((esp / 'm1n1/boot.bin').read_bytes(), b'OLD-STAGE2')
+                self.assertEqual((esp / 'EFI/Linux/stock.efi').read_bytes(), b'OLD-UKI')
+                self.assertFalse((esp / data['boot']['image']).exists())
                 self.assertFalse(active.exists())
             else:
                 self.assertEqual(gzip.decompress((recovery / 'EFI/Linux/stock.efi.gz').read_bytes()), b'OLD-UKI')
@@ -592,6 +661,7 @@ class SignatureTests(unittest.TestCase):
             subprocess.run(command + ['--yes', '--detach-sign', str(manifest)], check=True, capture_output=True)
             self.exercise_install(root, data, fingerprint)
             self.exercise_install(root, data, fingerprint, fail=True)
+            self.exercise_install(root, data, fingerprint, rollback=True)
 
 
 if __name__ == '__main__':

@@ -75,10 +75,11 @@ def main():
                'profile': a.profile, 'control_commit': git(ROOT, 'rev-parse', 'HEAD')}
     (a.output / 'mesa-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
     shutil.copy2(ROOT / 'packaging/mesa/needs-derive.py', a.output / 'needs-derive.py')
+    shutil.copy2(ROOT / 'packaging/mesa/build-registered-tests.py', a.output / 'build-registered-tests.py')
     with tarfile.open(a.output / 'session.tar', 'w') as stream:
         stream.add(ROOT / 'packaging/mesa/session', arcname='session',
                    filter=lambda info: None if '__pycache__' in info.name or info.name.endswith('.pyc') else info)
-    files += ['mesa-receipt.json', 'needs-derive.py', 'session.tar']
+    files += ['mesa-receipt.json', 'needs-derive.py', 'build-registered-tests.py', 'session.tar']
     arrays = ('source=(' + ' '.join(repr(n) for n in files) + ')\nsha256sums=(' +
               ' '.join(repr(digest(a.output / n)) for n in files) + ')')
     version = git(a.source, 'show', primary + ':VERSION').split('-')[0]

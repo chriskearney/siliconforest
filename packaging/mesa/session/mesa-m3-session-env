@@ -485,7 +485,7 @@ mesa_m3_session_env() {
 }
 
 if [ -z "${MESA_M3_SESSION_ENV_NO_RUN:-}" ]; then
-	mesa_m3_session_env
+	mesa_m3_session_env ""
 	unset -f mesa_m3_gate mesa_m3_session_env _mm3_init _mm3_state _mm3_node_open _mm3_attempt _mm3_soc_of _mm3_25g83_board
 fi
 unset _mm3_root _mm3_p _mm3_nodes _mm3_node _mm3_n _mm3_drv _mm3_dcp _mm3_c _mm3_dev _mm3_f _mm3_v \
