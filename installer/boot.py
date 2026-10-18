@@ -135,7 +135,8 @@ def boot_update():
     require(os.geteuid() == 0, 'Boot update requires root')
     if INSTALLING.exists() or not ACTIVE.exists():
         return
-    data = validate(json.loads(ACTIVE.read_text()), install=True)
+    data = json.loads(ACTIVE.read_text())
+    validate(data, install=True, testing=data['qualification'].get('status') == 'attended-testing')
     board, firmware = identity()
     require(board in data['boards'] and firmware in data['firmware'],
             'Active release does not cover this board/firmware')

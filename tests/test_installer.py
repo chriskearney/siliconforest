@@ -68,6 +68,17 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(Refusal):
             validate(d)
 
+    def test_attended_candidate_is_explicit_and_never_claims_passed(self):
+        d = example()
+        d['qualification'].update(status='attended-testing', report='attended-plan.json')
+        with self.assertRaisesRegex(Refusal, 'not hardware-qualified'):
+            validate(d, install=True)
+        validate(d, install=True, testing=True)
+        self.assertFalse(d['qualification']['desktop'])
+        d['boards'].append('apple,j293')
+        with self.assertRaisesRegex(Refusal, 'one exact board/firmware pair'):
+            validate(d, install=True, testing=True)
+
     def test_unbounded_firmware_or_traversal_is_refused(self):
         for key, value in [('dtb', '../../foreign.dtb'), ('entry', '/etc/passwd'), ('image', 'x/../y')]:
             with self.subTest(key=key):
@@ -178,8 +189,9 @@ class BootTests(unittest.TestCase):
             (esp / 'EFI/Linux/stock.efi').write_bytes(raw)
             sizes = cli.recovery_image_sizes(esp)
             self.assertLess(sizes['stock.efi'], len(raw) // 10)
-            self.assertEqual(cli.esp_space_required(esp, data), sizes['stock.efi'] + 10 +
-                             data['boot']['max_image_bytes'] + data['boot']['max_stage2_bytes'] + 8 * 1024**2)
+            self.assertEqual(cli.esp_space_required(esp, data), 10 + 8 * 1024**2 + max(
+                sizes['stock.efi'] + data['boot']['max_image_bytes'] + data['boot']['max_stage2_bytes'],
+                2 * data['boot']['max_image_bytes']))
             for value in (0, 'unlimited', 1024**3):
                 data['boot']['max_image_bytes'] = value
                 with self.assertRaisesRegex(Refusal, 'bounded qualified boot-file size'):
@@ -401,7 +413,9 @@ class SignatureTests(unittest.TestCase):
                         text = 'mesa 1\n' if len(args) == 2 else args[2] + ' ' + next(
                             p['version'] for p in data['packages'].values() if p['name'] == args[2]) + '\n'
                         return subprocess.CompletedProcess(args, 0, stdout=text)
-                    self.assertEqual(args, ['pacman', '-Syu', *['siliconforest/' + n for n in PACKAGES.values()]])
+                    self.assertEqual(args[:2], ['pacman', '-U'])
+                    self.assertEqual([Path(p).name for p in args[2:]],
+                                     [data['packages'][k]['file'] for k in PACKAGES])
                     # Simulate the package transaction in this temporary filesystem.
                     for p in data['packages'].values():
                         with tarfile.open(bundle / p['file']) as archive:
@@ -445,13 +459,14 @@ class SignatureTests(unittest.TestCase):
             record = json.loads(records[0].read_text())
             recovery = list((esp / 'siliconforest-recovery').iterdir())[0]
             self.assertEqual((recovery / 'boot.bin').read_bytes(), b'OLD-STAGE2')
-            self.assertEqual(gzip.decompress((recovery / 'EFI/Linux/stock.efi.gz').read_bytes()), b'OLD-UKI')
             if fail:
+                self.assertFalse((recovery / 'EFI/Linux/stock.efi.gz').exists())
                 self.assertEqual(record['status'], 'failed-config-and-stage2-restored')
                 self.assertEqual((esp / 'm1n1/boot.bin').read_bytes(), b'OLD-STAGE2')
                 self.assertEqual(mapped('/etc/default/update-m1n1').read_text(), old_config)
                 self.assertFalse(active.exists())
             else:
+                self.assertEqual(gzip.decompress((recovery / 'EFI/Linux/stock.efi.gz').read_bytes()), b'OLD-UKI')
                 self.assertEqual(record['status'], 'installed-awaiting-boot-test')
                 self.assertNotEqual((esp / 'm1n1/boot.bin').read_bytes(), b'OLD-STAGE2')
                 self.assertEqual(json.loads(active.read_text())['id'], data['id'])

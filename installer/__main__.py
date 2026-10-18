@@ -38,9 +38,15 @@ def esp_space_required(esp, data):
     # UKIs are backed up compressed on the ESP; uncompressed originals also
     # live in the root-owned transaction. Keep space for a full new image,
     # the atomic stage-2 replacement and filesystem overhead simultaneously.
-    return (sum(recovery_image_sizes(esp).values()) +
-            (esp / 'm1n1/boot.bin').stat().st_size +
-            data['boot']['max_image_bytes'] + data['boot']['max_stage2_bytes'] + 8 * 1024**2)
+    old_loader = (esp / 'm1n1/boot.bin').stat().st_size
+    new_image = data['boot']['max_image_bytes']
+    previous_image = max((p.stat().st_size for p in (esp / 'EFI/Linux').glob('*.efi')), default=0)
+    final = sum(recovery_image_sizes(esp).values()) + new_image + data['boot']['max_stage2_bytes']
+    # Copy the compressed UKI backups after menu generation. Before then the
+    # root transaction holds the originals, leaving room for an atomic rebuild
+    # of another installed UKI while the new kernel image is already present.
+    staging = new_image + max(new_image, previous_image)
+    return old_loader + max(final, staging) + 8 * 1024**2
 
 
 def check_system(data=None):
@@ -83,8 +89,8 @@ def signature(directory, name, fingerprint):
         verify_detached(out, fingerprint)
 
 
-def verified_bundle(directory, fingerprint, install=False):
-    data = validate(verify_signature(directory, fingerprint), install=install)
+def verified_bundle(directory, fingerprint, install=False, testing=False):
+    data = validate(verify_signature(directory, fingerprint), install=install, testing=testing)
     verify_packages(directory, data)
     database = directory / 'siliconforest.db'
     require(digest(database) == data['repository']['sha256'], 'Repository database digest differs')
@@ -168,12 +174,6 @@ def snapshot(esp, data, previous):
     recovery = esp / 'siliconforest-recovery' / state.name
     recovery.mkdir(parents=True)
     shutil.copy2(esp / 'm1n1/boot.bin', recovery / 'boot.bin')
-    for image in (esp / 'EFI/Linux').glob('*.efi'):
-        saved_image = recovery / 'EFI/Linux' / (image.name + '.gz')
-        saved_image.parent.mkdir(parents=True, exist_ok=True)
-        with image.open('rb') as source, gzip.GzipFile(filename=str(saved_image), mode='wb',
-                                                    compresslevel=6, mtime=0) as output:
-            shutil.copyfileobj(source, output)
     menu = entry_root / data['boot']['entry']
     if menu.is_file():
         shutil.copy2(menu, recovery / 'boot-menu.cfg')
@@ -187,6 +187,21 @@ def snapshot(esp, data, previous):
         'Package/configuration rollback records on Linux: ' + str(state) + '\n')
     os.sync()
     return state, record
+
+
+def complete_esp_recovery(esp, state, record):
+    recovery = esp / 'siliconforest-recovery' / state.name
+    for name, item in record['files'].items():
+        path = Path(name)
+        if item and path.parent == esp / 'EFI/Linux' and path.suffix == '.efi':
+            source = state / item['saved']
+            require(digest(source) == item['sha256'], 'Recovery UKI snapshot digest differs')
+            saved_image = recovery / 'EFI/Linux' / (path.name + '.gz')
+            saved_image.parent.mkdir(parents=True, exist_ok=True)
+            with source.open('rb') as stream, gzip.GzipFile(filename=str(saved_image), mode='wb',
+                                                          compresslevel=6, mtime=0) as output:
+                shutil.copyfileobj(stream, output)
+    os.sync()
 
 
 def restore_files(state, record):
@@ -237,12 +252,12 @@ def rollback(state):
     print('Previous stack/configuration restored. Reboot when ready; no reboot was performed.')
 
 
-def apply(directory, fingerprint):
+def apply(directory, fingerprint, testing=False):
     require(os.geteuid() == 0, 'Install requires root; use the generated release bootstrap')
     with tempfile.TemporaryDirectory(prefix='siliconforest-install-', dir='/var/tmp') as tmp:
         trusted = Path(tmp) / 'bundle'
         shutil.copytree(directory, trusted, symlinks=False)
-        data = verified_bundle(trusted, fingerprint, install=True)
+        data = verified_bundle(trusted, fingerprint, install=True, testing=testing)
         _, _, esp = check_system(data)
         previous = cached_previous()
         state, record = snapshot(esp, data, previous)
@@ -262,7 +277,7 @@ def apply(directory, fingerprint):
                 for name in (package['file'], package['file'] + '.sig'):
                     shutil.copyfile(trusted / name, Path('/var/cache/pacman/pkg') / name)
             with open('/dev/tty') as tty:
-                subprocess.run(['pacman', '-Syu', *['siliconforest/' + n for n in PACKAGES.values()]],
+                subprocess.run(['pacman', '-U', *[str(trusted / data['packages'][k]['file']) for k in PACKAGES]],
                                check=True, stdin=tty)
             boot.check_files(data)
             old_config = Path('/etc/m1n1.conf')
@@ -274,6 +289,7 @@ def apply(directory, fingerprint):
                 boot.atomic(limine, boot.managed(text, 'BOOT_ORDER="linux-siliconforest, *, *fallback, Snapshots"').encode())
             boot.run('mkinitcpio', '-P')
             boot.run('limine-update' if data['boot']['backend'] == 'limine' else 'update-grub')
+            complete_esp_recovery(esp, state, record)
             boot.atomic(boot.ACTIVE, json.dumps(data, indent=2).encode(), 0o600)
             boot.atomic(graphics.MANIFEST, json.dumps(data, indent=2).encode(), 0o644)
             boot.INSTALLING.unlink()
@@ -311,6 +327,8 @@ def main():
     parser.add_argument('--catalog', action='store_true', help='select a board/firmware release from a signed catalog')
     parser.add_argument('--bundle', type=Path, help='local signed release directory')
     parser.add_argument('--fingerprint', default='', help='independently published full signing fingerprint')
+    parser.add_argument('--test-candidate', action='store_true',
+                        help='explicit attended installation of a signed, single-machine test candidate')
     args = parser.parse_args()
     if args.graphics_admit:
         graphics.admit()
@@ -337,7 +355,7 @@ def main():
         directory = args.bundle.resolve() if args.bundle else Path(tmp)
         if not args.bundle:
             fetch_bundle(args.release, directory, args.fingerprint, args.catalog)
-        data = verified_bundle(directory, args.fingerprint, install=args.install)
+        data = verified_bundle(directory, args.fingerprint, install=args.install, testing=args.test_candidate)
         board, firmware, esp = check_system(data)
         print(json.dumps({'release': data['id'], 'board': board, 'firmware': firmware,
                           'packages': {k: v['name'] for k, v in data['packages'].items()},
@@ -346,7 +364,7 @@ def main():
             require(os.geteuid() == 0, 'Run the generated bootstrap to elevate after verification')
             with open('/run/lock/siliconforest-install.lock', 'a') as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                apply(directory, args.fingerprint)
+                apply(directory, args.fingerprint, testing=args.test_candidate)
 
 
 if __name__ == '__main__':

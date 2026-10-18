@@ -79,7 +79,7 @@ def verify_signature(directory, fingerprint):
     return json.loads((Path(directory) / 'release.json').read_text())
 
 
-def validate(data, *, install=False):
+def validate(data, *, install=False, testing=False):
     require(data.get('schema') == 1, 'Unsupported release schema')
     asset_name(data['id'])
     repository = data['repository']
@@ -139,7 +139,12 @@ def validate(data, *, install=False):
         require(data['packages']['mesa']['source']['branch'].startswith('compat/'),
                 'Main native Mesa does not support M3 Air')
     qualification = data['qualification']
-    if install:
+    if install and testing:
+        require(qualification.get('status') == 'attended-testing', 'Require an explicit attended test candidate')
+        require(len(data['boards']) == len(data['firmware']) == 1,
+                'Attended testing is limited to one exact board/firmware pair')
+        require(bool(qualification.get('report')), 'Require an attended test plan/report location')
+    elif install:
         require(qualification.get('status') == 'passed', 'This exact bundle is not hardware-qualified')
         require(bool(qualification.get('report')), 'Require a hardware qualification report')
         require(set(qualification.get('boards', [])) == set(data['boards']),
@@ -184,8 +189,9 @@ def verify_packages(directory, data):
             raw = subprocess.check_output(['bsdtar', '-xOf', str(path), member])
             require(hashlib.sha256(raw).hexdigest() == data['boot'][key],
                     'Archived boot component differs: ' + member)
+        dri = 'zink_dri.so' if package['source'].get('branch') == 'compat/m3-legacy' else 'asahi_dri.so'
         required = {'kernel': {modules + 'pkgbase'},
-                    'mesa': {'usr/lib/libEGL_mesa.so.0', 'usr/lib/libgbm.so.1', 'usr/lib/dri/asahi_dri.so'},
+                    'mesa': {'usr/lib/libEGL_mesa.so.0', 'usr/lib/libgbm.so.1', 'usr/lib/dri/' + dri},
                     'm1n1': {'usr/lib/siliconforest/installer.pyz',
                              'usr/share/libalpm/hooks/99-siliconforest-stage2.hook',
                              'usr/share/libalpm/hooks/00-siliconforest-transaction.hook'}}[component]

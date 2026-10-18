@@ -77,7 +77,7 @@ build() {
     --buildtype=release -Db_ndebug=false "-Dc_args=['-DMESA_DYNAMIC_TLS']" "-Dcpp_args=['-DMESA_DYNAMIC_TLS']" \
     -Dgallium-drivers="$gallium" -Dvulkan-drivers="$vulkan" -Dbuild-tests="$tests" \
     -Dplatforms=x11,wayland -Dglx=dri -Degl=enabled -Dgbm=enabled -Dglvnd=enabled \
-    -Dllvm=enabled -Dtools=drm-shim -Dmesa-clc=enabled -Dprecomp-compiler=enabled \
+    -Dllvm=enabled -Ddraw-use-llvm=false -Dtools=drm-shim -Dmesa-clc=enabled -Dprecomp-compiler=enabled \
     -Dvideo-codecs= -Dgallium-va=disabled
   meson compile -C build -j4
   if [[ $tests == true ]]; then meson test -C build --no-rebuild --suite asahi --print-errorlogs; fi
@@ -94,7 +94,7 @@ build() {
       --buildtype=release -Db_ndebug=false "-Dc_args=['-DMESA_DYNAMIC_TLS']" "-Dcpp_args=['-DMESA_DYNAMIC_TLS']" \
       -Dvulkan-drivers=asahi -Dgallium-drivers= -Dglx=disabled -Dglvnd=disabled \
       -Degl=disabled -Dgbm=disabled -Dgles1=disabled -Dgles2=disabled -Dopengl=false \
-      -Dplatforms=x11,wayland -Dllvm=enabled -Dmesa-clc=enabled -Dprecomp-compiler=enabled \
+      -Dplatforms=x11,wayland -Dllvm=enabled -Ddraw-use-llvm=false -Dmesa-clc=enabled -Dprecomp-compiler=enabled \
       -Dbuild-tests=true -Dvideo-codecs= -Dtools=
     meson compile -C build-vulkan -j4 vulkan_asahi agx_tests libasahi_tests hk_g15s_split_depth_test
     ninja -C build-vulkan src/asahi/vulkan/asahi_icd.aarch64.json

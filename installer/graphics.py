@@ -12,7 +12,8 @@ MANIFEST = Path('/etc/siliconforest/graphics.json')
 
 
 def admit():
-    data = validate(json.loads(MANIFEST.read_text()), install=True)
+    data = json.loads(MANIFEST.read_text())
+    validate(data, install=True, testing=data['qualification'].get('status') == 'attended-testing')
     board, firmware = boot.identity()
     require(board in data['boards'] and firmware in data['firmware'],
             'Running board/firmware is outside the qualified graphics set')

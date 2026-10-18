@@ -11,7 +11,7 @@ build="$root/build/mesa-package"
 meson setup "$build" "$root/sources/mesa" --prefix=/usr --libdir=lib \
   --buildtype=release -Db_ndebug=false -Dgallium-drivers=asahi,zink,softpipe -Dvulkan-drivers=asahi \
   -Dplatforms=x11,wayland -Dglx=dri -Degl=enabled -Dgbm=enabled \
-  -Dglvnd=enabled -Dllvm=enabled -Dbuild-tests=true \
+  -Dglvnd=enabled -Dllvm=enabled -Ddraw-use-llvm=false -Dbuild-tests=true \
   -Dmesa-clc=enabled -Dprecomp-compiler=enabled -Dvideo-codecs= -Dgallium-va=disabled
 meson compile -C "$build" -j "${JOBS:-4}"
 meson test -C "$build" --suite asahi --print-errorlogs
