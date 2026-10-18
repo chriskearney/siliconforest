@@ -165,8 +165,8 @@ def main():
             'depends=' + array(depends) + '\n' + extra + "options=('!strip' '!debug')\n"
             "source=('payload.tar')\nsha256sums=('" + sha + "')\nnoextract=('payload.tar')\n"
             'package() { bsdtar -xf "$srcdir/payload.tar" -C "$pkgdir"; }\n')
-        run('makepkg', '--nodeps', '--ignorearch', cwd=work,
-            env={**os.environ, 'PKGDEST': str(a.output.resolve())})
+        run('makepkg', '--nodeps', cwd=work,
+            env={**os.environ, 'PKGDEST': str(a.output.resolve()), 'CARCH': 'aarch64'})
         print('Created uninstalled candidate package; signing and qualification are separate.')
 
 
