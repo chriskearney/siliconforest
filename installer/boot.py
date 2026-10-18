@@ -136,7 +136,8 @@ def image(data, files, configuration):
     for key, value in buffers.items():
         require(hashlib.sha256(value).hexdigest() == data['boot'][key],
                 'Boot input changed before assembly: ' + key)
-    options = dict(line.split('=', 1) for line in config_lines(configuration.decode(), []).decode().splitlines())
+    options = dict(line.split('=', 1) for line in config_lines(configuration.decode(), []).decode().splitlines()
+                   if line)
     for line in data['boot']['m1n1_config']:
         key, value = line.split('=', 1)
         require(options.get(key) == value, 'Required handoff option differs: ' + key)

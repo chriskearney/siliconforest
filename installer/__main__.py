@@ -154,11 +154,15 @@ def cached_previous():
     names = ['mesa', 'mesa-asahi-edge', 'vulkan-asahi', 'mesa-m3', 'mesa-m3-native-pro',
              'mesa-m3-pro-vulkan', 'linux-asahi', 'linux-aurora', *PACKAGES.values()]
     result = []
+    seen = set()
     for name in names:
         installed = subprocess.run(['pacman', '-Q', name], text=True, capture_output=True)
         if installed.returncode:
             continue
         package, version = installed.stdout.split()
+        if (package, version) in seen:
+            continue
+        seen.add((package, version))
         candidates = set()
         for spelling in {version, version.split(':', 1)[-1]}:
             for path in Path('/var/cache/pacman/pkg').glob(f'{package}-{spelling}-aarch64.pkg.tar.*'):
@@ -177,7 +181,8 @@ def cached_previous():
 def snapshot(esp, data, previous):
     state = Path('/var/lib/siliconforest/transactions') / (str(time.time_ns()) + '-' + data['id'])
     state.mkdir(parents=True, mode=0o700)
-    files = ['/etc/default/update-m1n1', '/etc/m1n1.conf', '/etc/siliconforest/m1n1.conf',
+    files = ['/var/lib/pacman/sync/siliconforest.db', '/var/lib/pacman/sync/siliconforest.db.sig',
+             '/etc/default/update-m1n1', '/etc/m1n1.conf', '/etc/siliconforest/m1n1.conf',
              '/etc/limine-entry-tool.conf', '/etc/default/limine', '/etc/pacman.conf', str(boot.ACTIVE), str(graphics.MANIFEST)]
     entry_root = esp if data['boot']['backend'] == 'limine' else Path('/boot')
     files += [str(esp / 'm1n1/boot.bin'), str(entry_root / data['boot']['entry']),
@@ -271,6 +276,9 @@ def rollback(state):
         require(digest(path) == package['sha256'], 'Rollback package hash differs')
         info = subprocess.check_output(['bsdtar', '-xOf', str(path), '.PKGINFO'], text=True)
         name = next(l.split(' = ', 1)[1] for l in info.splitlines() if l.startswith('pkgname = '))
+        if name in previous_names:
+            require(str(path) in previous, 'Ambiguous duplicate rollback package identity')
+            continue
         previous_names.add(name)
         previous.append(str(path))
     require(previous, 'No previous package set was recorded')
@@ -313,6 +321,8 @@ def apply(directory, fingerprint, testing=False):
                     'Unmanaged SiliconForest repository already exists')
             block = '[siliconforest]\nSigLevel = Required DatabaseRequired\nServer = ' + data['repository']['url']
             boot.atomic(config, boot.managed(config.read_text(), block).encode())
+            for name in ('siliconforest.db', 'siliconforest.db.sig'):
+                boot.atomic(Path('/var/lib/pacman/sync') / name, (trusted / name).read_bytes())
             for package in data['packages'].values():
                 for name in (package['file'], package['file'] + '.sig'):
                     shutil.copyfile(trusted / name, Path('/var/cache/pacman/pkg') / name)

@@ -173,16 +173,19 @@ class BootTests(unittest.TestCase):
             real_run = subprocess.run
             def query(args, **kwargs):
                 if args[0] == 'pacman':
-                    return subprocess.CompletedProcess(args, 0 if args[-1] == 'mesa' else 1,
-                        stdout='mesa 1:26.2.4-1\n' if args[-1] == 'mesa' else '')
+                    answer = ('mesa 1:26.2.4-1\n' if args[-1] == 'mesa' else
+                              'linux-aurora 1-1\n' if args[-1] in ('linux-asahi', 'linux-aurora') else '')
+                    return subprocess.CompletedProcess(args, 0 if answer else 1, stdout=answer)
                 return real_run(args, **kwargs)
             def path(value):
                 return cache if str(value) == '/var/cache/pacman/pkg' else Path(value)
             with patch.object(cli, 'Path', side_effect=path), patch.object(cli.subprocess, 'run', side_effect=query):
-                self.assertEqual(cli.cached_previous(), [package])
+                kernel = cache / 'linux-aurora-1-1-aarch64.pkg.tar.zst'
+                tar(kernel, {'.PKGINFO': 'pkgname = linux-aurora\npkgver = 1-1\narch = aarch64\n'})
+                self.assertEqual(cli.cached_previous(), [package, kernel])
                 renamed = cache / 'mesa-1:26.2.4-1-aarch64.pkg.tar.zst'
                 package.rename(renamed)
-                self.assertEqual(cli.cached_previous(), [renamed])
+                self.assertEqual(cli.cached_previous(), [renamed, kernel])
 
     def test_m3_stage1_handoff_must_match_exactly(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -314,6 +317,11 @@ class BootTests(unittest.TestCase):
             self.assertTrue(image.startswith(b'LOADERBOARD'))
             self.assertTrue(image.endswith(b'chosen.local=1\n'))
             self.assertEqual(gzip.decompress(image[11:-15]), b'UBOOT')
+            for configuration in (b'', b'\n'):
+                with self.subTest(configuration=configuration):
+                    image = boot.image(data, files, configuration)
+                    payload = image[11:-len(configuration)] if configuration else image[11:]
+                    self.assertEqual(gzip.decompress(payload), b'UBOOT')
             files['uboot_sha256'].write_bytes(b'CHANGED')
             with self.assertRaisesRegex(Refusal, 'changed before assembly'):
                 boot.image(data, files, b'chosen.local=1\n')
@@ -562,6 +570,12 @@ class SignatureTests(unittest.TestCase):
                     cli.apply(bundle, fingerprint)
                     if rollback:
                         state = next(mapped('/var/lib/siliconforest/transactions').iterdir())
+                        # Older records may repeat the same archive after
+                        # querying both a package and its provided alias.
+                        record_path = state / 'transaction.json'
+                        old_record = json.loads(record_path.read_text())
+                        old_record['packages'].append(old_record['packages'][0])
+                        record_path.write_text(json.dumps(old_record))
                         phase.update(rollback=True, state=state)
                         # The sandbox runs as an ordinary user. Model only the
                         # transaction-directory ownership; all bytes and paths
