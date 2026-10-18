@@ -7,7 +7,7 @@
     "linux": {
       "url": "https://github.com/iconidentify/siliconforest-linux.git",
       "branch": "siliconforest/next",
-      "commit": "6a421d4e76ff282b414138182fd28597ebf20a18",
+      "commit": "17a9930f20a0895b5980385b0b2d67edda8a24be",
       "upstream_url": "https://github.com/omacom/linux-aurora.git",
       "upstream_branch": "integration/aurora",
       "kernel_version": "7.1.12"
@@ -15,7 +15,7 @@
     "m1n1": {
       "url": "https://github.com/iconidentify/siliconforest-m1n1.git",
       "branch": "siliconforest/next",
-      "commit": "5caa993731524502ab64903d302e3c08f06c6532",
+      "commit": "7539477b16a46f66064345c9570d0abaebc45d3e",
       "upstream_url": "https://github.com/AsahiLinux/m1n1.git",
       "upstream_branch": "main",
       "upstream_commit": "25b1d89ca50be848b136ce771ce7167244852a91",
@@ -63,6 +63,16 @@
       "commit": "a5cd88166aa90237466fadc5ea294aa92f91c997",
       "source_commit": "26bc1ad0b28e503b88f82721025b05d500f01a3a",
       "tested": false
+    }
+  ],
+  "boot_chain_constraints": [
+    {
+      "board": "apple,j613",
+      "dtb": "apple/t8122-j613.dtb",
+      "minimum_kernel_commit": "17a9930f20a0895b5980385b0b2d67edda8a24be",
+      "policy": "J613 DTBs containing the disabled internal Type-C route must accompany a kernel descended from this commit. Assemble kernel and DTBs from the same locked source revision.",
+      "external_display_firmware": "14.7.0 in the normal display gate; 26.6.2 camera support does not qualify external display on 26.6.2",
+      "profile": "normal kernel display path; the alternative M3 copies do not contain the clamshell carry"
     }
   ]
 }

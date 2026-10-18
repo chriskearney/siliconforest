@@ -148,7 +148,7 @@ research without a build or graphics support claim. The lock records exact tips.
 M3 Air firmware families use their corresponding Mesa compatibility branch,
 rather than the default M3 Pro/Max/Neo Mesa profile.
 
-The main m1n1 build and 53 Python tests pass (7 skips, 10 subtests), and the Neo
+The main m1n1 build and 54 Python tests pass (7 skips, 10 subtests), and the Neo
 build and 80 Python tests pass (7 skips). Ten inherited old G15 stand-in fixture
 failures reproduce identically at the original source pin; the complete G15
 suite is not green. No boot component has been installed and no hardware boot,
@@ -159,3 +159,28 @@ and [Mesa validation](https://github.com/iconidentify/siliconforest-mesa/blob/si
 record the remaining limits. The package/installer milestones in the plan remain
 future release work; these public source repositories are not an installable
 replacement-kernel release.
+
+
+## J613 DTB and kernel pairing floor
+
+The lock now pairs kernel `17a9930f20a0895b5980385b0b2d67edda8a24be`
+with the bootloader's J613 external-firmware marker. The kernel includes the
+camera, thermal, HDMI-hold and lid-closed second-display carries in PRs #2–#6.
+Marius Gehrmann's public m1n1 patch is imported with author credit and its MIT
+notice; no Signed-off-by was invented.
+
+The bootloader reserves external firmware after the internal display handoff,
+then writes `apple,t8122-dcpext-firmware-ready = <1>`. The external controller,
+DARTs, mailbox, crossbars and routes remain disabled for the kernel gate. Failed
+reservation/publication leaves no new readiness marker or partial DT update.
+
+**Build the J613 DTB and kernel from one locked source revision.** J613 DTBs
+containing the new disabled internal Type-C route must not accompany kernels
+older than the pairing floor above. Those older panel drivers reject the route
+container. The new panel driver also waits for atcphy1 to probe.
+
+These external-display/clamshell changes are in the normal kernel display
+profile and admit firmware compatibility 14.7.0. The 26.6.2 camera changes do
+not qualify external display on that firmware, and the alternative M3 driver
+copies do not include the clamshell carry. The source lock records this rule;
+there is no binary installer that overrides it.

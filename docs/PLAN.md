@@ -88,6 +88,12 @@ The next work is packaging these outputs and recording a reproducible builder:
 6. Assemble stage 2 from this m1n1, the exact kernel's DTBs, the qualified U-Boot,
    and existing machine configuration. Never collect DTBs by globbing multiple
    installed kernel releases together.
+   For J613, the DTB's new disabled internal Type-C route requires kernel
+   17a9930f20a0895b5980385b0b2d67edda8a24be or a descendant. Ship kernel and
+   DTBs from one source pin. Its panel also depends on atcphy1 probing. The
+   m1n1 external-firmware marker is a reservation promise; the kernel enables
+   the controller and suppliers. The normal 14.7 display profile and 26.6.2
+   camera support are separate qualification cases.
 
 Boot-chain reference:
 
