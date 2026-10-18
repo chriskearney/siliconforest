@@ -35,7 +35,8 @@ build() {
   CFLAGS= CXXFLAGS= LDFLAGS= cmake -S "$_spvtools" -B build-spvtools -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$deps" -DCMAKE_INSTALL_LIBDIR=lib \
     -DSPIRV-Headers_SOURCE_DIR="$srcdir/$_spvtools_headers" -DSPIRV_WERROR=OFF \
-    -DBUILD_SHARED_LIBS=ON -DSPIRV_TOOLS_BUILD_STATIC=OFF -DSPIRV_SKIP_TESTS=ON \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DBUILD_SHARED_LIBS=OFF -DSPIRV_TOOLS_BUILD_STATIC=ON -DSPIRV_SKIP_TESTS=ON \
     -DSPIRV_SKIP_EXECUTABLES=ON
   cmake --build build-spvtools --parallel 4
   cmake --install build-spvtools
@@ -111,6 +112,7 @@ package() {
   rm -f "$pkgdir/usr/lib/libasahi_noop_drm_shim.so"
   rm -rf "$pkgdir/usr/include" "$pkgdir/usr/lib/pkgconfig"
   install -Dm644 "$_src/docs/license.rst" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$_spvtools/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/SPIRV-Tools-LICENSE"
   cp -r "$_src/licenses" "$pkgdir/usr/share/licenses/$pkgname/licenses"
   install -Dm644 mesa-receipt.json "$pkgdir/usr/share/siliconforest/mesa.json"
   if [[ $_profile == m3-pro-legacy ]]; then
