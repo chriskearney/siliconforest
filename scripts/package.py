@@ -52,6 +52,8 @@ def stage(component, source, build, tree, profile):
         config = (build / '.config').read_text()
         native = '\nCONFIG_SILICONFOREST_M3=y\n' in '\n' + config
         require(native == (profile['kernel_variant'] == 'm3-native'), 'Wrong kernel profile')
+        native_gpu = '\nCONFIG_SILICONFOREST_NATIVE_GPU=y\n' in '\n' + config
+        require(native_gpu == (profile['kernel_variant'] == 'native-gpu'), 'Wrong native GPU profile')
         modules = tree / 'usr/lib/modules' / release
         environment = {**os.environ, 'RUSTUP_TOOLCHAIN': json.loads(
             (ROOT / 'sources.lock.json').read_text())['toolchains']['kernel_rust']}

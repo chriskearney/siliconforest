@@ -127,6 +127,8 @@ def check_files(data):
     config = files['config_sha256'].read_text()
     native = '\nCONFIG_SILICONFOREST_M3=y\n' in '\n' + config
     require(native == (data['kernel_variant'] == 'm3-native'), 'Wrong installed kernel configuration')
+    native_gpu = '\nCONFIG_SILICONFOREST_NATIVE_GPU=y\n' in '\n' + config
+    require(native_gpu == (data['kernel_variant'] == 'native-gpu'), 'Wrong installed native GPU configuration')
     return files
 
 

@@ -6,8 +6,8 @@
   "sources": {
     "linux": {
       "url": "https://github.com/iconidentify/siliconforest-linux.git",
-      "branch": "siliconforest/next",
-      "commit": "17a9930f20a0895b5980385b0b2d67edda8a24be",
+      "branch": "siliconforest/j516s-native-gpu-20261018",
+      "commit": "9333b0728dc4fa5cfb0271f30314eed5f97d6b9b",
       "upstream_url": "https://github.com/omacom/linux-aurora.git",
       "upstream_branch": "integration/aurora",
       "kernel_version": "7.1.12"
@@ -28,14 +28,14 @@
     },
     "mesa": {
       "url": "https://github.com/iconidentify/siliconforest-mesa.git",
-      "branch": "siliconforest/next",
-      "commit": "c8015f63608e6eb2f859a1739462a3c77eca600a"
+      "branch": "mesa/native-update-20261018",
+      "commit": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68"
     }
   },
   "inputs": {
     "configs/kernel.config": "c811698c5242d42850bef6669f29cd7b485e997d3ac1a423e2d3cbbb3fdc19b8",
     "configs/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c",
-    "release/profiles.json": "e80c07543f0b82186ee22c6783a28b7b376dbd786c9e2f4cbc505f6d1d6f15a7"
+    "release/profiles.json": "35f03d8866f4c617878d2aea43f33803aa24ea2934f2ceb4d84fa52b51672538"
   },
   "toolchains": {
     "kernel_llvm": "22.1.8",
@@ -48,8 +48,8 @@
   },
   "paired_mesa": {
     "repository": "https://github.com/iconidentify/siliconforest-mesa",
-    "branch": "siliconforest/next",
-    "commit": "c8015f63608e6eb2f859a1739462a3c77eca600a"
+    "branch": "mesa/native-update-20261018",
+    "commit": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68"
   },
   "m1n1_profiles": [
     {

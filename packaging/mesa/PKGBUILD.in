@@ -67,7 +67,7 @@ build() {
   printf "[binaries]\nllvm-config = '%s'\n" "$_llvm/bin/llvm-config" > llvm22.ini
   local gallium=asahi,zink,softpipe vulkan=asahi tests=false
   case $_profile in
-    m1-m2|m3-pro-native) tests=true ;;
+    m1-m2|m3-pro-native|m3-pro-native-gpu) tests=true ;;
     m3-pro-legacy) gallium=asahi,softpipe; vulkan= ;;
     m3-air-legacy) gallium=zink,softpipe ;;
     m3-air-hal200) gallium=asahi,softpipe; vulkan= ;;

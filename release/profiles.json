@@ -256,6 +256,30 @@
         "Do not enable stand-in GPU power/calibration assumptions automatically.",
         "The inherited M3 session/profile admission must be ported and tested, not bypassed."
       ]
+    },
+    "m3-pro-native-gpu": {
+      "boards": [
+        {
+          "compatible": "apple,j516s",
+          "model": "MacBook Pro 16-inch M3 Pro",
+          "dtb": "apple/t6030-j516s.dtb"
+        }
+      ],
+      "kernel_variant": "native-gpu",
+      "mesa": {
+        "branch": "mesa/native-update-20261018",
+        "commit": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68",
+        "apis": [
+          "OpenGL",
+          "Vulkan"
+        ]
+      },
+      "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
+      "firmware_policy": "Exact J516S OS firmware 14.7; native G15 GPU with the maintained display/PHY/USB4/PMP stack and existing qualified m1n1 handoff.",
+      "qualified": false,
+      "blockers": [
+        "Complete native GPU build, hardware rendering, desktop and recovery qualification on J516S."
+      ]
     }
   }
 }

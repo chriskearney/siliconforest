@@ -139,6 +139,31 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaises(Refusal):
                 validate(d)
 
+    def test_native_gpu_profile_requires_j516s_and_unmixed_native_mesa(self):
+        d = example()
+        d['boards'] = ['apple,j516s']
+        d['kernel_variant'] = 'native-gpu'
+        d['boot']['dtb'] = 'apple/t6030-j516s.dtb'
+        d['boot']['stage1_versions'] = ['TEST-STAGE1']
+        d['boot']['iboot_versions'] = ['TEST-IBOOT']
+        d['packages']['mesa']['source']['branch'] = 'siliconforest/next'
+        validate(d)
+        for board in ('apple,j514s', 'apple,j516c', 'apple,j613', 'apple,j313'):
+            bad = copy.deepcopy(d)
+            bad['boards'] = [board]
+            with self.assertRaisesRegex(Refusal, 'currently targets J516S'):
+                validate(bad)
+        bad = copy.deepcopy(d)
+        bad['packages']['mesa']['source']['branch'] = 'compat/m3-pro-legacy'
+        with self.assertRaisesRegex(Refusal, 'integrated native Mesa'):
+            validate(bad)
+        bad = copy.deepcopy(d)
+        bad['packages']['mesa']['source']['additional_sources'] = [{
+            'role': 'vulkan', 'repository': 'iconidentify/siliconforest-mesa',
+            'commit': 'b0f56952b7f06955b143fbfa90c07de4c5864964'}]
+        with self.assertRaisesRegex(Refusal, 'compatibility Vulkan'):
+            validate(bad)
+
     def test_air_requires_compat_mesa(self):
         d = example()
         d['boards'] = ['apple,j613']

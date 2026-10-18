@@ -90,7 +90,7 @@ def validate(data, *, install=False, testing=False):
     require(bool(SHA.fullmatch(repository['sha256'])), 'Missing repository digest')
     require(data['architecture'] == 'aarch64', 'Release must target aarch64')
     require(set(data['packages']) == set(PACKAGES), 'Require exactly kernel, Mesa and m1n1 packages')
-    require(data['kernel_variant'] in ('normal', 'm3-native'), 'Unknown kernel variant')
+    require(data['kernel_variant'] in ('normal', 'm3-native', 'native-gpu'), 'Unknown kernel variant')
     require(bool(TOKEN.fullmatch(data['kernel_release'])) and
             '-siliconforest-' in data['kernel_release'], 'Kernel needs a unique SiliconForest ABI name')
     for component, expected in PACKAGES.items():
@@ -144,6 +144,14 @@ def validate(data, *, install=False, testing=False):
         require(all(b in ('apple,j514s', 'apple,j516c') for b in data['boards']),
                 'The native display DTBs only cover J514S/J516C')
         require('/m3-g15/' in '/' + boot['dtb'], 'Native profile requires the alternative DTB')
+    if data['kernel_variant'] == 'native-gpu':
+        require(data['boards'] == ['apple,j516s'] and boot['dtb'] == 'apple/t6030-j516s.dtb',
+                'Native GPU with maintained display currently targets J516S only')
+        require(data['packages']['mesa']['source']['branch'] in
+                ('siliconforest/next', 'mesa/native-update-20261018'),
+                'Native GPU requires the integrated native Mesa source')
+        require(not data['packages']['mesa']['source'].get('additional_sources'),
+                'Native GPU must not include a compatibility Vulkan driver')
     if any(b in ('apple,j613', 'apple,j615') for b in data['boards']):
         require(data['kernel_variant'] == 'normal', 'Air requires the normal kernel path')
         require(data['packages']['mesa']['source']['branch'].startswith('compat/'),
