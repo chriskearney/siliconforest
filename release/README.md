@@ -13,6 +13,12 @@ too. The catalog lists the 23 existing M1/M2 board DTBs, the two normal M3 Pro
 DTBs, the alternative J514S native DTB, and the J613 Air profiles. J615 and other
 unqualified M3 boards are not admitted by similarity.
 
+The owner's previously working **M3 Pro** is reported to have a 14.x stub;
+its exact OS firmware version still needs to be read from that machine. Restore
+the legacy Pro path first rather than switching it to the native profile. The
+M3 Air firmware is not confirmed. Neither installer selection nor qualification
+may treat this recollection as an exact firmware identity.
+
 ## What the small installer owns
 
 Exactly three release packages, plus their runtime dependencies:

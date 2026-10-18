@@ -43,6 +43,9 @@ def stage(component, source, build, tree, profile):
             require(stream.read(64)[56:60] == b'ARMd', 'Require an ARM64 kernel Image')
         release = (build / 'kernelrelease').read_text().strip()
         require(TOKEN.fullmatch(release) and '-siliconforest-' in release, 'Wrong kernel ABI name')
+        pin = json.loads((ROOT / 'sources.lock.json').read_text())['sources']['linux']['commit']
+        require(release.endswith('-siliconforest-' + profile['kernel_variant'] + '-' + pin[:12]),
+                'Kernel build release does not identify the pinned source/profile')
         config = (build / '.config').read_text()
         native = '\nCONFIG_SILICONFOREST_M3=y\n' in '\n' + config
         require(native == (profile['kernel_variant'] == 'm3-native'), 'Wrong kernel profile')
