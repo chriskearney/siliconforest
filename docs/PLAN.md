@@ -1,4 +1,4 @@
-# Omakernel implementation and maintenance plan
+# SiliconForest implementation and maintenance plan
 
 ## Intended result
 
@@ -7,7 +7,7 @@ installations**, owned and released by `iconidentify`. Users run one bootstrap
 command once, then receive signed packages through pacman. This is not an x86
 kernel or a new macOS-to-Linux installer.
 
-The Omakernel repositories and release keys determine what gets shipped.
+The SiliconForest repositories and release keys determine what gets shipped.
 Upstream projects remain sources of code and fixes; no approval or participation
 from those projects is needed to maintain this personal fork. Preserve their
 licenses and attribution. Hardware dependencies and downstream ABI contracts
@@ -31,7 +31,7 @@ The kernel's upstream release20 package used `c46d7dcdb871...`; the requested
 integration tip adds release recipe/installer/userspace changes on top. Keep the
 requested integration tip as the initial source pin and qualify its own outputs.
 
-Use `omakernel/next` in each source fork for reviewed integration work. Build from
+Use `siliconforest/next` in each source fork for reviewed integration work. Build from
 full locked commits, and create immutable source tags for releases. Update the
 source lock whenever either source branch advances. Do not force-push published
 release tags. Keep the preexisting fork branches as historical work.
@@ -45,14 +45,14 @@ The next work is packaging these outputs and recording a reproducible builder:
    inventory. The current source/toolchain pins are a starting point, not a claim
    of bit-for-bit reproducibility. Record bindgen, pahole, LLVM, Rust, config,
    source commits, environment, and build logs.
-2. Produce `linux-omakernel` and `linux-omakernel-headers` for aarch64.
+2. Produce `linux-siliconforest` and `linux-siliconforest-headers` for aarch64.
    Use a unique kernel release suffix for each distinct build. Install modules,
    the kernel image, and Apple DTBs beneath `/usr/lib/modules/<release>/`.
    Verify that existing Omarchy initramfs/Limine hooks create the intended entry.
 3. Give the kernel its own package namespace and allow it alongside the stock
    kernel. Audit shared modprobe files, initramfs presets, and boot hooks for
    ownership collisions. Do not reuse the stock kernel's package base.
-4. Package `m1n1-omakernel` as the selected m1n1 provider, with appropriate
+4. Package `m1n1-siliconforest` as the selected m1n1 provider, with appropriate
    `provides`, explicit conflicts, licenses, and restoration of the previous
    provider documented. A single ESP has a single active stage 2; two m1n1 package
    names do not create independent boot chains.
@@ -95,7 +95,7 @@ already a working automatic recovery system.
 Existing M3 userspace contains exact Aurora kernel marker checks. The M3 Pro
 release20 recipe writes `aurora-m3pro-profile`, and its Mesa launcher admits
 specific source identities. Do not forge those markers for an unqualified
-Omakernel build. Either establish compatibility and maintain an explicit userspace
+SiliconForest build. Either establish compatibility and maintain an explicit userspace
 contract, or keep that model out of the supported hardware-rendering matrix.
 Other experimental GPUs require the same care with their userspace interfaces.
 
@@ -106,7 +106,7 @@ automatically enabling new services or changing machine configuration.
 
 ## 4. Create the public package channel
 
-Create signed pacman packages and a signed repository database under Omakernel's
+Create signed pacman packages and a signed repository database under SiliconForest's
 own hosting, using separate `testing` and `stable` channels. A static HTTPS host
 can serve the repository; do not require upstream release assets for installation.
 Retain the prior stable package set and source tags for recovery.
@@ -132,7 +132,7 @@ only checks development tooling; it does not build, sign, or release packages.
 ## 5. Implement the one-command bootstrap
 
 The final one-liner will download an installer from an immutable, qualified
-Omakernel release. Publish it only after this path has been exercised end to end:
+SiliconForest release. Publish it only after this path has been exercised end to end:
 
 1. Run preflight as the normal user: supported aarch64 board, Omarchy install,
    firmware identity, installed kernel and boot packages, active bootloader,

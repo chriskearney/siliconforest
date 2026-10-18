@@ -19,7 +19,7 @@ revision=$(git -C "$source_dir" rev-parse --short=12 HEAD)
 # a previous developer's stage 1 flags cannot leak into the stage 2 payload.
 make -C "$source_dir" clean
 make -C "$source_dir" -j"${JOBS:-4}" RELEASE=1 CHAINLOADING=0 USE_CLANG=1 \
-  ARCH=aarch64-linux-gnu M1N1_VERSION_TAG="v1.6.1-omakernel.dev.g$revision"
+  ARCH=aarch64-linux-gnu M1N1_VERSION_TAG="v1.6.1-siliconforest.dev.g$revision"
 grep -qx '#define RELEASE' "$source_dir/build/build_cfg.h"
 if grep -Eq '^#define (CHAINLOADING|J613_ESP_STAGE1|ESP_STAGE2|J700_CDC_PROXY|T8140_KIS_PROXY)( |$)' "$source_dir/build/build_cfg.h"; then
   echo 'Unexpected stage 1 or proxy build flags' >&2

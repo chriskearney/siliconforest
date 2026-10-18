@@ -1,11 +1,11 @@
-# Omakernel
+# SiliconForest
 
 A personally maintained Apple Silicon kernel and m1n1 release project for
 existing Omarchy installations, maintained by [iconidentify](https://github.com/iconidentify).
 Independent of Omacom, Aurora Silicon, and Asahi Linux; derived from their work
 with its original history, attribution, and licenses preserved.
 
-**Development setup only. There is no qualified Omakernel binary release or
+**Development setup only. There is no qualified SiliconForest binary release or
 public install command yet.** The installer and package repository are upcoming
 milestones. Building a payload does not establish that a Mac boots it.
 
@@ -13,9 +13,9 @@ milestones. Building a payload does not establish that a Mac boots it.
 
 | Purpose | Repository / branch |
 | --- | --- |
-| Release tooling, source lock, configuration, plan | [iconidentify/omakernel](https://github.com/iconidentify/omakernel) |
-| Kernel source | [iconidentify/aurora-linux — omakernel/next](https://github.com/iconidentify/aurora-linux/tree/omakernel/next) |
-| m1n1 source | [iconidentify/m1n1 — omakernel/next](https://github.com/iconidentify/m1n1/tree/omakernel/next) |
+| Release tooling, source lock, configuration, plan | [iconidentify/siliconforest](https://github.com/iconidentify/siliconforest) |
+| Kernel source | [iconidentify/aurora-linux — siliconforest/next](https://github.com/iconidentify/aurora-linux/tree/siliconforest/next) |
+| m1n1 source | [iconidentify/m1n1 — siliconforest/next](https://github.com/iconidentify/m1n1/tree/siliconforest/next) |
 | Existing hardware test infrastructure | [iconidentify/maclab](https://github.com/iconidentify/maclab) |
 
 The initial sources come from Omacom's `integration/aurora` branches on
@@ -23,15 +23,15 @@ The initial sources come from Omacom's `integration/aurora` branches on
 branches. The kernel starts at 7.1.12. The m1n1 fork drops the inherited
 `AGENTS.md` at its owner's direction; its source code matches the pinned baseline.
 Neither a current branch name nor an old upstream validation result is an
-Omakernel support claim.
+SiliconForest support claim.
 
 ## Developer setup
 
 On Linux, with Git and Python 3.9 or newer:
 
 ```sh
-git clone https://github.com/iconidentify/omakernel.git
-cd omakernel
+git clone https://github.com/iconidentify/siliconforest.git
+cd siliconforest
 make sources
 make verify
 make check
@@ -63,7 +63,7 @@ JOBS=8 make build-kernel
 Set `LLVM_DIR` to a nonstandard LLVM installation prefix if needed. The kernel
 script also recognizes `/usr/lib/llvm22`. m1n1 builds use the selected LLVM on
 `PATH`. The first kernel configuration is the inherited release20 configuration;
-the build removes its `-ARCH` suffix and adds a distinct Omakernel development
+the build removes its `-ARCH` suffix and adds a distinct SiliconForest development
 release suffix. It runs `olddefconfig`, so retain the generated `.config` with
 every artifact. Do not advertise the inherited experimental features as tested.
 
@@ -80,7 +80,7 @@ and the target machine's existing configuration.
 For a local maclab kernel artifact after a successful kernel build:
 
 ```sh
-lab pack --build "$PWD/build/linux" -o "$PWD/dist/omakernel-dev.tar.zst"
+lab pack --build "$PWD/build/linux" -o "$PWD/dist/siliconforest-dev.tar.zst"
 ```
 
 This does not test or install the m1n1/DTB pair. maclab's ordinary kernel job uses
@@ -90,7 +90,7 @@ need separate qualification and recovery, as described in the plan.
 ## Publishing direction
 
 The target experience is one bootstrap command adding your signed pacman
-repository and installing `linux-omakernel` plus the qualified boot components.
+repository and installing `linux-siliconforest` plus the qualified boot components.
 Afterward, normal package upgrades deliver the updates you choose to publish.
 There will be an explicit testing channel and a stable channel.
 

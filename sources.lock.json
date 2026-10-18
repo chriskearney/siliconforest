@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "project": "omakernel",
+  "project": "siliconforest",
   "baseline_date": "2026-10-18",
   "status": "development; no qualified binary release",
   "sources": {
     "linux": {
       "url": "https://github.com/iconidentify/aurora-linux.git",
-      "branch": "omakernel/next",
+      "branch": "siliconforest/next",
       "commit": "5d570a78a4ab29ac383ec8988be2356dfc6c8a75",
       "upstream_url": "https://github.com/omacom/linux-aurora.git",
       "upstream_branch": "integration/aurora",
@@ -14,7 +14,7 @@
     },
     "m1n1": {
       "url": "https://github.com/iconidentify/m1n1.git",
-      "branch": "omakernel/next",
+      "branch": "siliconforest/next",
       "commit": "fec93c15a03b1f5243a3794b495b48ea6a596fcc",
       "upstream_url": "https://github.com/omacom/m1n1.git",
       "upstream_branch": "integration/aurora",

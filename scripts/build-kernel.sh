@@ -34,8 +34,8 @@ cp "$root/configs/kernel.config" "$output/.config"
 "$root/sources/linux/scripts/config" --file "$output/.config" --set-str LOCALVERSION '' --disable LOCALVERSION_AUTO
 # Set a distinct module ABI name even for an otherwise identical source tree.
 export LOCALVERSION
-LOCALVERSION=-omakernel-dev-$(git -C "$root/sources/linux" rev-parse --short=12 HEAD)
-export KBUILD_BUILD_USER=omakernel
+LOCALVERSION=-siliconforest-dev-$(git -C "$root/sources/linux" rev-parse --short=12 HEAD)
+export KBUILD_BUILD_USER=siliconforest
 export KBUILD_BUILD_HOST=builder
 export KBUILD_BUILD_TIMESTAMP
 KBUILD_BUILD_TIMESTAMP=$(git -C "$root/sources/linux" show -s --format=%cD HEAD)

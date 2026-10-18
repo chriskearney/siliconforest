@@ -17,6 +17,6 @@ other submodules have their own licenses. They are not relicensed by this
 repository's MIT license. Release packaging must carry applicable notices for
 the components it distributes.
 
-Omakernel acknowledges the Linux contributors, Asahi Linux contributors,
+SiliconForest acknowledges the Linux contributors, Asahi Linux contributors,
 Aurora Silicon contributors, Omacom contributors, and the other authors
 identified in the original source history.
