@@ -55,7 +55,7 @@ rollback for that new DTB: restore the previous stage 2/DTB set too.
 
 Provision a dedicated ARM64 build environment with the dependencies documented
 in the root README and Mesa's source validation report. Installer/package tools
-need Python 3.11+, libarchive tools, pacman/makepkg and GnuPG. Package preparation
+need Python 3.11+, libarchive tools, dtc/fdtget, pacman/makepkg and GnuPG. Package preparation
 never runs sudo, installs builder dependencies or changes the host's boot chain.
 
 ```sh
