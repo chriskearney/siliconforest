@@ -10,4 +10,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install host verification tools
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools gnupg shellcheck gcc libwayland-dev
       - run: make check

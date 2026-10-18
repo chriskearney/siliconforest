@@ -1,0 +1,177 @@
+# SPDX-License-Identifier: MIT
+# Toolchain preparation follows Chris Kearney's public Mesa recipe at
+# siliconforest-linux 17a9930f20a0, tools/aurora-sep/recipes/mesa-m3/PKGBUILD.
+pkgname=mesa-siliconforest
+pkgver=__VERSION__
+pkgrel=1
+pkgdesc='SiliconForest matched ARM64 graphics'
+arch=('aarch64')
+url='https://github.com/iconidentify/siliconforest-mesa'
+license=('LicenseRef-Mesa')
+options=('strip' '!debug' '!lto')
+_src=mesa
+_profile=__PROFILE__
+_mesa_version=__MESA_VERSION__
+_llvm=/usr/lib/llvm22
+_slt=SPIRV-LLVM-Translator-0e67244861402a51b071414d7cb231a052b1ce03
+_slt_headers=SPIRV-Headers-575b6512579ebde466ed3dfc04e413439d14d95d
+_spvtools=SPIRV-Tools-vulkan-sdk-1.4.357.0
+_spvtools_headers=SPIRV-Headers-vulkan-sdk-1.4.357.0
+prepare() {
+  # Only the disposable maclab package VM provisions its build dependencies.
+  sudo pacman -Sy --noconfirm --needed archlinuxarm-keyring
+  sudo pacman -Su --noconfirm --needed base-devel meson ninja cmake python python-mako \
+    python-packaging python-ply python-pycparser python-yaml llvm22 llvm22-libs clang22 \
+    compiler-rt22 glslang wayland-protocols xorgproto vulkan-headers binutils \
+    expat libdisplay-info libdrm libelf libglvnd libunwind libx11 libxcb libxext \
+    libxfixes libxrandr libxshmfence libxxf86vm systemd-libs vulkan-icd-loader \
+    wayland xcb-util-keysyms zlib zstd
+}
+build() {
+  local deps="$srcdir/deps"
+  export PKG_CONFIG_PATH="$deps/lib/pkgconfig:$deps/share/pkgconfig"
+  export LD_LIBRARY_PATH="$deps/lib"
+  # SPIRV-Tools (linker and validator of the kernel compiler).
+  CFLAGS= CXXFLAGS= LDFLAGS= cmake -S "$_spvtools" -B build-spvtools -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$deps" -DCMAKE_INSTALL_LIBDIR=lib \
+    -DSPIRV-Headers_SOURCE_DIR="$srcdir/$_spvtools_headers" -DSPIRV_WERROR=OFF \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DBUILD_SHARED_LIBS=OFF -DSPIRV_TOOLS_BUILD_STATIC=ON -DSPIRV_SKIP_TESTS=ON \
+    -DSPIRV_SKIP_EXECUTABLES=ON
+  cmake --build build-spvtools --parallel 4
+  cmake --install build-spvtools
+
+  # SPIRV-LLVM-Translator for LLVM 22.
+  CFLAGS= CXXFLAGS= LDFLAGS= cmake -S "$_slt" -B build-slt -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$deps" -DCMAKE_INSTALL_LIBDIR=lib \
+    -DLLVM_DIR="$_llvm/lib/cmake/llvm" \
+    -DLLVM_EXTERNAL_SPIRV_HEADERS_SOURCE_DIR="$srcdir/$_slt_headers" \
+    -DBUILD_SHARED_LIBS=ON -DLLVM_SPIRV_INCLUDE_TESTS=OFF -DLLVM_SPIRV_ENABLE_LIBSPIRV_DIS=OFF
+  cmake --build build-slt --parallel 4
+  cmake --install build-slt
+
+  # libclc 22.1.8, the two targets the kernel compiler uses.
+  CFLAGS= CXXFLAGS= LDFLAGS= cmake -S llvm-project/libclc -B build-libclc -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$deps" \
+    -DLLVM_DIR="$_llvm/lib/cmake/llvm" \
+    -DLIBCLC_TARGETS_TO_BUILD='spirv-mesa3d-;spirv64-mesa3d-' \
+    -DLLVM_SPIRV="$deps/bin/llvm-spirv"
+  cmake --build build-libclc --parallel 4
+  cmake --install build-libclc
+  echo "build toolchain: llvm-config $("$_llvm/bin/llvm-config" --version)," \
+    "LLVMSPIRVLib $(pkg-config --modversion LLVMSPIRVLib), libclc $(pkg-config --modversion libclc)," \
+    "SPIRV-Tools $(pkg-config --modversion SPIRV-Tools), $(${CC:-cc} --version | head -1)"
+
+  export PATH="$_llvm/bin:$PATH"
+  [[ $("$_llvm/bin/llvm-config" --version) == 22.1.8 ]] || return 1
+  printf "[binaries]\nllvm-config = '%s'\n" "$_llvm/bin/llvm-config" > llvm22.ini
+  local gallium=asahi,zink,softpipe vulkan=asahi tests=false
+  case $_profile in
+    m1-m2|m3-pro-native) tests=true ;;
+    m3-pro-legacy) gallium=asahi,softpipe; vulkan= ;;
+    m3-air-legacy) gallium=zink,softpipe ;;
+    m3-air-hal200) gallium=asahi,softpipe; vulkan= ;;
+    *) return 1 ;;
+  esac
+  CFLAGS= CXXFLAGS= LDFLAGS= meson setup build "$_src" \
+    --native-file llvm22.ini --prefix=/usr --libdir=lib --wrap-mode=nofallback \
+    --buildtype=release -Db_ndebug=false "-Dc_args=['-DMESA_DYNAMIC_TLS']" "-Dcpp_args=['-DMESA_DYNAMIC_TLS']" \
+    -Dgallium-drivers="$gallium" -Dvulkan-drivers="$vulkan" -Dbuild-tests="$tests" \
+    -Dplatforms=x11,wayland -Dglx=dri -Degl=enabled -Dgbm=enabled -Dglvnd=enabled \
+    -Dllvm=enabled -Ddraw-use-llvm=false -Dtools=drm-shim -Dmesa-clc=enabled -Dprecomp-compiler=enabled \
+    -Dvideo-codecs= -Dgallium-va=disabled
+  meson compile -C build -j4
+  if [[ $tests == true ]]; then
+    python3 "$srcdir/build-registered-tests.py" build
+    meson test -C build --no-rebuild --suite asahi --print-errorlogs
+  fi
+  if [[ $_profile == m3-pro-legacy ]]; then
+    meson compile -C build -j4 asahi-native-mrt-clear asahi-native-mediump-opt
+    build/src/gallium/drivers/asahi/asahi-native-mediump-opt
+    for mode in fresh-fresh fresh-valid; do
+      LD_PRELOAD="$srcdir/build/src/asahi/drm-shim/libasahi_noop_drm_shim.so" \
+        ASAHI_SHIM_CHIP=g15s ASAHI_M3_EXPERIMENTAL=1 \
+        build/src/gallium/drivers/asahi/asahi-native-mrt-clear "$mode"
+    done
+    CFLAGS= CXXFLAGS= LDFLAGS= meson setup build-vulkan mesa-vulkan \
+      --native-file llvm22.ini --prefix=/usr --libdir=lib --wrap-mode=nofallback \
+      --buildtype=release -Db_ndebug=false "-Dc_args=['-DMESA_DYNAMIC_TLS']" "-Dcpp_args=['-DMESA_DYNAMIC_TLS']" \
+      -Dvulkan-drivers=asahi -Dgallium-drivers= -Dglx=disabled -Dglvnd=disabled \
+      -Degl=disabled -Dgbm=disabled -Dgles1=disabled -Dgles2=disabled -Dopengl=false \
+      -Dplatforms=x11,wayland -Dllvm=enabled -Ddraw-use-llvm=false -Dmesa-clc=enabled -Dprecomp-compiler=enabled \
+      -Dbuild-tests=true -Dvideo-codecs= -Dtools=
+    meson compile -C build-vulkan -j4 vulkan_asahi agx_tests libasahi_tests hk_g15s_split_depth_test
+    ninja -C build-vulkan src/asahi/vulkan/asahi_icd.aarch64.json
+    build-vulkan/src/asahi/compiler/agx_tests
+    build-vulkan/src/asahi/lib/libasahi_tests
+    build-vulkan/src/asahi/vulkan/hk_g15s_split_depth_test
+  fi
+}
+package() {
+  meson install -C build --destdir "$pkgdir" --no-rebuild
+  rm -f "$pkgdir/usr/lib/libasahi_noop_drm_shim.so"
+  rm -rf "$pkgdir/usr/include" "$pkgdir/usr/lib/pkgconfig"
+  install -Dm644 "$_src/docs/license.rst" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$_spvtools/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/SPIRV-Tools-LICENSE"
+  cp -r "$_src/licenses" "$pkgdir/usr/share/licenses/$pkgname/licenses"
+  install -Dm644 mesa-receipt.json "$pkgdir/usr/share/siliconforest/mesa.json"
+  if [[ $_profile == m3-pro-legacy ]]; then
+    install -Dm755 build-vulkan/src/asahi/vulkan/libvulkan_asahi.so "$pkgdir/usr/lib/libvulkan_asahi.so"
+    install -Dm644 build-vulkan/src/asahi/vulkan/asahi_icd.aarch64.json \
+      "$pkgdir/usr/share/vulkan/icd.d/asahi_icd.aarch64.json"
+    install -Dm644 mesa-vulkan/docs/license.rst "$pkgdir/usr/share/licenses/$pkgname/Vulkan-LICENSE"
+    cp -r mesa-vulkan/licenses "$pkgdir/usr/share/licenses/$pkgname/vulkan-licenses"
+  fi
+  provides=("mesa=1:$_mesa_version" 'opengl-driver' 'libgbm.so')
+  conflicts=('mesa' 'mesa-asahi-edge' 'vulkan-asahi')
+  if [[ -f $pkgdir/usr/share/vulkan/icd.d/asahi_icd.aarch64.json ]]; then
+    provides+=("vulkan-asahi=1:$_mesa_version" 'vulkan-driver')
+  fi
+  if [[ $_profile == *-legacy || $_profile == m3-air-hal200 ]]; then
+    conflicts+=('mesa-m3' 'mesa-m3-native-pro' 'mesa-m3-pro-vulkan')
+    local prefix="$pkgdir/usr/lib/siliconforest/mesa" gl_only=()
+    mkdir -p "$prefix/libexec" "$pkgdir/usr/share/siliconforest/mesa"
+    ln -s /usr/lib "$prefix/lib"
+    ln -s /usr/share "$prefix/share"
+    cp session/{mesa-m3-session-env,mesa-m3-session-confirm,mesa-m3-user-setup,siliconforest-graphics-admit} "$prefix/libexec/"
+    chmod 755 "$prefix/libexec/"*
+    [[ $_profile != m3-air-hal200 ]] || gl_only=(-DMESA_M3_GL_ONLY)
+    cc -O2 "${gl_only[@]}" session/mesa-m3-loadcheck.c -ldl -o "$prefix/libexec/mesa-m3-loadcheck"
+    cc -O2 session/mesa-m3-wlcheck.c -lwayland-client -o "$prefix/libexec/mesa-m3-wlcheck"
+    cc -O2 $(pkg-config --cflags libdrm) -I"$_src/include" session/mesa-m3-abi-check.c \
+      -ldrm -o "$prefix/libexec/mesa-m3-abi-check"
+    install -Dm644 session/50-siliconforest-mesa "$pkgdir/usr/share/uwsm/env.d/50-siliconforest-mesa"
+    install -Dm644 session/user-setup.list "$pkgdir/usr/share/siliconforest/mesa/user-setup.list"
+    install -Dm644 session/PROVENANCE "$pkgdir/usr/share/siliconforest/mesa/PROVENANCE"
+    install -Dm644 session/mesa-m3-session-confirm.service \
+      "$pkgdir/usr/lib/systemd/user/siliconforest-mesa-session-confirm.service"
+    mkdir -p "$pkgdir/usr/lib/systemd/user/graphical-session.target.wants"
+    ln -s ../siliconforest-mesa-session-confirm.service \
+      "$pkgdir/usr/lib/systemd/user/graphical-session.target.wants/siliconforest-mesa-session-confirm.service"
+    printf '%s\n' "$_profile" > "$pkgdir/usr/share/siliconforest/mesa/profile"
+    printf '%s-%s\n' "$pkgver" "$pkgrel" > "$pkgdir/usr/share/siliconforest/mesa/package-version"
+    if [[ $_profile == m3-air-legacy ]]; then
+      install -Dm644 session/10-m3-asahi-zink.conf "$pkgdir/usr/share/drirc.d/10-m3-asahi-zink.conf"
+    fi
+    if [[ $_profile == m3-air-hal200 ]]; then
+      mkdir -p "$pkgdir/usr/share/vulkan"; : > "$pkgdir/usr/share/vulkan/disabled"
+    fi
+  fi
+  python3 needs-derive.py "$pkgdir" "$pkgdir/usr/lib" runtime.tsv runtime.needs \
+    --extra 'vulkan-icd-loader=Vulkan entrypoint loader' --extra 'libglvnd=GLVND entrypoint loader'
+  read -r -a depends < runtime.needs
+  if [[ $_profile == *-legacy || $_profile == m3-air-hal200 ]]; then
+    depends+=(python util-linux coreutils systemd-libs)
+    awk -F '\t' 'NR > 1 && $1 != "-" { print $1 }' runtime.tsv | sort -u \
+      > "$pkgdir/usr/share/siliconforest/mesa/needed-sonames"
+  fi
+  install -Dm644 runtime.tsv "$pkgdir/usr/share/siliconforest/mesa-runtime.tsv"
+  find "$pkgdir" -type f -exec sh -c 'head -c4 "$1" | grep -q ELF' sh {} \; -print > elfs
+  if xargs readelf -h < elfs | grep 'Machine:' | grep -v AArch64; then return 1; fi
+  xargs readelf -d < elfs > runtime-elf.txt
+  if grep -E '\((RPATH|RUNPATH)\)' runtime-elf.txt; then
+    echo 'Runtime search paths require review'; return 1
+  fi
+  install -Dm644 runtime-elf.txt "$pkgdir/usr/share/siliconforest/mesa-runtime-elf.txt"
+}
+__SOURCE_ARRAYS__

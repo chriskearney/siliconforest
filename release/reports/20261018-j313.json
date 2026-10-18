@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "qualification": "withdrawn",
+  "scope": {
+    "boards": [
+      "apple,j313"
+    ],
+    "firmware": [
+      "13.5"
+    ]
+  },
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261018.normal6-1",
+      "file": "linux-siliconforest-20261018.normal6-1-aarch64.pkg.tar.zst",
+      "sha256": "d7594b4483c2421b8de35a30f437ab42d71cd03f2152751986e5e1ca4c0a58fe",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "17a9930f20a0895b5980385b0b2d67edda8a24be"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.normal4-1",
+      "file": "mesa-siliconforest-20261018.normal4-1-aarch64.pkg.tar.zst",
+      "sha256": "5fa6b8d9438eaf739251e80de7765396bc40ed0b61945eeb43e6167c4aa2dd67",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "c8015f63608e6eb2f859a1739462a3c77eca600a"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.normal7-1",
+      "file": "m1n1-siliconforest-20261018.normal7-1-aarch64.pkg.tar.zst",
+      "sha256": "608126047f1d46a0521c664aa57ba1fb33ac373424fe88286e85156f66348e3b",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "1d6743b21c133a4522e6a3fc74183bad7a11e446"
+      }
+    }
+  },
+  "candidate_release": "testing-20261018-j313-2",
+  "candidate_boot": {
+    "schema": 1,
+    "board": "apple,j313",
+    "os_firmware": "13.5",
+    "kernel_release": "7.1.12-siliconforest-normal-17a9930f20a0",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 2560,
+        "height": 1600,
+        "refreshRate": 60.0
+      }
+    ],
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "packages": {
+      "linux-siliconforest": "20261018.normal6-1",
+      "mesa-siliconforest": "20261018.normal4-1",
+      "m1n1-siliconforest": "20261018.normal7-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "9bd0085d934848025e9e04b3fb5a564ab4415eec8cb296f54dd95417ee1e09ad"
+    },
+    "OpenGL": "Renderer: Apple M1 (G13G B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7436 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M1 (G13G B1) (deviceID 0x0)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6151 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-18T21:31:19Z",
+    "phase": "attended-candidate-default-boot"
+  },
+  "rollback_boot": {
+    "schema": 1,
+    "board": "apple,j313",
+    "os_firmware": "13.5",
+    "kernel_release": "7.1.12-2-20261015.19-sep-ARCH",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 2560,
+        "height": 1600,
+        "refreshRate": 60.0
+      }
+    ],
+    "OpenGL": "Renderer: Apple M1 (G13G B1)\nVersion: OpenGL ES 3.2 Mesa 26.2.3-arch1.1\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7443 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M1 (G13G B1) (deviceID 0x0)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6067 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-18T21:35:58Z",
+    "phase": "coordinated-rollback-default-boot"
+  },
+  "rollback_stage2_version": "v1.6.1-omarchy.aurora17",
+  "rollback_stage2_sha256": "4618271d44376e15e84a5c75a2d81f133c09c17d17b7a4831bf2d20d95c4612e",
+  "limits": [
+    "J313 on OS firmware 13.5 only.",
+    "Internal display; no attached dock/display was connected during this run.",
+    "Pixel readback and compositor smoke checks, not a complete API conformance or suspend qualification.",
+    "Desktop captures remain private on the test Mac; no raw journals or device serials are published."
+  ],
+  "withdrawal_reason": "Although the recorded J313 boot/readback/rollback checks passed, this unchecked kernel build uses bindgen 0.73.1, which generated incorrect task field offsets and caused M3 Pro GPU submission faults. Do not distribute; rebuild with checked corrected bindings and repeat qualification."
+}

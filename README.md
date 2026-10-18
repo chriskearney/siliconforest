@@ -1,13 +1,28 @@
 # SiliconForest
 
-A personally maintained Apple Silicon kernel and m1n1 release project for
+A personally maintained Apple Silicon kernel, Mesa and m1n1 stack for
 existing Omarchy installations, maintained by [iconidentify](https://github.com/iconidentify).
-Independent of Omacom, Aurora Silicon, and Asahi Linux; derived from their work
-with its original history, attribution, and licenses preserved.
+Upstream history, attribution and licenses are preserved.
 
-**Development setup only. There is no qualified SiliconForest binary release or
-public install command yet.** The installer and package repository are upcoming
-milestones. Building a payload does not establish that a Mac boots it.
+Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.1)
+on an existing Apple Silicon Omarchy installation:
+
+```sh
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.1/install.sh | bash
+```
+
+Qualified pairs are **M1 Air J313 with OS firmware 13.5** and **M3 Pro 16-inch
+J516S with 14.7**, with the exact loader/U-Boot versions in their signed manifests.
+Default boot, the native desktop, OpenGL/Vulkan pixel readback and rebooted
+rollback passed on both. Other M1/M2 models, M3 Pro variants and M3 Air remain
+pending; the installer refuses unqualified combinations.
+
+The command downloads signed prebuilt packages from each component's own public
+GitHub release. It preserves recovery entries, installs the matched set and
+leaves the reboot to you. It does not build on the recipient's machine or perform
+a full system upgrade. [Installation, scope and recovery](release/README.md).
+
+Signing fingerprint: `97DC8D8AFCBC08DB7283EC3CFFB366AB95783E75`.
 
 ## Repositories
 
@@ -33,7 +48,12 @@ SiliconForest support claim.
 
 ## Developer setup
 
-On Linux, with Git and Python 3.9 or newer:
+The [three-package installer](release/README.md) uses pinned public sources and
+board/firmware qualification reports. The broader source target catalog is a
+build list; only the released, qualified pairs above are admitted by the public
+installer.
+
+On Linux, with Git and Python 3.11 or newer:
 
 ```sh
 git clone https://github.com/iconidentify/siliconforest.git
@@ -43,7 +63,8 @@ make verify
 make check
 ```
 
-`make check` also requires ShellCheck. Source fetching uses only the personal
+`make check` also requires ShellCheck, GnuPG, libarchive tools, a C compiler and
+Wayland development libraries. Weston enables the real headless compositor case. Source fetching uses only the personal
 repositories and pinned submodules. Existing source checkouts are verified rather than
 reset, switched, or cleaned. A failed initial clone can leave a partial directory;
 inspect it before removing it and retrying.
@@ -54,7 +75,7 @@ anything into its boot partition.
 
 | Build | Prerequisites |
 | --- | --- |
-| Kernel | LLVM/Clang/LLD 22.1.8, Rust 1.93.1 with rust-src, bindgen >= 0.71.1, make, host C compiler, bc, flex, bison, cpio, perl, Python, libelf, OpenSSL development files, pahole, kmod |
+| Kernel | LLVM/Clang/LLD 22.1.8, Rust 1.93.1 with rust-src, the corrected bindgen from `sources/linux/tools/aurora-bindgen/`, make, host C compiler, bc, flex, bison, cpio, perl, Python, libelf, OpenSSL development files, pahole, kmod |
 | m1n1 stage 2 | LLVM/Clang/LLD 22.1.8, llvm-objcopy, make, Rust 1.99.0 with `aarch64-unknown-none-softfloat` |
 
 For an already provisioned Rust builder:
@@ -63,7 +84,8 @@ For an already provisioned Rust builder:
 rustup toolchain install 1.93.1 --profile minimal --component rust-src
 rustup toolchain install 1.99.0 --profile minimal --target aarch64-unknown-none-softfloat
 make build-m1n1
-JOBS=8 make build-kernel
+python3 sources/linux/tools/aurora-bindgen/build.py --output-dir "$PWD/build/kernel-bindgen"
+BINDGEN="$PWD/build/kernel-bindgen/rust-bindgen-0.73.2/target/release/bindgen" JOBS=8 make build-kernel
 ```
 
 Set `LLVM_DIR` to a nonstandard LLVM installation prefix if needed. The kernel
@@ -71,12 +93,19 @@ script also recognizes `/usr/lib/llvm22`. m1n1 builds use the selected LLVM on
 `PATH`. The first kernel configuration is the inherited release20 configuration;
 the build removes its `-ARCH` suffix and adds a distinct SiliconForest development
 release suffix. It runs `olddefconfig`, so retain the generated `.config` with
-every artifact. Do not advertise the inherited experimental features as tested.
+every artifact. Every kernel build enables compile-time C/Rust layout assertions;
+the `-layout1` ABI suffix keeps it separate from the initial unchecked builds.
+Stock bindgen 0.73.1 produced incorrect task field offsets in the initial M3 Pro
+candidate and caused a kernel fault on GPU submissions. Those initial kernel
+packages must not be distributed. Do not advertise inherited experimental
+features as tested.
 
 Outputs:
 
 - `build/linux/arch/arm64/boot/Image`, modules, Apple DTBs, and `.config`.
+- `build/linux-m3-native/` when explicitly built with `KERNEL_VARIANT=m3-native`.
 - `dist/m1n1-<commit>/m1n1.bin`, build flags, source lock, and checksums.
+- `dist/mesa-root/` after `make build-mesa` on a provisioned ARM64 builder.
 
 The m1n1 helper runs `make clean` in its dedicated source checkout to prevent
 old build flags from being reused. Its output is a **stage 2 payload**, not a
@@ -114,7 +143,8 @@ review for the separate development profile and DTB paths.
 
 The target experience is one bootstrap command adding your signed pacman
 repository and installing `linux-siliconforest` plus the qualified boot components.
-Afterward, normal package upgrades deliver the updates you choose to publish.
+Updates use a newly signed, matched three-package transaction; the guard refuses
+an independent component upgrade that would mix boot or graphics contracts.
 There will be an explicit testing channel and a stable channel.
 
 See [the implementation and maintenance plan](docs/PLAN.md) for packaging,
@@ -151,8 +181,9 @@ rather than the default M3 Pro/Max/Neo Mesa profile.
 The main m1n1 build and 54 Python tests pass (7 skips, 10 subtests), and the Neo
 build and 80 Python tests pass (7 skips). Ten inherited old G15 stand-in fixture
 failures reproduce identically at the original source pin; the complete G15
-suite is not green. No boot component has been installed and no hardware boot,
-GPU rendering, recovery or suspend qualification has been performed.
+suite is not green. The new normal kernel has booted on the M1 Air and passed boot-health.
+Full-stack installation, GPU rendering and rollback qualification remain in
+progress; no board has a qualified SiliconForest release yet.
 
 [Bootloader review and evidence](https://github.com/iconidentify/siliconforest-m1n1/blob/siliconforest/next/SILICONFOREST-REVIEW.md)
 and [Mesa validation](https://github.com/iconidentify/siliconforest-mesa/blob/siliconforest/next/SILICONFOREST-VALIDATION.md)

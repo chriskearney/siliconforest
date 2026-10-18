@@ -1,0 +1,174 @@
+{
+  "schema": 1,
+  "qualification": "passed",
+  "scope": {
+    "boards": [
+      "apple,j516s"
+    ],
+    "firmware": [
+      "14.7"
+    ]
+  },
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261018.pro14.7-1",
+      "file": "linux-siliconforest-20261018.pro14.7-1-aarch64.pkg.tar.zst",
+      "sha256": "bba260f8cdac7d63240c4c01ea5c826e02cf8c60bddcc604eff7e7c82fed5b87",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "17a9930f20a0895b5980385b0b2d67edda8a24be"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.18-layout1.1"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.pro14.5-1",
+      "file": "mesa-siliconforest-20261018.pro14.5-1-aarch64.pkg.tar.zst",
+      "sha256": "8f67d517c7de50f4f2fe5aff1c3af118792176af41eb87c5c11a8d1884d44db5",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "compat/m3-pro-legacy",
+        "commit": "f7d09448e2ee398047a5b1ab4de13e37be00486d",
+        "additional_sources": [
+          {
+            "role": "vulkan",
+            "repository": "iconidentify/siliconforest-mesa",
+            "commit": "b0f56952b7f06955b143fbfa90c07de4c5864964",
+            "ref": "sources/2026-10-18/previous/review/aurora-mesa-foundation-20261012"
+          }
+        ]
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-m3-pro.1"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.pro14.10-1",
+      "file": "m1n1-siliconforest-20261018.pro14.10-1-aarch64.pkg.tar.zst",
+      "sha256": "cca7e37f0dc87a6236815fc636112d4b450a55caaa72fa7f4bcf8f879429d650",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "1d6743b21c133a4522e6a3fc74183bad7a11e446"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.18-stage2.1"
+      }
+    }
+  },
+  "boot_contract": {
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "dtb": "apple/t6030-j516s.dtb",
+    "backend": "limine",
+    "entry": "limine.conf",
+    "image": "EFI/Linux/omarchy_linux-siliconforest.efi",
+    "max_image_bytes": 75497472,
+    "max_stage2_bytes": 8388608,
+    "stage1_versions": [
+      "v1.6.1-dirty"
+    ],
+    "iboot_versions": [
+      "iBoot-10151.140.19.700.2"
+    ],
+    "m1n1_config": [
+      "chosen.asahi,t6030-gpu=1",
+      "chosen.asahi,t6030-dcp=1",
+      "chosen.asahi,t6030-dcpext=1"
+    ],
+    "uboot_path": "/usr/lib/asahi-boot/u-boot-nodtb.bin",
+    "uboot_sha256": "11c09b0de3cdb03406de09e1782aa5a30b097f1e228de7b558ca88626c87f8c5",
+    "kernel_image_sha256": "105293bef1b7206cec99a94dbe4926663d41b7981707313317ade3c3f875e50c",
+    "dtb_sha256": "029d0b8e419b4e99778abc7c235b02b8397a5cc14ab3fa315b321a983db693df",
+    "m1n1_sha256": "318a05c9b4e81f76ec2b3f7a6f180334f665a37dca931a2a1a4a1db505ab6c95",
+    "config_sha256": "1a440913424ceaaa0eab17ce340103b69b9a7374640a03342942bb7656114f1f"
+  },
+  "kernel_layout_checks": {
+    "checked": true,
+    "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0",
+    "kernel_image_sha256": "105293bef1b7206cec99a94dbe4926663d41b7981707313317ade3c3f875e50c"
+  },
+  "candidate_default_boot": {
+    "board": "apple,j516s",
+    "os_firmware": "14.7",
+    "kernel_release": "7.1.12-siliconforest-normal-17a9930f20a0-layout1",
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "graphics_admission": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 3456,
+        "height": 2234,
+        "refreshRate": 120.0
+      }
+    ],
+    "packages": {
+      "linux-siliconforest": "20261018.pro14.7-1",
+      "mesa-siliconforest": "20261018.pro14.5-1",
+      "m1n1-siliconforest": "20261018.pro14.10-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.1.4.so": "67a56b6b595dc0da28e4f5d622b2d19f67f63054731ff849f0e20a94af886a74"
+    },
+    "OpenGL": "Renderer: Apple M3 Pro (G15S B1)\nVersion: OpenGL ES 3.2 Mesa 26.1.4\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 3111 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M3 Pro (G15S B1) (deviceID 0x6030)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 2675 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-18T21:51:44Z"
+  },
+  "rebooted_rollback": {
+    "board": "apple,j516s",
+    "os_firmware": "14.7",
+    "kernel_release": "7.1.12-2-20261017.20-sep-ARCH",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 3456,
+        "height": 2234,
+        "refreshRate": 120.0
+      },
+      {
+        "name": "DP-1",
+        "width": 3840,
+        "height": 2160,
+        "refreshRate": 59.997
+      }
+    ],
+    "OpenGL": "Renderer: Apple M3 Pro (G15S B1)\nVersion: OpenGL ES 3.2 Mesa 26.1.4\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 2933 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M3 Pro (G15S B1) (deviceID 0x6030)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 3364 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-18T21:55:00Z"
+  },
+  "recovery_checks": {
+    "all_saved_boot_file_hashes_restored": true,
+    "historical_recovery_entries_retained": true,
+    "old_kernel_and_Mesa_restored": true,
+    "user_session_restored": true
+  },
+  "limits": [
+    "Only this exact board and OS firmware were qualified.",
+    "Internal panel desktop and GPU readback checks; other boards, firmware, external displays and suspend need separate qualification."
+  ],
+  "private_evidence": "Desktop captures and raw host logs remain local and are not published."
+}

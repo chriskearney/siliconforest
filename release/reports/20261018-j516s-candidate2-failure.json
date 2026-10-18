@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "qualification": "failed",
+  "scope": {
+    "boards": [
+      "apple,j516s"
+    ],
+    "firmware": [
+      "14.7"
+    ]
+  },
+  "kernel_release": "7.1.12-siliconforest-normal-17a9930f20a0",
+  "kernel_source": "17a9930f20a0895b5980385b0b2d67edda8a24be",
+  "failure": {
+    "trigger": "First native M3 GPU submission from OpenGL or the compositor",
+    "site": "asahi::m3_submit::Owner::current",
+    "kind": "Kernel NULL pointer dereference",
+    "cause": "Stock bindgen 0.73.1 generated incorrect task_struct field offsets; the initial build disabled layout assertions.",
+    "task_struct_group_leader_offsets": {
+      "C": 1664,
+      "Rust": 1728
+    },
+    "task_struct_pid_offsets": {
+      "C": 1600,
+      "Rust": 1664
+    }
+  },
+  "session_issue": "The previous experimental Zink launcher refused the native GL prefix, and its fallback desktop correctly selected software rendering after the unconfirmed GPU attempt. A normal native session exposed the kernel fault.",
+  "disposition": "Do not publish the unchecked kernel packages. Require corrected bindgen and unconditional layout assertions, a separate ABI, and fresh hardware qualification.",
+  "recovery": {
+    "previous_kernel": "7.1.12-2-20261017.20-sep-ARCH",
+    "boot_chain_restored": true,
+    "desktop_hardware_renderer_restored": true,
+    "OpenGL_hardware_readback": true,
+    "Vulkan_hardware_readback": true
+  }
+}

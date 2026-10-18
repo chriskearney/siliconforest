@@ -1,0 +1,8 @@
+# Installed by the mesa-m3 package. Sourced by uwsm's environment preloader at
+# the start of each uwsm-managed graphical session; the rules are in
+# /usr/lib/siliconforest/mesa/libexec/mesa-m3-session-env, which is sourced only when it is
+# readable and its syntax checks out. Opt out with /etc/mesa-m3/disable,
+# ~/.config/mesa-m3/disable or mesa_m3=off.
+# shellcheck disable=SC1091
+[ -r /usr/lib/siliconforest/mesa/libexec/mesa-m3-session-env ] && sh -n /usr/lib/siliconforest/mesa/libexec/mesa-m3-session-env 2>/dev/null &&
+	. /usr/lib/siliconforest/mesa/libexec/mesa-m3-session-env
