@@ -15,7 +15,7 @@
     "m1n1": {
       "url": "https://github.com/iconidentify/siliconforest-m1n1.git",
       "branch": "siliconforest/next",
-      "commit": "a9e30c0863495f6c3446dded5f29dda1cdad59e3",
+      "commit": "5caa993731524502ab64903d302e3c08f06c6532",
       "upstream_url": "https://github.com/AsahiLinux/m1n1.git",
       "upstream_branch": "main",
       "upstream_commit": "25b1d89ca50be848b136ce771ce7167244852a91",
