@@ -47,8 +47,27 @@ def stage(component, source, build, tree, profile):
         native = '\nCONFIG_SILICONFOREST_M3=y\n' in '\n' + config
         require(native == (profile['kernel_variant'] == 'm3-native'), 'Wrong kernel profile')
         modules = tree / 'usr/lib/modules' / release
+        environment = {**os.environ, 'RUSTUP_TOOLCHAIN': json.loads(
+            (ROOT / 'sources.lock.json').read_text())['toolchains']['kernel_rust']}
+        llvm = os.environ.get('LLVM_DIR')
+        if not llvm and Path('/usr/lib/llvm22/bin/clang').exists():
+            llvm = '/usr/lib/llvm22'
+        if llvm:
+            environment['PATH'] = str(Path(llvm) / 'bin') + ':' + environment['PATH']
+            environment['LIBCLANG_PATH'] = str(Path(llvm) / 'lib')
         run('make', '-C', source, 'O=' + str(build), 'ARCH=arm64', 'LLVM=1',
-            'INSTALL_MOD_PATH=' + str(tree / 'usr'), 'INSTALL_MOD_STRIP=1', 'modules_install')
+            'KERNELRELEASE=' + release, '-j' + os.environ.get('JOBS', '4'),
+            'INSTALL_MOD_PATH=' + str(tree / 'usr'), 'INSTALL_MOD_STRIP=1', 'modules_install', env=environment)
+        require((build / '.config').read_text() == config, 'Kernel config changed during module staging')
+        module_versions = [p.name for p in (tree / 'usr/lib/modules').iterdir()]
+        require(module_versions == [release], 'Modules were staged under the wrong kernel ABI')
+        installed_modules = [str(p) for p in modules.rglob('*.ko*') if p.is_file()]
+        require(installed_modules, 'Kernel package contains no installed modules')
+        for offset in range(0, len(installed_modules), 32):
+            batch = installed_modules[offset:offset + 32]
+            vermagic = subprocess.check_output(['modinfo', '-F', 'vermagic', *batch], text=True).splitlines()
+            require(len(vermagic) == len(batch) and all(v.split()[0] == release for v in vermagic),
+                    'Installed module version magic does not match the kernel')
         copy(build / 'arch/arm64/boot/Image', modules / 'vmlinuz')
         copy(build / '.config', modules / 'config')
         (modules / 'pkgbase').write_text(PACKAGES['kernel'] + '\n')
