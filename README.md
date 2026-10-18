@@ -26,7 +26,7 @@ The initial sources come from Omacom's `integration/aurora` branches on
 2026-10-18. `sources.lock.json` records full commits rather than following moving
 branches. The kernel starts at 7.1.12. The m1n1 fork drops the inherited
 `AGENTS.md` at its owner's direction; its source code matches the pinned baseline.
-Neither a current branch name nor an old upstream validation result is an
+Neither a current branch name nor an old upstream validation result is a
 SiliconForest support claim.
 
 ## Developer setup
@@ -93,15 +93,20 @@ need separate qualification and recovery, as described in the plan.
 
 ## Publishing direction
 
-An [experimental M3 G15 source branch](https://github.com/iconidentify/siliconforest-linux/tree/siliconforest/m3-g15-review-20261018)
-imports Eryk's M3 Pro stack and Naeem's M3 Max additions, with local fixes for
-reserved-RAM admission, stream-validation limits, and J516C board admission.
-Its original commits and dependencies are pinned in
-[the candidate manifest](candidates/m3-g15-20261018.json), with findings in
-[the code review](https://github.com/iconidentify/siliconforest-linux/blob/siliconforest/m3-g15-review-20261018/SILICONFOREST-M3-REVIEW.md).
-This is a separate candidate line: the maintained source lock remains unchanged
-while its prerequisite framework, machine data, m1n1, Mesa, and integration are
-reviewed. It is not an installation or release candidate.
+Eryk's M3 Pro stack and Naeem's M3 Max additions are integrated into
+`siliconforest/next` behind **`CONFIG_SILICONFOREST_M3` (default off)**, following
+[the adversarial review](https://github.com/iconidentify/siliconforest-linux/blob/siliconforest/next/SILICONFOREST-M3-REVIEW.md).
+The existing GPU/display implementations and normal board DTBs remain in place.
+The development profile selects a matched alternative GPU, display, power, PHY,
+Type-C and UAPI stack; USB4 is excluded pending its tunnel API port.
+
+[The source manifest](candidates/m3-g15-20261018.json) records the merged source,
+original PRs, fixes and validation. All 43 host checks passed, along with arm64
+compilation of the enabled driver targets and Apple DTBs. This does not establish
+complete kernel/module linkage or hardware qualification. Matching m1n1, Mesa and
+source-derived J516C board data remain release requirements; the m1n1 pin has not
+changed. The normal build helper keeps the maintained configuration. See the
+review for the separate development profile and DTB paths.
 
 The target experience is one bootstrap command adding your signed pacman
 repository and installing `linux-siliconforest` plus the qualified boot components.

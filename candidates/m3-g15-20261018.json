@@ -2,15 +2,14 @@
   "schema": 1,
   "project": "siliconforest",
   "date": "2026-10-18",
-  "status": "experimental source review; not approved for promotion or installation",
+  "status": "merged source integration; experimental variant defaults off; not a qualified binary release",
   "kernel": {
     "url": "https://github.com/iconidentify/siliconforest-linux.git",
-    "branch": "siliconforest/m3-g15-review-20261018",
-    "commit": "8a29680940cde36759e2061d3c8a8e7e9df70fa9",
-    "review": "https://github.com/iconidentify/siliconforest-linux/blob/siliconforest/m3-g15-review-20261018/SILICONFOREST-M3-REVIEW.md",
+    "branch": "siliconforest/next",
+    "commit": "6a421d4e76ff282b414138182fd28597ebf20a18",
+    "review": "https://github.com/iconidentify/siliconforest-linux/blob/6a421d4e76ff282b414138182fd28597ebf20a18/SILICONFOREST-M3-REVIEW.md",
     "prerequisite_base": "0daed2db47875fc705b4e7aea10b4d33e3514b06"
   },
-  "maintained_baseline_unchanged": "5d570a78a4ab29ac383ec8988be2356dfc6c8a75",
   "upstream_snapshots": [
     {
       "author": "erykwieliczko",
@@ -39,6 +38,10 @@
     {
       "commit": "f4472309fd159ff52ae7a57678d405ebeb4601a0",
       "change": "restrict the measured M3 Max GPU and panel profiles to J516C"
+    },
+    {
+      "commit": "004d92a5ea8f9b6a92f45718c3f7aff452773024",
+      "change": "isolate the complete dependency stack; share strict mapping classification with adopted UAT; verify board bytes before firmware start; initialize DRM data before backend publication; preserve the imported ABI and maintained Thunderbolt lifetime protections; reject reserved ioctl padding"
     }
   ],
   "identified_companions_not_imported": [
@@ -55,18 +58,40 @@
       "merge_commit": "97820568035b8d7035c68e4126f203d86c76abe4"
     }
   ],
-  "promotion_blockers": [
-    "review framework migration/backport: prerequisite base differs from maintained baseline by 1414 commits by identity",
-    "matching T6031 m1n1 handoff source and exact commit not yet pinned",
-    "source-derived replacement for missing machine-specific J516C board-data blob",
-    "matching Mesa and changed DRM UAPI",
-    "driver/configuration build checks and target hardware qualification not performed"
-  ],
   "validation": {
-    "c_host_cases_passed": 9,
+    "c_host_cases_passed": 18,
     "rust_host_tests_passed": 23,
     "baseline_regressions_reproduced": true,
     "full_kernel_build": false,
-    "hardware_tested": false
-  }
+    "hardware_tested": false,
+    "uapi_profile_checks_passed": 2,
+    "enabled_driver_targets_cross_compiled": true,
+    "development_and_normal_apple_dtbs_compiled": true,
+    "default_config_difference": "only CONFIG_SILICONFOREST_M3 is not set",
+    "development_fragment_reproduces_checked_config": true,
+    "kernel_llvm": "22.1.8",
+    "kernel_rust": "1.93.1",
+    "ci": "https://github.com/iconidentify/siliconforest-linux/actions/runs/39153840924"
+  },
+  "integration_pr": "https://github.com/iconidentify/siliconforest-linux/pull/1",
+  "maintained_parent": "5d570a78a4ab29ac383ec8988be2356dfc6c8a75",
+  "integration": {
+    "config_option": "CONFIG_SILICONFOREST_M3",
+    "default_enabled": false,
+    "normal_driver_trees_and_board_sources_preserved": true,
+    "development_boards": [
+      "J514S",
+      "J516C"
+    ],
+    "usb4_supported_in_variant": false,
+    "source_port_commit": "004d92a5ea8f9b6a92f45718c3f7aff452773024",
+    "source_provenance": "https://github.com/iconidentify/siliconforest-linux/blob/6a421d4e76ff282b414138182fd28597ebf20a18/SILICONFOREST-M3-SOURCES.json"
+  },
+  "release_requirements": [
+    "matching m1n1 handoffs, including exact T6031 source, pinned and qualified",
+    "reproducible source-derived J516C board data with verified machine calibration",
+    "matching Mesa built against the imported development UAPI",
+    "complete Image/modules/modpost/package validation and target hardware qualification",
+    "USB4 tunnel ownership API port before enabling USB4 with this variant"
+  ]
 }

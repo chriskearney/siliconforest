@@ -38,6 +38,17 @@ release tags. The historical kernel repository remains archived and is not part
 of the release workflow. The new `iconidentify/siliconforest-linux` repository
 preserves full Linux history and has its own Git storage and origin remote.
 
+### Reviewed M3 source integration
+
+The maintained kernel now includes the PR358/PR363 M3 Pro/Max source stack as an
+isolated development variant, selected by `CONFIG_SILICONFOREST_M3` and disabled
+in the normal configuration. Its separate UAPI header, Type-C dependencies and
+DTB paths preserve the current implementations. The source manifest and review
+record the exact merged commit and local fixes. Host checks and enabled driver
+object/DTB compilation passed; full kernel/module linkage, matching bootloader
+handoffs, Mesa, J516C board data and target hardware qualification remain before
+an M3 binary release. Do not enable this profile in the public bootstrap by default.
+
 ## 2. Build and package
 
 The checked-in helpers compile a distinct kernel and a stage 2 m1n1 payload.
