@@ -142,11 +142,14 @@ def fetch_bundle(tag, directory, fingerprint, catalog=False):
         download(base + '/' + name, directory / name, limit=4 * 1024**2)
     data = validate(verify_signature(directory, fingerprint))
     require(data['id'] == tag, 'Downloaded manifest names another release')
-    names = ['siliconforest.db', 'siliconforest.db.sig']
-    for package in data['packages'].values():
-        names.extend([package['file'], package['file'] + '.sig'])
-    for name in names:
+    for name in ('siliconforest.db', 'siliconforest.db.sig'):
         download(base + '/' + name, directory / name)
+    for package in data['packages'].values():
+        artifact = package.get('artifact')
+        component_base = ('https://github.com/' + artifact['repository'] + '/releases/download/' +
+                          artifact['tag']) if artifact else base
+        for name in (package['file'], package['file'] + '.sig'):
+            download(component_base + '/' + name, directory / name)
     return data
 
 
@@ -350,7 +353,12 @@ def apply(directory, fingerprint, testing=False):
             config = Path('/etc/pacman.conf')
             require('[siliconforest]' not in config.read_text().split(boot.BEGIN)[0],
                     'Unmanaged SiliconForest repository already exists')
-            block = '[siliconforest]\nSigLevel = Required DatabaseRequired\nServer = ' + data['repository']['url']
+            if all(p.get('artifact') for p in data['packages'].values()):
+                # Components have separate release hosts. Their matched set is
+                # updated by this verifier, not independently through pacman -S.
+                block = '# Matched component releases: update with the SiliconForest installer.'
+            else:
+                block = '[siliconforest]\nSigLevel = Required DatabaseRequired\nServer = ' + data['repository']['url']
             boot.atomic(config, boot.managed(config.read_text(), block).encode())
             for name in ('siliconforest.db', 'siliconforest.db.sig'):
                 boot.atomic(Path('/var/lib/pacman/sync') / name, (trusted / name).read_bytes())

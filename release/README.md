@@ -22,6 +22,16 @@ pins their combination and builds, verifies, signs and selects complete releases
 Recipients must not combine independent moving releases from the source repos.
 Private Mesa source is excluded from public releases.
 
+Each package and its detached signature are published in a pinned GitHub release
+of its own source repository (`siliconforest-linux`, `siliconforest-mesa`, or
+`siliconforest-m1n1`). The control release contains the installer and signed
+manifest/catalog and package-set metadata. `publish-assets.json` lists the exact
+assets for each destination; package archives must not be uploaded to the control
+release. The installer downloads these prebuilt component artifacts, verifies
+their signatures and hashes, and installs the matched set with `pacman -U`.
+Updates use the same installer; separate component releases are not enabled as
+independent pacman channels.
+
 ## Actual hardware and profile boundaries
 
 The available owner machines were inspected on 2026-10-18:

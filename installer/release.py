@@ -95,6 +95,14 @@ def validate(data, *, install=False, testing=False):
             '-siliconforest-' in data['kernel_release'], 'Kernel needs a unique SiliconForest ABI name')
     for component, expected in PACKAGES.items():
         package = data['packages'][component]
+        artifact = package.get('artifact')
+        if artifact is not None:
+            require(isinstance(artifact, dict) and set(artifact) == {'repository', 'tag'} and
+                    artifact['repository'] == REPOS[component],
+                    'Package artifacts must come from their exact public component repository')
+            asset_name(artifact['tag'])
+        if install and not testing:
+            require(artifact is not None, 'Public releases require pinned component artifacts')
         require(package['name'] == expected, 'Unexpected package in minimal release')
         asset_name(package['file'])
         asset_name(package['version'])

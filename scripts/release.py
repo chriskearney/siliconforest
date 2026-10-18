@@ -147,6 +147,22 @@ def main():
             print('Qualified signed bundle assembled locally. Nothing was published or installed.')
     else:
         print('UNSIGNED CANDIDATE: no install.sh was emitted; not an installable release.')
+    component_assets = []
+    package_names = set()
+    for component, package in data['packages'].items():
+        names = [package['file']]
+        if a.signing_key:
+            names.append(package['file'] + '.sig')
+        package_names.update(names)
+        if package.get('artifact'):
+            component_assets.append({**package['artifact'], 'component': component,
+                                     'source_commit': package['source']['commit'], 'assets': names})
+    control = [p.name for p in a.output.iterdir() if p.is_file() and not p.is_symlink() and
+               (not component_assets or p.name not in package_names)]
+    (a.output / 'publish-assets.json').write_text(json.dumps({
+        'schema': 1, 'components': component_assets,
+        'control': {'repository': 'iconidentify/siliconforest', 'tag': data['id'], 'assets': sorted(control)}},
+        indent=2) + '\n')
 
 
 if __name__ == '__main__':

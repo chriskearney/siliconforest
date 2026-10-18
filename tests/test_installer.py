@@ -73,6 +73,16 @@ def payload(data, component):
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_component_artifacts_cannot_point_to_another_repository(self):
+        data = example()
+        data['packages']['mesa']['artifact']['repository'] = 'aurora-silicon/mesa-aurora'
+        with self.assertRaisesRegex(Refusal, 'exact public component'):
+            validate(data)
+        data = example()
+        data['packages']['m1n1']['artifact']['tag'] = '../main'
+        with self.assertRaisesRegex(Refusal, 'Unsafe asset name'):
+            validate(data)
+
     def test_no_example_or_target_is_installable(self):
         validate(example())
         with self.assertRaisesRegex(Refusal, 'not hardware-qualified'):
@@ -689,6 +699,11 @@ class SignatureTests(unittest.TestCase):
             base = 'https://github.com/iconidentify/siliconforest/releases/download/'
             assets = {base + data['id'] + '/' + f.name: f.read_bytes() for f in root.iterdir()
                       if f.is_file() and f.name not in ('catalog.json', 'catalog.json.sig')}
+            for package in data['packages'].values():
+                artifact = package['artifact']
+                host = 'https://github.com/' + artifact['repository'] + '/releases/download/' + artifact['tag'] + '/'
+                for name in (package['file'], package['file'] + '.sig'):
+                    assets[host + name] = assets.pop(base + data['id'] + '/' + name)
             for name in ('catalog.json', 'catalog.json.sig', 'release-key.asc'):
                 assets[base + 'testing-catalog/' + name] = (root / name).read_bytes()
             def fetch(url, target, **kwargs):

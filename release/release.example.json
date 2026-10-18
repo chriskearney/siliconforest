@@ -25,6 +25,10 @@
         "repository": "iconidentify/siliconforest-linux",
         "branch": "siliconforest/next",
         "commit": "17a9930f20a0895b5980385b0b2d67edda8a24be"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "testing-example-component"
       }
     },
     "mesa": {
@@ -36,6 +40,10 @@
         "repository": "iconidentify/siliconforest-mesa",
         "branch": "siliconforest/next",
         "commit": "c8015f63608e6eb2f859a1739462a3c77eca600a"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "testing-example-component"
       }
     },
     "m1n1": {
@@ -47,6 +55,10 @@
         "repository": "iconidentify/siliconforest-m1n1",
         "branch": "siliconforest/next",
         "commit": "1d6743b21c133a4522e6a3fc74183bad7a11e446"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "testing-example-component"
       }
     }
   },
@@ -58,8 +70,12 @@
     "image": "EFI/Linux/omarchy_linux-siliconforest.efi",
     "max_image_bytes": 100663296,
     "max_stage2_bytes": 16777216,
-    "stage1_versions": ["EXACT-M3-STAGE1-REQUIRED"],
-    "iboot_versions": ["EXACT-M3-IBOOT-REQUIRED"],
+    "stage1_versions": [
+      "EXACT-M3-STAGE1-REQUIRED"
+    ],
+    "iboot_versions": [
+      "EXACT-M3-IBOOT-REQUIRED"
+    ],
     "m1n1_config": [],
     "uboot_path": "/usr/lib/asahi-boot/u-boot-nodtb.bin",
     "uboot_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
