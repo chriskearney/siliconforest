@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "public_catalog": "v2026.10.18.2",
+  "installed_child": "v2026.10.18-j516s-native.1",
+  "bootstrap_sha256": "4dafa21bed0cb433b73f1ac972d0ff48819294fdbdc53bfaf43859b4e36b8894",
+  "actual_public_install_and_default_boot": {
+    "schema": 1,
+    "board": "apple,j516s",
+    "os_firmware": "14.7",
+    "kernel_release": "7.1.12-siliconforest-native-gpu-d68cf5c0040f-layout1",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "graphics_admission": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 3456,
+        "height": 2234,
+        "refreshRate": 120.0
+      },
+      {
+        "name": "DP-1",
+        "width": 3840,
+        "height": 2160,
+        "refreshRate": 59.997
+      }
+    ],
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "packages": {
+      "linux-siliconforest": "20261018.nativegpu5-1",
+      "mesa-siliconforest": "20261018.nativegpu1-1",
+      "m1n1-siliconforest": "20261018.nativegpu2-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "ed1ccced9fee00ad6de56e9429fbe71b02f2b0510d15197c3dd46daa33e013f6"
+    },
+    "OpenGL": "Renderer: Apple M3 Pro (G15S B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7388 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M3 Pro (G15S B1) (deviceID 0x6030)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6758 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-18T23:14:20Z"
+  },
+  "public_quake_smoke": {
+    "frames": 969,
+    "fps": 173.9,
+    "extent": [
+      1920,
+      1080
+    ],
+    "gameplay_frame_visually_checked": true,
+    "included_in_five_run_benchmark": false
+  },
+  "gpu_recoveries": 0,
+  "hang_kills": 0,
+  "native_gpu_kernel_errors": 0,
+  "transaction_status": "installed-verified",
+  "recovery": "All bootable entries retained. A duplicate stage2 backup was losslessly compressed in place on the ESP with hash verification and recovery instructions; the uncompressed root copy remains.",
+  "limits": "This verifies the public artifact download/install path for J516S/14.7. The original qualification report records broader limits; no other machine is updated by this report.",
+  "private_evidence": "Desktop/game captures and raw host logs remain local."
+}
