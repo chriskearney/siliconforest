@@ -212,6 +212,14 @@
         "commit": "f7d09448e2ee398047a5b1ab4de13e37be00486d",
         "apis": [
           "OpenGL"
+        ],
+        "additional_sources": [
+          {
+            "role": "vulkan",
+            "repository": "iconidentify/siliconforest-mesa",
+            "commit": "b0f56952b7f06955b143fbfa90c07de4c5864964",
+            "ref": "sources/2026-10-18/previous/review/aurora-mesa-foundation-20261012"
+          }
         ]
       },
       "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446",

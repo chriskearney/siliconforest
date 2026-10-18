@@ -100,6 +100,13 @@ def validate(data, *, install=False):
         require(bool(SHA.fullmatch(package['sha256'])), 'Invalid package digest')
         require(package['source']['repository'] == REPOS[component], 'Require owned source repository')
         require(bool(COMMIT.fullmatch(package['source']['commit'])), 'Require exact source commit')
+        extras = package['source'].get('additional_sources', [])
+        require(isinstance(extras, list), 'Additional sources must be explicit')
+        require(not extras or component == 'mesa', 'Only the combined Mesa package has additional sources')
+        require(len({e['role'] for e in extras}) == len(extras), 'Duplicate additional source roles')
+        for extra in extras:
+            require(extra['role'] == 'vulkan' and extra['repository'] == REPOS['mesa'] and
+                    bool(COMMIT.fullmatch(extra['commit'])), 'Unexpected additional Mesa source')
     require(data['boards'] and len(set(data['boards'])) == len(data['boards']), 'Require distinct boards')
     for board in data['boards']:
         require(bool(re.fullmatch(r'apple,j[0-9]+[a-z]?', board)), 'Require exact board compatible')
@@ -109,6 +116,9 @@ def validate(data, *, install=False):
     relative(boot['dtb'])
     require(boot['dtb'].endswith('.dtb'), 'Require a DTB')
     require(boot['backend'] in ('limine', 'grub'), 'Unknown boot backend')
+    for key, maximum in [('max_image_bytes', 256 * 1024**2), ('max_stage2_bytes', 32 * 1024**2)]:
+        require(type(boot.get(key)) is int and 1024**2 <= boot[key] <= maximum,
+                'Require a bounded qualified boot-file size: ' + key)
     relative(boot['entry'])
     relative(boot['image'])
     require(isinstance(boot['m1n1_config'], list), 'Require explicit handoff configuration')
@@ -158,6 +168,8 @@ def verify_packages(directory, data):
         receipt = json.loads(subprocess.check_output(['bsdtar', '-xOf', str(path),
             'usr/share/siliconforest/' + next(k for k, v in PACKAGES.items() if v == package['name']) + '.json'], text=True))
         require(receipt['source_commit'] == package['source']['commit'], 'Package source receipt differs')
+        require(receipt.get('additional_sources', []) == package['source'].get('additional_sources', []),
+                'Additional package source receipts differ')
         members = set(subprocess.check_output(['bsdtar', '-tf', str(path)], text=True).splitlines())
         for member in members:
             relative(member.rstrip('/'))

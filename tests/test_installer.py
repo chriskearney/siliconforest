@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from installer import boot
+from installer import boot, graphics
 from installer import __main__ as cli
 from installer.release import Refusal, PACKAGES, digest, validate, verify_signature, verify_packages, verify_database
 
@@ -134,6 +134,57 @@ class ReleaseTests(unittest.TestCase):
 
 
 class BootTests(unittest.TestCase):
+    def test_graphics_admission_requires_the_running_kernel_and_all_sources(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, d = Path(tmp), example()
+            d['qualification'].update(status='passed', report='fixture', boards=d['boards'], firmware=d['firmware'],
+                                     desktop=True, hardware_renderer=True, boot_chain=True, rollback=True)
+            d['packages']['mesa']['source']['additional_sources'] = [{'role': 'vulkan',
+                'repository': 'iconidentify/siliconforest-mesa', 'commit': 'a' * 40}]
+            manifest = root / 'graphics.json'
+            manifest.write_text(json.dumps(d))
+            receipts = root / 'usr/share/siliconforest'
+            receipts.mkdir(parents=True)
+            for component, p in d['packages'].items():
+                (receipts / (component + '.json')).write_text(json.dumps({
+                    'source_commit': p['source']['commit'],
+                    'additional_sources': p['source'].get('additional_sources', [])}))
+            def path(value):
+                return receipts if str(value) == '/usr/share/siliconforest' else Path(value)
+            def query(args, **kwargs):
+                p = next(p for p in d['packages'].values() if p['name'] == args[-1])
+                return p['name'] + ' ' + p['version']
+            with patch.object(graphics, 'MANIFEST', manifest), patch.object(graphics, 'Path', side_effect=path), \
+                    patch.object(graphics.platform, 'release', return_value=d['kernel_release']), \
+                    patch.object(boot, 'identity', return_value=(d['boards'][0], d['firmware'][0])), \
+                    patch.object(graphics.subprocess, 'check_output', side_effect=query), \
+                    patch.object(boot, 'check_files') as checked:
+                self.assertEqual(graphics.admit(), d)
+                checked.assert_called_once_with(d)
+                with patch.object(graphics.platform, 'release', return_value='previous-stock-kernel'):
+                    with self.assertRaisesRegex(Refusal, 'qualified SiliconForest kernel'):
+                        graphics.admit()
+                (receipts / 'mesa.json').write_text(json.dumps({'source_commit': d['packages']['mesa']['source']['commit']}))
+                with self.assertRaisesRegex(Refusal, 'additional graphics sources differ'):
+                    graphics.admit()
+
+    def test_esp_budget_accounts_for_compressed_recovery_and_both_new_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            esp, data = Path(tmp), example()
+            (esp / 'm1n1').mkdir()
+            (esp / 'm1n1/boot.bin').write_bytes(b'OLD-STAGE2')
+            (esp / 'EFI/Linux').mkdir(parents=True)
+            raw = b'previous kernel image' * 100000
+            (esp / 'EFI/Linux/stock.efi').write_bytes(raw)
+            sizes = cli.recovery_image_sizes(esp)
+            self.assertLess(sizes['stock.efi'], len(raw) // 10)
+            self.assertEqual(cli.esp_space_required(esp, data), sizes['stock.efi'] + 10 +
+                             data['boot']['max_image_bytes'] + data['boot']['max_stage2_bytes'] + 8 * 1024**2)
+            for value in (0, 'unlimited', 1024**3):
+                data['boot']['max_image_bytes'] = value
+                with self.assertRaisesRegex(Refusal, 'bounded qualified boot-file size'):
+                    validate(data)
+
     def test_managed_config_is_idempotent_and_keeps_existing_text(self):
         text = 'DTBS=original\n# local option\n'
         new = boot.managed(text, 'M1N1_UPDATE_DISABLED=1')
@@ -259,6 +310,13 @@ class BootTests(unittest.TestCase):
                     patch.object(boot, 'system_esp', return_value=esp), \
                     patch.object(boot.subprocess, 'check_output', side_effect=query), \
                     patch.object(boot, 'check_files', return_value=files):
+                d['boot']['max_image_bytes'] = 1024**2
+                active.write_text(json.dumps(d))
+                (esp / d['boot']['image']).write_bytes(b'x' * (1024**2 + 1))
+                with self.assertRaisesRegex(Refusal, 'boot image exceeds'):
+                    boot.boot_update()
+                self.assertEqual(target.read_bytes(), b'known-good')
+                (esp / d['boot']['image']).write_bytes(b'UKI fixture')
                 boot.boot_update()
                 self.assertEqual(target.read_bytes(), boot.image(d, files, config.read_bytes()))
 
@@ -387,7 +445,7 @@ class SignatureTests(unittest.TestCase):
             record = json.loads(records[0].read_text())
             recovery = list((esp / 'siliconforest-recovery').iterdir())[0]
             self.assertEqual((recovery / 'boot.bin').read_bytes(), b'OLD-STAGE2')
-            self.assertEqual((recovery / 'EFI/Linux/stock.efi').read_bytes(), b'OLD-UKI')
+            self.assertEqual(gzip.decompress((recovery / 'EFI/Linux/stock.efi.gz').read_bytes()), b'OLD-UKI')
             if fail:
                 self.assertEqual(record['status'], 'failed-config-and-stage2-restored')
                 self.assertEqual((esp / 'm1n1/boot.bin').read_bytes(), b'OLD-STAGE2')

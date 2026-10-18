@@ -149,6 +149,8 @@ def boot_update():
     entry_root = esp if boot['backend'] == 'limine' else Path('/boot')
     entry, kernel_image = entry_root / boot['entry'], entry_root / boot['image']
     require(entry.is_file() and kernel_image.is_file(), 'Missing generated kernel boot entry or image')
+    require(kernel_image.stat().st_size <= boot['max_image_bytes'],
+            'Generated kernel boot image exceeds its qualified space limit')
     require(entry.resolve().is_relative_to(entry_root.resolve()) and
             kernel_image.resolve().is_relative_to(entry_root.resolve()), 'Boot entry escapes its partition')
     text = entry.read_text()
@@ -159,6 +161,7 @@ def boot_update():
         require(data['kernel_release'] in text, 'GRUB does not reference the release kernel')
     configuration = CONFIG.read_bytes()
     expected = image(data, files, configuration)
+    require(len(expected) <= boot['max_stage2_bytes'], 'Stage 2 exceeds its qualified space limit')
     target = esp / 'm1n1/boot.bin'
     require(target.resolve().is_relative_to(esp.resolve()), 'Stage 2 escapes its partition')
     if target.read_bytes() != expected:

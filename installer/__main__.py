@@ -2,6 +2,7 @@
 """Three-component installer. No release is admitted without exact qualification."""
 import argparse
 import fcntl
+import gzip
 import json
 import os
 from pathlib import Path
@@ -13,10 +14,33 @@ import subprocess
 import sys
 import tempfile
 import time
+import zlib
 
-from . import boot
+from . import boot, graphics
 from .release import (PACKAGES, Refusal, asset_name, digest, download, require,
                       validate, verify_packages, verify_signature, verify_detached, verify_database)
+
+
+def recovery_image_sizes(esp):
+    sizes = {}
+    for path in sorted((esp / 'EFI/Linux').glob('*.efi')):
+        require(path.is_file() and not path.is_symlink(), 'Recovery UKI must be a regular file')
+        compressor = zlib.compressobj(6, zlib.DEFLATED, 31)
+        size = 0
+        with path.open('rb') as stream:
+            while chunk := stream.read(1024 * 1024):
+                size += len(compressor.compress(chunk))
+        sizes[path.name] = size + len(compressor.flush())
+    return sizes
+
+
+def esp_space_required(esp, data):
+    # UKIs are backed up compressed on the ESP; uncompressed originals also
+    # live in the root-owned transaction. Keep space for a full new image,
+    # the atomic stage-2 replacement and filesystem overhead simultaneously.
+    return (sum(recovery_image_sizes(esp).values()) +
+            (esp / 'm1n1/boot.bin').stat().st_size +
+            data['boot']['max_image_bytes'] + data['boot']['max_stage2_bytes'] + 8 * 1024**2)
 
 
 def check_system(data=None):
@@ -30,7 +54,6 @@ def check_system(data=None):
     for command in ('pacman', 'pacman-key', 'gpg', 'bsdtar', 'mkinitcpio'):
         require(shutil.which(command), 'Missing system prerequisite: ' + command)
     require(shutil.disk_usage('/').free >= 4 * 1024**3, 'Need at least 4 GiB free on root')
-    require(shutil.disk_usage(esp).free >= 512 * 1024**2, 'Need at least 512 MiB free on the paired ESP')
     overlays = Path('/usr/share/omarchy-platform/dtb-overlays')
     require(not overlays.exists() or not any(overlays.rglob('*.dtbo')),
             'Installed DT overlays need a qualified combined DTB; they cannot be silently dropped')
@@ -38,6 +61,10 @@ def check_system(data=None):
     require(not dkms.is_dir() or not any(p.is_dir() for p in dkms.iterdir()),
             'Installed DKMS modules require matching headers; this candidate does not ship headers yet')
     if data:
+        required = esp_space_required(esp, data)
+        require(shutil.disk_usage(esp).free >= required,
+                'Paired ESP needs ' + str((required + 1024**2 - 1) // 1024**2) +
+                ' MiB free for compressed recovery copies and the qualified image limits')
         require(board in data['boards'], 'Release does not cover this exact board: ' + board)
         require(firmware in data['firmware'], 'Release does not cover OS firmware: ' + firmware)
         command = 'limine-update' if data['boot']['backend'] == 'limine' else 'update-grub'
@@ -96,7 +123,8 @@ def fetch_bundle(tag, directory, fingerprint, catalog=False):
 
 
 def cached_previous():
-    names = ['mesa', 'mesa-asahi-edge', 'vulkan-asahi', 'linux-asahi', 'linux-aurora', *PACKAGES.values()]
+    names = ['mesa', 'mesa-asahi-edge', 'vulkan-asahi', 'mesa-m3', 'mesa-m3-native-pro',
+             'mesa-m3-pro-vulkan', 'linux-asahi', 'linux-aurora', *PACKAGES.values()]
     result = []
     for name in names:
         installed = subprocess.run(['pacman', '-Q', name], text=True, capture_output=True)
@@ -114,7 +142,7 @@ def snapshot(esp, data, previous):
     state = Path('/var/lib/siliconforest/transactions') / (str(time.time_ns()) + '-' + data['id'])
     state.mkdir(parents=True, mode=0o700)
     files = ['/etc/default/update-m1n1', '/etc/m1n1.conf', '/etc/siliconforest/m1n1.conf',
-             '/etc/limine-entry-tool.conf', '/etc/pacman.conf', str(boot.ACTIVE)]
+             '/etc/limine-entry-tool.conf', '/etc/pacman.conf', str(boot.ACTIVE), str(graphics.MANIFEST)]
     entry_root = esp if data['boot']['backend'] == 'limine' else Path('/boot')
     files += [str(esp / 'm1n1/boot.bin'), str(entry_root / data['boot']['entry']),
               str(entry_root / data['boot']['image'])]
@@ -141,16 +169,19 @@ def snapshot(esp, data, previous):
     recovery.mkdir(parents=True)
     shutil.copy2(esp / 'm1n1/boot.bin', recovery / 'boot.bin')
     for image in (esp / 'EFI/Linux').glob('*.efi'):
-        saved_image = recovery / 'EFI/Linux' / image.name
+        saved_image = recovery / 'EFI/Linux' / (image.name + '.gz')
         saved_image.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(image, saved_image)
+        with image.open('rb') as source, gzip.GzipFile(filename=str(saved_image), mode='wb',
+                                                    compresslevel=6, mtime=0) as output:
+            shutil.copyfileobj(source, output)
     menu = entry_root / data['boot']['entry']
     if menu.is_file():
         shutil.copy2(menu, recovery / 'boot-menu.cfg')
     (recovery / 'README.txt').write_text(
         'Stage 2 backup from before SiliconForest installation.\n'
         'With this paired ESP mounted, copy this boot.bin back to m1n1/boot.bin.\n'
-        'Restore the saved EFI/Linux/*.efi files to the same paths on the ESP.\n'
+        'Decompress each saved EFI/Linux/NAME.efi.gz to EFI/Linux/NAME.efi on the ESP.\n'
+        'For example on macOS: gzip -dc NAME.efi.gz > /Volumes/ESP/EFI/Linux/NAME.efi\n'
         'Restore boot-menu.cfg to ' + str(menu) + ' (it may be on a separate /boot for GRUB).\n'
         'Then boot the retained previous kernel with its previous DTBs.\n'
         'Package/configuration rollback records on Linux: ' + str(state) + '\n')
@@ -244,6 +275,7 @@ def apply(directory, fingerprint):
             boot.run('mkinitcpio', '-P')
             boot.run('limine-update' if data['boot']['backend'] == 'limine' else 'update-grub')
             boot.atomic(boot.ACTIVE, json.dumps(data, indent=2).encode(), 0o600)
+            boot.atomic(graphics.MANIFEST, json.dumps(data, indent=2).encode(), 0o644)
             boot.INSTALLING.unlink()
             boot.boot_update()
             record['status'] = 'installed-awaiting-boot-test'
@@ -273,12 +305,16 @@ def main():
     action.add_argument('--install', action='store_true')
     action.add_argument('--boot-update', action='store_true', help=argparse.SUPPRESS)
     action.add_argument('--guard-transaction', action='store_true', help=argparse.SUPPRESS)
+    action.add_argument('--graphics-admit', action='store_true', help=argparse.SUPPRESS)
     action.add_argument('--rollback', type=Path, help='restore a recorded previous stack')
     parser.add_argument('--release', help='immutable published release tag')
     parser.add_argument('--catalog', action='store_true', help='select a board/firmware release from a signed catalog')
     parser.add_argument('--bundle', type=Path, help='local signed release directory')
     parser.add_argument('--fingerprint', default='', help='independently published full signing fingerprint')
     args = parser.parse_args()
+    if args.graphics_admit:
+        graphics.admit()
+        return
     require(not args.install or args.bundle or args.release, 'Installation requires an exact release or signed bundle')
     if args.boot_update:
         boot.boot_update()
