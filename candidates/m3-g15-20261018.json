@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "project": "siliconforest",
+  "date": "2026-10-18",
+  "status": "experimental source review; not approved for promotion or installation",
+  "kernel": {
+    "url": "https://github.com/iconidentify/siliconforest-linux.git",
+    "branch": "siliconforest/m3-g15-review-20261018",
+    "commit": "8a29680940cde36759e2061d3c8a8e7e9df70fa9",
+    "review": "https://github.com/iconidentify/siliconforest-linux/blob/siliconforest/m3-g15-review-20261018/SILICONFOREST-M3-REVIEW.md",
+    "prerequisite_base": "0daed2db47875fc705b4e7aea10b4d33e3514b06"
+  },
+  "maintained_baseline_unchanged": "5d570a78a4ab29ac383ec8988be2356dfc6c8a75",
+  "upstream_snapshots": [
+    {
+      "author": "erykwieliczko",
+      "url": "https://github.com/aurora-silicon/linux/pull/358",
+      "head": "79d6375f4b03c70b71ac2fa3c27e5695a559516f",
+      "commits": 35,
+      "import_branch": "siliconforest/import/eryk-m3-20261017"
+    },
+    {
+      "author": "malik-na",
+      "url": "https://github.com/aurora-silicon/linux/pull/363",
+      "head": "e30d702e3722aba6114c67ee86505cea0ce76117",
+      "commits": 12,
+      "import_branch": "siliconforest/import/naeem-m3-max-20261018"
+    }
+  ],
+  "local_fixes": [
+    {
+      "commit": "79dc30d33316358e8850106069fd6741ece1ed25",
+      "change": "require complete valid reserved RAM and reject unsafe mapping fallback"
+    },
+    {
+      "commit": "5d96426c00bf9b006941db1009ccc34824a3f4c4",
+      "change": "reject cyclic or over-budget CDM streams instead of returning success"
+    },
+    {
+      "commit": "f4472309fd159ff52ae7a57678d405ebeb4601a0",
+      "change": "restrict the measured M3 Max GPU and panel profiles to J516C"
+    }
+  ],
+  "identified_companions_not_imported": [
+    {
+      "url": "https://github.com/aurora-silicon/mesa/pull/23",
+      "head": "cf8ec613be202d8bfc5440e61e9aa6c60700fad7"
+    },
+    {
+      "url": "https://github.com/aurora-silicon/mesa/pull/25",
+      "head": "aab698d2ef34e2aef38ba4d2bfcfa3abc5ded4c5"
+    },
+    {
+      "url": "https://github.com/aurora-silicon/m1n1/pull/34",
+      "merge_commit": "97820568035b8d7035c68e4126f203d86c76abe4"
+    }
+  ],
+  "promotion_blockers": [
+    "review framework migration/backport: prerequisite base differs from maintained baseline by 1414 commits by identity",
+    "matching T6031 m1n1 handoff source and exact commit not yet pinned",
+    "source-derived replacement for missing machine-specific J516C board-data blob",
+    "matching Mesa and changed DRM UAPI",
+    "driver/configuration build checks and target hardware qualification not performed"
+  ],
+  "validation": {
+    "c_host_cases_passed": 9,
+    "rust_host_tests_passed": 23,
+    "baseline_regressions_reproduced": true,
+    "full_kernel_build": false,
+    "hardware_tested": false
+  }
+}

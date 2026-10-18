@@ -93,6 +93,16 @@ need separate qualification and recovery, as described in the plan.
 
 ## Publishing direction
 
+An [experimental M3 G15 source branch](https://github.com/iconidentify/siliconforest-linux/tree/siliconforest/m3-g15-review-20261018)
+imports Eryk's M3 Pro stack and Naeem's M3 Max additions, with local fixes for
+reserved-RAM admission, stream-validation limits, and J516C board admission.
+Its original commits and dependencies are pinned in
+[the candidate manifest](candidates/m3-g15-20261018.json), with findings in
+[the code review](https://github.com/iconidentify/siliconforest-linux/blob/siliconforest/m3-g15-review-20261018/SILICONFOREST-M3-REVIEW.md).
+This is a separate candidate line: the maintained source lock remains unchanged
+while its prerequisite framework, machine data, m1n1, Mesa, and integration are
+reviewed. It is not an installation or release candidate.
+
 The target experience is one bootstrap command adding your signed pacman
 repository and installing `linux-siliconforest` plus the qualified boot components.
 Afterward, normal package upgrades deliver the updates you choose to publish.
