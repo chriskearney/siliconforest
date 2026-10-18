@@ -14,9 +14,13 @@ milestones. Building a payload does not establish that a Mac boots it.
 | Purpose | Repository / branch |
 | --- | --- |
 | Release tooling, source lock, configuration, plan | [iconidentify/siliconforest](https://github.com/iconidentify/siliconforest) |
-| Kernel source | [iconidentify/aurora-linux — siliconforest/next](https://github.com/iconidentify/aurora-linux/tree/siliconforest/next) |
+| Kernel source | [iconidentify/siliconforest-linux — siliconforest/next](https://github.com/iconidentify/siliconforest-linux/tree/siliconforest/next) |
 | m1n1 source | [iconidentify/m1n1 — siliconforest/next](https://github.com/iconidentify/m1n1/tree/siliconforest/next) |
 | Existing hardware test infrastructure | [iconidentify/maclab](https://github.com/iconidentify/maclab) |
+
+The kernel lives in a separate, independently maintained repository with the full
+Linux history preserved. The previous kernel repository stays archived and is
+outside this project's workflow.
 
 The initial sources come from Omacom's `integration/aurora` branches on
 2026-10-18. `sources.lock.json` records full commits rather than following moving
@@ -38,7 +42,7 @@ make check
 ```
 
 `make check` also requires ShellCheck. Source fetching uses only the personal
-forks and pinned submodules. Existing source checkouts are verified rather than
+repositories and pinned submodules. Existing source checkouts are verified rather than
 reset, switched, or cleaned. A failed initial clone can leave a partial directory;
 inspect it before removing it and retrying.
 

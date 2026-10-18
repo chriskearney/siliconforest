@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch pinned personal-fork sources without changing existing checkouts."""
+"""Fetch pinned personally maintained sources without changing existing checkouts."""
 import argparse
 import hashlib
 import json
@@ -28,7 +28,7 @@ def read_lock():
         if not re.fullmatch(r"[0-9a-f]{40}", item["commit"]):
             raise SystemExit(f"{name}: require a full commit SHA")
         if not item["url"].startswith("https://github.com/iconidentify/"):
-            raise SystemExit(f"{name}: require a personal-fork source URL")
+            raise SystemExit(f"{name}: require a personally maintained source URL")
     for name, expected in lock["inputs"].items():
         path = (ROOT / name).resolve()
         if not path.is_relative_to(ROOT):

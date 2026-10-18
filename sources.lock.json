@@ -5,7 +5,7 @@
   "status": "development; no qualified binary release",
   "sources": {
     "linux": {
-      "url": "https://github.com/iconidentify/aurora-linux.git",
+      "url": "https://github.com/iconidentify/siliconforest-linux.git",
       "branch": "siliconforest/next",
       "commit": "5d570a78a4ab29ac383ec8988be2356dfc6c8a75",
       "upstream_url": "https://github.com/omacom/linux-aurora.git",

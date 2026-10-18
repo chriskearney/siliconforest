@@ -31,10 +31,12 @@ The kernel's upstream release20 package used `c46d7dcdb871...`; the requested
 integration tip adds release recipe/installer/userspace changes on top. Keep the
 requested integration tip as the initial source pin and qualify its own outputs.
 
-Use `siliconforest/next` in each source fork for reviewed integration work. Build from
+Use `siliconforest/next` in each source repository for reviewed integration work. Build from
 full locked commits, and create immutable source tags for releases. Update the
 source lock whenever either source branch advances. Do not force-push published
-release tags. Keep the preexisting fork branches as historical work.
+release tags. The historical kernel repository remains archived and is not part
+of the release workflow. The new `iconidentify/siliconforest-linux` repository
+preserves full Linux history and has its own Git storage and origin remote.
 
 ## 2. Build and package
 
