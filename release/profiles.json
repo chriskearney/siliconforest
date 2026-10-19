@@ -130,14 +130,14 @@
       "kernel_variant": "normal",
       "mesa": {
         "branch": "siliconforest/next",
-        "commit": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68",
+        "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
         "apis": [
           "OpenGL",
           "Vulkan"
         ],
         "runtime_llvm_owner": "llvm-libs"
       },
-      "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
+      "m1n1": "aca1258c2d7daad7db7079d4f89bb8217659f7ac",
       "firmware_policy": "Exact versions must be recorded by per-board qualification; no wildcard admission.",
       "qualified": false,
       "blockers": [
