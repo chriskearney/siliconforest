@@ -4,27 +4,32 @@ A personally maintained Apple Silicon kernel, Mesa and m1n1 stack for
 existing Omarchy installations, maintained by [iconidentify](https://github.com/iconidentify).
 Upstream history, attribution and licenses are preserved.
 
-Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.6)
+Install the [2026-10-19 Linux 7.2.11 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.19.1)
 on an existing Apple Silicon Omarchy installation:
 
 ```sh
-curl -fsSL https://github.com/iconidentify/siliconforest/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.19.1/install.sh | bash
 ```
 
 Qualified pairs are **M1 Air J313 with OS firmware 13.5** and **M3 Pro 16-inch
 J516S with 14.7**, with the exact loader/U-Boot versions in their signed manifests.
-Both use Linux `54add20fd52e`, Mesa `7515336b` and m1n1 `aca1258c`, with distinct
-kernel and LLVM runtime profiles. Default boot, the desktop, hardware OpenGL/Vulkan
-pixel readback and rebooted rollback passed on both. The public one-liner was
-installed and default-boot tested on each machine.
+Both use Linux **7.2.11** (`782b88e93448`), Mesa `7515336b` and m1n1 `aca1258c`,
+with distinct kernel and LLVM runtime profiles. The Mesa/m1n1 packages and their
+original public signatures are retained byte for byte. Signed candidate install,
+default boot, desktop, hardware OpenGL/Vulkan pixel readback, rebooted rollback
+and reinstall passed on both. The versioned public one-liner was installed and
+default-boot tested on both machines.
 
-The [M3 Pro report](release/reports/20261018-j516s-pr148.json) and
-[Air report](release/reports/20261018-j313-pr148.json) record exact package hashes,
-boot identities, brightness checks and Quake demo1 smoke runs at 1920x1080.
-[Public M3 Pro verification](release/reports/20261018-j516s-pr148-public.json) and
-[public Air verification](release/reports/20261018-j313-pr148-public.json) record
-the downloaded release and final default boot. The display topologies and kernel
-configurations differ; these smoke runs are not a controlled performance ranking.
+The [M3 Pro candidate report](release/reports/20261019-j516s-linux72.json) and
+[Air candidate report](release/reports/20261019-j313-linux72.json) record exact
+package hashes, SHA256 boot/transaction aliases, brightness checks and Quake demo1
+smoke runs at 1920x1080. [Public M3 Pro verification](release/reports/20261019-j516s-linux72-public.json)
+and [public Air verification](release/reports/20261019-j313-linux72-public.json)
+record the actual versioned download and final default boot. These runs are
+GPU smoke checks, not a controlled performance comparison.
+[Source gates](release/source-reviews/20261019-linux72.json) and
+[build/artifact validation](release/source-reviews/20261019-linux72-builds.json)
+record the stable-source provenance, preserved UAPI and release build checks.
 Other M1/M2 models, M3 Pro variants and M3 Air remain pending; the installer refuses
 unqualified combinations.
 
@@ -40,8 +45,11 @@ The Air keyboard control passed; its panel responds monotonically and restores i
 original setting, but actual brightness readback differs from requested values on
 both the preceding and new kernels. Exact Air panel readback and optical luminance
 are not qualified. See [brightness controls](docs/BRIGHTNESS.md) and the reports above.
-HDMI audio remains opt-in. HDMI hotplug/standby/audio and suspend/resume were not
-hardware-qualified in this release; the experimental T6030 memory floor is excluded.
+HDMI audio remains opt-in. External displays/docks, HDMI hotplug/standby/audio,
+suspend/resume, Touch ID and internal speakers are not hardware-qualified by this
+release; the experimental T6030 memory floor is excluded. The tested Macs retain
+their local branding; a new branding pipeline and early-boot Recovery/logo migration
+are not included.
 
 ## Repositories
 
@@ -59,8 +67,9 @@ outside this project's workflow.
 
 The initial sources come from Omacom's `integration/aurora` branches on
 2026-10-18. `sources.lock.json` records full commits rather than following moving
-branches. The kernel starts at 7.1.12. The maintained m1n1 now combines the current Asahi upstream with the reviewed M3
-handoffs and an owner-authorized AI policy. Neo, M4 and M5 research is preserved
+branches. The initial kernel was 7.1.12; the current release is 7.2.11. The
+maintained m1n1 combines the current Asahi upstream with the reviewed M3 handoffs
+and an owner-authorized AI policy. Neo, M4 and M5 research is preserved
 in explicit separate profiles; see its source review and validation reports.
 Neither a current branch name nor an old upstream validation result is a
 SiliconForest support claim.
