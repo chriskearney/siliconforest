@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "public_catalog": "v2026.10.18.4",
+  "installed_child": "v2026.10.18-j516s-prscout.1",
+  "one_liner_executed": "curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.4/install.sh | bash",
+  "stable_one_liner": "curl -fsSL https://github.com/iconidentify/siliconforest/releases/latest/download/install.sh | bash",
+  "bootstrap_sha256": "cc81fcc633a359d964c283fbb177e2b86d365076de4119d5f040a249921bbfc5",
+  "normal_default_boot": {
+    "label": "public",
+    "previous_boot_id": "87c75032-ef53-4805-8816-da36a7f783cc",
+    "boot_id": "7c67727e-995b-4649-87e3-683910517d6a",
+    "kernel": "7.1.12-siliconforest-native-gpu-7560c8b4747f-layout1",
+    "system_state": "running",
+    "elapsed_seconds": 33.8
+  },
+  "actual_public_install_and_default_boot": {
+    "schema": 1,
+    "board": "apple,j516s",
+    "os_firmware": "14.7",
+    "kernel_release": "7.1.12-siliconforest-native-gpu-7560c8b4747f-layout1",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "graphics_admission": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 3456,
+        "height": 2234,
+        "refreshRate": 120.0
+      },
+      {
+        "name": "DP-1",
+        "width": 3840,
+        "height": 2160,
+        "refreshRate": 59.997
+      }
+    ],
+    "stage2_version": "v2.0.0-siliconforest.dev.gaca1258c2d7d",
+    "packages": {
+      "linux-siliconforest": "20261018.prscout1-1",
+      "mesa-siliconforest": "20261018.prscout1-1",
+      "m1n1-siliconforest": "20261018.prscout1-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "ed1ccced9fee00ad6de56e9429fbe71b02f2b0510d15197c3dd46daa33e013f6"
+    },
+    "OpenGL": "Renderer: Apple M3 Pro (G15S B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7343 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M3 Pro (G15S B1) (deviceID 0x6030)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7153 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-19T01:24:20Z"
+  },
+  "verified_transaction": {
+    "release": "v2026.10.18-j516s-prscout.1",
+    "kernel": "7.1.12-siliconforest-native-gpu-7560c8b4747f-layout1",
+    "boot_id": "7c67727e-995b-4649-87e3-683910517d6a",
+    "completed_utc": "2026-10-19T01:25:04.698967+00:00",
+    "report_sha256": "8b31acd8f4777fa34b34189dff370885db1de3a9fee73ed7b3de5c5821fd753f",
+    "hardware_GL_Vulkan_pixels": true,
+    "desktop": true,
+    "quake_smoke_fps": 174.1,
+    "gpu_recoveries": 0,
+    "hang_kills": 0,
+    "native_gpu_kernel_errors": 0,
+    "transaction": "1792372971717997551-v2026.10.18-j516s-prscout.1",
+    "status": "installed-verified",
+    "esp_free_mib": 94.16796875
+  },
+  "component_artifacts": {
+    "kernel": {
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "7560c8b4747f79cf18d8ac90c11f6bec9f4e2eca"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.18-prscout.1"
+      },
+      "file": "linux-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "06181b41d45739e86c7c591fd778ac134b0255bd317dbd5a26948bab05ec1868",
+      "version": "20261018.prscout1-1"
+    },
+    "mesa": {
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-prscout.1"
+      },
+      "file": "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391",
+      "version": "20261018.prscout1-1"
+    },
+    "m1n1": {
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.18-prscout.1"
+      },
+      "file": "m1n1-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "2b6e02d3a7164e7da39c4e8e67030065627e098e143065cc94494855b3af3583",
+      "version": "20261018.prscout1-1"
+    }
+  },
+  "downloaded_signed_manifest_matches_local_qualified_manifest": true,
+  "public_quake_smoke": {
+    "frames": 969,
+    "seconds": 5.6,
+    "fps": 174.1,
+    "pixel_extent": [
+      1920,
+      1080
+    ],
+    "vulkan_driver_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05",
+    "new_five_run_benchmark": false
+  },
+  "coordinated_rollback": {
+    "kernel": "7.1.12-siliconforest-native-gpu-d68cf5c0040f-layout1",
+    "saved_files_restored": 16,
+    "complete_previous_package_list_restored": true,
+    "boot_id": "87c75032-ef53-4805-8816-da36a7f783cc",
+    "desktop_GL_Vulkan_passed": true,
+    "status": "rolled-back-verified"
+  },
+  "recovery": "All previous bootable entries retained. Full recovery bytes remain on the ESP or verified root archives; the new public transaction has its own complete paired boot recovery copies.",
+  "limits": "J516S/14.7 only, with exact stage1/iBoot/U-Boot identity admission. No new qualification of suspend, audio, Touch ID, J613 thermals or other boards. The Air was not modified.",
+  "private_evidence": "Desktop images, game images and raw host logs remain local.",
+  "completed_utc": "2026-10-19T01:25:15.281184+00:00"
+}
