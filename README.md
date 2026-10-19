@@ -4,7 +4,7 @@ A personally maintained Apple Silicon kernel, Mesa and m1n1 stack for
 existing Omarchy installations, maintained by [iconidentify](https://github.com/iconidentify).
 Upstream history, attribution and licenses are preserved.
 
-Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.5)
+Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.6)
 on an existing Apple Silicon Omarchy installation:
 
 ```sh
@@ -13,20 +13,20 @@ curl -fsSL https://github.com/iconidentify/siliconforest/releases/latest/downloa
 
 Qualified pairs are **M1 Air J313 with OS firmware 13.5** and **M3 Pro 16-inch
 J516S with 14.7**, with the exact loader/U-Boot versions in their signed manifests.
-Default boot, the native desktop, OpenGL/Vulkan pixel readback and rebooted
-rollback passed on both. The J516S now uses the latest reviewed native AGX
-kernel/Mesa pair. The Air retains its previously qualified package set and normal kernel
-profile. The [reviewed J516S update](release/reports/20261018-j516s-prscout.json)
-records the new source pins, hardware checks and rebooted rollback; its
-[public installer verification](release/reports/20261018-j516s-prscout-public.json)
-records the actual downloaded upgrade and final default boot.
-[Original J516S native GPU benchmark](release/reports/20261018-j516s-native-gpu.json)
-records a 174.0 FPS median over five Quake demo1 runs at 1920x1080. The
-[updated Air qualification](release/reports/20261018-j313-current.json) records
-287.6 FPS with the same game and rendering settings. Kernel configurations and
-display topologies differ. The [public installer verification](release/reports/20261018-j313-current-public.json)
-checks the Air's actual downloaded artifacts and default boot. Other M1/M2 models, M3 Pro variants and M3 Air remain
-pending; the installer refuses unqualified combinations.
+Both use Linux `54add20fd52e`, Mesa `7515336b` and m1n1 `aca1258c`, with distinct
+kernel and LLVM runtime profiles. Default boot, the desktop, hardware OpenGL/Vulkan
+pixel readback and rebooted rollback passed on both. The public one-liner was
+installed and default-boot tested on each machine.
+
+The [M3 Pro report](release/reports/20261018-j516s-pr148.json) and
+[Air report](release/reports/20261018-j313-pr148.json) record exact package hashes,
+boot identities, brightness checks and Quake demo1 smoke runs at 1920x1080.
+[Public M3 Pro verification](release/reports/20261018-j516s-pr148-public.json) and
+[public Air verification](release/reports/20261018-j313-pr148-public.json) record
+the downloaded release and final default boot. The display topologies and kernel
+configurations differ; these smoke runs are not a controlled performance ranking.
+Other M1/M2 models, M3 Pro variants and M3 Air remain pending; the installer refuses
+unqualified combinations.
 
 The command downloads signed prebuilt packages from each component's own public
 GitHub release. It preserves recovery entries, installs the matched set and
@@ -35,13 +35,13 @@ a full system upgrade. [Installation, scope and recovery](release/README.md).
 
 Signing fingerprint: `97DC8D8AFCBC08DB7283EC3CFFB366AB95783E75`.
 
-The J516S/14.7 update adds screen brightness through the standard backlight
-interface; existing keyboard controls work as well. Screen and keyboard driver
-readback, regular Omarchy commands, both monitors, hardware rendering, Quake
-(174.0 FPS) and rebooted rollback passed. See [brightness controls](docs/BRIGHTNESS.md)
-and the [exact hardware scope](release/reports/20261018-j516s-brightness.json).
-The [public download/default-boot verification](release/reports/20261018-j516s-brightness-public.json)
-checks the actual published upgrade and a 174.3 FPS Quake smoke run.
+The J516S panel and keyboard brightness controls passed exercise and restoration.
+The Air keyboard control passed; its panel responds monotonically and restores its
+original setting, but actual brightness readback differs from requested values on
+both the preceding and new kernels. Exact Air panel readback and optical luminance
+are not qualified. See [brightness controls](docs/BRIGHTNESS.md) and the reports above.
+HDMI audio remains opt-in. HDMI hotplug/standby/audio and suspend/resume were not
+hardware-qualified in this release; the experimental T6030 memory floor is excluded.
 
 ## Repositories
 
@@ -156,7 +156,7 @@ display, PHY, USB4 and PMP implementations. The source pins include Eryk's Mesa
 PR23 head `d593cfbf` (downstream `45c2718d`) and kernel PR358 head `79d6375f`,
 plus the reviewed downstream J516S memory, firmware and PMP handoff adaptations
 in the first native-GPU baseline, `d68cf5c0040f`. The reviewed refresh advances
-to kernel `4b318c4140e8`, Mesa `7515336b` and m1n1 `aca1258c` with the same
+to kernel `54add20fd52e`, Mesa `7515336b` and m1n1 `aca1258c` with the same
 kernel profile. OpenGL and Vulkan use one native Mesa build.
 
 [The hardware report](release/reports/20261018-j516s-native-gpu.json) records
