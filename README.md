@@ -21,7 +21,8 @@ graphics-library bytes with its normal kernel profile.
 records a 174.0 FPS median over five Quake demo1 runs at 1920x1080. The
 [updated Air qualification](release/reports/20261018-j313-current.json) records
 287.6 FPS with the same game and rendering settings. Kernel configurations and
-display topologies differ. Other M1/M2 models, M3 Pro variants and M3 Air remain
+display topologies differ. The [public installer verification](release/reports/20261018-j313-current-public.json)
+checks the Air's actual downloaded artifacts and default boot. Other M1/M2 models, M3 Pro variants and M3 Air remain
 pending; the installer refuses unqualified combinations.
 
 The command downloads signed prebuilt packages from each component's own public
