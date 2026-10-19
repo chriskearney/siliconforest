@@ -6,8 +6,8 @@
   "sources": {
     "linux": {
       "url": "https://github.com/iconidentify/siliconforest-linux.git",
-      "branch": "siliconforest/j516s-native-gpu-20261018",
-      "commit": "d68cf5c0040f77f72233b379bebba134082143a6",
+      "branch": "siliconforest/next",
+      "commit": "7560c8b4747f79cf18d8ac90c11f6bec9f4e2eca",
       "upstream_url": "https://github.com/omacom/linux-aurora.git",
       "upstream_branch": "integration/aurora",
       "kernel_version": "7.1.12"
@@ -15,7 +15,7 @@
     "m1n1": {
       "url": "https://github.com/iconidentify/siliconforest-m1n1.git",
       "branch": "siliconforest/next",
-      "commit": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
+      "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac",
       "upstream_url": "https://github.com/AsahiLinux/m1n1.git",
       "upstream_branch": "main",
       "upstream_commit": "25b1d89ca50be848b136ce771ce7167244852a91",
@@ -28,8 +28,8 @@
     },
     "mesa": {
       "url": "https://github.com/iconidentify/siliconforest-mesa.git",
-      "branch": "mesa/native-update-20261018",
-      "commit": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68"
+      "branch": "siliconforest/next",
+      "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
     }
   },
   "inputs": {
@@ -48,8 +48,8 @@
   },
   "paired_mesa": {
     "repository": "https://github.com/iconidentify/siliconforest-mesa",
-    "branch": "mesa/native-update-20261018",
-    "commit": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68"
+    "branch": "siliconforest/next",
+    "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
   },
   "m1n1_profiles": [
     {

@@ -54,6 +54,12 @@ in explicit separate profiles; see its source review and validation reports.
 Neither a current branch name nor an old upstream validation result is a
 SiliconForest support claim.
 
+The [October 18 source integration review](release/source-reviews/20261018.json)
+records the five selected public changes, downstream fixes, independent reviews
+and host validation. The source lock can advance ahead of the signed release
+catalog. Those changes require their own hardware qualification before a new
+installer release; the command above continues to use its recorded release pins.
+
 ## Developer setup
 
 The [three-package installer](release/README.md) uses pinned public sources and
