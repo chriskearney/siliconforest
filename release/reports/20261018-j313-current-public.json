@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "public_catalog": "v2026.10.18.3",
+  "installed_child": "v2026.10.18-j313.3",
+  "bootstrap_sha256": "fee6126794fd1d63f278fa5e1240bdc595056f65cbf2b106257a93b4a29ff74d",
+  "actual_public_install_and_default_boot": {
+    "schema": 1,
+    "board": "apple,j313",
+    "os_firmware": "13.5",
+    "kernel_release": "7.1.12-siliconforest-normal-d68cf5c0040f-layout1",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 2560,
+        "height": 1600,
+        "refreshRate": 60.0
+      }
+    ],
+    "desktop_capture_sha256": "1c1ec30e6cfcac652fe85f1dd3869d8f8ad1ae367624b9c66421c91eb9131e06",
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "packages": {
+      "linux-siliconforest": "20261018.currentair1-1",
+      "mesa-siliconforest": "20261018.currentair2-1",
+      "m1n1-siliconforest": "20261018.currentair1-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "ed1ccced9fee00ad6de56e9429fbe71b02f2b0510d15197c3dd46daa33e013f6"
+    },
+    "OpenGL": "Renderer: Apple M1 (G13G B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7522 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M1 (G13G B1) (deviceID 0x0)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6252 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-19T00:03:59Z"
+  },
+  "verified_transaction": {
+    "kernel": "7.1.12-siliconforest-normal-d68cf5c0040f-layout1",
+    "release": "v2026.10.18-j313.3",
+    "completed_utc": "2026-10-19T00:05:53.748051+00:00",
+    "report_sha256": "5d783219173337b8c5060b8f09056a411b0014c62a8a9467289c178011044ba7",
+    "hardware_GL_Vulkan_pixels": true,
+    "desktop": true,
+    "quake_smoke_fps": 265.7,
+    "gpu_error_lines": 0,
+    "status": "installed-verified"
+  },
+  "public_scene_smoke": {
+    "frames": 969,
+    "fps": 265.7,
+    "extent": [
+      1920,
+      1080
+    ],
+    "gameplay_frame_visually_checked": true,
+    "scene": "map e1m3 warm-up capture followed by timedemo demo1",
+    "included_in_five_run_benchmark": false
+  },
+  "capture_harness_retry": "An earlier excluded visual smoke completed at302.3FPS without producing a PNG. A deterministic map warm-up capture then succeeded. Neither run is included in the five-sample benchmark.",
+  "efi_free_mib": 120.21484375,
+  "recovery": "Owner-approved obsolete entry and redundant copies archived with verified root backups. Every remaining bootable entry retained. Manual stage2 snapshots losslessly compressed on ESP with updated instructions and root originals; EFI indexing metadata and original installer log archived on root.",
+  "limits": "The original J313 qualification report records the exact LLVM22 base and hardware limits, including the inaccessible automatic lab Omarchy test. No other machine was updated by this verification. Desktop/game captures and raw host logs remain private."
+}
