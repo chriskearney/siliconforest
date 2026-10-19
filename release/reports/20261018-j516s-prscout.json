@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "board": "apple,j516s",
+  "os_firmware": "14.7",
+  "profile": "m3-pro-native-gpu",
+  "sources": {
+    "kernel": {
+      "repository": "iconidentify/siliconforest-linux",
+      "branch": "siliconforest/next",
+      "commit": "7560c8b4747f79cf18d8ac90c11f6bec9f4e2eca"
+    },
+    "mesa": {
+      "repository": "iconidentify/siliconforest-mesa",
+      "branch": "siliconforest/next",
+      "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+    },
+    "m1n1": {
+      "repository": "iconidentify/siliconforest-m1n1",
+      "branch": "siliconforest/next",
+      "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+    }
+  },
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "linux-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "06181b41d45739e86c7c591fd778ac134b0255bd317dbd5a26948bab05ec1868"
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391"
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "m1n1-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "2b6e02d3a7164e7da39c4e8e67030065627e098e143065cc94494855b3af3583"
+    }
+  },
+  "host_validation": {
+    "complete_kernel_Image_modules_dtbs": true,
+    "mandatory_c_rust_layout_assertions": true,
+    "llvm": "22.1.8",
+    "kernel_rust": "1.93.1",
+    "bindgen": "0.73.2 corrected generator",
+    "m1n1_stage2_release_build": true,
+    "m1n1_rust": "1.99.0",
+    "arm64_mesa_asahi_tests": {
+      "passed": 36,
+      "failed": 0
+    },
+    "mesa_runtime_dependencies_identical_to_previous_release": true,
+    "mesa_elf_runtime_audit": {
+      "aarch64_elfs": 7,
+      "rpath_or_runpath": false,
+      "llvm_owner": "llvm22-libs",
+      "base_upgrade": false
+    }
+  },
+  "installed_candidate_boot": {
+    "label": "candidate",
+    "previous_boot_id": "ffb6fe86-7927-4dd5-9ea7-42f33ac6d924",
+    "boot_id": "13d0735f-a9f4-4796-b92b-955a17f7456b",
+    "kernel": "7.1.12-siliconforest-native-gpu-7560c8b4747f-layout1",
+    "system_state": "running",
+    "elapsed_seconds": 33.7
+  },
+  "hardware_checks": {
+    "schema": 1,
+    "board": "apple,j516s",
+    "os_firmware": "14.7",
+    "kernel_release": "7.1.12-siliconforest-native-gpu-7560c8b4747f-layout1",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "graphics_admission": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 3456,
+        "height": 2234,
+        "refreshRate": 120.0
+      },
+      {
+        "name": "DP-1",
+        "width": 3840,
+        "height": 2160,
+        "refreshRate": 59.997
+      }
+    ],
+    "stage2_version": "v2.0.0-siliconforest.dev.gaca1258c2d7d",
+    "packages": {
+      "linux-siliconforest": "20261018.prscout1-1",
+      "mesa-siliconforest": "20261018.prscout1-1",
+      "m1n1-siliconforest": "20261018.prscout1-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "ed1ccced9fee00ad6de56e9429fbe71b02f2b0510d15197c3dd46daa33e013f6"
+    },
+    "OpenGL": "Renderer: Apple M3 Pro (G15S B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6927 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M3 Pro (G15S B1) (deviceID 0x6030)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7002 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-19T01:16:36Z"
+  },
+  "candidate_verification": {
+    "release": "testing-20261018-j516s-prscout1",
+    "kernel": "7.1.12-siliconforest-native-gpu-7560c8b4747f-layout1",
+    "boot_id": "13d0735f-a9f4-4796-b92b-955a17f7456b",
+    "completed_utc": "2026-10-19T01:17:13.464197+00:00",
+    "report_sha256": "fb18eb8b39da7e2543c0af987096d3c1d4d2d36d73f0b512fe1315bdb1be129d",
+    "hardware_GL_Vulkan_pixels": true,
+    "desktop": true,
+    "quake_smoke_fps": 173.8,
+    "gpu_recoveries": 0,
+    "hang_kills": 0,
+    "native_gpu_kernel_errors": 0,
+    "transaction": "1792372512615036198-testing-20261018-j516s-prscout1",
+    "status": "installed-verified",
+    "esp_free_mib": 94.80859375
+  },
+  "quake_demo1_smoke": {
+    "frames": 969,
+    "seconds": 5.6,
+    "fps": 173.8,
+    "pixel_extent": [
+      1920,
+      1080
+    ],
+    "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+    "driver_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05",
+    "settings": "vid_fullscreen 0\nvid_desktopfullscreen 0\nvid_borderless 0\nvid_vsync 0\nvid_fsaa 0\nvid_fsaamode 0\nvid_maxframelatency 2\nr_scale 1\nr_oit 1\nr_waterwarpcompute 1\nr_rtshadows 0\nhost_maxfps 200\ngamma 0.9\ncontrast 1.4\n",
+    "previous_public_smoke_fps": 173.9,
+    "scope": "One smoke sample; not a replacement for the previous five-run benchmark. The game is terminated after the completed timedemo."
+  },
+  "rollback": {
+    "kernel": "7.1.12-siliconforest-native-gpu-d68cf5c0040f-layout1",
+    "saved_files_restored": 16,
+    "complete_previous_package_list_restored": true,
+    "boot_id": "87c75032-ef53-4805-8816-da36a7f783cc",
+    "desktop_GL_Vulkan_passed": true,
+    "status": "rolled-back-verified"
+  },
+  "rollback_hardware_checks": {
+    "boot_health": true,
+    "compositor_and_displays": true,
+    "matched_boot_chain": true,
+    "graphics_admission": true,
+    "OpenGL_hardware_readback": true,
+    "Vulkan_hardware_readback": true
+  },
+  "recovery": "Bootable recovery entries retained. Historical compressed archives remain hash-verified on root; paired loader/menu recovery copies remain on the ESP. No recovery bytes were discarded.",
+  "hardware_qualification": {
+    "boards": [
+      "apple,j516s"
+    ],
+    "firmware": [
+      "14.7"
+    ],
+    "desktop": true,
+    "hardware_renderer": true,
+    "boot_chain": true,
+    "rollback": true
+  },
+  "limits": [
+    "No qualification of other boards or firmware.",
+    "Suspend/resume, headphone playback/capture, Touch ID and J613 thermals were not hardware-tested in this task.",
+    "SEP ownership protection remains opt-in.",
+    "No full system upgrade and no change to the Air."
+  ],
+  "private_evidence": "Desktop images and raw host logs remain local.",
+  "completed_utc": "2026-10-19T01:19:37.016093+00:00"
+}
