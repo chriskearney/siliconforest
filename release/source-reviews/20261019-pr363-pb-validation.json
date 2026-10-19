@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "status": "source-build-reviewed; hardware qualification pending",
+  "upstream": {
+    "pr": "https://github.com/aurora-silicon/linux/pull/363",
+    "head": "027bd7623f370e264c8dd056c71a00e1df6bc8a6",
+    "commits": [
+      "97f81d57022c582610efad0bfd05e6fed5573f6b",
+      "a7aa69120a6e33eee75d20f3635459dd362fc0fb",
+      "b4a6b325e2ac6e363137c9950df6f4812fa5d219",
+      "027bd7623f370e264c8dd056c71a00e1df6bc8a6"
+    ]
+  },
+  "siliconforest": {
+    "pr": "https://github.com/iconidentify/siliconforest-linux/pull/14",
+    "review_tip": "5f08afce815a7297abd80dcaa238c838d6251c03",
+    "compiled_snapshot": "709f0f08316ad528181027abe1cf00b3083b9bf0",
+    "base": "0e1f466613761fecbe71ba8ca25f8b3598577062",
+    "production_tree_matches_compiled_snapshot": true,
+    "merged_commit": "040af44a1db02123cd862c3eed75a5eb78ae459b",
+    "merge_tree_equals_review_tip": true
+  },
+  "scope": "Shared T6030/T6031 G15 compute/PB allocator. Native GPU profile build; no display, DT, normal GPU, UAPI or firmware binary changes.",
+  "review_fixes": [
+    "Cap initial/max ledger construction below the block-list wrap point, including fixed mode; default 1024/4095 trace unchanged.",
+    "Correct sizing and recovery descriptions; enforce queue, bounds and ordering properties in actual-body tests.",
+    "Bind all eight harness source inputs into receipts; preserve the original T6030 configuration with a separate golden hash."
+  ],
+  "validation": {
+    "toolchain": {
+      "clang": "22.1.8",
+      "lld": "22.1.8",
+      "rust": "1.93.1",
+      "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0"
+    },
+    "native_build": {
+      "targets": [
+        "Image",
+        "modules",
+        "dtbs"
+      ],
+      "exit": 0,
+      "kernelrelease": "7.2.11+",
+      "validation_build_only": true,
+      "config_sha256": "c018b8ed49b93cb8d3ff6bddb8a4fb0c45a997820df23748dee6834ee6b3d2c6",
+      "image_sha256": "dd49a56cf3f509d37df476f0c0145a6dd6996254e439a9a5b131fff0638e8a62",
+      "image_bytes": 34769408,
+      "modules": 1875,
+      "apple_dtbs_equal_baseline": 115,
+      "layout_record_and_verify_pass": true,
+      "layout_evidence_files": 9,
+      "method": "Final full-target incremental build over the successful four-carry warm build; enabling layout checks regenerated bindings and rebuilt Rust objects."
+    },
+    "native_W1": {
+      "exit": 0,
+      "existing_dead_code_warnings": 10,
+      "new_compiler_diagnostics": 0
+    },
+    "qualified_baseline_generated_sources_byte_identical": {
+      "bindings": "8ca557c98945ba2950caca83fbb76a118cbbb3ab26322e1df74bd01afb7d392d",
+      "uapi": "921c570c94a0aa72fe6003953e7d962641a5a1adf4dbe5c4e8a48e7dc3d81028",
+      "bindings_helpers": "abe86e0007a1e424566ae84f3099e0ed0b282f19bd76ad5a2587fa72226db1de"
+    },
+    "native_UAPI": {
+      "render_bytes": 384,
+      "compute_bytes": 136
+    },
+    "g15_selftests": {
+      "Rust_pass": 55,
+      "fixture_ignored": 2,
+      "C_UAPI_pass": 26
+    },
+    "pb_growth": {
+      "tests_pass": 10,
+      "mutants_detected_at_intended_assertion": 11,
+      "constructor_inputs": 35364050,
+      "old_constructor_checked_against_git": true,
+      "source_inputs_sha256": "575551ff049218accf15374772bd1a192f3aa4163d29a38143289626fd76fabd",
+      "model_only_tuning_control_pass": true
+    },
+    "stats_drain_mutants_detected": 7,
+    "independent_constructor_trace": {
+      "cases": 130028,
+      "default_answers_equal_upstream": 310,
+      "guard_removed_detected": true
+    },
+    "independent_queue": {
+      "tests_pass": 4,
+      "mutants_detected": 3
+    },
+    "record_word_checks": {
+      "synthetic_tests_pass": 15,
+      "private_fixture_ignored": 2,
+      "mutants_detected": 3,
+      "original_T6030_configuration_hash": "42271b9dc38c78b22c777f6fc84c6c7d1b2fa4ac1e1d4e80f896bd1a96429c07",
+      "board_mutation_detected_even_after_full_file_pin_refresh": true
+    },
+    "CI": "https://github.com/iconidentify/siliconforest-linux/actions/runs/39332858882",
+    "CI_pass": true
+  },
+  "allocator": {
+    "heap_MiB": 512,
+    "additional_allocation_MiB": 256,
+    "initial_blocks": 1024,
+    "firmware_soft_max_blocks": 3072,
+    "posted_max_blocks": 4095,
+    "mapped_blocks": 4096,
+    "compute_seed_pages": 22528
+  },
+  "unchanged_public_release": {
+    "catalog": "v2026.10.19.2",
+    "linux_commit": "0e1f466613761fecbe71ba8ca25f8b3598577062"
+  },
+  "limits": [
+    "No hardware run, install, reboot, signed artifact or public catalog update in this source integration.",
+    "The additional 256 MiB is eagerly backed on T6030 too; the firmware soft-limit parameter does not reduce it.",
+    "Refusal accounting bounds reply attempts. Physical exhaustion can still fail-stop until reboot; no guaranteed recovery.",
+    "Two private-fixture cases remain ignored; no private board data or raw machine logs are included.",
+    "Existing duplicate libclang version-probe output and fresh bindgen warnings are not presented as new C/Rust compiler diagnostics."
+  ],
+  "upstream_feedback": "https://github.com/aurora-silicon/linux/pull/363#issuecomment-6278516952"
+}
