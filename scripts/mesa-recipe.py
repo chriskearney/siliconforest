@@ -57,6 +57,8 @@ def main():
     require(not git(ROOT, 'status', '--porcelain'), 'Commit control changes before preparing a source receipt')
     profile = json.loads((ROOT / 'release/profiles.json').read_text())['profiles'][a.profile]
     primary = profile['mesa']['commit']
+    llvm_owner = profile['mesa'].get('runtime_llvm_owner')
+    require(llvm_owner in (None, 'llvm-libs', 'llvm22-libs'), 'Unsupported target LLVM runtime owner')
     extras = profile['mesa'].get('additional_sources', [])
     for name, expected in INPUTS.items():
         require(digest(a.toolchain_inputs / name) == expected, 'Compiler input digest differs: ' + name)
@@ -73,6 +75,8 @@ def main():
         files.append(name)
     receipt = {'component': 'mesa', 'source_commit': primary, 'additional_sources': extras,
                'profile': a.profile, 'control_commit': git(ROOT, 'rev-parse', 'HEAD')}
+    if llvm_owner:
+        receipt['runtime_llvm_owner'] = llvm_owner
     (a.output / 'mesa-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
     shutil.copy2(ROOT / 'packaging/mesa/needs-derive.py', a.output / 'needs-derive.py')
     shutil.copy2(ROOT / 'packaging/mesa/build-registered-tests.py', a.output / 'build-registered-tests.py')
@@ -85,7 +89,8 @@ def main():
     version = git(a.source, 'show', primary + ':VERSION').split('-')[0]
     template = (ROOT / 'packaging/mesa/PKGBUILD.in').read_text()
     for key, value in {'VERSION': a.version, 'PROFILE': a.profile, 'MESA_VERSION': version,
-                       'SOURCE_ARRAYS': arrays}.items():
+                       'SOURCE_ARRAYS': arrays,
+                       'LLVM_RUNTIME_ARGS': '--llvm-runtime-owner ' + llvm_owner if llvm_owner else ''}.items():
         template = template.replace('__' + key + '__', value)
     (a.output / 'PKGBUILD').write_text(template)
     subprocess.run(['bash', '-n', a.output / 'PKGBUILD'], check=True)

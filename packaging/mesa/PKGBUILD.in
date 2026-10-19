@@ -158,7 +158,7 @@ package() {
     fi
   fi
   python3 needs-derive.py "$pkgdir" "$pkgdir/usr/lib" runtime.tsv runtime.needs \
-    --extra 'vulkan-icd-loader=Vulkan entrypoint loader' --extra 'libglvnd=GLVND entrypoint loader'
+    --extra 'vulkan-icd-loader=Vulkan entrypoint loader' --extra 'libglvnd=GLVND entrypoint loader' __LLVM_RUNTIME_ARGS__
   read -r -a depends < runtime.needs
   if [[ $_profile == *-legacy || $_profile == m3-air-hal200 ]]; then
     depends+=(python util-linux coreutils systemd-libs)
