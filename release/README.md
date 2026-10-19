@@ -1,25 +1,39 @@
 # SiliconForest installer and release qualification
 
 The installer replaces the kernel, Mesa and m1n1 stage 2 on an existing Apple
-Silicon Omarchy installation. The [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.4)
-is qualified for J313 on OS firmware 13.5 and J516S on 14.7, subject to the exact
+Silicon Omarchy installation. The [2026-10-19 Linux 7.2.11 catalog](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.19.1)
+selects qualified J313/13.5 and J516S/14.7 child releases, subject to the exact
 loader/U-Boot admission checks in each signed manifest:
 
 ```sh
-curl -fsSL https://github.com/iconidentify/siliconforest/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.19.1/install.sh | bash
 ```
 
 To download and verify the applicable release without installing, append
-`-s -- --dry-run` to `bash`. Hardware reports are
-[J313 current sources](reports/20261018-j313-current.json) and
-[J516S native GPU](reports/20261018-j516s-native-gpu.json). Source profiles and signed attended
-candidates do not independently claim hardware support. The
-[reviewed J516S refresh](reports/20261018-j516s-prscout.json) adds the five selected
-source updates and passed desktop, GPU and coordinated rollback checks. The
-[public installer verification](reports/20261018-j516s-prscout-public.json)
-records its actual public download, upgrade and default boot. The Air's signed
-child release is unchanged. The latest-release URL selects a signed catalog;
-versioned releases remain available for reproducible installs.
+`-s -- --dry-run` to `bash`. Both profiles use Linux `782b88e93448` (7.2.11),
+retaining the exact public Mesa `7515336b` and m1n1 `aca1258c` packages and original
+signatures. The kernel and LLVM runtime profiles remain distinct.
+
+Candidate hardware reports are [J313 normal](reports/20261019-j313-linux72.json)
+and [J516S native GPU](reports/20261019-j516s-linux72.json). Both passed signed
+install, default boot, desktop, hardware OpenGL/Vulkan readback, rebooted rollback
+and reinstall. The versioned public one-liner was installed and default-boot
+tested on both machines;
+[public J313 verification](reports/20261019-j313-linux72-public.json) and
+[public J516S verification](reports/20261019-j516s-linux72-public.json)
+record the actual downloads and subsequent default boots. The versioned URL
+pins this catalog; the latest-release URL selects whichever signed catalog is
+currently promoted. Source profiles and candidate signatures alone do not claim
+hardware support.
+
+The J516S panel and keyboard controls passed exercise/restoration. The J313
+keyboard passed; its panel retains the same monotonic readback offset as the old
+kernel, and exact panel readback is not qualified. Quake demo1 runs at 1920x1080
+are GPU smoke checks, not controlled performance comparisons. External displays,
+docks, HDMI hotplug/standby/audio, suspend/resume, Touch ID and internal speakers
+are not qualified by this release. HDMI audio stays opt-in and the experimental
+T6030 memory floor is excluded. Local branding is retained on the tested Macs;
+this update does not distribute a replacement branding/Recovery migration.
 
 Exactly three packages form a release:
 
@@ -58,7 +72,8 @@ independent pacman channels.
 
 ## Actual hardware and profile boundaries
 
-The available owner machines were inspected on 2026-10-18:
+The owner machines were inspected on 2026-10-18 and the two released pairs
+completed the 7.2.11 candidate cycles on 2026-10-19:
 
 | Target | Observed OS firmware | Release path |
 | --- | --- | --- |
@@ -219,6 +234,17 @@ handoffs, isolated root elevation, UKI validation, complete fixture
 install/failure restore and coordinated rollback. Session tests cover the native
 recovery guard and compatibility GL/session controls. These are host controls.
 
+The [7.2.11 source gates](source-reviews/20261019-linux72.json) and
+[release build checks](source-reviews/20261019-linux72-builds.json) distinguish
+host/QEMU validation from physical hardware qualification. Both normal and native
+GPU builds retain their existing UAPI, and all 115 DTBs per profile match the
+baseline. The candidate reports above record the exact installed packages and
+rebooted rollback. The public reports above additionally bind the actual versioned
+bootstrap, downloaded manifest and verified default boot.
+
+Historical qualification results follow; their source pins and display topology
+do not extend the current release's hardware scope.
+
 The first J516S native-GPU report records an installed `d68cf5c0040f` kernel, native
 Mesa `45c2718d` including Eryk's latest PR23 fix, and m1n1 `1d6743b2`.
 All 36 Asahi suites pass. OpenGL and Vulkan each passed three-second real GPU
@@ -237,5 +263,6 @@ The automatic OMT invocation still fails with exit126 in its private lab path.
 It is not reported as a pass. Direct hardware checks supply the scoped graphics
 qualification; suspend, dock/hotplug and longer workloads remain separate.
 
-The J313 release remains at its previous qualified source pins. The generic
-source target list does not qualify all M1/M2/M3 machines.
+The earlier J313 release used its previous qualified source pins; the current
+7.2.11 pair is documented above. The generic source target list does not qualify
+all M1/M2/M3 machines.

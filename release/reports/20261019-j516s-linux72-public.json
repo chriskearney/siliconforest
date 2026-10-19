@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "board": "apple,j516s",
+  "os_firmware": "14.7",
+  "public_catalog": "v2026.10.19.1",
+  "installed_child": "v2026.10.19-j516s-linux72.1",
+  "bootstrap_url": "https://github.com/iconidentify/siliconforest/releases/download/v2026.10.19.1/install.sh",
+  "bootstrap_sha256": "b3f0864aec6ac333697e17585cefe524d111101bfc163f625fe17b4c97c92f77",
+  "manifest_sha256": "7b6b7be4b64682153076956c719777e9b5014a99b6f47b346227b560174763d5",
+  "private_install_log_sha256": "e0f6ed1641cede3cc513d9991d171ad1de03935e6d6eb5a69abc24ca5c729c9e",
+  "install_transaction_sha256": "67e1576b91321fe86583ebace689b373494155dc2480d7e195f456c8d6eb236f",
+  "unmodified_public_one_liner": true,
+  "kernel_release": "7.2.11-siliconforest-native-gpu-782b88e93448-layout1",
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261019.linux7211native1-1",
+      "file": "linux-siliconforest-20261019.linux7211native1-1-aarch64.pkg.tar.zst",
+      "sha256": "32ed81d6a985c78de3d9d7286a383c09dea0d02beee5fd140005d45a2d5a0436",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "782b88e934484819eb93b5f766a6b213a168f486"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.19-linux7.2.11-native.1"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-prscout.1"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "m1n1-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "2b6e02d3a7164e7da39c4e8e67030065627e098e143065cc94494855b3af3583",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.18-prscout.1"
+      }
+    }
+  },
+  "verified_default_boot": {
+    "transaction_sha256": "67e1576b91321fe86583ebace689b373494155dc2480d7e195f456c8d6eb236f",
+    "status": "installed-verified",
+    "boot_id_sha256": "9639deba132d094103710cd0cd732dcb1b34ed9c34ff38f78cbc9b41f7dc31d4",
+    "kernel": "7.2.11-siliconforest-native-gpu-782b88e93448-layout1",
+    "completed_utc": "2026-10-19T09:20:07.694836+00:00",
+    "collector_sha256": "d611d2c951537e01b58634b05c2249a0e85010e7839d9f5b092f77763f3895cc",
+    "verifier_sha256": "f8d202846c665383e865a814432f39be65f15c9a034e2c2a176d503793b09004",
+    "checks": {
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true,
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "graphics_admission": true,
+      "matched_boot_chain": true
+    },
+    "internal_panel": {
+      "name": "eDP-1",
+      "width": 3456,
+      "height": 2234,
+      "refreshRate": 120.0
+    },
+    "graphics": {
+      "renderer_class": "Apple M3 Pro",
+      "OpenGL_hardware_pixels": true,
+      "Vulkan_hardware_pixels": true
+    },
+    "quake_demo1": {
+      "frames": 969,
+      "fps": 186.1,
+      "extent": [
+        1920,
+        1080
+      ],
+      "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+      "vulkan_driver_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05"
+    },
+    "quake_receipt_sha256": "97f6050f283dd8e1b1b55f09522f01a4ee98196795ce670f08b8e6199e2382f5",
+    "brightness": {
+      "keyboard_exercised_and_restored": true,
+      "panel_exact_readback": true,
+      "panel_limitation": null,
+      "visible_luminance_verified": false
+    },
+    "kernel_health": {
+      "kernel_warn_oops_fault_lines": 0,
+      "gpu_fault_recovery_lines": 0,
+      "recoveries": 0,
+      "hang_kills": 0
+    },
+    "plymouth": {
+      "theme": "siliconforest",
+      "release_stamped": true,
+      "visible_splash_verified": false
+    }
+  },
+  "candidate_qualification": "release/reports/20261019-j516s-linux72.json",
+  "public_artifact_verification": "release/source-reviews/20261019-linux72-publication.json",
+  "limits": [
+    "The automatic legacy lab inventory could not start because its GUI process cannot traverse the existing private lab work directory; reproduced on the old kernel. Its tests are not counted as passed. Independent scoped hardware and binding checks are recorded separately.",
+    "Only the exact board/firmware, signed package set and boot chain in this report are qualified.",
+    "No external display/dock, HDMI hotplug/standby/audio, suspend/resume, Touch ID, internal-speaker or other-model qualification is claimed.",
+    "Quake results are current-boot smoke checks, not a controlled performance comparison; power conditions varied on the baseline.",
+    "Linux splash payload verification does not prove physical appearance. Early-stage logos and Recovery migration remain deferred.",
+    "Branding is the retained local2026.10.19-3 package; this release does not publish a replacement branding pipeline."
+  ]
+}
