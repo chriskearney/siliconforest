@@ -4,20 +4,23 @@ A personally maintained Apple Silicon kernel, Mesa and m1n1 stack for
 existing Omarchy installations, maintained by [iconidentify](https://github.com/iconidentify).
 Upstream history, attribution and licenses are preserved.
 
-Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.3)
+Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.4)
 on an existing Apple Silicon Omarchy installation:
 
 ```sh
-curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.3/install.sh | bash
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/latest/download/install.sh | bash
 ```
 
 Qualified pairs are **M1 Air J313 with OS firmware 13.5** and **M3 Pro 16-inch
 J516S with 14.7**, with the exact loader/U-Boot versions in their signed manifests.
 Default boot, the native desktop, OpenGL/Vulkan pixel readback and rebooted
 rollback passed on both. The J516S now uses the latest reviewed native AGX
-kernel/Mesa pair. The Air now uses the same source commits and identical Mesa
-graphics-library bytes with its normal kernel profile.
-[J516S native GPU evidence](release/reports/20261018-j516s-native-gpu.json)
+kernel/Mesa pair. The Air retains its previously qualified package set and normal kernel
+profile. The [reviewed J516S update](release/reports/20261018-j516s-prscout.json)
+records the new source pins, hardware checks and rebooted rollback; its
+[public installer verification](release/reports/20261018-j516s-prscout-public.json)
+records the actual downloaded upgrade and final default boot.
+[Original J516S native GPU benchmark](release/reports/20261018-j516s-native-gpu.json)
 records a 174.0 FPS median over five Quake demo1 runs at 1920x1080. The
 [updated Air qualification](release/reports/20261018-j313-current.json) records
 287.6 FPS with the same game and rendering settings. Kernel configurations and
@@ -57,8 +60,8 @@ SiliconForest support claim.
 The [October 18 source integration review](release/source-reviews/20261018.json)
 records the five selected public changes, downstream fixes, independent reviews
 and host validation. The source lock can advance ahead of the signed release
-catalog. Those changes require their own hardware qualification before a new
-installer release; the command above continues to use its recorded release pins.
+catalog. Each board/firmware pair needs its own hardware qualification before entering
+the catalog. The bootstrap installs its selected child release's pinned packages.
 
 ## Developer setup
 
@@ -144,7 +147,9 @@ current native G15 GPU driver and matching Mesa UAPI, with the maintained normal
 display, PHY, USB4 and PMP implementations. The source pins include Eryk's Mesa
 PR23 head `d593cfbf` (downstream `45c2718d`) and kernel PR358 head `79d6375f`,
 plus the reviewed downstream J516S memory, firmware and PMP handoff adaptations
-in `d68cf5c0040f`. OpenGL and Vulkan use the same native Mesa build.
+in the first native-GPU baseline, `d68cf5c0040f`. The reviewed refresh advances
+to kernel `7560c8b4747f`, Mesa `7515336b` and m1n1 `aca1258c` with the same
+kernel profile. OpenGL and Vulkan use one native Mesa build.
 
 [The hardware report](release/reports/20261018-j516s-native-gpu.json) records
 complete Image/modules/DTBs, checked C/Rust layouts, 36 passing Asahi suites,

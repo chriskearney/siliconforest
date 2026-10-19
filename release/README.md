@@ -1,19 +1,25 @@
 # SiliconForest installer and release qualification
 
 The installer replaces the kernel, Mesa and m1n1 stage 2 on an existing Apple
-Silicon Omarchy installation. The [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.3)
+Silicon Omarchy installation. The [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.4)
 is qualified for J313 on OS firmware 13.5 and J516S on 14.7, subject to the exact
 loader/U-Boot admission checks in each signed manifest:
 
 ```sh
-curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.3/install.sh | bash
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/latest/download/install.sh | bash
 ```
 
 To download and verify the applicable release without installing, append
 `-s -- --dry-run` to `bash`. Hardware reports are
 [J313 current sources](reports/20261018-j313-current.json) and
 [J516S native GPU](reports/20261018-j516s-native-gpu.json). Source profiles and signed attended
-candidates do not independently claim hardware support.
+candidates do not independently claim hardware support. The
+[reviewed J516S refresh](reports/20261018-j516s-prscout.json) adds the five selected
+source updates and passed desktop, GPU and coordinated rollback checks. The
+[public installer verification](reports/20261018-j516s-prscout-public.json)
+records its actual public download, upgrade and default boot. The Air's signed
+child release is unchanged. The latest-release URL selects a signed catalog;
+versioned releases remain available for reproducible installs.
 
 Exactly three packages form a release:
 
@@ -213,7 +219,7 @@ handoffs, isolated root elevation, UKI validation, complete fixture
 install/failure restore and coordinated rollback. Session tests cover the native
 recovery guard and compatibility GL/session controls. These are host controls.
 
-The J516S native-GPU report records an installed `d68cf5c0040f` kernel, native
+The first J516S native-GPU report records an installed `d68cf5c0040f` kernel, native
 Mesa `45c2718d` including Eryk's latest PR23 fix, and m1n1 `1d6743b2`.
 All 36 Asahi suites pass. OpenGL and Vulkan each passed three-second real GPU
 pixel checks; the actual compositor mapped the packaged `/usr/lib` Mesa. Five
