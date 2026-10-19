@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "public_catalog": "v2026.10.18.6",
+  "installed_child": "v2026.10.18-j313-pr148.1",
+  "bootstrap_url": "https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.6/install.sh",
+  "bootstrap_sha256": "5592b74dc4fe4a62259819bbf497a95e1b46ddb989db87c5314d7871f6cd85cc",
+  "manifest_sha256": "495a8cac52701ca47a32e527956691fceafb092e0b98c4ef5c36daa15309bc03",
+  "actual_public_install_and_default_boot": {
+    "schema": 1,
+    "board": "apple,j313",
+    "os_firmware": "13.5",
+    "kernel_release": "7.1.12-siliconforest-normal-54add20fd52e-layout1",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 2560,
+        "height": 1600,
+        "refreshRate": 60.0
+      }
+    ],
+    "desktop_capture_sha256": "819695bec5f4f4a21479098a53571a5d11d00e3ded680c57119be53ba504b030",
+    "stage2_version": "v2.0.0-siliconforest.dev.gaca1258c2d7d",
+    "packages": {
+      "linux-siliconforest": "20261018.prscout3normal-1",
+      "mesa-siliconforest": "20261018.prscout3-1",
+      "m1n1-siliconforest": "20261018.prscout3normal-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "ed1ccced9fee00ad6de56e9429fbe71b02f2b0510d15197c3dd46daa33e013f6"
+    },
+    "OpenGL": "Renderer: Apple M1 (G13G B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7440 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M1 (G13G B1) (deviceID 0x0)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6237 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-19T05:06:33Z"
+  },
+  "verified_transaction": {
+    "kernel": "7.1.12-siliconforest-normal-54add20fd52e-layout1",
+    "release": "v2026.10.18-j313-pr148.1",
+    "completed_utc": "2026-10-19T05:07:07.837953+00:00",
+    "report_sha256": "c1f3bfa2a8ba8be0540614818da4af68efbd57e910a4bd9604389bf534b3c789",
+    "hardware_GL_Vulkan_pixels": true,
+    "desktop": true,
+    "quake_smoke_fps": 284.8,
+    "quake_pixel_extent": [
+      1920,
+      1080
+    ],
+    "gpu_error_lines": 0,
+    "boot_id": "8637f331-fce4-4349-b10b-374e1a0849e1",
+    "status": "installed-verified",
+    "transaction": "1792386256704940159-v2026.10.18-j313-pr148.1",
+    "esp_free_mib": 80.6953125
+  },
+  "public_scene_smoke": {
+    "frames": 969,
+    "seconds": 3.4,
+    "fps": 284.8,
+    "extent": [
+      1920,
+      1080
+    ],
+    "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+    "Vulkan_library_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05",
+    "receipt_sha256": "de5a2a70a1a8a3e6d6cfdeb4a34272604e6c2c07114b5e606cb238e6fca1f357",
+    "runner_exit_code": -15,
+    "runner_exit_note": "Intentional runner termination after completed timedemo.",
+    "included_in_statistical_benchmark": false
+  },
+  "candidate_qualification": "20261018-j313-pr148.json",
+  "public_artifact_verification": "../source-reviews/20261018-pr148-publication.json",
+  "limits": [
+    "Only this exact board/firmware/boot chain and the manifest-pinned package set are covered.",
+    "No HDMI hotplug, standby, audio, suspend/resume, Touch ID or other-board hardware qualification.",
+    "Raw logs, desktop/game captures, usernames and host addresses remain private.",
+    "Branding changes were not applied during these tests.",
+    "Air panel brightness actual readback retains the documented baseline offset; exact panel readback and optical luminance are not qualified."
+  ],
+  "brightness": {
+    "keyboard": "exercised and restored",
+    "panel_exact_readback_passed": false,
+    "panel_sweep": {
+      "kernel": "7.1.12-siliconforest-normal-54add20fd52e-layout1",
+      "boot_id": "8637f331-fce4-4349-b10b-374e1a0849e1",
+      "max": 420,
+      "initial": {
+        "requested": 302,
+        "actual": 325
+      },
+      "sweep": [
+        {
+          "requested": 105,
+          "actual": 105
+        },
+        {
+          "requested": 210,
+          "actual": 223
+        },
+        {
+          "requested": 315,
+          "actual": 340
+        },
+        {
+          "requested": 400,
+          "actual": 421
+        }
+      ],
+      "restored": {
+        "requested": 302,
+        "actual": 325
+      },
+      "monotonic_actual": true,
+      "restored_same_pair": true,
+      "exact_readback_match": false
+    }
+  },
+  "boot_log_summary": {
+    "kernel_WARN": 0,
+    "workqueue_underflow": 0,
+    "error_priority_lines": 11,
+    "GPU_error_lines": 0
+  },
+  "runtime_policy": {
+    "llvm-libs": "22.1.8-2",
+    "llvm22-libs_installed": false,
+    "only_intended_three_package_versions_changed": true
+  }
+}

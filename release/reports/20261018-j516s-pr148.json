@@ -1,0 +1,263 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "status": "passed for the exact signed package set and board/firmware identities",
+  "board": "apple,j516s",
+  "model": "MacBook Pro 16-inch M3 Pro",
+  "os_firmware": "14.7",
+  "profile": "m3-pro-native-gpu",
+  "kernel_release": "7.1.12-siliconforest-native-gpu-54add20fd52e-layout1",
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261018.prscout3-1",
+      "file": "linux-siliconforest-20261018.prscout3-1-aarch64.pkg.tar.zst",
+      "sha256": "165615f2a29a3fc6f352a45de2205888182b6d091fa9a9794a747bb6ce47636c",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "54add20fd52ed9619483b22e21d79bbefecc2072"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.18-pr148-native.1"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-prscout.1"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "m1n1-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "2b6e02d3a7164e7da39c4e8e67030065627e098e143065cc94494855b3af3583",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.18-prscout.1"
+      }
+    }
+  },
+  "boot": {
+    "stage2_version": "v2.0.0-siliconforest.dev.gaca1258c2d7d",
+    "dtb": "apple/t6030-j516s.dtb",
+    "backend": "limine",
+    "entry": "limine.conf",
+    "image": "EFI/Linux/omarchy_linux-siliconforest.efi",
+    "max_image_bytes": 69206016,
+    "max_stage2_bytes": 8388608,
+    "stage1_versions": [
+      "v1.6.1-dirty"
+    ],
+    "iboot_versions": [
+      "iBoot-10151.140.19.700.2"
+    ],
+    "m1n1_config": [
+      "chosen.asahi,t6030-gpu=1",
+      "chosen.asahi,t6030-dcp=1",
+      "chosen.asahi,t6030-dcpext=1"
+    ],
+    "uboot_path": "/usr/lib/asahi-boot/u-boot-nodtb.bin",
+    "uboot_sha256": "11c09b0de3cdb03406de09e1782aa5a30b097f1e228de7b558ca88626c87f8c5",
+    "kernel_image_sha256": "c610e7a7175df025132965b5b0423e11adec0f3ac0395867b8bc245c892f03e9",
+    "dtb_sha256": "18baac96873fabed31c1eca3a2495dd2ea534067120dddf71d373f1345acd47c",
+    "m1n1_sha256": "db98796e1a82b820aae4698f71f9fc41f532a666f52a45ffec85b6833ec4f8ee",
+    "config_sha256": "989a25fb47ce437b2eb85e60632226f16afc4a77cb00bead8307a53086ff7dbb"
+  },
+  "checks": {
+    "desktop": true,
+    "hardware_OpenGL_Vulkan_pixels": true,
+    "matched_boot_chain": true,
+    "rebooted_rollback": true,
+    "reinstall_default_boot": true,
+    "keyboard_brightness_control": true,
+    "panel_exact_brightness_readback": true
+  },
+  "candidate_reinstall": {
+    "boot_id": "459394be-3893-4077-8c01-b31d123e7849",
+    "transaction": "1792385150178359994-testing-20261018-j516s-pr1481",
+    "status": "installed-verified",
+    "completed_utc": "2026-10-19T04:47:57.707658+00:00",
+    "collector_sha256": "a1b2c3c44fdf255b9d1dedfdf8ef1d359e66297beba7f385375838973578c2ec",
+    "esp_free_mib": 90.953125
+  },
+  "graphics": {
+    "OpenGL": "Renderer: Apple M3 Pro (G15S B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7350 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M3 Pro (G15S B1) (deviceID 0x6030)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6823 runs in 3.0 s, 0 with wrong pixels",
+    "monitors": [
+      {
+        "name": "eDP-1",
+        "width": 3456,
+        "height": 2234,
+        "refreshRate": 120.0
+      },
+      {
+        "name": "DP-1",
+        "width": 3840,
+        "height": 2160,
+        "refreshRate": 59.997
+      }
+    ],
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "ed1ccced9fee00ad6de56e9429fbe71b02f2b0510d15197c3dd46daa33e013f6"
+    },
+    "Quake_demo1": [
+      {
+        "phase": "candidate-boot1",
+        "frames": 969,
+        "seconds": 5.6,
+        "fps": 173.5,
+        "physical_extent": [
+          1920,
+          1080
+        ],
+        "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+        "settings": {
+          "vid_fullscreen": "0",
+          "vid_desktopfullscreen": "0",
+          "vid_borderless": "0",
+          "vid_vsync": "0",
+          "vid_fsaa": "0",
+          "vid_fsaamode": "0",
+          "vid_maxframelatency": "2",
+          "r_scale": "1",
+          "r_oit": "1",
+          "r_waterwarpcompute": "1",
+          "r_rtshadows": "0",
+          "host_maxfps": "200",
+          "gamma": "0.9",
+          "contrast": "1.4"
+        },
+        "demo_sha256": "893e5279e3a84fed0416a1101dfc2b6bca1ebd28787323daa8e22cefe54883c1",
+        "Vulkan_library_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05",
+        "receipt_sha256": "12befed0dda7ddb61f6eb8c67b5110cdc4668f98ef20101e81a3d3ab9c7cf8e2",
+        "runner_exit_code": -15,
+        "runner_exit_note": "The runner intentionally terminates the game after the completed timedemo."
+      },
+      {
+        "phase": "candidate-boot2",
+        "frames": 969,
+        "seconds": 5.6,
+        "fps": 173.9,
+        "physical_extent": [
+          1920,
+          1080
+        ],
+        "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+        "settings": {
+          "vid_fullscreen": "0",
+          "vid_desktopfullscreen": "0",
+          "vid_borderless": "0",
+          "vid_vsync": "0",
+          "vid_fsaa": "0",
+          "vid_fsaamode": "0",
+          "vid_maxframelatency": "2",
+          "r_scale": "1",
+          "r_oit": "1",
+          "r_waterwarpcompute": "1",
+          "r_rtshadows": "0",
+          "host_maxfps": "200",
+          "gamma": "0.9",
+          "contrast": "1.4"
+        },
+        "demo_sha256": "893e5279e3a84fed0416a1101dfc2b6bca1ebd28787323daa8e22cefe54883c1",
+        "Vulkan_library_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05",
+        "receipt_sha256": "3a5097e9f4d08bd88c60716a43e62d267b3963450efd54bd0df9924ed98e47f4",
+        "runner_exit_code": -15,
+        "runner_exit_note": "The runner intentionally terminates the game after the completed timedemo."
+      }
+    ],
+    "performance_scope": "Two smoke runs across candidate boot and reinstall; not a multi-run statistical benchmark. Debug GPU counters are system-wide and include compositor work.",
+    "gpu_recoveries": 0,
+    "hang_kills": 0,
+    "native_GPU_kernel_errors": 0,
+    "external_display_connection": "CalDigit TS3 Plus Thunderbolt dock; the built-in HDMI port was not exercised.",
+    "excluded_runs": "Two preliminary runs at 3840x2160 with different executable/settings were excluded from the 1080p comparison."
+  },
+  "brightness": {
+    "schema": 1,
+    "kernel": "7.1.12-siliconforest-native-gpu-54add20fd52e-layout1",
+    "board": "apple,j516s",
+    "os_firmware": "14.7",
+    "boot_id": "459394be-3893-4077-8c01-b31d123e7849",
+    "exercised": true,
+    "controls": [
+      {
+        "device": "white:kbd_backlight",
+        "kind": "keyboard",
+        "maximum": 255,
+        "original": 102,
+        "changed": {
+          "requested": 90,
+          "actual": null
+        },
+        "restored": {
+          "requested": 102,
+          "actual": null
+        },
+        "status": "passed"
+      },
+      {
+        "device": "apple-panel-bl",
+        "kind": "display",
+        "maximum": 500,
+        "original": 300,
+        "changed": {
+          "requested": 275,
+          "actual": 275
+        },
+        "restored": {
+          "requested": 300,
+          "actual": 300
+        },
+        "status": "passed"
+      }
+    ],
+    "visible_luminance_verified": false,
+    "missing": [],
+    "status": "passed",
+    "completed_utc": "2026-10-19T04:47:32.972182+00:00"
+  },
+  "rollback": {
+    "kernel": "7.1.12-siliconforest-native-gpu-4b318c4140e8-layout1",
+    "saved_files_restored": 16,
+    "complete_previous_package_list_restored": true,
+    "boot_id": "03916af1-b8b2-4155-b162-a7c2fec29f8c",
+    "desktop_GL_Vulkan_passed": true,
+    "status": "rolled-back-verified"
+  },
+  "recovery": "All historical bootable UKIs and raw loader recovery paths retained. Verified duplicate transaction copies may be stored losslessly on root, with restoration notes. The coordinated rollback restored the complete preceding package list and saved boot files and was reboot-tested.",
+  "source_validation": "../source-reviews/20261018-pr148.json",
+  "build_validation": "../source-reviews/20261018-pr148-builds.json",
+  "limits": [
+    "Qualification applies only to this board, exact OS firmware and loader/U-Boot identities in the manifest.",
+    "No HDMI hotplug, standby, HDMI audio, suspend/resume, Touch ID, internal speaker or other-model hardware qualification.",
+    "Panel brightness was exercised with driver readback. Keyboard brightness was exercised through the exposed brightness control; no optical measurement or owner visual confirmation is claimed.",
+    "The experimental T6030 memory floor is excluded. HDMI audio remains opt-in and was disabled during these tests.",
+    "Different kernel profiles and LLVM runtime packages are required on these machines despite sharing Linux, Mesa and m1n1 source commits."
+  ],
+  "boot_log_summary": {
+    "kernel_WARN": 0,
+    "workqueue_underflow": 0,
+    "IOMFB_timings_warning": 1,
+    "lane_count_message": 1,
+    "error_priority_lines": 20,
+    "scope": "Reinstall boot. The IOMFB warning and lane-count message also occurred on the baseline; error-priority lines include existing non-GPU device classes."
+  }
+}

@@ -1,0 +1,325 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "status": "passed for the exact signed package set and board/firmware identities",
+  "board": "apple,j313",
+  "model": "MacBook Air M1",
+  "os_firmware": "13.5",
+  "profile": "m1-m2",
+  "kernel_release": "7.1.12-siliconforest-normal-54add20fd52e-layout1",
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261018.prscout3normal-1",
+      "file": "linux-siliconforest-20261018.prscout3normal-1-aarch64.pkg.tar.zst",
+      "sha256": "44fb1f8f9e32e6f65afa659f676e1f989dfc0eacea609e6b7870ffe4d8f9ffe7",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "54add20fd52ed9619483b22e21d79bbefecc2072"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.18-pr148-normal.1"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.prscout3-1",
+      "file": "mesa-siliconforest-20261018.prscout3-1-aarch64.pkg.tar.zst",
+      "sha256": "a36ec9be8ade7a9764010bf8edc7842ef59cde251852fd363b952137ab7e6533",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-m1-m2-pr148.1"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.prscout3normal-1",
+      "file": "m1n1-siliconforest-20261018.prscout3normal-1-aarch64.pkg.tar.zst",
+      "sha256": "c9dc6edb1c80f8840a845b30f237ea1d47c2faf753754ab181890fb97d2d1927",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.18-normal-pr148.1"
+      }
+    }
+  },
+  "boot": {
+    "stage2_version": "v2.0.0-siliconforest.dev.gaca1258c2d7d",
+    "dtb": "apple/t8103-j313.dtb",
+    "backend": "limine",
+    "entry": "limine.conf",
+    "image": "EFI/Linux/omarchy_linux-siliconforest.efi",
+    "max_image_bytes": 67108864,
+    "max_stage2_bytes": 8388608,
+    "stage1_versions": [],
+    "iboot_versions": [
+      "iBoot-8422.141.2"
+    ],
+    "m1n1_config": [],
+    "uboot_path": "/usr/lib/asahi-boot/u-boot-nodtb.bin",
+    "uboot_sha256": "b8d52d16a56f4bc9640e6c210a1414f94f06d1aa0e1fa9845b69979b006c52b1",
+    "kernel_image_sha256": "6e87cb9c9f5219ba8747461f71be1ffc5a027f773b7dca45a450dc2a9e492b55",
+    "dtb_sha256": "7f63ce6c5a5cbaf5994372aaa00c84198f3f7ccd4753a3e998179948cc4168f3",
+    "m1n1_sha256": "db98796e1a82b820aae4698f71f9fc41f532a666f52a45ffec85b6833ec4f8ee",
+    "config_sha256": "8a754337ce29f723198e6e1073acebb8e1cd85a2dbcb0dd3cf5c978e5f76297b"
+  },
+  "checks": {
+    "desktop": true,
+    "hardware_OpenGL_Vulkan_pixels": true,
+    "matched_boot_chain": true,
+    "rebooted_rollback": true,
+    "reinstall_default_boot": true,
+    "keyboard_brightness_control": true,
+    "panel_exact_brightness_readback": false
+  },
+  "candidate_reinstall": {
+    "boot_id": "24b5e038-2580-4709-8359-442f6619b5e3",
+    "transaction": "1792385724689488442-testing-20261018-j313-pr1481",
+    "status": "installed-verified",
+    "completed_utc": "2026-10-19T04:57:48.360944+00:00",
+    "collector_sha256": "68117c0bd8cb3b60f2e311c2899aecdaea8a5726a63e228dbf5dc6df5f7522af",
+    "esp_free_mib": 81.3515625
+  },
+  "graphics": {
+    "OpenGL": "Renderer: Apple M1 (G13G B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7446 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M1 (G13G B1) (deviceID 0x0)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6249 runs in 3.0 s, 0 with wrong pixels",
+    "monitors": [
+      {
+        "name": "eDP-1",
+        "width": 2560,
+        "height": 1600,
+        "refreshRate": 60.0
+      }
+    ],
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "ed1ccced9fee00ad6de56e9429fbe71b02f2b0510d15197c3dd46daa33e013f6"
+    },
+    "Quake_demo1": [
+      {
+        "phase": "candidate-boot1",
+        "frames": 969,
+        "seconds": 3.1,
+        "fps": 312.5,
+        "physical_extent": [
+          1920,
+          1080
+        ],
+        "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+        "settings": {
+          "vid_fullscreen": "0",
+          "vid_desktopfullscreen": "0",
+          "vid_borderless": "0",
+          "vid_vsync": "0",
+          "vid_fsaa": "0",
+          "vid_fsaamode": "0",
+          "vid_maxframelatency": "2",
+          "r_scale": "1",
+          "r_oit": "1",
+          "r_waterwarpcompute": "1",
+          "r_rtshadows": "0",
+          "host_maxfps": "200",
+          "gamma": "0.9",
+          "contrast": "1.4"
+        },
+        "demo_sha256": "893e5279e3a84fed0416a1101dfc2b6bca1ebd28787323daa8e22cefe54883c1",
+        "Vulkan_library_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05",
+        "receipt_sha256": "2329dfb59b51dbb163298762484dbbc67079c1e6a6808613ddf0f649abc9872c",
+        "runner_exit_code": -15,
+        "runner_exit_note": "The runner intentionally terminates the game after the completed timedemo."
+      },
+      {
+        "phase": "candidate-boot2",
+        "frames": 969,
+        "seconds": 3.5,
+        "fps": 279.8,
+        "physical_extent": [
+          1920,
+          1080
+        ],
+        "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+        "settings": {
+          "vid_fullscreen": "0",
+          "vid_desktopfullscreen": "0",
+          "vid_borderless": "0",
+          "vid_vsync": "0",
+          "vid_fsaa": "0",
+          "vid_fsaamode": "0",
+          "vid_maxframelatency": "2",
+          "r_scale": "1",
+          "r_oit": "1",
+          "r_waterwarpcompute": "1",
+          "r_rtshadows": "0",
+          "host_maxfps": "200",
+          "gamma": "0.9",
+          "contrast": "1.4"
+        },
+        "demo_sha256": "893e5279e3a84fed0416a1101dfc2b6bca1ebd28787323daa8e22cefe54883c1",
+        "Vulkan_library_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05",
+        "receipt_sha256": "284079e19b5f82a4e11affa049253fa931f5bf41bd86a74da0745337db93f152",
+        "runner_exit_code": -15,
+        "runner_exit_note": "The runner intentionally terminates the game after the completed timedemo."
+      }
+    ],
+    "performance_scope": "Two smoke runs across candidate boot and reinstall; not a multi-run statistical benchmark. Debug GPU counters are system-wide and include compositor work.",
+    "GPU_error_lines": 0
+  },
+  "brightness": {
+    "keyboard": {
+      "device": "kbd_backlight",
+      "kind": "keyboard",
+      "maximum": 255,
+      "original": 0,
+      "changed": {
+        "requested": 12,
+        "actual": null
+      },
+      "restored": {
+        "requested": 0,
+        "actual": null
+      },
+      "status": "passed"
+    },
+    "panel_exact_readback_passed": false,
+    "panel_response_and_restoration": [
+      {
+        "kernel": "7.1.12-siliconforest-normal-54add20fd52e-layout1",
+        "boot_id": "bf50c208-0579-494e-9bbe-7babb8d56a79",
+        "max": 420,
+        "initial": {
+          "requested": 302,
+          "actual": 325
+        },
+        "sweep": [
+          {
+            "requested": 105,
+            "actual": 105
+          },
+          {
+            "requested": 210,
+            "actual": 223
+          },
+          {
+            "requested": 315,
+            "actual": 340
+          },
+          {
+            "requested": 400,
+            "actual": 421
+          }
+        ],
+        "restored": {
+          "requested": 302,
+          "actual": 325
+        },
+        "monotonic_actual": true,
+        "restored_same_pair": true,
+        "exact_readback_match": false
+      },
+      {
+        "kernel": "7.1.12-siliconforest-normal-d68cf5c0040f-layout1",
+        "boot_id": "2c0903c6-036c-4434-8354-74d72ea265fe",
+        "max": 420,
+        "initial": {
+          "requested": 302,
+          "actual": 325
+        },
+        "sweep": [
+          {
+            "requested": 105,
+            "actual": 105
+          },
+          {
+            "requested": 210,
+            "actual": 223
+          },
+          {
+            "requested": 315,
+            "actual": 340
+          },
+          {
+            "requested": 400,
+            "actual": 421
+          }
+        ],
+        "restored": {
+          "requested": 302,
+          "actual": 325
+        },
+        "monotonic_actual": true,
+        "restored_same_pair": true,
+        "exact_readback_match": false
+      },
+      {
+        "kernel": "7.1.12-siliconforest-normal-54add20fd52e-layout1",
+        "boot_id": "24b5e038-2580-4709-8359-442f6619b5e3",
+        "max": 420,
+        "initial": {
+          "requested": 302,
+          "actual": 325
+        },
+        "sweep": [
+          {
+            "requested": 105,
+            "actual": 105
+          },
+          {
+            "requested": 210,
+            "actual": 223
+          },
+          {
+            "requested": 315,
+            "actual": 340
+          },
+          {
+            "requested": 400,
+            "actual": 421
+          }
+        ],
+        "restored": {
+          "requested": 302,
+          "actual": 325
+        },
+        "monotonic_actual": true,
+        "restored_same_pair": true,
+        "exact_readback_match": false
+      }
+    ],
+    "limitation": "Requested and actual panel brightness differ reproducibly on both the candidate and rolled-back old kernel. Actual readback can exceed max_brightness. Monotonic response and restoration to the original requested/actual pair were verified; exact or optically calibrated luminance was not."
+  },
+  "rollback": {
+    "kernel": "7.1.12-siliconforest-normal-d68cf5c0040f-layout1",
+    "saved_files_restored": 17,
+    "complete_previous_package_list_restored": true,
+    "boot_id": "2c0903c6-036c-4434-8354-74d72ea265fe",
+    "desktop_GL_Vulkan_passed": true,
+    "status": "rolled-back-verified"
+  },
+  "recovery": "All historical bootable UKIs and raw loader recovery paths retained. Verified duplicate transaction copies may be stored losslessly on root, with restoration notes. The coordinated rollback restored the complete preceding package list and saved boot files and was reboot-tested.",
+  "source_validation": "../source-reviews/20261018-pr148.json",
+  "build_validation": "../source-reviews/20261018-pr148-builds.json",
+  "limits": [
+    "Qualification applies only to this board, exact OS firmware and loader/U-Boot identities in the manifest.",
+    "No HDMI hotplug, standby, HDMI audio, suspend/resume, Touch ID, internal speaker or other-model hardware qualification.",
+    "Panel brightness was exercised with driver readback. Keyboard brightness was exercised through the exposed brightness control; no optical measurement or owner visual confirmation is claimed.",
+    "The experimental T6030 memory floor is excluded. HDMI audio remains opt-in and was disabled during these tests.",
+    "Different kernel profiles and LLVM runtime packages are required on these machines despite sharing Linux, Mesa and m1n1 source commits."
+  ],
+  "runtime_policy": "Mesa uses the existing llvm-libs 22 runtime. No base-system upgrade or llvm22-libs migration.",
+  "boot_log_summary": {
+    "kernel_WARN": 0,
+    "workqueue_underflow": 0,
+    "error_priority_lines": 10,
+    "scope": "Reinstall boot; error-priority device classes match baseline."
+  }
+}

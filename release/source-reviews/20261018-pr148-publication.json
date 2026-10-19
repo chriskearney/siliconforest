@@ -1,0 +1,158 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "catalog": "v2026.10.18.6",
+  "qualification_control_commit": "3314d6a9ccf2373506643f608217f85e3867965b",
+  "signing_fingerprint": "97DC8D8AFCBC08DB7283EC3CFFB366AB95783E75",
+  "asset_digest_verification": "All listed public GitHub asset digests match the locally verified signed bundles. Reused component signatures retain their original public bytes.",
+  "components_and_control": [
+    {
+      "repository": "iconidentify/siliconforest-linux",
+      "tag": "v2026.10.18-pr148-native.1",
+      "source_or_control_commit": "54add20fd52ed9619483b22e21d79bbefecc2072",
+      "url": "https://github.com/iconidentify/siliconforest-linux/releases/tag/v2026.10.18-pr148-native.1",
+      "assets": {
+        "linux-siliconforest-20261018.prscout3-1-aarch64.pkg.tar.zst": "sha256:165615f2a29a3fc6f352a45de2205888182b6d091fa9a9794a747bb6ce47636c",
+        "linux-siliconforest-20261018.prscout3-1-aarch64.pkg.tar.zst.sig": "sha256:e096474cb49bbc3cfe2fee355bafa1ff86091d60ad8a2ff82938bae7e42c04a9"
+      }
+    },
+    {
+      "repository": "iconidentify/siliconforest-mesa",
+      "tag": "v2026.10.18-prscout.1",
+      "source_or_control_commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
+      "url": "https://github.com/iconidentify/siliconforest-mesa/releases/tag/v2026.10.18-prscout.1",
+      "assets": {
+        "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst": "sha256:396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391",
+        "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst.sig": "sha256:717373c614434b6bf67c3d7ea628668e457d4005d0ff08136016ef9d3db4e2e2"
+      }
+    },
+    {
+      "repository": "iconidentify/siliconforest-m1n1",
+      "tag": "v2026.10.18-prscout.1",
+      "source_or_control_commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac",
+      "url": "https://github.com/iconidentify/siliconforest-m1n1/releases/tag/v2026.10.18-prscout.1",
+      "assets": {
+        "m1n1-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst": "sha256:2b6e02d3a7164e7da39c4e8e67030065627e098e143065cc94494855b3af3583",
+        "m1n1-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst.sig": "sha256:c9c2aad73b1549f69d3d76ca93ad7000cd770659f9f4c2722a202ce662293ba3"
+      }
+    },
+    {
+      "repository": "iconidentify/siliconforest",
+      "tag": "v2026.10.18-j516s-pr148.1",
+      "source_or_control_commit": "3314d6a9ccf2373506643f608217f85e3867965b",
+      "url": "https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18-j516s-pr148.1",
+      "assets": {
+        "install.sh": "sha256:5fa48762280634b4f7ac48bf3fab020a69c2f43105222bab53288e765c995394",
+        "release-key.asc": "sha256:7517a0df8a1800aa64d0b6c1bb1c3208dc15740dd6d07a5b4bee084f1a3ca927",
+        "release.json": "sha256:9d550fcc17e720e5c2a25c41ac9a7a9439a86abc667376670f9d15ae6e27b6a4",
+        "release.json.sig": "sha256:a36f4ffb8a53ee6318c880ae3e1303e5acbb020e8916cf9cb160a042f40d9794",
+        "siliconforest.db": "sha256:2041c56cc10f142dfd7e12fed7258846229c08d1b3a05dc15e2e508073205114",
+        "siliconforest.db.sig": "sha256:8a347ebcf260079e2d76426bad4c859f71e9e65d8ba2c1acd55d095460945d80",
+        "siliconforest.db.tar.gz": "sha256:2041c56cc10f142dfd7e12fed7258846229c08d1b3a05dc15e2e508073205114",
+        "siliconforest.db.tar.gz.sig": "sha256:8a347ebcf260079e2d76426bad4c859f71e9e65d8ba2c1acd55d095460945d80",
+        "siliconforest.files.tar.gz": "sha256:12fa7bddc24dc03fa92c6050c0afc29367b7dc995764a5f5821b572b6d6007da",
+        "siliconforest.files.tar.gz.sig": "sha256:1b0c4bac29d96861cb70f51288eec8986e0c346af3cf360c885ece1fc2faf1b1",
+        "siliconforest.pyz": "sha256:f081c5e8c7f68e6449d2c7f9e4e630ecef75bd7be3e81976d54864c039bc66ec",
+        "sources.lock.json": "sha256:6a9e90c1f2a61895db3f8e3a67161dd98409311f6dd124fb1b9529e0e21f420e"
+      }
+    },
+    {
+      "repository": "iconidentify/siliconforest-linux",
+      "tag": "v2026.10.18-pr148-normal.1",
+      "source_or_control_commit": "54add20fd52ed9619483b22e21d79bbefecc2072",
+      "url": "https://github.com/iconidentify/siliconforest-linux/releases/tag/v2026.10.18-pr148-normal.1",
+      "assets": {
+        "linux-siliconforest-20261018.prscout3normal-1-aarch64.pkg.tar.zst": "sha256:44fb1f8f9e32e6f65afa659f676e1f989dfc0eacea609e6b7870ffe4d8f9ffe7",
+        "linux-siliconforest-20261018.prscout3normal-1-aarch64.pkg.tar.zst.sig": "sha256:a06232e851f2423c2178201c5fb7fbfc3f4acdf2aa57fb0abb6f61f54c5c6abb"
+      }
+    },
+    {
+      "repository": "iconidentify/siliconforest-mesa",
+      "tag": "v2026.10.18-m1-m2-pr148.1",
+      "source_or_control_commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
+      "url": "https://github.com/iconidentify/siliconforest-mesa/releases/tag/v2026.10.18-m1-m2-pr148.1",
+      "assets": {
+        "mesa-siliconforest-20261018.prscout3-1-aarch64.pkg.tar.zst": "sha256:a36ec9be8ade7a9764010bf8edc7842ef59cde251852fd363b952137ab7e6533",
+        "mesa-siliconforest-20261018.prscout3-1-aarch64.pkg.tar.zst.sig": "sha256:b773bca1b61a979b7de774e451cf54d7048f583d8a15b74bf86b4cb1f1859499"
+      }
+    },
+    {
+      "repository": "iconidentify/siliconforest-m1n1",
+      "tag": "v2026.10.18-normal-pr148.1",
+      "source_or_control_commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac",
+      "url": "https://github.com/iconidentify/siliconforest-m1n1/releases/tag/v2026.10.18-normal-pr148.1",
+      "assets": {
+        "m1n1-siliconforest-20261018.prscout3normal-1-aarch64.pkg.tar.zst": "sha256:c9dc6edb1c80f8840a845b30f237ea1d47c2faf753754ab181890fb97d2d1927",
+        "m1n1-siliconforest-20261018.prscout3normal-1-aarch64.pkg.tar.zst.sig": "sha256:14fd31aeb70a8cce002dc8c99d4632fef0de3d0b01f4a84ae4f62d6e5fc61602"
+      }
+    },
+    {
+      "repository": "iconidentify/siliconforest",
+      "tag": "v2026.10.18-j313-pr148.1",
+      "source_or_control_commit": "3314d6a9ccf2373506643f608217f85e3867965b",
+      "url": "https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18-j313-pr148.1",
+      "assets": {
+        "install.sh": "sha256:560245e98d725baf8d4ca6ca569f9ebb09b25d78b379f7f5abcfe56b127792a1",
+        "release-key.asc": "sha256:7517a0df8a1800aa64d0b6c1bb1c3208dc15740dd6d07a5b4bee084f1a3ca927",
+        "release.json": "sha256:495a8cac52701ca47a32e527956691fceafb092e0b98c4ef5c36daa15309bc03",
+        "release.json.sig": "sha256:d1f8c8f8ae339de3aaad802a6a4a5cbefe46f3e7b9222c176298927771cdd2b1",
+        "siliconforest.db": "sha256:b2c344ff2aab499efe4bfec3fc33571f2952e6feb38b152dbd9c35f09d42bbd2",
+        "siliconforest.db.sig": "sha256:7d1e98f0e74a52ca62cadd5c9d789fe0fc2c6b9981a05e24a6aef368146272e8",
+        "siliconforest.db.tar.gz": "sha256:b2c344ff2aab499efe4bfec3fc33571f2952e6feb38b152dbd9c35f09d42bbd2",
+        "siliconforest.db.tar.gz.sig": "sha256:7d1e98f0e74a52ca62cadd5c9d789fe0fc2c6b9981a05e24a6aef368146272e8",
+        "siliconforest.files.tar.gz": "sha256:39bdec2d8ee65cbdb23b3e796a53e476e8b3ae6aee1d4ff6ab1a150957819c2c",
+        "siliconforest.files.tar.gz.sig": "sha256:be7a1a2263e556814bc8671ec5fe2f021dec35e04478ca8b80d9361b53b3367a",
+        "siliconforest.pyz": "sha256:d7cfbdfecbff20a4cfd3ecd47ab7b627aa4efa0e154c2398cd56827d9aeab088",
+        "sources.lock.json": "sha256:6a9e90c1f2a61895db3f8e3a67161dd98409311f6dd124fb1b9529e0e21f420e"
+      }
+    },
+    {
+      "repository": "iconidentify/siliconforest",
+      "tag": "v2026.10.18.6",
+      "source_or_control_commit": "3314d6a9ccf2373506643f608217f85e3867965b",
+      "url": "https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.6",
+      "assets": {
+        "catalog.json": "sha256:fd5009f1d31e4192f6da7a559d9724fd3e6ee3173ec1aefaec7a49d108f0b0c6",
+        "catalog.json.sig": "sha256:7be78c8d289d1e3f5f5df5cc62d71bde7107c8e6dc7be78a1377ce0e29246298",
+        "release-key.asc": "sha256:7517a0df8a1800aa64d0b6c1bb1c3208dc15740dd6d07a5b4bee084f1a3ca927",
+        "siliconforest.pyz": "sha256:d7cfbdfecbff20a4cfd3ecd47ab7b627aa4efa0e154c2398cd56827d9aeab088",
+        "install.sh": "sha256:5592b74dc4fe4a62259819bbf497a95e1b46ddb989db87c5314d7871f6cd85cc"
+      }
+    }
+  ],
+  "scope": "Public-source code only. Binary packages are hosted in their component repositories; the control releases hold metadata and installers.",
+  "canonical_latest_verification": {
+    "url": "https://github.com/iconidentify/siliconforest/releases/latest/download/install.sh",
+    "catalog": "v2026.10.18.6",
+    "bootstrap_sha256": "5592b74dc4fe4a62259819bbf497a95e1b46ddb989db87c5314d7871f6cd85cc",
+    "matches_versioned_tested_bootstrap": true,
+    "target_read_only_fetches": {
+      "j516s": {
+        "board_host": "m3pro",
+        "url": "https://github.com/iconidentify/siliconforest/releases/latest/download/install.sh",
+        "sha256": "5592b74dc4fe4a62259819bbf497a95e1b46ddb989db87c5314d7871f6cd85cc",
+        "tag": "v2026.10.18.6",
+        "expected_sha256": "5592b74dc4fe4a62259819bbf497a95e1b46ddb989db87c5314d7871f6cd85cc",
+        "match": true,
+        "boot_id": "e7d4468a-f16e-46fe-992c-fb13b84bf83b",
+        "kernel": "7.1.12-siliconforest-native-gpu-54add20fd52e-layout1",
+        "utc": "2026-10-19T05:08:33Z",
+        "installed": false,
+        "rebooted": false
+      },
+      "j313": {
+        "board_host": "m1air",
+        "url": "https://github.com/iconidentify/siliconforest/releases/latest/download/install.sh",
+        "sha256": "5592b74dc4fe4a62259819bbf497a95e1b46ddb989db87c5314d7871f6cd85cc",
+        "tag": "v2026.10.18.6",
+        "expected_sha256": "5592b74dc4fe4a62259819bbf497a95e1b46ddb989db87c5314d7871f6cd85cc",
+        "match": true,
+        "boot_id": "8637f331-fce4-4349-b10b-374e1a0849e1",
+        "kernel": "7.1.12-siliconforest-normal-54add20fd52e-layout1",
+        "utc": "2026-10-19T05:08:33Z",
+        "installed": false,
+        "rebooted": false
+      }
+    }
+  }
+}

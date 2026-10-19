@@ -48,7 +48,7 @@ set a deliberate level from the desktop, for example
 Driver readback is separate from a person confirming visible light changes.
 The check installs nothing and does not change keybindings or monitor modes.
 
-J516S/14.7 now uses kernel `4b318c4140e8`, which adds `apple-panel-bl`
+J516S/14.7 uses kernel `54add20fd52e`, retaining `apple-panel-bl`
 with a 500-nit ceiling on the normal T6030 display path. The keyboard remains
 `white:kbd_backlight`, with 255 levels. On the tested desktop, screen updates
 300 → 275 → 300 and keyboard updates 102 → 90 → 102 passed. Regular Omarchy
@@ -74,3 +74,11 @@ brightness ceiling, and the release configuration enables the required PWM,
 LED and backlight drivers. Their source support does not substitute for checking
 each running machine. Other firmware paths, including M3 Air 26.6.2, need their
 own hardware results.
+
+The PR148 rollout also exercised the M1 Air J313/13.5. Its keyboard control
+passed. Panel requests produced monotonic actual readings (105 → 105,
+210 → 223, 315 → 340, 400 → 421), and the original 302-requested/325-actual
+pair was restored. The preceding kernel has the same offset. Exact readback
+therefore fails the strict hardware helper: an actual value can even exceed the
+420 maximum. This is a documented readback limitation, not an optical luminance
+measurement. [Current Air evidence](../release/reports/20261018-j313-pr148.json).

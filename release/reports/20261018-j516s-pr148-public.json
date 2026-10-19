@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "public_catalog": "v2026.10.18.6",
+  "installed_child": "v2026.10.18-j516s-pr148.1",
+  "bootstrap_url": "https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.6/install.sh",
+  "bootstrap_sha256": "5592b74dc4fe4a62259819bbf497a95e1b46ddb989db87c5314d7871f6cd85cc",
+  "manifest_sha256": "9d550fcc17e720e5c2a25c41ac9a7a9439a86abc667376670f9d15ae6e27b6a4",
+  "actual_public_install_and_default_boot": {
+    "schema": 1,
+    "board": "apple,j516s",
+    "os_firmware": "14.7",
+    "kernel_release": "7.1.12-siliconforest-native-gpu-54add20fd52e-layout1",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "graphics_admission": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 3456,
+        "height": 2234,
+        "refreshRate": 120.0
+      },
+      {
+        "name": "DP-1",
+        "width": 3840,
+        "height": 2160,
+        "refreshRate": 59.997
+      }
+    ],
+    "desktop_capture_sha256": "0648db066f834d46970bbe6bfe9e7ffc55e8a78d53367af453f243ebbcf4ae7c",
+    "stage2_version": "v2.0.0-siliconforest.dev.gaca1258c2d7d",
+    "packages": {
+      "linux-siliconforest": "20261018.prscout3-1",
+      "mesa-siliconforest": "20261018.prscout1-1",
+      "m1n1-siliconforest": "20261018.prscout1-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "ed1ccced9fee00ad6de56e9429fbe71b02f2b0510d15197c3dd46daa33e013f6"
+    },
+    "OpenGL": "Renderer: Apple M3 Pro (G15S B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7055 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M3 Pro (G15S B1) (deviceID 0x6030)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7202 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-19T05:05:42Z"
+  },
+  "verified_transaction": {
+    "release": "v2026.10.18-j516s-pr148.1",
+    "kernel": "7.1.12-siliconforest-native-gpu-54add20fd52e-layout1",
+    "boot_id": "e7d4468a-f16e-46fe-992c-fb13b84bf83b",
+    "completed_utc": "2026-10-19T05:06:08.333544+00:00",
+    "report_sha256": "0a1e00c8ad1f70b3c2052358faba31398b24bb3006f2b6a50f1ef4a2a1f2de18",
+    "hardware_GL_Vulkan_pixels": true,
+    "desktop": true,
+    "quake_smoke_fps": 173.9,
+    "gpu_recoveries": 0,
+    "hang_kills": 0,
+    "native_gpu_kernel_errors": 0,
+    "brightness_control_readback": {
+      "schema": 1,
+      "kernel": "7.1.12-siliconforest-native-gpu-54add20fd52e-layout1",
+      "board": "apple,j516s",
+      "os_firmware": "14.7",
+      "boot_id": "e7d4468a-f16e-46fe-992c-fb13b84bf83b",
+      "exercised": true,
+      "controls": [
+        {
+          "device": "white:kbd_backlight",
+          "kind": "keyboard",
+          "maximum": 255,
+          "original": 102,
+          "changed": {
+            "requested": 90,
+            "actual": null
+          },
+          "restored": {
+            "requested": 102,
+            "actual": null
+          },
+          "status": "passed"
+        },
+        {
+          "device": "apple-panel-bl",
+          "kind": "display",
+          "maximum": 500,
+          "original": 300,
+          "changed": {
+            "requested": 275,
+            "actual": 275
+          },
+          "restored": {
+            "requested": 300,
+            "actual": 300
+          },
+          "status": "passed"
+        }
+      ],
+      "visible_luminance_verified": false,
+      "missing": [],
+      "status": "passed",
+      "completed_utc": "2026-10-19T05:05:43.336553+00:00"
+    },
+    "brightness_visible_verified": false,
+    "transaction": "1792386209841424939-v2026.10.18-j516s-pr148.1",
+    "status": "installed-verified",
+    "esp_free_mib": 90.296875
+  },
+  "public_scene_smoke": {
+    "frames": 969,
+    "seconds": 5.6,
+    "fps": 173.9,
+    "extent": [
+      1920,
+      1080
+    ],
+    "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+    "Vulkan_library_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05",
+    "receipt_sha256": "6f663aff8a6262a90376b413519532d990827312569ea3c90987c174092e5a5a",
+    "runner_exit_code": -15,
+    "runner_exit_note": "Intentional runner termination after completed timedemo.",
+    "included_in_statistical_benchmark": false
+  },
+  "candidate_qualification": "20261018-j516s-pr148.json",
+  "public_artifact_verification": "../source-reviews/20261018-pr148-publication.json",
+  "limits": [
+    "Only this exact board/firmware/boot chain and the manifest-pinned package set are covered.",
+    "No HDMI hotplug, standby, audio, suspend/resume, Touch ID or other-board hardware qualification.",
+    "Raw logs, desktop/game captures, usernames and host addresses remain private.",
+    "Branding changes were not applied during these tests."
+  ],
+  "boot_log_summary": {
+    "kernel_WARN": 0,
+    "workqueue_underflow": 0,
+    "IOMFB_timings_warning": 1,
+    "lane_count_message": 1,
+    "error_priority_lines": 29,
+    "baseline_error_priority_lines": 28,
+    "scope": "IOMFB and lane messages predate this release. Error-priority lines include non-GPU device classes; no native-GPU kernel errors."
+  }
+}
