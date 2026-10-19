@@ -6,6 +6,8 @@ Run as the logged-in desktop user (for logind's active-seat permission), not
 from an SSH login. --exercise briefly changes each control, then restores its
 original level even if a check fails. It never blanks a display. Successful
 readback is driver evidence, not proof of visible panel or keyboard luminance.
+For a display whose inherited level is unknown, set a deliberate level first;
+the check refuses to treat a placeholder as a restorable physical level.
 """
 import argparse
 from datetime import datetime, timezone
@@ -39,6 +41,12 @@ def set_level(device, value):
 def exercise(device, maximum, original, display):
     if display and original == 0:
         raise RuntimeError('Display reports zero brightness; refusing an automatic test')
+    if display:
+        # A new driver may expose a requested default without knowing the
+        # bootloader's level. Do not replace it while claiming to restore it.
+        actual = level(device, 'actual_brightness')
+        if actual != original:
+            raise RuntimeError('Display level is unsettled; set a deliberate level before testing')
     step = max(1, maximum // 20)
     minimum = 1 if display else 0
     alternate = original - step if original - step >= minimum else min(maximum, original + step)

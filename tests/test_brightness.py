@@ -13,7 +13,8 @@ spec.loader.exec_module(brightness)
 
 class BrightnessSafetyTests(unittest.TestCase):
     def test_screen_never_blanked_at_minimum(self):
-        with patch.object(brightness, 'set_level', return_value={}) as setter:
+        with patch.object(brightness, 'set_level', return_value={}) as setter, \
+                patch.object(brightness, 'level', return_value=1):
             brightness.exercise(Path('apple-panel-bl'), 500, 1, True)
         self.assertEqual([c.args[1] for c in setter.call_args_list], [26, 1])
 
@@ -21,6 +22,13 @@ class BrightnessSafetyTests(unittest.TestCase):
         with patch.object(brightness, 'set_level') as setter:
             with self.assertRaises(RuntimeError):
                 brightness.exercise(Path('apple-panel-bl'), 500, 0, True)
+        setter.assert_not_called()
+
+    def test_unknown_initial_screen_level_is_refused_without_a_write(self):
+        with patch.object(brightness, 'set_level') as setter, \
+                patch.object(brightness, 'level', side_effect=OSError('No data available')):
+            with self.assertRaises(OSError):
+                brightness.exercise(Path('apple-panel-bl'), 500, 140, True)
         setter.assert_not_called()
 
     def test_failed_adjustment_still_restores_original(self):

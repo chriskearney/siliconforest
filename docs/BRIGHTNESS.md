@@ -41,7 +41,10 @@ python3 tests/hardware/brightness.py --exercise --output brightness.json
 
 It briefly changes each available keyboard and internal-screen control, checks
 driver readback, then restores the original level. It refuses to exercise a
-screen reporting zero brightness, and reports missing controls as a failure.
+screen reporting zero or an unknown initial brightness, and reports missing controls as a failure.
+For a newly registered screen control whose inherited level is unknown, first
+set a deliberate level from the desktop, for example
+`omarchy brightness display --monitor eDP-1 40%`, then run the check.
 Driver readback is separate from a person confirming visible light changes.
 The check installs nothing and does not change keybindings or monitor modes.
 
