@@ -54,12 +54,13 @@ opt-in, and the experimental T6030 memory floor is excluded. Local branding is
 retained; a new branding pipeline and early-boot Recovery/logo migration are
 not included.
 
-The development source lock also carries Naeem's four later PR363 allocator
-commits through `027bd762`, with a reviewed constructor limit and regression
-tests. [Source/build validation](release/source-reviews/20261019-pr363-pb-validation.json)
-records the native kernel build and unchanged ABI. These shared T6030/T6031
-changes allocate an additional 256 MiB and await hardware qualification. The
-public installer above continues to use the qualified `0e1f4666` M3 Pro kernel.
+The development source lock carries Naeem's four later PR363 allocator
+commits through `027bd762` and an on-demand physical-backing follow-up for
+T6030/T6031. The GPU retains its 512 MiB logical PB address range, starts with
+128 MiB of physical backing, and adds up to 4 MiB at a time when needed.
+[Source/build validation](release/source-reviews/20261019-g15-pb-demand-validation.json)
+records the checks and limits. This allocator awaits hardware qualification;
+the public installer continues to use the qualified `0e1f4666` M3 Pro kernel.
 
 ## Repositories
 

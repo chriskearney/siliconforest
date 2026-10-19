@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "status": "source-build-reviewed; hardware qualification pending",
+  "supersedes_allocation_policy_in": "20261019-pr363-pb-validation.json",
+  "siliconforest": {
+    "pr": "https://github.com/iconidentify/siliconforest-linux/pull/15",
+    "base": "040af44a1db02123cd862c3eed75a5eb78ae459b",
+    "compiled_snapshot": "9e67aed169c3cc6a0388d0184d8db76936299385",
+    "review_tip": "63519c3d30e84378c10f3928455bb83c71ffb67a",
+    "merged_commit": "6ead677520fb7c23e861b1e22450f90ffd0a14f7",
+    "production_tree_matches_compiled_snapshot": true,
+    "merge_tree_equals_review_tip": true
+  },
+  "scope": "On-demand physical parameter-buffer backing in the shared T6030/T6031 G15 driver. Normal M1/M2 GPU, board admission, display, DTs, UAPI, Mesa and m1n1 are unchanged.",
+  "allocator": {
+    "logical_heap_MiB": 512,
+    "initial_physical_backing_MiB": 128,
+    "growth_chunk_max_MiB": 4,
+    "initial_blocks": 1024,
+    "firmware_soft_max_blocks": 3072,
+    "posted_max_blocks": 4095,
+    "default_max_chunks": 97,
+    "startup_backing_reduction_vs_source_base_MiB": 384,
+    "committed_backing_lifetime": "Retained at its peak until reboot; no shrinking."
+  },
+  "review_fixes": [
+    "Allocate and DMA-map exact aligned backing with checked segment ends and complete SG coverage.",
+    "Catch every VM up before publishing work; validate one executing VM and retain aliases before advancing per-VM progress.",
+    "Prepare backing before accepting growth requests, publishing block records, the producer or a success reply.",
+    "Keep failure tests bounded; require the intended test and message for standalone mutations as well as the full gate."
+  ],
+  "validation": {
+    "toolchain": {
+      "clang": "22.1.8",
+      "lld": "22.1.8",
+      "rust": "1.93.1",
+      "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0"
+    },
+    "native_build": {
+      "targets": [
+        "Image",
+        "modules",
+        "dtbs"
+      ],
+      "exit": 0,
+      "kernelrelease": "7.2.11+",
+      "validation_build_only": true,
+      "config_sha256": "c018b8ed49b93cb8d3ff6bddb8a4fb0c45a997820df23748dee6834ee6b3d2c6",
+      "image_sha256": "fe36a7b988dfc926f0f57bb747890f90308cd23af809109dd737cd9c623394d4",
+      "image_bytes": 34769408,
+      "modules": 1875,
+      "module_names_equal_baseline": true,
+      "apple_dtbs_equal_baseline": 115,
+      "layout_record_and_verify_pass": true,
+      "layout_evidence_files": 9,
+      "layout_record_sha256": "59c429e12df4cc1d62a99f6210b248ac5736bfecf81e40f43b1037739469cbf3",
+      "method": "Full targets from a clean checkout at the frozen production commit, using a separate reflinked output directory and BINDGEN_LAYOUT_TESTS=1 from the first make."
+    },
+    "native_W1": {
+      "exit": 0,
+      "existing_dead_code_warnings": 10,
+      "new_compiler_diagnostics": 0,
+      "warning_text_and_locations_match_baseline": true,
+      "separate_output_directory": true
+    },
+    "baseline_generated_sources_byte_identical": {
+      "rust/bindings/bindings_generated.rs": "8ca557c98945ba2950caca83fbb76a118cbbb3ab26322e1df74bd01afb7d392d",
+      "rust/bindings/bindings_helpers_generated.rs": "abe86e0007a1e424566ae84f3099e0ed0b282f19bd76ad5a2587fa72226db1de",
+      "rust/uapi/uapi_generated.rs": "921c570c94a0aa72fe6003953e7d962641a5a1adf4dbe5c4e8a48e7dc3d81028"
+    },
+    "baseline_compiled_snapshot": "709f0f08316ad528181027abe1cf00b3083b9bf0",
+    "native_UAPI": {
+      "render_bytes": 384,
+      "compute_bytes": 136
+    },
+    "g15_selftests": {
+      "Rust_pass": 61,
+      "fixture_ignored": 2,
+      "C_UAPI_pass": 26
+    },
+    "pb_backing_and_growth": {
+      "tests_pass": 24,
+      "mutants_detected_at_intended_assertion": 22,
+      "model_only_tuning_control_pass": true,
+      "old_constructor_checked_against_git": true,
+      "source_inputs_sha256": "0723c99cabd530c839669f3b76200b771201c46f949ff18eff44f627a90b92f0",
+      "independent_actual_body_tests_pass": 24,
+      "standalone_correct_failure_accepted": true,
+      "standalone_timeout_rejected": true,
+      "standalone_wrong_test_rejected": true
+    },
+    "stats_drain_mutants_detected": 7,
+    "record_word_checks": {
+      "synthetic_tests_pass": 15,
+      "private_fixture_ignored": 2,
+      "mutants_detected": 3
+    },
+    "CI": "https://github.com/iconidentify/siliconforest-linux/actions/runs/39340345804",
+    "CI_pass": true,
+    "control_tooling_checks": {
+      "unit_cases": 49,
+      "skipped": 1,
+      "make_check_pass": true,
+      "shellcheck": "0.11.0, official static build verified against release asset digest",
+      "mesa_session_and_headless_compositor_controls": "pass"
+    }
+  },
+  "unchanged_public_release": {
+    "catalog": "v2026.10.19.2",
+    "linux_commit": "0e1f466613761fecbe71ba8ca25f8b3598577062"
+  },
+  "limits": [
+    "No target install, reboot, signed artifact, catalog or public installer change is part of this source integration.",
+    "Host tests mock GEM, SG and MMU services; they do not execute kernel mappings or GPU firmware.",
+    "Closed-but-inflight VM compatibility rests on the actual job-guard and VM-cleanup source audit, not on a closed-VM model test.",
+    "The reuse test resets the ledger; it is not a complete firmware recovery test. Post-accept store and reply errors keep the prior ledger behavior.",
+    "Backing is grow-only and retained at its peak. Synchronous allocation/reclaim latency while the GPU waits is not bounded or hardware-qualified.",
+    "Growth beyond initial backing, multiple clients, memory pressure, recovery, suspend and power require hardware qualification before a release.",
+    "Hard-limit refusal/deadline behavior is preserved; successful recovery is not guaranteed.",
+    "Two private-fixture tests remain ignored; no private board data or raw machine logs are published."
+  ]
+}
