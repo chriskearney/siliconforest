@@ -48,13 +48,26 @@ set a deliberate level from the desktop, for example
 Driver readback is separate from a person confirming visible light changes.
 The check installs nothing and does not change keybindings or monitor modes.
 
-On J516S/14.7 with kernel `7560c8b4747f`, the keyboard's PWM LED control passed
-from the active desktop session (102 → 90 → 102 out of 255). This kernel has no
-screen backlight device on that firmware path. The normal display driver needs
-the panel-brightness support described in
-[public linux-aurora PR148](https://github.com/omacom/linux-aurora/pull/148).
-That PR also includes GPU and HDMI audio changes; those are separate from this
-brightness task.
+J516S/14.7 now uses kernel `4b318c4140e8`, which adds `apple-panel-bl`
+with a 500-nit ceiling on the normal T6030 display path. The keyboard remains
+`white:kbd_backlight`, with 255 levels. On the tested desktop, screen updates
+300 → 275 → 300 and keyboard updates 102 → 90 → 102 passed. Regular Omarchy
+commands, including their OSD calls, also passed: screen 300 → 325 → 300 and
+keyboard 102 → 127 → 102. Completed firmware presents include idle-frame updates,
+with no refusals. [Hardware evidence and limits](../release/reports/20261018-j516s-brightness.json).
+
+The loader's screen level is preserved until Linux receives a request. Before a
+level is known, `brightness` shows an unsent 140-nit placeholder and
+`actual_brightness` returns ENODATA. A systemd-backlight restore is a Linux
+request; on the tested boot it restored 300 nits. This report verifies software
+control and firmware completion, without claiming optical calibration or an
+owner's visual confirmation.
+
+The implementation adapts the brightness portion of
+[public linux-aurora PR148](https://github.com/omacom/linux-aurora/pull/148),
+with downstream changes for framebuffer lifetime, PM/unbind queue closure,
+unknown-level reporting, and other-board isolation.
+[Source review and tests](../release/source-reviews/20261018-brightness.json).
 
 M1/M2 laptop device trees already describe the keyboard PWM LED and the panel
 brightness ceiling, and the release configuration enables the required PWM,

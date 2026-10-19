@@ -4,7 +4,7 @@ A personally maintained Apple Silicon kernel, Mesa and m1n1 stack for
 existing Omarchy installations, maintained by [iconidentify](https://github.com/iconidentify).
 Upstream history, attribution and licenses are preserved.
 
-Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.4)
+Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.5)
 on an existing Apple Silicon Omarchy installation:
 
 ```sh
@@ -34,6 +34,12 @@ leaves the reboot to you. It does not build on the recipient's machine or perfor
 a full system upgrade. [Installation, scope and recovery](release/README.md).
 
 Signing fingerprint: `97DC8D8AFCBC08DB7283EC3CFFB366AB95783E75`.
+
+The J516S/14.7 update adds screen brightness through the standard backlight
+interface; existing keyboard controls work as well. Screen and keyboard driver
+readback, regular Omarchy commands, both monitors, hardware rendering, Quake
+(174.0 FPS) and rebooted rollback passed. See [brightness controls](docs/BRIGHTNESS.md)
+and the [exact hardware scope](release/reports/20261018-j516s-brightness.json).
 
 ## Repositories
 
@@ -148,7 +154,7 @@ display, PHY, USB4 and PMP implementations. The source pins include Eryk's Mesa
 PR23 head `d593cfbf` (downstream `45c2718d`) and kernel PR358 head `79d6375f`,
 plus the reviewed downstream J516S memory, firmware and PMP handoff adaptations
 in the first native-GPU baseline, `d68cf5c0040f`. The reviewed refresh advances
-to kernel `7560c8b4747f`, Mesa `7515336b` and m1n1 `aca1258c` with the same
+to kernel `4b318c4140e8`, Mesa `7515336b` and m1n1 `aca1258c` with the same
 kernel profile. OpenGL and Vulkan use one native Mesa build.
 
 [The hardware report](release/reports/20261018-j516s-native-gpu.json) records
