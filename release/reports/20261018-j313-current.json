@@ -1,0 +1,286 @@
+{
+  "schema": 1,
+  "board": "apple,j313",
+  "os_firmware": "13.5",
+  "source_commits": {
+    "linux": "d68cf5c0040f77f72233b379bebba134082143a6",
+    "mesa": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68",
+    "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446"
+  },
+  "kernel_variant": "normal",
+  "installed_default": {
+    "schema": 1,
+    "board": "apple,j313",
+    "os_firmware": "13.5",
+    "kernel_release": "7.1.12-siliconforest-normal-d68cf5c0040f-layout1",
+    "status": "passed-current-boot-checks",
+    "checks": {
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true,
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true
+    },
+    "system_state": "running",
+    "displays": [
+      {
+        "name": "eDP-1",
+        "width": 2560,
+        "height": 1600,
+        "refreshRate": 60.0
+      }
+    ],
+    "desktop_capture_sha256": "0d9f6620aff286510578be7c64b3e836e5d75137567ef745d764e7a46322af48",
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "packages": {
+      "linux-siliconforest": "20261018.currentair1-1",
+      "mesa-siliconforest": "20261018.currentair2-1",
+      "m1n1-siliconforest": "20261018.currentair1-1"
+    },
+    "compositor_graphics_libraries": {
+      "/usr/lib/libgallium-26.3.0-devel.so": "ed1ccced9fee00ad6de56e9429fbe71b02f2b0510d15197c3dd46daa33e013f6"
+    },
+    "OpenGL": "Renderer: Apple M1 (G13G B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7405 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M1 (G13G B1) (deviceID 0x0)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6170 runs in 3.0 s, 0 with wrong pixels",
+    "completed_utc": "2026-10-18T23:55:44Z"
+  },
+  "quake_demo1": {
+    "kernel": "7.1.12-siliconforest-normal-d68cf5c0040f-layout1",
+    "kernel_source": "d68cf5c0040f77f72233b379bebba134082143a6",
+    "mesa_source": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68",
+    "runs": [
+      {
+        "run": 1,
+        "frames": 969,
+        "seconds": 3.2,
+        "fps": 298.6,
+        "extent": [
+          1920,
+          1080
+        ],
+        "receipt_sha256": "4cdce8137deaf5d20dad72532fa9ad94ebd3cc6d1eb03ca2d3f40f227dfd75b8"
+      },
+      {
+        "run": 2,
+        "frames": 969,
+        "seconds": 3.4,
+        "fps": 285.2,
+        "extent": [
+          1920,
+          1080
+        ],
+        "receipt_sha256": "dfc8fed4bc886f3b0c83ed1542de2c0a161e38fd2c056a0837f060aa04c4a64a"
+      },
+      {
+        "run": 3,
+        "frames": 969,
+        "seconds": 3.4,
+        "fps": 287.6,
+        "extent": [
+          1920,
+          1080
+        ],
+        "receipt_sha256": "b254878d4174dca549b6a46a53e12f1dac670185f70a034b0cc5ff95896567b8"
+      },
+      {
+        "run": 4,
+        "frames": 969,
+        "seconds": 3.3,
+        "fps": 289.7,
+        "extent": [
+          1920,
+          1080
+        ],
+        "receipt_sha256": "73d2538a0068e922e586d77a5b35dd965d6bfad921f6d28575d260d600a42b51"
+      },
+      {
+        "run": 5,
+        "frames": 969,
+        "seconds": 3.4,
+        "fps": 284.0,
+        "extent": [
+          1920,
+          1080
+        ],
+        "receipt_sha256": "483d3911daf56dd374c85ffa06920b5040ef764c7756186f9fe0210dea78ff08"
+      }
+    ],
+    "samples_fps": [
+      298.6,
+      285.2,
+      287.6,
+      289.7,
+      284.0
+    ],
+    "median_fps": 287.6,
+    "min_fps": 284.0,
+    "max_fps": 298.6,
+    "frames": 969,
+    "pixel_extent": [
+      1920,
+      1080
+    ],
+    "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+    "vulkan_elf_sha256": "bfcf5992b2f82340d3b220cc9c560f4c5cba666331c8b9cbb0f04bd321e30f7b",
+    "config": "vid_fullscreen 0\nvid_desktopfullscreen 0\nvid_borderless 0\nvid_vsync 0\nvid_fsaa 0\nvid_fsaamode 0\nvid_maxframelatency 2\nr_scale 1\nr_oit 1\nr_waterwarpcompute 1\nr_rtshadows 0\nhost_maxfps 200\ngamma 0.9\ncontrast 1.4\n",
+    "gpu_active_cores": 7,
+    "power": "AC online",
+    "scope": "Installed normal-profile default, five samples; no driver overrides. No claim of peak GPU performance."
+  },
+  "runtime_packaging": {
+    "original_sha256": "f97a25ebc6a5529147a1d4b40aace2d61a161457d4cdcbd6a12e977b72e925a3",
+    "repacked_sha256": "2006bcec12a4f6095511409049464ca14b1833092e5b1f6c6eb1d0f91e2fc3d7",
+    "unchanged_payload_files": 23,
+    "edited_payload_files": [
+      "usr/share/siliconforest/mesa-runtime.tsv",
+      "usr/share/siliconforest/mesa.json"
+    ],
+    "compiled_Asahi_suites_passed": 36,
+    "runtime_requirements": [
+      "llvm-libs>=22",
+      "llvm-libs<23"
+    ]
+  },
+  "qualification_status": "passed: installed desktop, boot-chain identity, hardware GL/Vulkan, five Quake runs and rebooted coordinated rollback",
+  "one_shot": {
+    "job": "j1018-164851-e530",
+    "boot_health": "passed",
+    "hardware_readback": "passed",
+    "OpenGL": "Renderer: Apple M1 (G13G B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7323 runs in 3.0 s, 0 with wrong pixels",
+    "Vulkan": "Device: Apple M1 (G13G B1) (deviceID 0x0)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6242 runs in 3.0 s, 0 with wrong pixels",
+    "overall_job": "tests_failed",
+    "infrastructure_limit": "The automatic omarchy-m-test script was not executable through its private lab work directory (exit126). No passing full Omarchy suite is claimed.",
+    "kernel_warning": "One brcmf_get_assoc_ies association-info warning (-52) appeared; SSH networking was available. This is not a full Wi-Fi qualification."
+  },
+  "scope": "J313/13.5 existing Omarchy with llvm-libs22.1.8-2; no qualification for other machines/firmware, suspend, dock/hotplug, long workloads or full hardware suite. Desktop/game captures and raw host logs remain private.",
+  "rollback": {
+    "files": {
+      "all_saved_files_restored": true,
+      "files_checked": 17,
+      "boot_files_checked": 7,
+      "transaction_status": "rolled-back-awaiting-boot-test"
+    },
+    "rebooted_previous_stack": {
+      "schema": 1,
+      "board": "apple,j313",
+      "os_firmware": "13.5",
+      "kernel_release": "7.1.12-siliconforest-normal-17a9930f20a0-layout1",
+      "status": "passed-current-boot-checks",
+      "checks": {
+        "boot_health": true,
+        "compositor_and_displays": true,
+        "matched_boot_chain": true,
+        "OpenGL_hardware_readback": true,
+        "Vulkan_hardware_readback": true
+      },
+      "system_state": "running",
+      "displays": [
+        {
+          "name": "eDP-1",
+          "width": 2560,
+          "height": 1600,
+          "refreshRate": 60.0
+        }
+      ],
+      "desktop_capture_sha256": "c9575ab6a9268c497e5724fa90cc66027ddc8b2500d43e77179d35412f7d3140",
+      "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+      "packages": {
+        "linux-siliconforest": "20261018.normal7-1",
+        "mesa-siliconforest": "20261018.normal4-1",
+        "m1n1-siliconforest": "20261018.normal8-1"
+      },
+      "compositor_graphics_libraries": {
+        "/usr/lib/libgallium-26.3.0-devel.so": "9bd0085d934848025e9e04b3fb5a564ab4415eec8cb296f54dd95417ee1e09ad"
+      },
+      "OpenGL": "Renderer: Apple M1 (G13G B1)\nVersion: OpenGL ES 3.2 Mesa 26.3.0-devel\ngl-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 7426 runs in 3.0 s, 0 with wrong pixels",
+      "Vulkan": "Device: Apple M1 (G13G B1) (deviceID 0x0)\nvk-render-check: 64x64 clear + 48x48 triangle, 3 s\nPASS: 6133 runs in 3.0 s, 0 with wrong pixels",
+      "completed_utc": "2026-10-19T00:01:02Z"
+    }
+  },
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261018.currentair1-1",
+      "file": "linux-siliconforest-20261018.currentair1-1-aarch64.pkg.tar.zst",
+      "sha256": "f9b95508d09987002ead80919714c3c0c529ed4eee06f8b1b3737f606f32fbed",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "d68cf5c0040f77f72233b379bebba134082143a6"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.18-current-normal.1"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.currentair2-1",
+      "file": "mesa-siliconforest-20261018.currentair2-1-aarch64.pkg.tar.zst",
+      "sha256": "2006bcec12a4f6095511409049464ca14b1833092e5b1f6c6eb1d0f91e2fc3d7",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-m1-m2.2"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.currentair1-1",
+      "file": "m1n1-siliconforest-20261018.currentair1-1-aarch64.pkg.tar.zst",
+      "sha256": "58e07430a3e9ad593855feeb3ff14c68a71617483eef117dc54ec6fbeb4b6499",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "1d6743b21c133a4522e6a3fc74183bad7a11e446"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.18-normal-tools.1"
+      }
+    }
+  },
+  "boot_limits_and_hashes": {
+    "stage2_version": "v2.0.0-siliconforest.dev.g1d6743b21c13",
+    "dtb": "apple/t8103-j313.dtb",
+    "backend": "limine",
+    "entry": "limine.conf",
+    "image": "EFI/Linux/omarchy_linux-siliconforest.efi",
+    "max_image_bytes": 67108864,
+    "max_stage2_bytes": 8388608,
+    "stage1_versions": [
+      "v1.5.2"
+    ],
+    "iboot_versions": [
+      "iBoot-8422.141.2"
+    ],
+    "m1n1_config": [],
+    "uboot_path": "/usr/lib/asahi-boot/u-boot-nodtb.bin",
+    "uboot_sha256": "b8d52d16a56f4bc9640e6c210a1414f94f06d1aa0e1fa9845b69979b006c52b1",
+    "kernel_image_sha256": "9111619fa55ce784eb959bcb92ac2d9b2f0db2440dd4469a32de418a11b1e69d",
+    "dtb_sha256": "7f63ce6c5a5cbaf5994372aaa00c84198f3f7ccd4753a3e998179948cc4168f3",
+    "m1n1_sha256": "318a05c9b4e81f76ec2b3f7a6f180334f665a37dca931a2a1a4a1db505ab6c95",
+    "config_sha256": "ac678d1e80da9f2e434c63e6ce42753b406b05d2bfa26ede38ab7cebff700a0f"
+  },
+  "host_checks": {
+    "unit_tests": 38,
+    "mesa_Asahi_suites": 36,
+    "session_safeguards": "passed including real headless Weston",
+    "note": "The Mesa suites ran on the original ARM64 payload. Runtime metadata repack preserves every compiled byte; target actual-default rendering/game tests exercised the repacked package."
+  },
+  "space_cleanup": {
+    "owner_approved": true,
+    "obsolete_entry_archived": "Aurora 12.4 before PR14",
+    "bootable_entries_retained": [
+      "SiliconForest",
+      "Current Aurora",
+      "Aurora12.51",
+      "Lab recovery11.6"
+    ],
+    "backups": "Verified root copies and SHA256 audit records; manual stage2 recovery copies losslessly compressed on ESP with updated recovery instructions. Active firmware bundles and stage1 remain unchanged."
+  }
+}

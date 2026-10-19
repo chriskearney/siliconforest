@@ -4,20 +4,24 @@ A personally maintained Apple Silicon kernel, Mesa and m1n1 stack for
 existing Omarchy installations, maintained by [iconidentify](https://github.com/iconidentify).
 Upstream history, attribution and licenses are preserved.
 
-Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.2)
+Install the [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.3)
 on an existing Apple Silicon Omarchy installation:
 
 ```sh
-curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.2/install.sh | bash
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.3/install.sh | bash
 ```
 
 Qualified pairs are **M1 Air J313 with OS firmware 13.5** and **M3 Pro 16-inch
 J516S with 14.7**, with the exact loader/U-Boot versions in their signed manifests.
 Default boot, the native desktop, OpenGL/Vulkan pixel readback and rebooted
 rollback passed on both. The J516S now uses the latest reviewed native AGX
-kernel/Mesa pair; the Air retains its previously qualified baseline.
+kernel/Mesa pair. The Air now uses the same source commits and identical Mesa
+graphics-library bytes with its normal kernel profile.
 [J516S native GPU evidence](release/reports/20261018-j516s-native-gpu.json)
-records a 174.0 FPS median over five Quake demo1 runs at 1920x1080. Other M1/M2 models, M3 Pro variants and M3 Air remain
+records a 174.0 FPS median over five Quake demo1 runs at 1920x1080. The
+[updated Air qualification](release/reports/20261018-j313-current.json) records
+287.6 FPS with the same game and rendering settings. Kernel configurations and
+display topologies differ. Other M1/M2 models, M3 Pro variants and M3 Air remain
 pending; the installer refuses unqualified combinations.
 
 The command downloads signed prebuilt packages from each component's own public

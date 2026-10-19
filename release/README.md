@@ -1,17 +1,17 @@
 # SiliconForest installer and release qualification
 
 The installer replaces the kernel, Mesa and m1n1 stage 2 on an existing Apple
-Silicon Omarchy installation. The [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.2)
+Silicon Omarchy installation. The [2026-10-18 release](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.18.3)
 is qualified for J313 on OS firmware 13.5 and J516S on 14.7, subject to the exact
 loader/U-Boot admission checks in each signed manifest:
 
 ```sh
-curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.2/install.sh | bash
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.3/install.sh | bash
 ```
 
 To download and verify the applicable release without installing, append
 `-s -- --dry-run` to `bash`. Hardware reports are
-[J313](reports/20261018-j313-layout1.json) and
+[J313 current sources](reports/20261018-j313-current.json) and
 [J516S native GPU](reports/20261018-j516s-native-gpu.json). Source profiles and signed attended
 candidates do not independently claim hardware support.
 
