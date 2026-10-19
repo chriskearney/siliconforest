@@ -39,6 +39,30 @@ def copy(source, target):
     shutil.copy2(source, target)
 
 
+def root_owner(member):
+    """The build user's numeric identity must never enter an installed package."""
+    member.uid = member.gid = 0
+    member.uname = member.gname = 'root'
+    return member
+
+
+def ownership_rules(component, release=None):
+    # pacman preserves the ownership of directories which already exist. Repair
+    # directories from older packages too, before the stage-2 post-install hook.
+    # z/Z preserve modes with '-', and do not follow symbolic links.
+    paths = ['z /usr/share/siliconforest']
+    if component == 'kernel':
+        require(release and TOKEN.fullmatch(release), 'Invalid ownership repair ABI')
+        paths += ['Z /usr/lib/modules/' + release,
+                  'Z /usr/share/licenses/linux-siliconforest']
+    elif component == 'm1n1':
+        paths += ['Z /usr/lib/siliconforest',
+                  'Z /usr/share/licenses/m1n1-siliconforest']
+    else:
+        return ''
+    return ''.join(path + ' - root root -\n' for path in paths)
+
+
 def stage(component, source, build, tree, profile):
     if component == 'kernel':
         with (build / 'arch/arm64/boot/Image').open('rb') as stream:
@@ -203,20 +227,26 @@ def main():
         path = tree / 'usr/share/siliconforest' / (component + '.json')
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(receipt, indent=2) + '\n')
+        rules = ownership_rules(component, (build / 'kernelrelease').read_text().strip()
+                                if component == 'kernel' else None)
+        if rules:
+            repair = tree / 'usr/lib/tmpfiles.d' / (PACKAGES[component] + '-ownership.conf')
+            repair.parent.mkdir(parents=True, exist_ok=True)
+            repair.write_text(rules)
         tar = work / 'payload.tar'
         with tarfile.open(tar, 'w') as archive:
             for child in sorted(tree.iterdir()):
-                archive.add(child, arcname=child.name)
+                archive.add(child, arcname=child.name, filter=root_owner)
         sha = hashlib.sha256(tar.read_bytes()).hexdigest()
         llvm_runtime = (['llvm-libs>=22', 'llvm-libs<23']
                         if profile['mesa'].get('runtime_llvm_owner') == 'llvm-libs'
                         else ['llvm22-libs'])
-        depends = {'kernel': ['kmod', 'mkinitcpio'],
+        depends = {'kernel': ['kmod', 'mkinitcpio', 'systemd'],
                    'mesa': ['expat', 'gcc-libs', 'libdisplay-info', 'libdrm', 'libelf', 'libglvnd', 'libunwind',
                             'libx11', 'libxcb', 'libxext', 'libxfixes', 'libxshmfence',
                             'libxrandr', 'libxxf86vm', 'xcb-util-keysyms', 'systemd-libs',
                             'vulkan-icd-loader', 'wayland', 'zlib', 'zstd', *llvm_runtime],
-                   'm1n1': ['python']}[component]
+                   'm1n1': ['python', 'systemd']}[component]
         def array(values):
             return '(' + ' '.join("'" + v + "'" for v in values) + ')'
         extra = ''
@@ -241,6 +271,12 @@ def main():
         require(len(candidates) == 1, 'Missing unambiguous aarch64 package output')
         info = subprocess.check_output(['bsdtar', '-xOf', str(candidates[0]), '.PKGINFO'], text=True)
         require('\narch = aarch64\n' in '\n' + info, 'makepkg output architecture differs')
+        # Check the final makepkg output as well as the staging tar. This catches
+        # ownership changes introduced by fakeroot or future PKGBUILD edits.
+        run('bsdtar', '-cf', work / 'audit.tar', '@' + str(candidates[0]))
+        with tarfile.open(work / 'audit.tar') as archive:
+            require(all(m.uid == 0 and m.gid == 0 for m in archive),
+                    'Package contains files owned by the builder')
         print('Created uninstalled candidate package; signing and qualification are separate.')
 
 
