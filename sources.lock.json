@@ -7,7 +7,7 @@
     "linux": {
       "url": "https://github.com/iconidentify/siliconforest-linux.git",
       "branch": "siliconforest/next",
-      "commit": "4b318c4140e83e44033168836fe8cf4f76e16d80",
+      "commit": "54add20fd52ed9619483b22e21d79bbefecc2072",
       "upstream_url": "https://github.com/omacom/linux-aurora.git",
       "upstream_branch": "integration/aurora",
       "kernel_version": "7.1.12"
@@ -33,7 +33,7 @@
     }
   },
   "inputs": {
-    "configs/kernel.config": "c811698c5242d42850bef6669f29cd7b485e997d3ac1a423e2d3cbbb3fdc19b8",
+    "configs/kernel.config": "843320f0fc947daad8f0a0c4472a8b4e7bf598f19aed176b686b9eebb1ce9eea",
     "configs/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c",
     "release/profiles.json": "99fed1943e3fa35aa98352fb663e3c891acf5e535666b2f1ba909d9f48ffca43"
   },

@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "kind": "source-integration-review",
+  "date": "2026-10-18",
+  "project": "siliconforest",
+  "scope": "Public sources only; reviewed source and host validation. No hardware qualification or installer release.",
+  "sources": {
+    "linux": "54add20fd52ed9619483b22e21d79bbefecc2072",
+    "mesa": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
+    "m1n1": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+  },
+  "base": "34ee9ebc5c1349b4188b923a231334495c80bc23",
+  "upstream": {
+    "url": "https://github.com/omacom/linux-aurora/pull/148",
+    "head_prefix": "ee4f0f3ee295"
+  },
+  "source_pr": "https://github.com/iconidentify/siliconforest-linux/pull/10",
+  "included": [
+    "T6030 SIO and HDMI audio support for J514S/J516S, runtime opt-in",
+    "14.7 external timing, catalog, drive-level and hotplug recovery",
+    "Panel mailbox hold through s2idle with queued notifications preserved",
+    "CTM capability gating and J514C board record",
+    "Five ABI-neutral correctness fixes on the maintained asahi-m3/g15 driver",
+    "pmgr bindings and no-auto-pm mechanism"
+  ],
+  "excluded": [
+    "G15 replacement with incompatible render448/compute200 ABI",
+    "Already integrated brightness and Naeem/PMP changes",
+    "Crossbar power changes with unresolved output race",
+    "Experimental memory floor: retained only on a separate local branch, default off"
+  ],
+  "review": {
+    "participants": [
+      "Codex integrator",
+      "Claude via herdr w1B:p2",
+      "Grok via herdr w1B:p3",
+      "Claude display and GPU reviewers"
+    ],
+    "verdict": "Accepted for source integration at 54add20fd52e; hardware qualification pending.",
+    "fixes": [
+      "Retry transient HDMI service failures until the refusal threshold",
+      "Preserve queued callbacks while mailbox receive is held; kick pump on resume",
+      "Pair GPU power-hold release with the PMP vote policy",
+      "Keep a bounded history of dropped external swaps",
+      "Restore audio after an early external modeset failure",
+      "Keep external catalog rules off the J613 internal-pipe Type-C path",
+      "Initialize audio work disabled before bind enables it",
+      "Preserve qualified acknowledgement behavior when the PHY refuses drive levels",
+      "Use selected-colour bpp and maximum PHY lanes for external mode budgets",
+      "Power down a standby sink after unplug",
+      "Serialize kept-on publication and release using a leaf mutex; reject stale cleanup by sink generation"
+    ],
+    "upstream_author_credit_and_supplied_signoffs_preserved": true,
+    "invented_signoffs": false,
+    "downstream_generated_by": "LLM",
+    "message_rewording": "Independently verified all 37 old/new mapped commits have identical trees, authors, committers and dates."
+  },
+  "validation": {
+    "display_kunit": {
+      "run": 332,
+      "passed": 331,
+      "skipped": 1,
+      "known_skip": "S35_dual_retry_off"
+    },
+    "lockdep_debug_atomic_sleep": {
+      "run": 31,
+      "passed": 31,
+      "reports": 0
+    },
+    "g15_host_c_checks": 26,
+    "g15_host_rust_tests": 24,
+    "native_gpu_W1_changed_directories_and_dtbs": true,
+    "final_display_delta_W1": true,
+    "warning_scope": "No new C warnings; existing Rust dead-code warnings and existing lockdep-build modpost section mismatch remain.",
+    "mesa_kernel_abi": {
+      "facts_matched": 18,
+      "render_size": 384,
+      "compute_size": 136,
+      "uapi_changed": false
+    },
+    "diff_check": true,
+    "regression_mutations": "Runtime regression failures inspected for the review fixes, including look-before-locks and stale sink cleanup; initial compile-only mutations were corrected and rerun.",
+    "root_host_reproducer": "Extracted production function bodies reproduced the original HDMI retry, floor retry/overflow and kept-on interleaving defects. The final kept-on fix is covered by concurrent KUnit and lockdep.",
+    "tested_paths": "G15 host checks and broad W=1/DTB validation at 732f8107; final 54add20f changes only display code and its tests, with final display KUnit, lockdep and W=1 rerun."
+  },
+  "configuration": {
+    "CONFIG_APPLE_SIO_T6030": "y",
+    "CONFIG_DRM_APPLE_DCP_T6030_AUDIO": "y",
+    "hdmi_audio": "Runtime opt-in unchanged; no boot parameter added.",
+    "memory_floor": "Not present in integrated source."
+  },
+  "hardware_pending": [
+    "J514S/J516S boot without workqueue warnings; existing brightness, GPU and both displays",
+    "Suspend/resume and abort with panel brightness restored",
+    "HDMI audio opt-in, hotplug/replug and TV standby/unplug followed by sleep",
+    "J613 Type-C modes and existing marker admission",
+    "Two-lane USB3 plus DP training, USB4 retraining and 4:2:0-only TV modes",
+    "Compositor night-light fallback after CTM capability change"
+  ],
+  "known_limits": [
+    "A no-op external modeset can bounce an enabled HDMI audio jack.",
+    "The fw14 colour fallback ranks YCbCr444 ahead of RGB10; physical display evaluation pending.",
+    "USB4 callback20 retraining can produce disconnect/reconnect.",
+    "Replacement attach can overlap cleanup power-down while the CRTC is off, as with DPMS off.",
+    "Dropped-swap history is bounded to four IDs; no arbitrary-latency completion guarantee.",
+    "Existing pre-firmware admit ASC-read error can retain a runtime-PM hold."
+  ],
+  "release_policy": "This source pin does not change signed qualified board reports or installer artifacts. Public v2026.10.18.5 remains on its previously hardware-qualified kernel until a new build and hardware qualification."
+}
