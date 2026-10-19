@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "kind": "linux-release-build-validation",
+  "status": "passed host artifact checks; no hardware claim",
+  "date": "2026-10-19",
+  "source_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+  "source_tree": "ff787f84d8375781ca979ff85e9ef473b693473b",
+  "control_commit": "4f294f9741609b02c741127b90c110951bbf5ab0",
+  "toolchains": {
+    "clang": "22.1.8",
+    "lld": "22.1.8",
+    "rustc": "1.93.1",
+    "bindgen": "0.73.2 corrected generator",
+    "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0"
+  },
+  "profiles": {
+    "normal": {
+      "kernel_release": "7.2.11-siliconforest-normal-782b88e93448-layout1",
+      "image_bytes": 35359232,
+      "image_sha256": "eb3291fd8447025027b275f8dedc820a30d55d8393a5acaccbe04ed46a4f3edf",
+      "config_sha256": "4c8b1779611790f8612048945f49cea93b9d14297b84e5d7bf36057e7caf8dbd",
+      "dtbs_identical_to_baseline": 115,
+      "modules": 1875,
+      "layout_receipt_sha256": "36087cf0a331dbcf8fa4dd5131bc7fa7ba007120e119e9825e8b219a3ebd84c1",
+      "build_exit_code": 0,
+      "uapi": {
+        "render_bytes": 448,
+        "compute_bytes": 200,
+        "alignment_bytes": 8,
+        "assertions_per_profile": 41,
+        "baseline_abi_retained": true
+      }
+    },
+    "native-gpu": {
+      "kernel_release": "7.2.11-siliconforest-native-gpu-782b88e93448-layout1",
+      "image_bytes": 34703872,
+      "image_sha256": "7cc10089ec03ba5a96e62b1f6e092a58d093982d8daa994f9ad9305c6e7ed206",
+      "config_sha256": "c018b8ed49b93cb8d3ff6bddb8a4fb0c45a997820df23748dee6834ee6b3d2c6",
+      "dtbs_identical_to_baseline": 115,
+      "modules": 1875,
+      "layout_receipt_sha256": "ec6765d84fd5b49a681e8fb68fb1ee47d5cf4906c5dbc953b1f0a79ec35e28e0",
+      "build_exit_code": 0,
+      "uapi": {
+        "render_bytes": 384,
+        "compute_bytes": 136,
+        "alignment_bytes": 8,
+        "assertions_per_profile": 41,
+        "baseline_abi_retained": true
+      }
+    }
+  },
+  "packaged_handoff": {
+    "j313": {
+      "board": "j313",
+      "kernel_release": "7.2.11-siliconforest-normal-782b88e93448-layout1",
+      "package_sha256": "3feb871c5a5d3bd76b11a3bc306d4eca59a2c5da67105e66e8b5ae1599f3f3b6",
+      "dtb_sha256": "7f63ce6c5a5cbaf5994372aaa00c84198f3f7ccd4753a3e998179948cc4168f3",
+      "baseline_dtb_sha256": "7f63ce6c5a5cbaf5994372aaa00c84198f3f7ccd4753a3e998179948cc4168f3",
+      "dtb_identical": true,
+      "composed_boot_bin_sha256": "bef80adfdfbd575d16fbf50283b4f3387b4ececcb48b638e88eb7d0e2ef67236",
+      "baseline_boot_bin_sha256": "bef80adfdfbd575d16fbf50283b4f3387b4ececcb48b638e88eb7d0e2ef67236",
+      "boot_bin_byte_identical": true,
+      "meaning": "Exact handoff equivalence for low-change paired rollout; no hardware claim",
+      "packages": {
+        "kernel": {
+          "name": "linux-siliconforest",
+          "version": "20261019.linux7211normal1-1",
+          "file": "linux-siliconforest-20261019.linux7211normal1-1-aarch64.pkg.tar.zst",
+          "sha256": "3feb871c5a5d3bd76b11a3bc306d4eca59a2c5da67105e66e8b5ae1599f3f3b6",
+          "source": {
+            "repository": "iconidentify/siliconforest-linux",
+            "branch": "siliconforest/next",
+            "commit": "782b88e934484819eb93b5f766a6b213a168f486"
+          },
+          "artifact": {
+            "repository": "iconidentify/siliconforest-linux",
+            "tag": "v2026.10.19-linux7.2.11-normal.1"
+          }
+        },
+        "mesa": {
+          "name": "mesa-siliconforest",
+          "version": "20261018.prscout3-1",
+          "file": "mesa-siliconforest-20261018.prscout3-1-aarch64.pkg.tar.zst",
+          "sha256": "a36ec9be8ade7a9764010bf8edc7842ef59cde251852fd363b952137ab7e6533",
+          "source": {
+            "repository": "iconidentify/siliconforest-mesa",
+            "branch": "siliconforest/next",
+            "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+          },
+          "artifact": {
+            "repository": "iconidentify/siliconforest-mesa",
+            "tag": "v2026.10.18-m1-m2-pr148.1"
+          }
+        },
+        "m1n1": {
+          "name": "m1n1-siliconforest",
+          "version": "20261018.prscout3normal-1",
+          "file": "m1n1-siliconforest-20261018.prscout3normal-1-aarch64.pkg.tar.zst",
+          "sha256": "c9dc6edb1c80f8840a845b30f237ea1d47c2faf753754ab181890fb97d2d1927",
+          "source": {
+            "repository": "iconidentify/siliconforest-m1n1",
+            "branch": "siliconforest/next",
+            "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+          },
+          "artifact": {
+            "repository": "iconidentify/siliconforest-m1n1",
+            "tag": "v2026.10.18-normal-pr148.1"
+          }
+        }
+      }
+    },
+    "j516s": {
+      "board": "j516s",
+      "kernel_release": "7.2.11-siliconforest-native-gpu-782b88e93448-layout1",
+      "package_sha256": "32ed81d6a985c78de3d9d7286a383c09dea0d02beee5fd140005d45a2d5a0436",
+      "dtb_sha256": "18baac96873fabed31c1eca3a2495dd2ea534067120dddf71d373f1345acd47c",
+      "baseline_dtb_sha256": "18baac96873fabed31c1eca3a2495dd2ea534067120dddf71d373f1345acd47c",
+      "dtb_identical": true,
+      "composed_boot_bin_sha256": "1707739e8e0a09d8ffa7b5ed049e9869ed63a935796da3d378f1db252c8fb345",
+      "baseline_boot_bin_sha256": "1707739e8e0a09d8ffa7b5ed049e9869ed63a935796da3d378f1db252c8fb345",
+      "boot_bin_byte_identical": true,
+      "meaning": "Exact handoff equivalence for low-change paired rollout; no hardware claim",
+      "packages": {
+        "kernel": {
+          "name": "linux-siliconforest",
+          "version": "20261019.linux7211native1-1",
+          "file": "linux-siliconforest-20261019.linux7211native1-1-aarch64.pkg.tar.zst",
+          "sha256": "32ed81d6a985c78de3d9d7286a383c09dea0d02beee5fd140005d45a2d5a0436",
+          "source": {
+            "repository": "iconidentify/siliconforest-linux",
+            "branch": "siliconforest/next",
+            "commit": "782b88e934484819eb93b5f766a6b213a168f486"
+          },
+          "artifact": {
+            "repository": "iconidentify/siliconforest-linux",
+            "tag": "v2026.10.19-linux7.2.11-native.1"
+          }
+        },
+        "mesa": {
+          "name": "mesa-siliconforest",
+          "version": "20261018.prscout1-1",
+          "file": "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+          "sha256": "396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391",
+          "source": {
+            "repository": "iconidentify/siliconforest-mesa",
+            "branch": "siliconforest/next",
+            "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+          },
+          "artifact": {
+            "repository": "iconidentify/siliconforest-mesa",
+            "tag": "v2026.10.18-prscout.1"
+          }
+        },
+        "m1n1": {
+          "name": "m1n1-siliconforest",
+          "version": "20261018.prscout1-1",
+          "file": "m1n1-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+          "sha256": "2b6e02d3a7164e7da39c4e8e67030065627e098e143065cc94494855b3af3583",
+          "source": {
+            "repository": "iconidentify/siliconforest-m1n1",
+            "branch": "siliconforest/next",
+            "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+          },
+          "artifact": {
+            "repository": "iconidentify/siliconforest-m1n1",
+            "tag": "v2026.10.18-prscout.1"
+          }
+        }
+      }
+    }
+  }
+}

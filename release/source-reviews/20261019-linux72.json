@@ -1,0 +1,397 @@
+{
+  "schema": 1,
+  "kind": "linux-source-gates",
+  "status": "source-gates-passed; hardware qualification is recorded separately",
+  "date": "2026-10-19",
+  "frozen_source_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+  "frozen_source_tree": "ff787f84d8375781ca979ff85e9ef473b693473b",
+  "freeze_equivalence_verified": true,
+  "source_provenance": {
+    "stable": {
+      "version": "7.2.11",
+      "tag": "v7.2.11",
+      "tag_object": "8316c24ec1b77dba19ba072ca4fe251b36dc65d3",
+      "commit": "a2de78ee6ed8bf8cd99d177c74865a6e8c3cb6ea",
+      "url": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tag/?h=v7.2.11",
+      "signature": {
+        "status": "valid signature observed",
+        "signer": "Greg Kroah-Hartman",
+        "fingerprint": "647F28654894E3BD457199BE38DBBDC86092693E",
+        "signature_date": "2026-10-15"
+      }
+    },
+    "downstream_baseline": {
+      "commit": "54add20fd52ed9619483b22e21d79bbefecc2072",
+      "url": "https://github.com/iconidentify/siliconforest-linux"
+    },
+    "upgrade_guide": {
+      "url": "https://github.com/omacom/linux-aurora/pull/139",
+      "head": "a9712ec4665edfaca5f9f39463f995b90f55daf3",
+      "use": "Public source guide; downstream contracts independently reviewed."
+    },
+    "runtime_trusted_source_fix": {
+      "public_commit": "b3126f95b33b0cc3b506ba93b91910d9bfe12080",
+      "url": "https://github.com/omacom/linux-aurora/commit/b3126f95b33b0cc3b506ba93b91910d9bfe12080",
+      "author": "Ryan Murray",
+      "supplied_signed_off_by_preserved": true
+    }
+  },
+  "paired_sources": {
+    "mesa": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
+    "m1n1": "aca1258c2d7daad7db7079d4f89bb8217659f7ac",
+    "status": "Pairing retained; installed-package and boot-chain verification remain release hardware gates."
+  },
+  "profiles": {
+    "normal": {
+      "role": "M1/M2 normal GPU path",
+      "native_gpu": false,
+      "separate_M3_profile": false,
+      "uapi": {
+        "render_bytes": 448,
+        "compute_bytes": 200
+      }
+    },
+    "native-gpu": {
+      "role": "Native G15 path for the scoped M3 Pro target",
+      "native_gpu": true,
+      "separate_M3_profile": false,
+      "uapi": {
+        "render_bytes": 384,
+        "compute_bytes": 136
+      }
+    }
+  },
+  "preserved_contracts": [
+    "Native UAPI header unchanged; actual selector layout assertions passed for both profiles.",
+    "16 KiB native pages, Apple display/brightness, USB4, GPUVM, audio and SEP admission options retained.",
+    "SEP guard remains off by default on all profiles; opt-in policy and persistence behavior retained.",
+    "G15 admission, reserved-RAM ownership, firmware-session retention, queue/recovery and bootstrap safety logic preserved."
+  ],
+  "configuration": {
+    "profiles": {
+      "normal": {
+        "reviewed_config_sha256": "4c8b1779611790f8612048945f49cea93b9d14297b84e5d7bf36057e7caf8dbd",
+        "final_config_sha256": "4c8b1779611790f8612048945f49cea93b9d14297b84e5d7bf36057e7caf8dbd",
+        "added_symbols": 51,
+        "absent_symbols": 27,
+        "changed_symbols": 1,
+        "critical_admission_symbols_unchanged": true
+      },
+      "native-gpu": {
+        "reviewed_config_sha256": "c018b8ed49b93cb8d3ff6bddb8a4fb0c45a997820df23748dee6834ee6b3d2c6",
+        "final_config_sha256": "c018b8ed49b93cb8d3ff6bddb8a4fb0c45a997820df23748dee6834ee6b3d2c6",
+        "added_symbols": 51,
+        "absent_symbols": 27,
+        "changed_symbols": 1,
+        "critical_admission_symbols_unchanged": true
+      }
+    },
+    "kernel_BTI": {
+      "enabled": false,
+      "reason": "Upstream ARM64_BTI_KERNEL excludes Clang 21 and later; retained LLVM is 22.1.8.",
+      "upstream_commit": "7954540e49ff",
+      "userspace_BTI_retained": true,
+      "kernel_pointer_authentication_retained": true
+    },
+    "other_changes": [
+      "NETFILTER_NETLINK becomes built-in because upstream changed the option from tristate to bool.",
+      "New SCHED_CACHE default enables cache-aware load balancing; performance requires controlled hardware measurement.",
+      "Compiler context-analysis warnings now require Clang 23; no runtime feature is implied by their absence.",
+      "Obsolete upstream AppleTalk and FCrypt/PCBC support removed; no scoped Mac hardware admission depends on those features."
+    ]
+  },
+  "production_builds": {
+    "normal": {
+      "status": "final locked release build passed",
+      "tested_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+      "exit_code": 0,
+      "new_W1_diagnostics": 0,
+      "dtbs_byte_identical_to_baseline": 115,
+      "frozen_source_equivalence": true,
+      "final_release_build_receipt": "20261019-linux72-builds.json"
+    },
+    "native-gpu": {
+      "status": "final locked release build passed",
+      "tested_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+      "exit_code": 0,
+      "new_W1_diagnostics": 0,
+      "dtbs_byte_identical_to_baseline": 115,
+      "frozen_source_equivalence": true,
+      "final_release_build_receipt": "20261019-linux72-builds.json"
+    }
+  },
+  "qemu_gates": [
+    {
+      "name": "display",
+      "environment": "arm64 QEMU KUnit",
+      "passed": 343,
+      "skipped": 1,
+      "failed": 0,
+      "tested_commit": "df9da71fdab558e4ea2a5dc724eb3fd02187be80",
+      "frozen_source_equivalence": {
+        "target_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+        "tracked_dependency_count": 5467,
+        "rust_source_count": 0,
+        "strict_tracked_dependency_equality": true,
+        "changed_tracked_paths": [],
+        "method": "Recorded .cmd dependency names, normalized and Git-symlink-resolved; tested and final Git blob IDs compared. Generated files and external toolchains are outside this equality claim."
+      },
+      "evidence": {
+        "id": "display",
+        "sha256": "84caa3b72599cfd7cf0b5dec80de5ef70c623bd29543cc5128ad89af448c8487"
+      }
+    },
+    {
+      "name": "sep",
+      "environment": "arm64 QEMU KUnit",
+      "passed": 35,
+      "skipped": 0,
+      "failed": 0,
+      "suites_passed": 5,
+      "tested_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+      "test_config_sha256": "866a40b024876a62f1cf6758dcf6f750c64cd62206d6afed70707abd665e5e52",
+      "frozen_source_equivalence": {
+        "target_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+        "method": "Fresh direct run at frozen source; changed trusted-core/helper objects rebuilt and vmlinux relinked; test configuration unchanged. Earlier pre-fold dependency audit is retained privately."
+      },
+      "evidence": {
+        "id": "sep-frozen-kunit-json",
+        "sha256": "e14bc6f72b356b751a260deee5771649c54a10a716ffe55646cd1d5e84cd024b"
+      },
+      "log_evidence": {
+        "id": "sep-frozen-kunit-log",
+        "sha256": "bd58ade00e2fc91d48130dd48a2aa2f5933a2ea47227ba761400a3d25e9ae140"
+      }
+    },
+    {
+      "name": "audio-and-dart",
+      "environment": "arm64 QEMU KUnit",
+      "passed": 42,
+      "skipped": 0,
+      "failed": 0,
+      "tested_commit": "f4b31618a04ea122669f04fe012f10743aee306c",
+      "frozen_source_equivalence": {
+        "target_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+        "recorded_source_inputs": 3325,
+        "different_inputs": 0,
+        "method": "Integrator supplied compiled-input SHA256 receipt compared to frozen tree; generated files and external toolchains excluded.",
+        "receipt_sha256": "b96ea5c5a80bd7eb98c37bcb896578fe5f16a598bba89592bac7745b098c4c97"
+      },
+      "evidence": {
+        "id": "audio-and-dart",
+        "sha256": "e54dc02d554e1b5ccbc0dd8e7f43fe7ca4fb67b18db9e61a2b777fa1dcebbba2"
+      }
+    },
+    {
+      "name": "v14-lockdep",
+      "environment": "arm64 QEMU KUnit",
+      "passed": 31,
+      "skipped": 0,
+      "failed": 0,
+      "tested_commit": "bcdf34714ca02fc621ffe200455d11ff7434d134",
+      "frozen_source_equivalence": {
+        "target_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+        "tracked_dependency_count": 5528,
+        "rust_source_count": 0,
+        "strict_tracked_dependency_equality": true,
+        "changed_tracked_paths": [],
+        "method": "Recorded .cmd dependency names, normalized and Git-symlink-resolved; tested and final Git blob IDs compared. Generated files and external toolchains are outside this equality claim."
+      },
+      "evidence": {
+        "id": "v14-lockdep",
+        "sha256": "20e866207b37e98118ad62b5dff0a475a4410e96b3f83f3acaa0883e9896247a"
+      }
+    },
+    {
+      "name": "user4k-feature-on",
+      "environment": "arm64 QEMU KUnit",
+      "passed": 163,
+      "skipped": 61,
+      "failed": 0,
+      "tested_commit": "153e0d50fb065f332d30fde7eac39a452e0af4cb",
+      "frozen_source_equivalence": {
+        "target_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+        "recorded_source_inputs": 3138,
+        "different_inputs": 0,
+        "method": "Integrator supplied compiled-input SHA256 receipt compared to frozen tree; generated files and external toolchains excluded.",
+        "receipt_sha256": "3debf6390953022d4aaedacdfaa9cc6ba4b0b18a7fe3fd7150829fa35a4c0e3b"
+      },
+      "evidence": {
+        "id": "user4k-feature-on",
+        "sha256": "b83f27374b8c0d1f7be9c8a17b4442664391f6f1ff58447732fec16964e8b5d3"
+      }
+    },
+    {
+      "name": "user4k-feature-off-policy",
+      "environment": "arm64 QEMU KUnit",
+      "passed": 4,
+      "skipped": 0,
+      "failed": 0,
+      "tested_commit": "153e0d50fb065f332d30fde7eac39a452e0af4cb",
+      "frozen_source_equivalence": {
+        "target_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+        "recorded_source_inputs": 3138,
+        "different_inputs": 0,
+        "method": "Integrator supplied compiled-input SHA256 receipt compared to frozen tree; generated files and external toolchains excluded.",
+        "receipt_sha256": "3debf6390953022d4aaedacdfaa9cc6ba4b0b18a7fe3fd7150829fa35a4c0e3b"
+      },
+      "evidence": {
+        "id": "user4k-feature-off-policy",
+        "sha256": "2b089122e3fab78ff5b3da31f3b1589ed3b9c8a287f75fab9509e701e610be56"
+      }
+    }
+  ],
+  "host_gates": [
+    {
+      "name": "native-G15",
+      "passed_C": 26,
+      "passed_Rust": 24,
+      "failed": 0,
+      "tested_commit": "a2b01642e429ad23464851be45d3a29511abe0e3",
+      "frozen_source_equivalence": {
+        "target_commit": "782b88e934484819eb93b5f766a6b213a168f486",
+        "status": "Relevant production sources, host harness, PMP source, UAPI selector and complete include tree are unchanged from tested commit."
+      },
+      "method": "Production admission and pure logic with host kernel-service stubs; actual UAPI selector compilation.",
+      "evidence": {
+        "id": "native-G15-host",
+        "sha256": "507db32fa9ed736662157d9f2fec5f2e69a00866a6a67627450ab0547b4bf867"
+      }
+    },
+    {
+      "name": "API failure and boundary controls",
+      "status": "passed scoped extraction tests",
+      "coverage": [
+        "Scheduler initialization failure",
+        "Same-device GEM handles and error propagation",
+        "BIO fragment ownership and physical alignment",
+        "Registered-buffer allocation boundaries",
+        "DONTUNMAP anonymous/file/native guards",
+        "Trusted-source read-only state and exit dispatch"
+      ],
+      "method": "Extracted production methods/functions with documented host service stubs; negative controls must fail.",
+      "frozen_source_equivalence": null
+    }
+  ],
+  "closed_source_findings": [
+    {
+      "topic": "Scheduler entity initialization",
+      "result": "New allocation failure is propagated before assuming initialization or exposing an entity. Actual-method failure injection and removed-check negative control verified.",
+      "integration_commit": "5de9a7a1e3b8ce8975f5b745bb7e6d49a1007e6e"
+    },
+    {
+      "topic": "DRM device contexts",
+      "result": "GPU runtime uses Uninit before registration; Registered boundaries only weaken through reviewed views. Handle creation checks actual device identity, and core allocation reads registration state with a READ_ONCE-style snapshot.",
+      "integration_commits": [
+        "7ec9ab5d680b190d4e1223520b287154bd6c31fd",
+        "816bd6dcdebd83bc1ac76b58bc3a10bf30ed7efa",
+        "6748afcfa73ff81c69358780e19554c2363a1b6e"
+      ]
+    },
+    {
+      "topic": "User-granule C bridges",
+      "result": "Preserve DONTUNMAP subpage offsets, bound registered fragment allocations, validate final coalesced physical BIO vectors, and retain exact fragment ownership during rejection. Host boundary, unwind and mutation tests verified.",
+      "integration_commits": [
+        "5ec69f61051ba0bad23a5f6fc05e936067976df7",
+        "f0a60f190ed33bf619d3008c8d85a2e8b310a0b8",
+        "2c918aaf7e6bbc6ef66db1c293c85af882a7c6da",
+        "74b12f1d810ecdc2c1ecf4f6c69e7cf0e8bad609"
+      ]
+    },
+    {
+      "topic": "Clean-merge artifacts",
+      "result": "Remove duplicate or resurrected stable code. Focused independent review closed Btrfs, NFSd, NTFS and SMB findings; VFIO policy latching matches the 7.2 lifecycle while preserving downstream assignment refusal.",
+      "integration_commits": [
+        "e60b14288093c9072d7034141d69d7dc4d143142",
+        "c3f131729a765b9a459095a235a8e95c1ca202b5"
+      ],
+      "scope": "Focused duplicate/overlap and independent remerge checks, not a proof of every kernel path."
+    },
+    {
+      "topic": "Runtime trusted-key source",
+      "result": "Keep writable runtime migration state separate from built-in read-only policy. Preserve source identity, RNG selection, payload policy snapshots and matching exit dispatch. NULL runtime-source withdrawal is refused.",
+      "integration_commits": [
+        "b1b100e13812b5e162fe8fd063a586c8c423c8fb",
+        "782b88e934484819eb93b5f766a6b213a168f486"
+      ],
+      "host_tests": {
+        "actual_cases_passed": 3,
+        "negative_controls_detected": 2,
+        "readonly_mapping_used": true,
+        "real_module_unload_tested": false
+      }
+    }
+  ],
+  "reservation_scope": {
+    "upstream_commit": "7b9f263909a57e2463c6a543d72651e00a3fd0d6",
+    "rule": "7.2 early reservation handling accepts only the first reg tuple per reserved-memory node.",
+    "measurements": [
+      {
+        "board": "J313",
+        "measurement": "read-only baseline running handoff; not a 7.2 boot",
+        "nodes_with_one_reg_tuple": 19,
+        "nodes_without_reg": 0,
+        "nodes_with_multiple_reg_tuples": 0,
+        "malformed_reg_properties": 0,
+        "independent_tree_and_fdt_count_match": true
+      },
+      {
+        "board": "J516S",
+        "measurement": "read-only baseline running handoff; not a 7.2 boot",
+        "nodes_with_one_reg_tuple": 35,
+        "nodes_without_reg": 3,
+        "nodes_with_multiple_reg_tuples": 0,
+        "malformed_reg_properties": 0,
+        "independent_tree_and_fdt_count_match": true
+      }
+    ],
+    "conclusion": "No multiple-tuple mismatch observed for these exact baseline handoffs; no compatibility workaround indicated by this measurement.",
+    "limits": [
+      "Does not qualify a 7.2 boot or newly composed boot image.",
+      "Does not prove other boards or firmware use one tuple.",
+      "Tuple counts do not prove range coverage, overlaps, permissions or every reserved-memory consumer."
+    ]
+  },
+  "known_test_limits": [
+    {
+      "name": "Display lockdep fixture stall",
+      "status": "baseline-reproduced; not counted as a passing unfiltered lockdep suite",
+      "detail": "An injected deadlock-error path in the resume fixture stalls without a backoff on both qualified baseline and upgrade candidate. Fixture repair is deferred. Focused v14 lockdep coverage passes 31 tests."
+    },
+    {
+      "name": "User4k skips",
+      "count": 61,
+      "detail": "Require unavailable swap, fault injection, MTE or larger-native-page setups. They are skipped, not passed. No user4k hardware qualification is claimed; intended release target policy keeps it off until separately qualified."
+    },
+    {
+      "name": "Source tests versus hardware",
+      "detail": "Host and QEMU checks do not prove physical GPU acceleration, display, suspend, audio, Touch ID, cache coherency, performance or recovery."
+    },
+    {
+      "name": "Existing conditional user4k DMA paths",
+      "detail": "Async block-device and passthrough BVEC paths that bypass the shared validator remain a separate pre-existing review limit. No broad redesign or hardware qualification is claimed here."
+    },
+    {
+      "name": "Pre-existing appledrm section warning",
+      "detail": "The module init path references exit helpers on both the baseline and upgrade. Production uses DRM_APPLE=m; this report does not qualify a built-in configuration."
+    }
+  ],
+  "pending_closures": [
+    "This source report must be paired with signed artifact and board/firmware hardware qualification reports before support or installer qualification is claimed."
+  ],
+  "freeze_declared": true,
+  "freeze_equivalence_status": "Source-gate evidence bound to the frozen tree by direct runs, tracked Git dependency comparisons or retained compiled-input receipts. This does not qualify final release artifacts or hardware.",
+  "history_fold": {
+    "tree_identity_with_pre_fold_tip": true,
+    "canonical_integration_commits_mapped": true,
+    "actual_tested_refs_retained": true,
+    "receipt_sha256": "d2a48486b7bdcf00445a689215b21541f6ecfe8aba7e9dcec481518d1ff69f0c"
+  },
+  "release_artifact_validation": {
+    "final_release_build_receipts": null,
+    "generated_layout_checks": null,
+    "signed_packages": null,
+    "packaged_boot_composition": null,
+    "publication_ready": false
+  }
+}
