@@ -8,6 +8,7 @@ original level even if a check fails. It never blanks a display. Successful
 readback is driver evidence, not proof of visible panel or keyboard luminance.
 """
 import argparse
+from datetime import datetime, timezone
 import json
 import platform
 from pathlib import Path
@@ -60,6 +61,8 @@ def main():
     compatible = Path('/proc/device-tree/compatible').read_bytes().rstrip(b'\0').decode().split('\0')
     report = {'schema': 1, 'kernel': platform.release(),
               'board': next(c for c in compatible if c.startswith('apple,j')),
+              'os_firmware': Path('/proc/device-tree/chosen/asahi,os-fw-version').read_bytes().rstrip(b'\0').decode(),
+              'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
               'exercised': args.exercise, 'controls': [],
               'visible_luminance_verified': False}
     devices = [(p, False) for p in sorted(Path('/sys/class/leds').glob('*kbd_backlight*'))]
@@ -80,10 +83,13 @@ def main():
             item['status'] = 'passed' if args.exercise else 'present'
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             item.update(status='failed', error=str(error))
+            if isinstance(error, subprocess.CalledProcessError):
+                item['stderr'] = (error.stderr or '').strip()
             failed = True
     report['missing'] = [kind for kind in ('display', 'keyboard')
                          if not any(c['kind'] == kind for c in report['controls'])]
     report['status'] = 'failed' if failed or report['missing'] else ('passed' if args.exercise else 'present')
+    report['completed_utc'] = datetime.now(timezone.utc).isoformat()
     args.output.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report))
     return 0 if report['status'] in ('passed', 'present') else 1
