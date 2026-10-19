@@ -1,0 +1,208 @@
+{
+  "schema": 1,
+  "kind": "source-integration-review",
+  "date": "2026-10-18",
+  "project": "siliconforest",
+  "scope": "Public sources only. Source review and host validation; not a hardware qualification or binary release.",
+  "sources": {
+    "linux": "7560c8b4747f79cf18d8ac90c11f6bec9f4e2eca",
+    "mesa": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
+    "m1n1": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+  },
+  "imports": [
+    {
+      "component": "linux",
+      "source": "https://github.com/aurora-silicon/linux/pull/361",
+      "upstream_commit": "0c7b5074ac461ce03fa605bd4c11abf4b28b0f41",
+      "purpose": "SEP xART ownership guard and platform DMA windows",
+      "downstream_policy": "Opt-in only: xart_guard=1 or 2. Default remains 0 on every SiliconForest platform; no automatic migration of existing Linux records. Cold-boot M1 identity provisioning can require guard=0.",
+      "review_fixes": [
+        "Bound append by physical list capacity, including duplicate and unreadable entries.",
+        "Read a bounded prefix of oversized lists and refuse further adoption.",
+        "Reserve in-memory capacity before writing and flushing an entry.",
+        "Flush the parent directory on every ownership-list open; fail closed if persistence fails."
+      ],
+      "validation_limit": "Allocation failure is not injectable in these KUnit tests; reservation-before-I/O is verified by source review. Write, flush and directory failures are injected."
+    },
+    {
+      "component": "linux",
+      "source": "https://github.com/omacom/linux-aurora/pull/146",
+      "upstream_commit": "8fd1bf481afe6fcadaa04001b2bcd435616b705b",
+      "purpose": "J613 CPU thermal zones, measured energy model and die sensor keys",
+      "review_requirements": [
+        "Keep J613-measured power and indexed sensor additions scoped to J613, including 25G83.",
+        "Preserve critical thermal protection and the existing conservative GPU ceiling."
+      ],
+      "hardware_pending": [
+        "Sensor key availability and plausible readings on both firmware profiles, including resume.",
+        "CPU and combined CPU/GPU thermal equilibrium and energy-aware scheduling behavior."
+      ]
+    },
+    {
+      "component": "linux",
+      "source": "https://github.com/aurora-silicon/linux/pull/331",
+      "upstream_commit": "e05ef13683a8ddd5c1346cd1a3da7a51c4ab5de4",
+      "purpose": "CS42L42 resume clock handling",
+      "review_requirements": [
+        "Also address CS42L84, the codec actually referenced by the Apple laptop DTs.",
+        "Keep the oscillator selected outside D0 and after a failed PLL lock."
+      ],
+      "hardware_pending": [
+        "Headphone playback across suspend/resume and recovery after a PLL timeout."
+      ],
+      "known_limits": [
+        "Pre-existing capture-across-suspend clock-state behavior remains unresolved.",
+        "ASoC prepare ignores the digital-unmute error; a PLL timeout can leave silence until a later prepare.",
+        "No claim of complete audio suspend/resume qualification.",
+        "Pre-existing CS42L42 PLL retry uses the final divout."
+      ]
+    },
+    {
+      "component": "m1n1",
+      "source": "https://github.com/aurora-silicon/m1n1/pull/33",
+      "upstream_commit": "9b4dcc65874e3aa64898a375d1e3f453f03b6aee",
+      "purpose": "Transactional T600x explicit-disabled Type-C route handoff",
+      "attribution": "Downstream adaptation authored by Chris Kearney, based on Andreas Fernandez; no invented Signed-off-by.",
+      "review_fixes": [
+        "Publish explicitly disabled owner routes and DCP status atomically using a scratch FDT.",
+        "Match exact disabled status; preserve absent and all other statuses.",
+        "Keep the allocation-free legacy enable path on other chips and continue to later optional controllers after failure.",
+        "Propagate reservation allocation failure instead of stale success."
+      ],
+      "compatibility": "Downstream T600x routes retain absent status, preserving existing old-loader dual USB-C behavior. No new T600x loader pairing floor. T8122/J613 readiness and strict T6030 handoff remain unchanged.",
+      "hardware_pending": [
+        "Physical display, hotplug and suspend/resume coverage."
+      ]
+    },
+    {
+      "component": "mesa",
+      "source": "https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/44931",
+      "upstream_commit": "a2a5472089a029c067a2e3e35adc420643603065",
+      "purpose": "Configurable Honeykrisp geometry heap",
+      "default_mib": 128,
+      "range_mib": [
+        16,
+        1024
+      ],
+      "review_fixes": [
+        "Clamp at allocation because XML drirc values bypass environment range validation.",
+        "Test the real GPU poly_heap struct with its uint32 size, plus the real allocation callback."
+      ],
+      "hardware_pending": [
+        "Game-specific behavior and GPU workloads; no new FPS result claimed."
+      ]
+    }
+  ],
+  "reviews": {
+    "reviewers": [
+      "Codex integrator",
+      "Claude via herdr w1B:p2",
+      "Grok via herdr w1B:p3"
+    ],
+    "mesa": "accepted",
+    "m1n1": "accepted",
+    "linux": "accepted by Claude and Grok at 7560c8b4747f79cf18d8ac90c11f6bec9f4e2eca; no source blockers",
+    "all_source_blockers_resolved": true
+  },
+  "validation": {
+    "mesa": {
+      "full_public_source_host_build": true,
+      "asahi_suite": {
+        "passed": 36,
+        "failed": 0
+      },
+      "production_cpu_programs": 5,
+      "actual_xml_parser_and_heap_integer_cases": 12,
+      "environment_parser_cases": 11,
+      "clamp_removal_mutant_rejected": true
+    },
+    "m1n1": {
+      "stage2_build": true,
+      "llvm": "22.1.8",
+      "rust": "1.99.0",
+      "python_passed": 26,
+      "python_skipped": 7,
+      "targeted_routes_and_j613_tests": 4,
+      "host_scripts_passed": [
+        "run-t6030-display.sh",
+        "run-t8122-display-handoff.sh"
+      ],
+      "optional_controller_early_exit_mutants_rejected": true,
+      "existing_g15_fixture_debt_fixed": false
+    },
+    "linux": {
+      "status": "passed",
+      "asahi_gpu_host_tests_passed": 24,
+      "display_and_typec_kunit": {
+        "total": 274,
+        "passed": 273,
+        "skipped": 1
+      },
+      "cs42l84_kunit_passed": 16,
+      "t8122_dtbs_built_w1": 7,
+      "thermal_scope_validation": "Five non-J613 T8122 decompiled DTBs match the baseline before PR146. Both J613 DTBs match the imported thermal series, including sensor indices 0-5. Existing warnings unchanged.",
+      "cs42l42_kunit_passed": 14,
+      "audio_fix_removal_mutants_rejected": true,
+      "audio_combined_kunit_passed": 30,
+      "sep_kunit_passed": 35,
+      "sep_guard_kunit_cases": 21,
+      "production_changed_directories_compile_w1": true,
+      "kernel_llvm": "22.1.8",
+      "kernel_rust": "1.93.1",
+      "bindgen": "0.73.2 downstream corrected generator",
+      "compile_time_c_rust_layout_assertions": true,
+      "tested_commits": {
+        "sep": "ee237fd4707f7c6b1d7b16a7ea7bab6679b0a8bb",
+        "display": "cadcdeadad8a45d85606c8fbe0a7036fe69a481e",
+        "audio_and_production": "7560c8b4747f79cf18d8ac90c11f6bec9f4e2eca"
+      },
+      "unchanged_tested_paths_verified": true,
+      "kunit_configs": {
+        "sep": "20261018-kunit/sep.config",
+        "audio": "20261018-kunit/audio.config",
+        "display": "20261018-kunit/display.config"
+      },
+      "kunit_reproduction": "From the pinned kernel, use tools/testing/kunit/kunit.py run --arch=arm64 --kunitconfig=<saved config> --build_dir=<dedicated output>, with LLVM=1, Rust 1.93.1, the corrected bindgen generator and LIBCLANG_PATH=/usr/lib. Select a kernel-compatible QEMU arm64 environment.",
+      "known_harness_dependency": "APPLE_SEP currently needs CONFIG_SPI=y even though its existing Kconfig omits the dependency. Saved SEP test config selects SPI and OF_OVERLAY, as the production configuration does."
+    },
+    "hardware_tests_performed_for_this_integration": false,
+    "control": {
+      "unit_tests_passed": 38,
+      "shell_syntax_and_shellcheck": true,
+      "session_admission_harness": true,
+      "headless_weston_case": true,
+      "shellcheck_version": "0.11.0"
+    },
+    "paired_kernel_mesa_abi_differences": 0,
+    "log_sha256": {
+      "kunit-display.log": "6d156ddb6c2d9c095c176915699337d0e528401ca27751c7e2bc7d5f29416f7e",
+      "kunit-sep.log": "3871a254163e4a77c7c80ce95b1e1b1d6d2a7d4fcfadc6bb2a2cb964682c6608",
+      "kunit-audio-final.log": "332fabed4152e84502c6e97cdf26b17c9bb22077f349ae2f7f8b2e192f50e478",
+      "prod-compile.log": "101e338b72a1ae9fb5efc2dc30d9786e2aa1ba2f5ccb4c2c3a9c0e037a5645ac"
+    }
+  },
+  "release_policy": {
+    "published_catalog_unchanged": "v2026.10.18.3",
+    "installer_unchanged": true,
+    "installed_machines_modified": false,
+    "new_binary_release_published": false,
+    "private_source_published": false
+  },
+  "pairing": {
+    "kernel_and_dtbs": "Build from the same locked revision.",
+    "j613_minimum_kernel_commit": "17a9930f20a0895b5980385b0b2d67edda8a24be",
+    "j613_external_display": "Normal display drivers only; exact firmware compatibility 14 7 0 and existing readiness, memory and supplier gates still required. 26.6.2 camera support does not imply external display support.",
+    "m3_production_profile": "CONFIG_SILICONFOREST_NATIVE_GPU=y retains normal display and USB4 paths. CONFIG_SILICONFOREST_M3 is a separate alternative profile."
+  },
+  "pull_requests": {
+    "linux": "https://github.com/iconidentify/siliconforest-linux/pull/8",
+    "mesa": "https://github.com/iconidentify/siliconforest-mesa/pull/2",
+    "m1n1": "https://github.com/iconidentify/siliconforest-m1n1/pull/1"
+  },
+  "merge_commits": {
+    "mesa": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
+    "m1n1": "aca1258c2d7daad7db7079d4f89bb8217659f7ac",
+    "linux": "d7f2b717599870ff49eea1d3c1f43bb5c62899c9"
+  },
+  "kernel_pin_policy": "The lock records reviewed code commit 7560c8b4747f rather than its GitHub merge commit. The merge has an identical tree, and the code commit is on siliconforest/next."
+}
