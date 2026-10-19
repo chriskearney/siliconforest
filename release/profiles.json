@@ -268,14 +268,14 @@
       ],
       "kernel_variant": "native-gpu",
       "mesa": {
-        "branch": "mesa/native-update-20261018",
-        "commit": "45c2718d7b7ba1021ea28e3b052b1564b6f43d68",
+        "branch": "siliconforest/next",
+        "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
         "apis": [
           "OpenGL",
           "Vulkan"
         ]
       },
-      "m1n1": "1d6743b21c133a4522e6a3fc74183bad7a11e446",
+      "m1n1": "aca1258c2d7daad7db7079d4f89bb8217659f7ac",
       "firmware_policy": "Exact J516S OS firmware 14.7; native G15 GPU with the maintained display/PHY/USB4/PMP stack and existing qualified m1n1 handoff.",
       "qualified": false,
       "blockers": [
