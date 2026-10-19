@@ -1,0 +1,206 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "kind": "package-build-and-runtime-review",
+  "scope": "Source/build/runtime audit only; hardware results are recorded separately.",
+  "sources": {
+    "linux": "54add20fd52ed9619483b22e21d79bbefecc2072",
+    "mesa": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
+    "m1n1": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+  },
+  "kernel_builds": {
+    "normal": {
+      "kernel_release": "7.1.12-siliconforest-normal-54add20fd52e-layout1",
+      "Image_modules_dtbs": true,
+      "C_Rust_layout_checks": true,
+      "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0",
+      "config_sha256": "8a754337ce29f723198e6e1073acebb8e1cd85a2dbcb0dd3cf5c978e5f76297b",
+      "kernel_image_sha256": "6e87cb9c9f5219ba8747461f71be1ffc5a027f773b7dca45a450dc2a9e492b55",
+      "existing_warnings": [
+        "appledrm init_module references dcp_unregister in .exit.text",
+        "appledrm init_module references dcp_audio_unregister in .exit.text"
+      ]
+    },
+    "native-gpu": {
+      "kernel_release": "7.1.12-siliconforest-native-gpu-54add20fd52e-layout1",
+      "Image_modules_dtbs": true,
+      "C_Rust_layout_checks": true,
+      "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0",
+      "config_sha256": "989a25fb47ce437b2eb85e60632226f16afc4a77cb00bead8307a53086ff7dbb",
+      "kernel_image_sha256": "c610e7a7175df025132965b5b0423e11adec0f3ac0395867b8bc245c892f03e9",
+      "existing_warnings": [
+        "appledrm init_module references dcp_unregister in .exit.text",
+        "appledrm init_module references dcp_audio_unregister in .exit.text"
+      ],
+      "existing_rust_dead_code_warnings": true
+    }
+  },
+  "air_mesa": {
+    "status": "passed",
+    "elf_count": 7,
+    "runtime_tsv_rows": 32,
+    "llvm_sonames": [
+      "libLLVM.so.22.1"
+    ],
+    "identical_to_qualified_air_fields": [
+      "depends",
+      "provides",
+      "conflicts",
+      "needed_external",
+      "llvm_sonames",
+      "dri_drivers",
+      "owner_packages"
+    ],
+    "dependencies": [
+      "expat",
+      "glibc>=2.43",
+      "libdisplay-info",
+      "libdrm",
+      "libgcc>=3.0",
+      "libglvnd",
+      "libstdc++>=13.2",
+      "libx11",
+      "libxcb",
+      "libxext",
+      "libxshmfence",
+      "libxxf86vm",
+      "llvm-libs<23",
+      "llvm-libs>=22",
+      "lm_sensors",
+      "systemd-libs",
+      "vulkan-icd-loader",
+      "wayland",
+      "xcb-util-keysyms",
+      "zlib",
+      "zstd"
+    ],
+    "internal_owner_note": "Bundled libraries marked (this package) are not external package dependencies.",
+    "new_receipt": {
+      "component": "mesa",
+      "source_commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
+      "additional_sources": [],
+      "profile": "m1-m2",
+      "control_commit": "a5f0b7d15872ea96f9edf2c3ee53783e3121469f",
+      "runtime_llvm_owner": "llvm-libs"
+    },
+    "lab_build": "b1018-212922-396d",
+    "package_sha256": "a36ec9be8ade7a9764010bf8edc7842ef59cde251852fd363b952137ab7e6533",
+    "registered_asahi_tests": {
+      "passed": 36,
+      "failed": 0
+    },
+    "toolchain": {
+      "llvm": "22.1.8",
+      "translator": "22.1.0.0",
+      "spirv_tools": "2026.3.1",
+      "gcc": "16.1.1"
+    },
+    "target_base_upgrade_required": false
+  },
+  "loader": {
+    "normal_package_version": "20261018.prscout3normal-1",
+    "native_gpu_package_version": "20261018.prscout1-1",
+    "same_release_stage2_payload": true,
+    "binary_sha256": "db98796e1a82b820aae4698f71f9fc41f532a666f52a45ffec85b6833ec4f8ee",
+    "version": "v2.0.0-siliconforest.dev.gaca1258c2d7d",
+    "normal_package_native_gpu_hook": false
+  },
+  "memory_floor_included": false,
+  "hdmi_audio": "Opt-in unchanged; no boot parameter added.",
+  "packages": {
+    "j516s": {
+      "kernel": {
+        "name": "linux-siliconforest",
+        "version": "20261018.prscout3-1",
+        "file": "linux-siliconforest-20261018.prscout3-1-aarch64.pkg.tar.zst",
+        "sha256": "165615f2a29a3fc6f352a45de2205888182b6d091fa9a9794a747bb6ce47636c",
+        "source": {
+          "repository": "iconidentify/siliconforest-linux",
+          "branch": "siliconforest/next",
+          "commit": "54add20fd52ed9619483b22e21d79bbefecc2072"
+        },
+        "artifact": {
+          "repository": "iconidentify/siliconforest-linux",
+          "tag": "v2026.10.18-pr148-native.1"
+        }
+      },
+      "mesa": {
+        "name": "mesa-siliconforest",
+        "version": "20261018.prscout1-1",
+        "file": "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+        "sha256": "396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391",
+        "source": {
+          "repository": "iconidentify/siliconforest-mesa",
+          "branch": "siliconforest/next",
+          "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+        },
+        "artifact": {
+          "repository": "iconidentify/siliconforest-mesa",
+          "tag": "v2026.10.18-prscout.1"
+        }
+      },
+      "m1n1": {
+        "name": "m1n1-siliconforest",
+        "version": "20261018.prscout1-1",
+        "file": "m1n1-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+        "sha256": "2b6e02d3a7164e7da39c4e8e67030065627e098e143065cc94494855b3af3583",
+        "source": {
+          "repository": "iconidentify/siliconforest-m1n1",
+          "branch": "siliconforest/next",
+          "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+        },
+        "artifact": {
+          "repository": "iconidentify/siliconforest-m1n1",
+          "tag": "v2026.10.18-prscout.1"
+        }
+      }
+    },
+    "j313": {
+      "kernel": {
+        "name": "linux-siliconforest",
+        "version": "20261018.prscout3normal-1",
+        "file": "linux-siliconforest-20261018.prscout3normal-1-aarch64.pkg.tar.zst",
+        "sha256": "44fb1f8f9e32e6f65afa659f676e1f989dfc0eacea609e6b7870ffe4d8f9ffe7",
+        "source": {
+          "repository": "iconidentify/siliconforest-linux",
+          "branch": "siliconforest/next",
+          "commit": "54add20fd52ed9619483b22e21d79bbefecc2072"
+        },
+        "artifact": {
+          "repository": "iconidentify/siliconforest-linux",
+          "tag": "v2026.10.18-pr148-normal.1"
+        }
+      },
+      "mesa": {
+        "name": "mesa-siliconforest",
+        "version": "20261018.prscout3-1",
+        "file": "mesa-siliconforest-20261018.prscout3-1-aarch64.pkg.tar.zst",
+        "sha256": "a36ec9be8ade7a9764010bf8edc7842ef59cde251852fd363b952137ab7e6533",
+        "source": {
+          "repository": "iconidentify/siliconforest-mesa",
+          "branch": "siliconforest/next",
+          "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+        },
+        "artifact": {
+          "repository": "iconidentify/siliconforest-mesa",
+          "tag": "v2026.10.18-m1-m2-pr148.1"
+        }
+      },
+      "m1n1": {
+        "name": "m1n1-siliconforest",
+        "version": "20261018.prscout3normal-1",
+        "file": "m1n1-siliconforest-20261018.prscout3normal-1-aarch64.pkg.tar.zst",
+        "sha256": "c9dc6edb1c80f8840a845b30f237ea1d47c2faf753754ab181890fb97d2d1927",
+        "source": {
+          "repository": "iconidentify/siliconforest-m1n1",
+          "branch": "siliconforest/next",
+          "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+        },
+        "artifact": {
+          "repository": "iconidentify/siliconforest-m1n1",
+          "tag": "v2026.10.18-normal-pr148.1"
+        }
+      }
+    }
+  }
+}
