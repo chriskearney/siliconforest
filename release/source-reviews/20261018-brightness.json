@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "status": "source reviewed and host tested; hardware scope is recorded separately",
+  "linux_commit": "4b318c4140e83e44033168836fe8cf4f76e16d80",
+  "base": "d7f2b717599870ff49eea1d3c1f43bb5c62899c9",
+  "public_sources": [
+    {
+      "url": "https://github.com/omacom/linux-aurora/commit/02524534c6b8f898cfbcf142c70924ae2db3adbd",
+      "author": "DjDeveloperr / Diljit Singh",
+      "role": "14.7 panel nits encoding and initial port proposal"
+    },
+    {
+      "url": "https://github.com/aurora-silicon/linux/pull/358",
+      "author": "Eryk Wieliczko",
+      "role": "14.7 panel wire layout, also retained in the public apple-m3 source"
+    }
+  ],
+  "implementation": {
+    "author": "Chris Kearney",
+    "generated_by": "LLM",
+    "scope": "normal T6030 internal panel on 14.7; J514S/J516S capability only",
+    "maximum_nits": 500,
+    "initial_requested_placeholder_nits": 140,
+    "loader_brightness_preserved_until_linux_request": true,
+    "actual_unknown_until_accepted_present": true,
+    "idle_update": "Re-present the retained active framebuffer while holding present_lock",
+    "other_paths": "M1/M2, J613/J615/J516C, external and Type-C display admission unchanged"
+  },
+  "review": {
+    "root": "Reviewed plan and production code; required strict actual-level reporting, queue closure around PM/unbind, and safe access to uninitialized policies on other boards. All fixed. Found and fixed test device cleanup ordering.",
+    "grok": "Independent read-only review clears 44fe00e5 production driver; addendum clears 4b318c41 test allocation lifetime fix. No hardware claim.",
+    "claude": "Implemented the port and executed the KUnit, W=1 and KASAN runs.",
+    "invented_signoffs": false
+  },
+  "validation": {
+    "display_kunit": {
+      "run": 286,
+      "passed": 285,
+      "skipped": 1,
+      "known_skip": "S35_dual_retry_off",
+      "new_brightness_cases": 12
+    },
+    "kasan_debug_spinlock": {
+      "run": 12,
+      "passed": 12,
+      "reports": 0,
+      "regression_proof": "The original 44fe00e5 fixture triggers KASAN use-after-free in dcp_backlight_release; corrected 4b318c41 passes."
+    },
+    "changed_drm_W1_warnings": 0,
+    "production_build": {
+      "Image": true,
+      "modules": true,
+      "dtbs": true,
+      "C_Rust_layout_checks": true,
+      "corrected_bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0",
+      "config_sha256": "0136d0f414238edceebf562a850152951055b6e690d8879d64d716886715e88e",
+      "kernel_image_sha256": "ffb70377764d55fe34e3ad77102360ed73b9fcd6ac2f544cf2755e4e10815e9f",
+      "existing_modpost_warnings": [
+        "init_module references dcp_unregister in .exit.text",
+        "init_module references dcp_audio_unregister in .exit.text"
+      ]
+    },
+    "control_tests": 43,
+    "native_mesa_kernel_abi_facts_matched": 18,
+    "GPU_sources_and_UAPI_changed": false,
+    "J516S_DTB_changed": false
+  },
+  "known_limits": [
+    "No hardware result follows from KUnit or source review.",
+    "The requested 140-nit placeholder is not a measured bootloader level.",
+    "Resume opens the worker gate; a pending level is sent on the next frame or kick.",
+    "A first surface-less blank can complete a pending positive level before a level was previously known.",
+    "An internal display RPC failure retains the existing fail-until-reboot policy.",
+    "Other boards and firmware need their own hardware qualification."
+  ],
+  "paired_packages": {
+    "kernel": {
+      "version": "20261018.prscout2-1",
+      "commit": "4b318c4140e83e44033168836fe8cf4f76e16d80",
+      "sha256": "4d322c255d65c62924a716550d2004794ecec4f4b1c8a3ea4bb8d1fe6805e43a"
+    },
+    "mesa": {
+      "version": "20261018.prscout1-1",
+      "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
+      "sha256": "396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391"
+    },
+    "m1n1": {
+      "version": "20261018.prscout1-1",
+      "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac",
+      "sha256": "2b6e02d3a7164e7da39c4e8e67030065627e098e143065cc94494855b3af3583"
+    }
+  },
+  "loader_contract": "The existing loader artifact and J516S DTB are reused unchanged. Its source manifest records the earlier kernel validation pin; this release records the new kernel pairing and hardware result without changing loader code.",
+  "hardware_report": "../reports/20261018-j516s-brightness.json"
+}

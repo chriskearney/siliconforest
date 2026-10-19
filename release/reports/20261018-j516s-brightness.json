@@ -1,0 +1,239 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "status": "passed for the exact signed J516S/14.7 package set",
+  "board": "apple,j516s",
+  "model": "MacBook Pro 16-inch M3 Pro",
+  "os_firmware": "14.7",
+  "profile": "m3-pro-native-gpu",
+  "kernel_release": "7.1.12-siliconforest-native-gpu-4b318c4140e8-layout1",
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261018.prscout2-1",
+      "file": "linux-siliconforest-20261018.prscout2-1-aarch64.pkg.tar.zst",
+      "sha256": "4d322c255d65c62924a716550d2004794ecec4f4b1c8a3ea4bb8d1fe6805e43a",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "4b318c4140e83e44033168836fe8cf4f76e16d80"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.18-brightness.1"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-prscout.1"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "m1n1-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "2b6e02d3a7164e7da39c4e8e67030065627e098e143065cc94494855b3af3583",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.18-prscout.1"
+      }
+    }
+  },
+  "boot": {
+    "stage2_version": "v2.0.0-siliconforest.dev.gaca1258c2d7d",
+    "dtb": "apple/t6030-j516s.dtb",
+    "backend": "limine",
+    "entry": "limine.conf",
+    "image": "EFI/Linux/omarchy_linux-siliconforest.efi",
+    "max_image_bytes": 69206016,
+    "max_stage2_bytes": 8388608,
+    "stage1_versions": [
+      "v1.6.1-dirty"
+    ],
+    "iboot_versions": [
+      "iBoot-10151.140.19.700.2"
+    ],
+    "m1n1_config": [
+      "chosen.asahi,t6030-gpu=1",
+      "chosen.asahi,t6030-dcp=1",
+      "chosen.asahi,t6030-dcpext=1"
+    ],
+    "uboot_path": "/usr/lib/asahi-boot/u-boot-nodtb.bin",
+    "uboot_sha256": "11c09b0de3cdb03406de09e1782aa5a30b097f1e228de7b558ca88626c87f8c5",
+    "kernel_image_sha256": "ffb70377764d55fe34e3ad77102360ed73b9fcd6ac2f544cf2755e4e10815e9f",
+    "dtb_sha256": "029d0b8e419b4e99778abc7c235b02b8397a5cc14ab3fa315b321a983db693df",
+    "m1n1_sha256": "db98796e1a82b820aae4698f71f9fc41f532a666f52a45ffec85b6833ec4f8ee",
+    "config_sha256": "0136d0f414238edceebf562a850152951055b6e690d8879d64d716886715e88e"
+  },
+  "candidate_boot": {
+    "label": "candidate",
+    "previous_boot_id": "7c67727e-995b-4649-87e3-683910517d6a",
+    "boot_id": "424cddfe-85fe-42b1-94f3-abe0ea660374",
+    "kernel": "7.1.12-siliconforest-native-gpu-4b318c4140e8-layout1",
+    "system_state": "running",
+    "elapsed_seconds": 33.6
+  },
+  "checks": {
+    "desktop": true,
+    "hardware_OpenGL_Vulkan_pixels": true,
+    "matched_boot_chain": true,
+    "rebooted_rollback": true,
+    "regular_Omarchy_brightness_commands": true,
+    "brightness_driver_readback": true
+  },
+  "brightness": {
+    "controls": [
+      {
+        "device": "white:kbd_backlight",
+        "kind": "keyboard",
+        "maximum": 255,
+        "original": 102,
+        "changed": {
+          "requested": 90,
+          "actual": null
+        },
+        "restored": {
+          "requested": 102,
+          "actual": null
+        },
+        "status": "passed"
+      },
+      {
+        "device": "apple-panel-bl",
+        "kind": "display",
+        "maximum": 500,
+        "original": 300,
+        "changed": {
+          "requested": 275,
+          "actual": 275
+        },
+        "restored": {
+          "requested": 300,
+          "actual": 300
+        },
+        "status": "passed"
+      }
+    ],
+    "initial_screen": {
+      "brightness": 300,
+      "maximum": 500,
+      "actual": 300
+    },
+    "Omarchy_commands": [
+      {
+        "arguments": [
+          "display",
+          "--monitor",
+          "eDP-1",
+          "+5%"
+        ],
+        "exit_code": 0,
+        "stderr": "",
+        "requested": 325,
+        "actual": 325
+      },
+      {
+        "arguments": [
+          "display",
+          "--monitor",
+          "eDP-1",
+          "5%-"
+        ],
+        "exit_code": 0,
+        "stderr": "",
+        "requested": 300,
+        "actual": 300
+      },
+      {
+        "arguments": [
+          "keyboard",
+          "up"
+        ],
+        "exit_code": 0,
+        "stderr": "",
+        "requested": 127,
+        "actual": 127
+      },
+      {
+        "arguments": [
+          "keyboard",
+          "down"
+        ],
+        "exit_code": 0,
+        "stderr": "",
+        "requested": 102,
+        "actual": 102
+      }
+    ],
+    "display_firmware": {
+      "display_started": true,
+      "display_failed": false,
+      "backlight": {
+        "nits_sent": 300,
+        "nits_presents": 7,
+        "brightness_only_presents": 4,
+        "refused": 0,
+        "gate": 0
+      }
+    },
+    "requested_and_actual_units": "Kernel/firmware nits, not an optical calibration",
+    "owner_visual_confirmation": null,
+    "optical_measurement": false,
+    "keyboard_hardware_readback_available": false
+  },
+  "graphics": {
+    "quake_demo": "demo1",
+    "frames": 969,
+    "render_resolution": [
+      1920,
+      1080
+    ],
+    "fps": 174.0,
+    "gpu_recoveries": 0,
+    "hang_kills": 0,
+    "kernel_GPU_errors": 0,
+    "monitors": [
+      {
+        "name": "eDP-1",
+        "mode": "3456x2234@120"
+      },
+      {
+        "name": "DP-1",
+        "mode": "3840x2160@59.997"
+      }
+    ]
+  },
+  "rollback": {
+    "kernel": "7.1.12-siliconforest-native-gpu-7560c8b4747f-layout1",
+    "saved_files_restored": 16,
+    "complete_previous_package_list_restored": true,
+    "boot_id": "837fb616-06fd-4786-a995-16ebe35f491f",
+    "desktop_GL_Vulkan_passed": true,
+    "status": "rolled-back-verified"
+  },
+  "recovery": "Every pre-existing bootable entry and loader recovery copy is retained. Verified historical duplicate copies are preserved losslessly with restoration notes on root. New paired ESP recovery and root transaction copies remain available.",
+  "host_validation": "../source-reviews/20261018-brightness.json",
+  "limits": [
+    "Only J516S with exact OS firmware 14.7 and the loader identities in the manifest is qualified by this report.",
+    "Brightness was tested through driver readback, completed firmware presents and regular desktop commands; no optical luminance measurement or owner visual confirmation is claimed.",
+    "No new suspend/resume, audio, Touch ID, J613 thermal, dock or other-model hardware qualification.",
+    "M1/M2 source paths retain existing controls; the M1 Air release is unchanged. Its hardware was reserved for Connor and was not used in this task.",
+    "The larger alternative M3 display stack is not selected."
+  ],
+  "source_scope": "Linux adds brightness; Mesa and m1n1 packages are byte-identical to their previously qualified public artifacts."
+}
