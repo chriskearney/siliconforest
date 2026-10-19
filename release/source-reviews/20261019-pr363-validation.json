@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "linux_source": "0e1f466613761fecbe71ba8ca25f8b3598577062",
+  "source_tree": "6d2749a27939150eb58728bc23343646f3411257",
+  "source_prs": [
+    "https://github.com/iconidentify/siliconforest-linux/pull/12",
+    "https://github.com/iconidentify/siliconforest-linux/pull/13"
+  ],
+  "ci": "https://github.com/iconidentify/siliconforest-linux/actions/runs/39308627998",
+  "source_gates": {
+    "M3_display_KUnit": {
+      "passed": 130,
+      "failed": 0
+    },
+    "G15_host_Rust": {
+      "passed": 54,
+      "ignored_private_fixtures": 2
+    },
+    "G15_C_UAPI_checks": 26,
+    "record_zeroing_runtime_mutations_caught": 3,
+    "statistics_drain_pairs": 68121,
+    "statistics_drain_runtime_mutations_caught": 7
+  },
+  "native_build": {
+    "kernel_release": "7.2.11-siliconforest-native-gpu-0e1f46661376-layout1",
+    "Image_modules_dtbs": true,
+    "config_sha256": "c018b8ed49b93cb8d3ff6bddb8a4fb0c45a997820df23748dee6834ee6b3d2c6",
+    "image_sha256": "20c6c636dc37599c6c26d83c2bcee763da8de48f10b7f16a9395152ba4414a9e",
+    "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0",
+    "compiled_C_Rust_layouts_checked": true,
+    "native_render_compute_bytes": [
+      384,
+      136
+    ],
+    "llvm": "22.1.8",
+    "rust": "1.93.1"
+  },
+  "limits": [
+    "Source/host/build checks do not establish M3 Max hardware behavior. Exact J516S hardware qualification is recorded separately.",
+    "Private board/DT fixtures were not included or consumed."
+  ]
+}
