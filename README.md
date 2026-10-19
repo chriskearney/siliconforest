@@ -13,7 +13,7 @@ curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026
 
 Qualified pairs are **M1 Air J313 with OS firmware 13.5** and **M3 Pro 16-inch
 J516S with 14.7**, subject to each signed manifest's exact loader/U-Boot checks.
-The M3 Pro now uses Linux **7.2.11 at `0e1f46661376`**, including the completed
+The M3 Pro now uses Linux **7.2.11 at `0e1f46661376`**, including the earlier
 Naeem PR363 carry. The Air retains its previously qualified `782b88e93448` kernel
 and unchanged packages; no Air update or test was performed for this catalog.
 
@@ -53,6 +53,13 @@ internal speakers are not hardware-qualified by this update. HDMI audio stays
 opt-in, and the experimental T6030 memory floor is excluded. Local branding is
 retained; a new branding pipeline and early-boot Recovery/logo migration are
 not included.
+
+The development source lock also carries Naeem's four later PR363 allocator
+commits through `027bd762`, with a reviewed constructor limit and regression
+tests. [Source/build validation](release/source-reviews/20261019-pr363-pb-validation.json)
+records the native kernel build and unchanged ABI. These shared T6030/T6031
+changes allocate an additional 256 MiB and await hardware qualification. The
+public installer above continues to use the qualified `0e1f4666` M3 Pro kernel.
 
 ## Repositories
 
