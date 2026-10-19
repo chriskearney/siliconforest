@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "status": "passed public download and installed default boot",
+  "catalog": "v2026.10.18.5",
+  "child_release": "v2026.10.18-j516s-brightness.1",
+  "executed_one_liner": "curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.18.5/install.sh | bash",
+  "stable_one_liner": "curl -fsSL https://github.com/iconidentify/siliconforest/releases/latest/download/install.sh | bash",
+  "canonical_bootstrap": {
+    "url": "https://github.com/iconidentify/siliconforest/releases/latest/download/install.sh",
+    "sha256": "f355f097c4c6412411816d2835575e37f791640b2323a96156713225f0337bec",
+    "exact_match_to_tested_versioned_bootstrap": true,
+    "attempt": 1
+  },
+  "boot": {
+    "label": "public",
+    "previous_boot_id": "837fb616-06fd-4786-a995-16ebe35f491f",
+    "boot_id": "370744ed-385b-4038-8f89-122c56b64fc4",
+    "kernel": "7.1.12-siliconforest-native-gpu-4b318c4140e8-layout1",
+    "system_state": "running",
+    "elapsed_seconds": 34.0
+  },
+  "verification": {
+    "release": "v2026.10.18-j516s-brightness.1",
+    "kernel": "7.1.12-siliconforest-native-gpu-4b318c4140e8-layout1",
+    "boot_id": "370744ed-385b-4038-8f89-122c56b64fc4",
+    "completed_utc": "2026-10-19T02:28:45.362377+00:00",
+    "report_sha256": "db1301b68c6c6c66b5d40a1e3679765b25421c67eecdec1b677e1ccc9b93c17a",
+    "hardware_GL_Vulkan_pixels": true,
+    "desktop": true,
+    "quake_smoke_fps": 174.3,
+    "gpu_recoveries": 0,
+    "hang_kills": 0,
+    "native_gpu_kernel_errors": 0,
+    "brightness_control_readback": {
+      "schema": 1,
+      "kernel": "7.1.12-siliconforest-native-gpu-4b318c4140e8-layout1",
+      "board": "apple,j516s",
+      "os_firmware": "14.7",
+      "boot_id": "370744ed-385b-4038-8f89-122c56b64fc4",
+      "exercised": true,
+      "controls": [
+        {
+          "device": "white:kbd_backlight",
+          "kind": "keyboard",
+          "maximum": 255,
+          "original": 102,
+          "changed": {
+            "requested": 90,
+            "actual": null
+          },
+          "restored": {
+            "requested": 102,
+            "actual": null
+          },
+          "status": "passed"
+        },
+        {
+          "device": "apple-panel-bl",
+          "kind": "display",
+          "maximum": 500,
+          "original": 300,
+          "changed": {
+            "requested": 275,
+            "actual": 275
+          },
+          "restored": {
+            "requested": 300,
+            "actual": 300
+          },
+          "status": "passed"
+        }
+      ],
+      "visible_luminance_verified": false,
+      "missing": [],
+      "status": "passed",
+      "completed_utc": "2026-10-19T02:27:56.783690+00:00"
+    },
+    "brightness_visible_verified": false,
+    "transaction": "1792376739162071812-v2026.10.18-j516s-brightness.1",
+    "status": "installed-verified",
+    "esp_free_mib": 87.49609375
+  },
+  "firmware_control": {
+    "display_started": true,
+    "display_failed": false,
+    "backlight": {
+      "nits_sent": 300,
+      "nits_presents": 5,
+      "brightness_only_presents": 2,
+      "refused": 0,
+      "gate": 0
+    }
+  },
+  "package_sources": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261018.prscout2-1",
+      "file": "linux-siliconforest-20261018.prscout2-1-aarch64.pkg.tar.zst",
+      "sha256": "4d322c255d65c62924a716550d2004794ecec4f4b1c8a3ea4bb8d1fe6805e43a",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "4b318c4140e83e44033168836fe8cf4f76e16d80"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.18-brightness.1"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-prscout.1"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "m1n1-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "2b6e02d3a7164e7da39c4e8e67030065627e098e143065cc94494855b3af3583",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.18-prscout.1"
+      }
+    }
+  },
+  "rollback_reference": "20261018-j516s-brightness.json",
+  "limits": [
+    "J516S / 14.7 only with the exact loader identities in the signed manifest.",
+    "Driver/firmware brightness completion and desktop commands are verified; no optical calibration or owner visual confirmation is claimed.",
+    "Other Mac hardware, suspend/resume, audio and Touch ID are not newly qualified."
+  ]
+}

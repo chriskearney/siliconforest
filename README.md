@@ -40,6 +40,8 @@ interface; existing keyboard controls work as well. Screen and keyboard driver
 readback, regular Omarchy commands, both monitors, hardware rendering, Quake
 (174.0 FPS) and rebooted rollback passed. See [brightness controls](docs/BRIGHTNESS.md)
 and the [exact hardware scope](release/reports/20261018-j516s-brightness.json).
+The [public download/default-boot verification](release/reports/20261018-j516s-brightness-public.json)
+checks the actual published upgrade and a 174.3 FPS Quake smoke run.
 
 ## Repositories
 
