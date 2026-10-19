@@ -1,30 +1,31 @@
 # SiliconForest installer and release qualification
 
 The installer replaces the kernel, Mesa and m1n1 stage 2 on an existing Apple
-Silicon Omarchy installation. The [2026-10-19 Linux 7.2.11 catalog](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.19.1)
-selects qualified J313/13.5 and J516S/14.7 child releases, subject to the exact
-loader/U-Boot admission checks in each signed manifest:
+Silicon Omarchy installation. The [qualified catalog](https://github.com/iconidentify/siliconforest/releases/tag/v2026.10.19.2)
+selects J313/13.5 and J516S/14.7 child releases, subject to each signed manifest's
+exact loader/U-Boot admission checks:
 
 ```sh
-curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.19.1/install.sh | bash
+curl -fsSL https://github.com/iconidentify/siliconforest/releases/download/v2026.10.19.2/install.sh | bash
 ```
 
-To download and verify the applicable release without installing, append
-`-s -- --dry-run` to `bash`. Both profiles use Linux `782b88e93448` (7.2.11),
-retaining the exact public Mesa `7515336b` and m1n1 `aca1258c` packages and original
-signatures. The kernel and LLVM runtime profiles remain distinct.
+To verify the applicable release without installing, append `-s -- --dry-run`
+to `bash`. The M3 Pro uses Linux 7.2.11 at `0e1f46661376` with the completed PR363
+carry. Its new kernel/helper packages normalize root ownership and repair
+existing package-specific directories without changing file modes or following
+symlinks outside those directories. Mesa `7515336b` and m1n1 firmware `aca1258c`
+are unchanged. The Air entry retains its earlier `782b88e93448` kernel and exact
+packages; it was not updated or retested for this catalog.
 
-Candidate hardware reports are [J313 normal](reports/20261019-j313-linux72.json)
-and [J516S native GPU](reports/20261019-j516s-linux72.json). Both passed signed
-install, default boot, desktop, hardware OpenGL/Vulkan readback, rebooted rollback
-and reinstall. The versioned public one-liner was installed and default-boot
-tested on both machines;
-[public J313 verification](reports/20261019-j313-linux72-public.json) and
-[public J516S verification](reports/20261019-j516s-linux72-public.json)
-record the actual downloads and subsequent default boots. The versioned URL
-pins this catalog; the latest-release URL selects whichever signed catalog is
-currently promoted. Source profiles and candidate signatures alone do not claim
-hardware support.
+The [new J516S candidate cycle](reports/20261019-j516s-pr363.json) and
+[public one-liner boot](reports/20261019-j516s-pr363-public.json) record the exact
+package hashes, rebooted rollback/reinstall, hardware GL/Vulkan pixels, desktop,
+brightness controls, Quake smoke checks and root ownership audit. The retained
+[Air candidate](reports/20261019-j313-linux72.json) and
+[Air public boot](reports/20261019-j313-linux72-public.json) document its earlier
+qualification. The versioned URL pins this catalog; the latest-release URL
+selects the currently promoted signed catalog. Source profiles and candidate
+signatures alone do not establish hardware support.
 
 The J516S panel and keyboard controls passed exercise/restoration. The J313
 keyboard passed; its panel retains the same monotonic readback offset as the old
