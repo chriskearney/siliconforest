@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "board": "apple,j516s",
+  "os_firmware": "14.7",
+  "catalog": "v2026.10.19.2",
+  "release": "v2026.10.19-j516s-pr363.1",
+  "kernel_release": "7.2.11-siliconforest-native-gpu-0e1f46661376-layout1",
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261019.pr363native2-1",
+      "file": "linux-siliconforest-20261019.pr363native2-1-aarch64.pkg.tar.zst",
+      "sha256": "075dff8f4b3ea1a872a402de68250d10fb0eb9c19679b419a8ba22937c22ea7c",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "0e1f466613761fecbe71ba8ca25f8b3598577062"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.19-pr363-native.1"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-prscout.1"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261019.pr363native2-1",
+      "file": "m1n1-siliconforest-20261019.pr363native2-1-aarch64.pkg.tar.zst",
+      "sha256": "2f72582a303349f157711d75f93d02b24533659c39ad8f22c9c2d91a3c62d901",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.19-ownership.1"
+      }
+    }
+  },
+  "bootstrap": {
+    "tag": "v2026.10.19.2",
+    "bootstrap_sha256": "269f01fe4679e38ecad2ac88e6b3d790300e9dea275d17b8ed22a2ae2bc7428c",
+    "match": true
+  },
+  "public_default_boot": {
+    "transaction_sha256": "de1e91d9552d7acba02e8a76bfc1d3f4211424bb2d363a3f5acd2dfe847c25ae",
+    "status": "installed-verified",
+    "boot_id_sha256": "45b1921da90d871a9e4d0bbc517e2fdd16c662f1b469eb518c9660a6ad850b2c",
+    "kernel": "7.2.11-siliconforest-native-gpu-0e1f46661376-layout1",
+    "completed_utc": "2026-10-19T21:28:05.930817+00:00",
+    "collector_sha256": "720e9bc021fded5caaa86ebde26ee012cae89043fd1af4ecf52e001a8f493631",
+    "verifier_sha256": "7a1a0d5b602a23b5bd9b5363e0e786107ed9fb14546cb08198d5dc7280208e85",
+    "checks": {
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true,
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "graphics_admission": true,
+      "matched_boot_chain": true
+    },
+    "internal_panel": {
+      "name": "eDP-1",
+      "width": 3456,
+      "height": 2234,
+      "refreshRate": 120.0
+    },
+    "graphics": {
+      "renderer_class": "Apple M3 Pro",
+      "OpenGL_hardware_pixels": true,
+      "Vulkan_hardware_pixels": true
+    },
+    "quake_demo1": {
+      "frames": 969,
+      "fps": 184.3,
+      "extent": [
+        1920,
+        1080
+      ],
+      "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+      "vulkan_driver_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05"
+    },
+    "quake_receipt_sha256": "9c2aba546b5037fe15cd7f4b2cba580bdd8fc7fa38f8d2e05c52d6373e568dc6",
+    "brightness": {
+      "keyboard_exercised_and_restored": true,
+      "panel_exact_readback": true,
+      "panel_limitation": null,
+      "visible_luminance_verified": false
+    },
+    "kernel_health": {
+      "kernel_warn_oops_fault_lines": 0,
+      "gpu_fault_recovery_lines": 0,
+      "recoveries": 0,
+      "hang_kills": 0
+    },
+    "plymouth": {
+      "theme": "siliconforest",
+      "release_stamped": true,
+      "visible_splash_verified": false
+    }
+  },
+  "ownership": {
+    "all_package_paths_root_owned": true,
+    "audit_sha256": "71f22bac1ea8460f2ec765c384070e38da2b3f8a7cc0ce50b50199df39cf915b"
+  },
+  "limits": [
+    "Only the undocked J516S / OS firmware 14.7 was tested. The existing Air release is unchanged.",
+    "No dock, external-display, HDMI audio/hotplug, suspend, Touch ID, optical brightness, physical splash appearance or other-board qualification.",
+    "Quake demo1 is a 1920x1080 smoke check, not a controlled performance comparison."
+  ]
+}
