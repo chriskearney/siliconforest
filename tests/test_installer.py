@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Host-only tests. No package install, host configuration write or boot operation."""
 import copy
+import base64
 import builtins
 import gzip
 import hashlib
@@ -515,6 +516,115 @@ class DatabaseTests(unittest.TestCase):
             tar(root / 'siliconforest.db', contents)
             with self.assertRaisesRegex(Refusal, 'SHA256SUM'):
                 verify_database(root, d)
+
+
+class HostReleaseSignatureTests(unittest.TestCase):
+    """Release-tool regressions without keys, signing, package tools or installs."""
+    @staticmethod
+    def release_tool():
+        import importlib.util
+        import sys
+        with patch.object(sys, 'path', [str(ROOT / 'scripts'), *sys.path]):
+            spec = importlib.util.spec_from_file_location('sf_host_release_script', ROOT / 'scripts/release.py')
+            tool = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(tool)
+        return tool
+
+    def test_embedded_signature_must_match_exact_detached_bytes(self):
+        tool = self.release_tool()
+        for case in ('exact', 'missing', 'different', 'malformed', 'duplicate', 'missing-package'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                signature = b'FIXTURE detached signature bytes\x00\xff'
+                (root / 'mesa.pkg.sig').write_bytes(signature)
+                data = {'packages': {'mesa': {'name': 'mesa-siliconforest', 'file': 'mesa.pkg'}}}
+                encoded = base64.b64encode(b'OTHER' if case == 'different' else signature).decode()
+                if case == 'malformed':
+                    encoded = 'not base64!'
+                desc = '%NAME%\nmesa-siliconforest\n\n'
+                if case != 'missing':
+                    desc += '%PGPSIG%\n' + encoded + '\n\n'
+                if case == 'duplicate':
+                    desc += '%PGPSIG%\n' + encoded + '\n\n'
+                tar(root / 'siliconforest.db', {} if case == 'missing-package' else {'mesa/desc': desc})
+                if case == 'exact':
+                    tool.verify_embedded_signatures(root, data)
+                else:
+                    with self.assertRaises(ValueError):
+                        tool.verify_embedded_signatures(root, data)
+
+    def test_assembly_preserves_reused_signatures_and_gates_manifest_signing(self):
+        import contextlib
+        import sys
+        for case in ('success', 'changed-reused-signature', 'bad-embedded-signature'):
+            tool = self.release_tool()
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                packages, output = root / 'packages', root / 'output'
+                packages.mkdir()
+                (root / 'sources.lock.json').write_text('{}')
+                data = {'id': 'fixture', 'repository': {'sha256': '0' * 64}, 'packages': {}}
+                reuse = {}
+                for component in ('kernel', 'mesa', 'm1n1'):
+                    name = component + '.pkg.tar.zst'
+                    (packages / name).write_bytes(component.encode())
+                    data['packages'][component] = {'file': name, 'sha256': digest(packages / name)}
+                    if component != 'kernel':
+                        signature = root / (component + '.sig')
+                        signature.write_bytes(('ORIGINAL ' + component).encode())
+                        reuse[name] = {'signature': str(signature), 'sha256': digest(signature)}
+                if case == 'changed-reused-signature':
+                    (root / 'mesa.sig').write_bytes(b'CHANGED AFTER REUSE RECEIPT')
+                manifest, reuse_file = root / 'input.json', root / 'reuse.json'
+                manifest.write_text(json.dumps(data))
+                reuse_file.write_text(json.dumps(reuse))
+                signed, checked = [], []
+
+                def command(args, **kwargs):
+                    if args[0] == 'gpg':
+                        target = Path(args[-1])
+                        if target.name == 'release.json':
+                            self.assertEqual(checked, [True], 'Manifest signed before embedded-signature gate')
+                        signed.append(target.name)
+                        Path(str(target) + '.sig').write_bytes(b'FIXTURE NEW SIGNATURE')
+                    elif args[0] == 'repo-add':
+                        self.assertIn('--include-sigs', args)
+                        for name, item in reuse.items():
+                            self.assertEqual((output / (name + '.sig')).read_bytes(), Path(item['signature']).read_bytes())
+                        database = output / 'siliconforest.db.tar.gz'
+                        database.write_bytes(b'FIXTURE DATABASE')
+                        Path(str(database) + '.sig').write_bytes(b'FIXTURE DB SIGNATURE')
+                    else:
+                        self.fail('Unexpected external command: ' + repr(args))
+
+                def embedded(*args):
+                    if case == 'bad-embedded-signature':
+                        raise Refusal('Embedded package signature differs')
+                    checked.append(True)
+
+                argv = ['release.py', '--manifest', str(manifest), '--packages', str(packages),
+                        '--output', str(output), '--signing-key', 'A' * 40, '--reuse-signatures', str(reuse_file)]
+                with patch.object(sys, 'argv', argv), patch.object(tool, 'ROOT', root), \
+                        patch.object(tool, 'validate'), patch.object(tool, 'verify_packages'), \
+                        patch.object(tool, 'verify_database'), \
+                        patch.object(tool, 'verify_embedded_signatures', side_effect=embedded), \
+                        patch.object(tool, 'installer_archive', side_effect=lambda p: p.write_bytes(b'FIXTURE INSTALLER')), \
+                        patch.object(tool.subprocess, 'run', side_effect=command), \
+                        patch.object(tool.subprocess, 'check_output', return_value=b'FIXTURE PUBLIC KEY'), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    if case == 'success':
+                        tool.main()
+                    else:
+                        with self.assertRaises(Refusal):
+                            tool.main()
+                self.assertNotIn('mesa.pkg.tar.zst', signed)
+                self.assertNotIn('m1n1.pkg.tar.zst', signed)
+                if case == 'success':
+                    self.assertIn('release.json', signed)
+                    self.assertEqual(checked, [True])
+                else:
+                    self.assertNotIn('release.json', signed)
+                    self.assertFalse((output / 'release.json').exists())
 
 
 class SignatureTests(unittest.TestCase):
