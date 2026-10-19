@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 """Package metadata must not grant the build user control of installed code."""
 import importlib.util
+import os
+import subprocess
 from pathlib import Path
 import sys
 import tarfile
@@ -43,6 +45,31 @@ class OwnershipTests(unittest.TestCase):
         package.root_owner(member)
         self.assertEqual((member.uid, member.gid), (0, 0))
         self.assertEqual(member.mode, 0o744)
+
+    @unittest.skipUnless(os.geteuid() == 0, 'requires root for numeric ownership fixture')
+    def test_existing_directories_repaired_without_following_symlinks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            tree = root / 'usr/lib/siliconforest'
+            tree.mkdir(parents=True)
+            helper = tree / 'installer.pyz'
+            helper.write_bytes(b'fixture')
+            helper.chmod(0o744)
+            outside = root / 'usr/lib/outside'
+            outside.write_bytes(b'untouched')
+            (tree / 'link').symlink_to('../outside')
+            for path in (tree, helper, outside):
+                os.chown(path, 1000, 1000)
+            config = root / 'usr/lib/tmpfiles.d'
+            config.mkdir()
+            (config / 'sf.conf').write_text(package.ownership_rules('m1n1'))
+            subprocess.run(['systemd-tmpfiles', '--root=' + temp, '--create'], check=True)
+            for path in (tree, helper):
+                self.assertEqual((path.stat().st_uid, path.stat().st_gid), (0, 0))
+            self.assertEqual(helper.stat().st_mode & 0o777, 0o744)
+            self.assertEqual(helper.read_bytes(), b'fixture')
+            self.assertEqual(outside.stat().st_uid, 1000)
+            self.assertEqual(outside.read_bytes(), b'untouched')
 
     def test_repairs_are_scoped_and_preserve_modes(self):
         release = '7.2.11-siliconforest-native-gpu-test-layout1'
