@@ -1,0 +1,249 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "status": "passed for exact signed candidate cycle",
+  "board": "apple,j516s",
+  "os_firmware": "14.7",
+  "profile": "m3-pro-native-gpu",
+  "kernel_release": "7.2.11-siliconforest-native-gpu-782b88e93448-layout1",
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261019.linux7211native1-1",
+      "file": "linux-siliconforest-20261019.linux7211native1-1-aarch64.pkg.tar.zst",
+      "sha256": "32ed81d6a985c78de3d9d7286a383c09dea0d02beee5fd140005d45a2d5a0436",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "782b88e934484819eb93b5f766a6b213a168f486"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.19-linux7.2.11-native.1"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "mesa-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "396331dd49d0d6c5a1fa7010aa6c42311df1ec94cda11303cfe9c59e34fd3391",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-prscout.1"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.prscout1-1",
+      "file": "m1n1-siliconforest-20261018.prscout1-1-aarch64.pkg.tar.zst",
+      "sha256": "2b6e02d3a7164e7da39c4e8e67030065627e098e143065cc94494855b3af3583",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.18-prscout.1"
+      }
+    }
+  },
+  "candidate_manifest_sha256": "dddcea13f0863ee19d410ebb63138004577bf1dc898a2a0896d0fbbac4b513de",
+  "checks": {
+    "desktop": true,
+    "hardware_OpenGL_Vulkan_pixels": true,
+    "matched_boot_chain": true,
+    "rebooted_rollback": true,
+    "reinstall_default_boot": true
+  },
+  "candidate_boot1": {
+    "transaction_sha256": "bfae0d410297d311553d30364f5faec0d8bef65eaa3f0bbe40071c2f40455b78",
+    "status": "installed-verified",
+    "boot_id_sha256": "4acef7266212047f601260fb644cf80c808edc6d1d1f1aa7afbb0da73a812767",
+    "kernel": "7.2.11-siliconforest-native-gpu-782b88e93448-layout1",
+    "completed_utc": "2026-10-19T08:39:09.992068+00:00",
+    "collector_sha256": "7f74934af23fc8793ac4d8f49adb7a374a9aa14195817f7728f8aa41329029ce",
+    "verifier_sha256": "3b0b5a0fe8e51d417a03ff0aa3d04edc6d5b10e8a64bc7fc9bb85b247b486b3f",
+    "checks": {
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true,
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "graphics_admission": true,
+      "matched_boot_chain": true
+    },
+    "internal_panel": {
+      "name": "eDP-1",
+      "width": 3456,
+      "height": 2234,
+      "refreshRate": 120.0
+    },
+    "graphics": {
+      "renderer_class": "Apple M3 Pro",
+      "OpenGL_hardware_pixels": true,
+      "Vulkan_hardware_pixels": true
+    },
+    "quake_demo1": {
+      "frames": 969,
+      "fps": 184.4,
+      "extent": [
+        1920,
+        1080
+      ],
+      "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+      "vulkan_driver_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05"
+    },
+    "quake_receipt_sha256": "9bc5e5b3a093fb864fe74d454497cab9dbd0cf409dc22b6ebb3e4bd95aeaa4ef",
+    "brightness": {
+      "keyboard_exercised_and_restored": true,
+      "panel_exact_readback": true,
+      "panel_limitation": null,
+      "visible_luminance_verified": false
+    },
+    "kernel_health": {
+      "kernel_warn_oops_fault_lines": 0,
+      "gpu_fault_recovery_lines": 0,
+      "recoveries": 0,
+      "hang_kills": 0
+    },
+    "plymouth": {
+      "theme": "siliconforest",
+      "release_stamped": true,
+      "visible_splash_verified": false
+    }
+  },
+  "rollback": {
+    "transaction_sha256": "bfae0d410297d311553d30364f5faec0d8bef65eaa3f0bbe40071c2f40455b78",
+    "status": "rolled-back-verified",
+    "boot_id_sha256": "ac12ab7c46fe8a23353ae6094f87ec78323a1d40b2f821cbaccffd17274a101b",
+    "kernel": "7.1.12-siliconforest-native-gpu-54add20fd52e-layout1",
+    "completed_utc": "2026-10-19T08:43:30.266645+00:00",
+    "collector_sha256": "573b27224c5dd0f4a9bbc9130043033b9d240961da6a7ff9a70468b0a181a0d8",
+    "verifier_sha256": "424a8bfc7af9fa9563d22c894658ea98c3307ebf14269597e05a9f952503b381",
+    "checks": {
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true,
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "graphics_admission": true,
+      "matched_boot_chain": true
+    },
+    "internal_panel": {
+      "name": "eDP-1",
+      "width": 3456,
+      "height": 2234,
+      "refreshRate": 120.0
+    },
+    "graphics": {
+      "renderer_class": "Apple M3 Pro",
+      "OpenGL_hardware_pixels": true,
+      "Vulkan_hardware_pixels": true
+    },
+    "quake_demo1": {
+      "frames": 969,
+      "fps": 185.6,
+      "extent": [
+        1920,
+        1080
+      ],
+      "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+      "vulkan_driver_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05"
+    },
+    "quake_receipt_sha256": "b3e8ce7c08a6162ccc8968fcb52538ec1e425a9c3a085cb3f1dd8791b92d49e2",
+    "brightness": {
+      "keyboard_exercised_and_restored": true,
+      "panel_exact_readback": true,
+      "panel_limitation": null,
+      "visible_luminance_verified": false
+    },
+    "kernel_health": {
+      "kernel_warn_oops_fault_lines": 0,
+      "gpu_fault_recovery_lines": 0,
+      "recoveries": 0,
+      "hang_kills": 0
+    },
+    "plymouth": {
+      "theme": "siliconforest",
+      "release_stamped": true,
+      "visible_splash_verified": false
+    },
+    "rollback": {
+      "saved_files_restored": 16,
+      "complete_previous_package_list_restored": true,
+      "saved_package_archives_verified": 4
+    },
+    "parent_transaction_sha256": "bfae0d410297d311553d30364f5faec0d8bef65eaa3f0bbe40071c2f40455b78"
+  },
+  "candidate_reinstall": {
+    "transaction_sha256": "2b2434d7e8794655679de14b849279d5953e136b0ec76ce825c6a4b94c347520",
+    "status": "installed-verified",
+    "boot_id_sha256": "750d05a5117189a6630cdd55d2dc09d624c0065576795d7606b370594ab70bba",
+    "kernel": "7.2.11-siliconforest-native-gpu-782b88e93448-layout1",
+    "completed_utc": "2026-10-19T08:50:00.891688+00:00",
+    "collector_sha256": "9d046753a3e51db96cecd1069c864c5be604484c961ec9ad4ef56ba50238d96d",
+    "verifier_sha256": "37245e6ce32e1d9f53d62676005bdef6fd529795c3f5e82ffdd4a54bbe7a8da1",
+    "checks": {
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true,
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "graphics_admission": true,
+      "matched_boot_chain": true
+    },
+    "internal_panel": {
+      "name": "eDP-1",
+      "width": 3456,
+      "height": 2234,
+      "refreshRate": 120.0
+    },
+    "graphics": {
+      "renderer_class": "Apple M3 Pro",
+      "OpenGL_hardware_pixels": true,
+      "Vulkan_hardware_pixels": true
+    },
+    "quake_demo1": {
+      "frames": 969,
+      "fps": 184.8,
+      "extent": [
+        1920,
+        1080
+      ],
+      "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+      "vulkan_driver_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05"
+    },
+    "quake_receipt_sha256": "07d32c01015171c2a32391f2e4eb66e20bd295c38ed3f89c6d80a7599c07d92e",
+    "brightness": {
+      "keyboard_exercised_and_restored": true,
+      "panel_exact_readback": true,
+      "panel_limitation": null,
+      "visible_luminance_verified": false
+    },
+    "kernel_health": {
+      "kernel_warn_oops_fault_lines": 0,
+      "gpu_fault_recovery_lines": 0,
+      "recoveries": 0,
+      "hang_kills": 0
+    },
+    "plymouth": {
+      "theme": "siliconforest",
+      "release_stamped": true,
+      "visible_splash_verified": false
+    },
+    "parent_transaction_sha256": "bfae0d410297d311553d30364f5faec0d8bef65eaa3f0bbe40071c2f40455b78"
+  },
+  "source_validation": "release/source-reviews/20261019-linux72.json",
+  "build_validation": "release/source-reviews/20261019-linux72-builds.json",
+  "limits": [
+    "The automatic legacy lab inventory could not start because its GUI process cannot traverse the existing private lab work directory; reproduced on the old kernel. Its tests are not counted as passed. Independent scoped hardware and binding checks are recorded separately.",
+    "Only the exact board/firmware, signed package set and boot chain in this report are qualified.",
+    "No external display/dock, HDMI hotplug/standby/audio, suspend/resume, Touch ID, internal-speaker or other-model qualification is claimed.",
+    "Quake results are current-boot smoke checks, not a controlled performance comparison; power conditions varied on the baseline.",
+    "Linux splash payload verification does not prove physical appearance. Early-stage logos and Recovery migration remain deferred.",
+    "Branding is the retained local2026.10.19-3 package; this release does not publish a replacement branding pipeline."
+  ]
+}

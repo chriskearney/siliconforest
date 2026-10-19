@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "status": "integration-in-progress; not hardware-qualified",
+  "target_version": "7.2.11",
+  "release_date": "2026-10-15",
+  "stable_listing": "https://www.kernel.org/",
+  "upstream_tag": "v7.2.11",
+  "tag_object": "8316c24ec1b77dba19ba072ca4fe251b36dc65d3",
+  "source_commit": "a2de78ee6ed8bf8cd99d177c74865a6e8c3cb6ea",
+  "signature": {
+    "verified": true,
+    "fingerprint": "647F28654894E3BD457199BE38DBBDC86092693E",
+    "keyring": "isolated public maintainer keyring; no owner-keyring changes"
+  },
+  "siliconforest_base": "54add20fd52ed9619483b22e21d79bbefecc2072",
+  "guide": {
+    "url": "https://github.com/omacom/linux-aurora/pull/139",
+    "commit": "a9712ec4665edfaca5f9f39463f995b90f55daf3",
+    "version": "7.2.10",
+    "use": "reference for resolution/API adaptation; not wholesale branch adoption"
+  },
+  "preserved_component_sources": {
+    "mesa": "7515336b3dfbe8943b555ffec9817b9ed64379a8",
+    "m1n1": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+  },
+  "hardware_qualification": false
+}

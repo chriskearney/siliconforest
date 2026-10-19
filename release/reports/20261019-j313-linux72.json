@@ -1,0 +1,240 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "status": "passed for exact signed candidate cycle",
+  "board": "apple,j313",
+  "os_firmware": "13.5",
+  "profile": "m1-m2",
+  "kernel_release": "7.2.11-siliconforest-normal-782b88e93448-layout1",
+  "packages": {
+    "kernel": {
+      "name": "linux-siliconforest",
+      "version": "20261019.linux7211normal1-1",
+      "file": "linux-siliconforest-20261019.linux7211normal1-1-aarch64.pkg.tar.zst",
+      "sha256": "3feb871c5a5d3bd76b11a3bc306d4eca59a2c5da67105e66e8b5ae1599f3f3b6",
+      "source": {
+        "repository": "iconidentify/siliconforest-linux",
+        "branch": "siliconforest/next",
+        "commit": "782b88e934484819eb93b5f766a6b213a168f486"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-linux",
+        "tag": "v2026.10.19-linux7.2.11-normal.1"
+      }
+    },
+    "mesa": {
+      "name": "mesa-siliconforest",
+      "version": "20261018.prscout3-1",
+      "file": "mesa-siliconforest-20261018.prscout3-1-aarch64.pkg.tar.zst",
+      "sha256": "a36ec9be8ade7a9764010bf8edc7842ef59cde251852fd363b952137ab7e6533",
+      "source": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "branch": "siliconforest/next",
+        "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-mesa",
+        "tag": "v2026.10.18-m1-m2-pr148.1"
+      }
+    },
+    "m1n1": {
+      "name": "m1n1-siliconforest",
+      "version": "20261018.prscout3normal-1",
+      "file": "m1n1-siliconforest-20261018.prscout3normal-1-aarch64.pkg.tar.zst",
+      "sha256": "c9dc6edb1c80f8840a845b30f237ea1d47c2faf753754ab181890fb97d2d1927",
+      "source": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "branch": "siliconforest/next",
+        "commit": "aca1258c2d7daad7db7079d4f89bb8217659f7ac"
+      },
+      "artifact": {
+        "repository": "iconidentify/siliconforest-m1n1",
+        "tag": "v2026.10.18-normal-pr148.1"
+      }
+    }
+  },
+  "candidate_manifest_sha256": "ddc831ad551e83fddcb02b156277b825e9ae36d614f4081b7c80d8ba3801680c",
+  "checks": {
+    "desktop": true,
+    "hardware_OpenGL_Vulkan_pixels": true,
+    "matched_boot_chain": true,
+    "rebooted_rollback": true,
+    "reinstall_default_boot": true
+  },
+  "candidate_boot1": {
+    "transaction_sha256": "0a200877fa027bc6465cc3be1e9e34bf4d86e00a9248f1afbdc2e0c6163af4f4",
+    "status": "installed-verified",
+    "boot_id_sha256": "bdc3d3ec4ca08a6995d099a4a62b0a29775532e3b96e4b121147c9f8eb5b06dc",
+    "kernel": "7.2.11-siliconforest-normal-782b88e93448-layout1",
+    "completed_utc": "2026-10-19T09:02:11.375380+00:00",
+    "collector_sha256": "6f6d50d8f44d7a8428c34a89a4dcee9e3cc23c14d873e997dd98cae9d7814feb",
+    "verifier_sha256": "07240249f7bbdebd8166ec1322349a659f85bac4d313a7bc05c5f5187fea34ce",
+    "checks": {
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true,
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true
+    },
+    "internal_panel": {
+      "name": "eDP-1",
+      "width": 2560,
+      "height": 1600,
+      "refreshRate": 60.0
+    },
+    "graphics": {
+      "renderer_class": "Apple M1",
+      "OpenGL_hardware_pixels": true,
+      "Vulkan_hardware_pixels": true
+    },
+    "quake_demo1": {
+      "frames": 969,
+      "fps": 297.9,
+      "extent": [
+        1920,
+        1080
+      ],
+      "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+      "vulkan_driver_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05"
+    },
+    "quake_receipt_sha256": "191648388a13a8a7f86e73259598bc3426088f0892a6108cd6b9e36a7303e65d",
+    "brightness": {
+      "keyboard_exercised_and_restored": true,
+      "panel_exact_readback": false,
+      "panel_limitation": "Inherited Air panel offset; exact panel readback is not qualified.",
+      "visible_luminance_verified": false
+    },
+    "kernel_health": {
+      "kernel_warn_oops_fault_lines": 0,
+      "gpu_fault_recovery_lines": 0
+    },
+    "plymouth": {
+      "theme": "siliconforest",
+      "release_stamped": true,
+      "visible_splash_verified": false
+    }
+  },
+  "rollback": {
+    "transaction_sha256": "0a200877fa027bc6465cc3be1e9e34bf4d86e00a9248f1afbdc2e0c6163af4f4",
+    "status": "rolled-back-verified",
+    "boot_id_sha256": "7829f0979ae19a29724da1ab725c80dc3f9e5583073d8ffb44ffc9044634df0c",
+    "kernel": "7.1.12-siliconforest-normal-54add20fd52e-layout1",
+    "completed_utc": "2026-10-19T09:10:06.668645+00:00",
+    "collector_sha256": "224c623184bde21f5b020ff5ce7d82874d48ea353c2fd35160d4c528a1650273",
+    "verifier_sha256": "ad98fb1cec3384aa6c9313f2404b38f5228d49570c2f9d5ccab16d1c5c7e2c42",
+    "checks": {
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true,
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true
+    },
+    "internal_panel": {
+      "name": "eDP-1",
+      "width": 2560,
+      "height": 1600,
+      "refreshRate": 60.0
+    },
+    "graphics": {
+      "renderer_class": "Apple M1",
+      "OpenGL_hardware_pixels": true,
+      "Vulkan_hardware_pixels": true
+    },
+    "quake_demo1": {
+      "frames": 969,
+      "fps": 274.1,
+      "extent": [
+        1920,
+        1080
+      ],
+      "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+      "vulkan_driver_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05"
+    },
+    "quake_receipt_sha256": "27a625fcc1eac585c512eb02e4cfaeac8b9e9c3895b4e6e82e61e10d33a19261",
+    "brightness": {
+      "keyboard_exercised_and_restored": true,
+      "panel_exact_readback": false,
+      "panel_limitation": "Inherited Air panel offset; exact panel readback is not qualified.",
+      "visible_luminance_verified": false
+    },
+    "kernel_health": {
+      "kernel_warn_oops_fault_lines": 0,
+      "gpu_fault_recovery_lines": 0
+    },
+    "plymouth": {
+      "theme": "siliconforest",
+      "release_stamped": true,
+      "visible_splash_verified": false
+    },
+    "rollback": {
+      "saved_files_restored": 17,
+      "complete_previous_package_list_restored": true,
+      "saved_package_archives_verified": 4
+    },
+    "parent_transaction_sha256": "0a200877fa027bc6465cc3be1e9e34bf4d86e00a9248f1afbdc2e0c6163af4f4"
+  },
+  "candidate_reinstall": {
+    "transaction_sha256": "4d83264c30e943423d244f0cf1fc62feb6cd488a697f64b71afca79a8a9e7eb1",
+    "status": "installed-verified",
+    "boot_id_sha256": "93ffe4618977166d4e8535530e532ef2ba7f5a08ea3d6ec4977f72c62cb71570",
+    "kernel": "7.2.11-siliconforest-normal-782b88e93448-layout1",
+    "completed_utc": "2026-10-19T09:13:23.536835+00:00",
+    "collector_sha256": "bcb0a427fa10c91b530c4117549b84fef8f52413dccc014c2a08a6fb31ed9d4f",
+    "verifier_sha256": "1a21486d2c109934d9fded6d0e3bba027183fc4a7d738e0795be8e3bd09fe387",
+    "checks": {
+      "OpenGL_hardware_readback": true,
+      "Vulkan_hardware_readback": true,
+      "boot_health": true,
+      "compositor_and_displays": true,
+      "matched_boot_chain": true
+    },
+    "internal_panel": {
+      "name": "eDP-1",
+      "width": 2560,
+      "height": 1600,
+      "refreshRate": 60.0
+    },
+    "graphics": {
+      "renderer_class": "Apple M1",
+      "OpenGL_hardware_pixels": true,
+      "Vulkan_hardware_pixels": true
+    },
+    "quake_demo1": {
+      "frames": 969,
+      "fps": 273.3,
+      "extent": [
+        1920,
+        1080
+      ],
+      "executable_sha256": "3661f258b23a4ae66749af5062eab70ea1066ed936b9b7a114cc2c5cba379483",
+      "vulkan_driver_sha256": "2d34c510190d0dd13890ecd8a65bae0142c987e552e73a39b1d1bd59f44f4e05"
+    },
+    "quake_receipt_sha256": "33abdd638fd80bdfc7015d0e29560cdec9ff3e33fc230924c4926b5cfe668583",
+    "brightness": {
+      "keyboard_exercised_and_restored": true,
+      "panel_exact_readback": false,
+      "panel_limitation": "Inherited Air panel offset; exact panel readback is not qualified.",
+      "visible_luminance_verified": false
+    },
+    "kernel_health": {
+      "kernel_warn_oops_fault_lines": 0,
+      "gpu_fault_recovery_lines": 0
+    },
+    "plymouth": {
+      "theme": "siliconforest",
+      "release_stamped": true,
+      "visible_splash_verified": false
+    },
+    "parent_transaction_sha256": "0a200877fa027bc6465cc3be1e9e34bf4d86e00a9248f1afbdc2e0c6163af4f4"
+  },
+  "source_validation": "release/source-reviews/20261019-linux72.json",
+  "build_validation": "release/source-reviews/20261019-linux72-builds.json",
+  "limits": [
+    "The automatic legacy lab inventory could not start because its GUI process cannot traverse the existing private lab work directory; reproduced on the old kernel. Its tests are not counted as passed. Independent scoped hardware and binding checks are recorded separately.",
+    "Only the exact board/firmware, signed package set and boot chain in this report are qualified.",
+    "No external display/dock, HDMI hotplug/standby/audio, suspend/resume, Touch ID, internal-speaker or other-model qualification is claimed.",
+    "Quake results are current-boot smoke checks, not a controlled performance comparison; power conditions varied on the baseline.",
+    "Linux splash payload verification does not prove physical appearance. Early-stage logos and Recovery migration remain deferred.",
+    "Branding is the retained local2026.10.19-3 package; this release does not publish a replacement branding pipeline."
+  ]
+}

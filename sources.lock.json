@@ -1,16 +1,16 @@
 {
   "schema": 1,
   "project": "siliconforest",
-  "baseline_date": "2026-10-18",
+  "baseline_date": "2026-10-19",
   "status": "pinned public source integration; support is scoped by signed board/firmware release reports",
   "sources": {
     "linux": {
       "url": "https://github.com/iconidentify/siliconforest-linux.git",
       "branch": "siliconforest/next",
-      "commit": "54add20fd52ed9619483b22e21d79bbefecc2072",
+      "commit": "782b88e934484819eb93b5f766a6b213a168f486",
       "upstream_url": "https://github.com/omacom/linux-aurora.git",
       "upstream_branch": "integration/aurora",
-      "kernel_version": "7.1.12"
+      "kernel_version": "7.2.11"
     },
     "m1n1": {
       "url": "https://github.com/iconidentify/siliconforest-m1n1.git",
