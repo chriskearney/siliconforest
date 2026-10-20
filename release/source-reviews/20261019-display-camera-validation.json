@@ -1,0 +1,398 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "status": "source, host and QEMU validation; no local hardware qualification",
+  "kernel": {
+    "base": "6ead677520fb7c23e861b1e22450f90ffd0a14f7",
+    "review_tip": "361c80e04ee5378e5da5744e26ada20708c87641",
+    "merged_commit": "70ba3032516419b6c7d643c5c82da68d8b470d05",
+    "pr": "https://github.com/iconidentify/siliconforest-linux/pull/16",
+    "merge_tree_equals_review_tip": true,
+    "review_tree": "13bca8c88f464d931fa2dba6f3597391da6f7c72"
+  },
+  "sources": [
+    {
+      "url": "https://github.com/omacom/linux-aurora/pull/153",
+      "head": "31f6cbb232df411ed46d96733b8861259d50711d",
+      "author": "Brian Toll"
+    },
+    {
+      "url": "https://github.com/omacom/linux-aurora/pull/157",
+      "head": "9d3aeb24cb864d5f99a7172e9004884bf3c1a9a0",
+      "author": "Brian Toll"
+    },
+    {
+      "url": "https://github.com/aurora-silicon/linux/pull/365",
+      "head": "9cd46b2bac71c0e40b5af2288fe4d3955f4399a1",
+      "author": "garymeyerca",
+      "adaptation_author": "Chris Kearney"
+    }
+  ],
+  "review_fixes": [
+    "Keep external_srgb=N and external_colorimetry=-1 by default; bound unsupported preferences to the legacy policy.",
+    "Snapshot writable preferences per colour-mode list and source-tag policy per template frame.",
+    "Commit preferred colour and rank only after validation; malformed preferred metadata preserves the accepted RGB fallback.",
+    "Extend existing J613 panel_blank/panel_off/lid state and hold present_lock across final black and acknowledged power-off.",
+    "Retain scanout on failed black, preserve refusal/retry semantics and existing Type-C/clamshell ownership.",
+    "Join the concurrent KUnit presenter before releasing its fixture; cover refused closed-lid power-off without an unblanked second attempt."
+  ],
+  "defaults": {
+    "external_srgb": false,
+    "external_colorimetry": -1,
+    "panel_power": "Only the admitted J613 internal 14.7 board record enables it.",
+    "source_tag_scope": "Common template flush; native 14.7/H17P presentation is separate.",
+    "strict_firmware_catalog_admission": "Existing H17P/T6030 rules retained."
+  },
+  "validation": {
+    "toolchain": {
+      "llvm": "22.1.8",
+      "rust": "1.93.1",
+      "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0"
+    },
+    "uvc_host": {
+      "cases": 60,
+      "compilers": [
+        "Clang ASan/UBSan",
+        "GCC ASan/UBSan"
+      ],
+      "mutants_rejected": 4,
+      "unfixed_base_fails": true,
+      "independently_rerun_by_reviewer": true
+    },
+    "colour_host": {
+      "decisions": 63,
+      "compilers": [
+        "Clang ASan/UBSan",
+        "GCC ASan/UBSan"
+      ],
+      "mutants_rejected": 6,
+      "independently_rerun_by_reviewer": true
+    },
+    "colour_serialized_KUnit": {
+      "cases": 3,
+      "unchecked_promotion_mutant_rejected_at_expected_case": true,
+      "real_source_restored_exactly": true
+    },
+    "combined_arm64_QEMU_KUnit": {
+      "tests": 361,
+      "passed": 360,
+      "failed": 0,
+      "crashed": 0,
+      "skipped": 1,
+      "errors": 0
+    },
+    "debug_arm64_QEMU": {
+      "KASAN_GENERIC": true,
+      "PROVE_LOCKING": true,
+      "DEBUG_ATOMIC_SLEEP": true,
+      "v14_display_tests": {
+        "tests": 44,
+        "passed": 44,
+        "failed": 0,
+        "crashed": 0,
+        "skipped": 0,
+        "errors": 0
+      },
+      "colour_tests": {
+        "tests": 3,
+        "passed": 3,
+        "failed": 0,
+        "crashed": 0,
+        "skipped": 0,
+        "errors": 0
+      },
+      "memory_or_locking_reports": 0
+    },
+    "j613_component_mutations": {
+      "status": "pass",
+      "source": "62562cd2f7ea51af8881311069c0468ad119caeb",
+      "positive_control": "346 tests, 345 passed, one existing skip",
+      "mutants_rejected_at_expected_tests": 16,
+      "results": [
+        {
+          "name": "present-lock-split",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "off-without-black",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_lid_closed_refused_off"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_lid_closed_refused_off"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "off-unacknowledged",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_refused_off"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_refused_off"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "no-black",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle",
+            "dcp_v14_panel_power.v14_pp_concurrent_present",
+            "dcp_v14_panel_power.v14_pp_failed_black",
+            "dcp_v14_panel_power.v14_pp_refused_off",
+            "dcp_v14_panel_power.v14_pp_refused_on",
+            "dcp_v14_panel_power.v14_pp_other_boards",
+            "dcp_v14_panel_power.v14_pp_lid",
+            "dcp_v14_panel_power.v14_pp_lid_unread",
+            "dcp_v14_panel_power.v14_pp_sleep"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "no-lid-open",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle",
+            "dcp_v14_panel_power.v14_pp_refused_on",
+            "dcp_v14_panel_power.v14_pp_lid_unread",
+            "dcp_v14_panel_power.v14_pp_sleep"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "lid-open-after-on",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle",
+            "dcp_v14_panel_power.v14_pp_refused_on",
+            "dcp_v14_panel_power.v14_pp_lid_unread",
+            "dcp_v14_panel_power.v14_pp_sleep"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "lid-kept-without-switch",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle",
+            "dcp_v14_panel_power.v14_pp_refused_on",
+            "dcp_v14_panel_power.v14_pp_sleep"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "any-board-power",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_other_boards"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_other_boards"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "j613-flag-dropped",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle",
+            "apple-dcp-v14-board.v14_board_panel_power"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle",
+            "dcp_v14_panel_power.v14_pp_concurrent_present",
+            "dcp_v14_panel_power.v14_pp_failed_black",
+            "dcp_v14_panel_power.v14_pp_refused_off",
+            "dcp_v14_panel_power.v14_pp_refused_on",
+            "dcp_v14_panel_power.v14_pp_callbacks",
+            "dcp_v14_panel_power.v14_pp_lid",
+            "dcp_v14_panel_power.v14_pp_lid_unread",
+            "dcp_v14_panel_power.v14_pp_sleep",
+            "apple-dcp-v14-board.v14_board_panel_power"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "callbacks-any-board",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_other_boards"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_other_boards"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "callbacks-lid-only",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_callbacks"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_callbacks"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "lid-open-ignores-crtc",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_lid"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_lid"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "on-with-lid-closed",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_lid"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_lid"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "on-unacknowledged",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_refused_on"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_refused_on",
+            "dcp_v14_panel_power.v14_pp_sleep"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "ctm-kept-on-wake",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle",
+            "dcp_v14_panel_power.v14_pp_refused_on"
+          ],
+          "runtime_failure": true
+        },
+        {
+          "name": "dark-ignores-off",
+          "expected_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle",
+            "dcp_v14_panel_power.v14_pp_refused_on"
+          ],
+          "observed_failed_cases": [
+            "dcp_v14_panel_power.v14_pp_dpms_cycle",
+            "dcp_v14_panel_power.v14_pp_concurrent_present",
+            "dcp_v14_panel_power.v14_pp_refused_on"
+          ],
+          "runtime_failure": true
+        }
+      ],
+      "source_restored_clean": true,
+      "note": "The original no-black variant did not compile and is not counted; its corrected, compiling variant was rejected at the intended runtime case after a fresh passing control."
+    },
+    "W1": {
+      "targets": [
+        "drivers/gpu/drm/apple/",
+        "drivers/media/usb/uvc/"
+      ],
+      "profiles": {
+        "normal": "4c8b1779611790f8612048945f49cea93b9d14297b84e5d7bf36057e7caf8dbd",
+        "native-gpu": "c018b8ed49b93cb8d3ff6bddb8a4fb0c45a997820df23748dee6834ee6b3d2c6"
+      },
+      "exit": [
+        0,
+        0
+      ],
+      "C_compiler_warnings": 0,
+      "existing_kernel_doc_warnings": 8,
+      "new_kernel_doc_warnings": 0,
+      "scope": "Affected objects and composite display module; no full production Image/modules build claimed."
+    },
+    "native_generated_bindings": {
+      "rust/bindings/bindings_generated.rs": "8ca557c98945ba2950caca83fbb76a118cbbb3ab26322e1df74bd01afb7d392d",
+      "rust/bindings/bindings_helpers_generated.rs": "abe86e0007a1e424566ae84f3099e0ed0b282f19bd76ad5a2587fa72226db1de",
+      "rust/uapi/uapi_generated.rs": "921c570c94a0aa72fe6003953e7d962641a5a1adf4dbe5c4e8a48e7dc3d81028"
+    },
+    "production_checkpatch": {
+      "errors": 0,
+      "warnings": 0,
+      "checks": 0
+    },
+    "compiled_inputs_sha256": {
+      "drivers/gpu/drm/apple/Kconfig": "63267fd63bcf652dad6c026d88610f87f70e4ea5f4457833a46970595a1b4488",
+      "drivers/gpu/drm/apple/dcp-internal.h": "5bbe1d772f847badb32dc52642ebb2493507785fb4ef1405b2c23998e4fd2270",
+      "drivers/gpu/drm/apple/dcp.c": "c85b48d75ecd9e3259c4b9b1403d2e58c643e7564af470dcb6af5dfd6c442efe",
+      "drivers/gpu/drm/apple/iomfb_template.c": "edf60289f7f6e319a61497d0c8bff14511667b80136b93b4186f388bd5e10211",
+      "drivers/gpu/drm/apple/iomfb_v14_7.c": "df0a89ee5b8f1bded79b2475873c850a4b69d605c2c4ded3999d00227228b8bd",
+      "drivers/gpu/drm/apple/iomfb_v14_7_board.h": "18a344c10cd2e54d6ee166678f9eb3eff6e14aafe439f6b19a4b928736801550",
+      "drivers/gpu/drm/apple/iomfb_v14_7_panel_power_test.c": "219a2ba219d9f77320164d96efae4093c2e13e68b40aab9bf4e1fd4f976d64b8",
+      "drivers/gpu/drm/apple/parser-color-test.c": "093f49d47f381b41d0711578d594f5c4b4b45070e68bbb3c47457391be457ac1",
+      "drivers/gpu/drm/apple/parser.c": "c63b36a9f7e55c2bf9b44275040ecde350e0c9f8e60ea651f958d6e518fb217c",
+      "drivers/gpu/drm/apple/plane.c": "5e1888b6deab0f033d1e7962824aebb61a091464ba37c4dc8b28ed79895bbf2f",
+      "drivers/gpu/drm/apple/v14-board-test.c": "c33ca640be3af14bf43e0955f80de66f3070b2785a236ec54825284efab72f03",
+      "drivers/media/usb/uvc/uvc_ctrl.c": "c4fd0a4f5f833588e98b186727063d7e4aa31313e95a8d560460094caaceffea",
+      "drivers/media/usb/uvc/uvc_video.c": "5fd4bd6ce4ed5fa5d028d483cece06d220db13fb8d1f6590ca2a6f4466714413"
+    },
+    "protected_paths_byte_unchanged_from_base": [
+      "arch/arm64/boot/dts",
+      "include/uapi",
+      "drivers/gpu/drm/asahi",
+      "drivers/gpu/drm/asahi-m3",
+      "drivers/gpu/drm/apple-m3",
+      "rust",
+      "drivers/soc/apple"
+    ],
+    "kernel_CI": {
+      "status": "success",
+      "run": 39359597691,
+      "head": "361c80e04ee5378e5da5744e26ada20708c87641"
+    },
+    "control_tooling": {
+      "make_check": "pass",
+      "python_unit_tests": 49,
+      "passed": 48,
+      "skipped": 1,
+      "skip_reason": "Numeric ownership fixture requires root.",
+      "mesa_session_and_headless_weston_controls": "all pass"
+    },
+    "production_only_J613_KUnit": {
+      "source": "58da6e3bc513",
+      "run": 332,
+      "passed": 331,
+      "skipped": 1,
+      "link_harness": "KALLSYMS_EXTRA_PASS=1 after the smaller test image did not converge in the default link passes."
+    }
+  },
+  "independent_review": {
+    "reviewer": "Grok via Herdr",
+    "camera_accept_at": "be6ba99c917f4f2859f3bce31add2a3dc1870c60",
+    "colour_accept_at": "11d59ac6c3028743fea718fb142d430726173ff8",
+    "colour_parameter_help_nit_fixed": true,
+    "J613_production_snapshot_accept_sha256": "5a25e0cd654b92f8234b4d38f26c0c4075418ecc7ce115f82d72792619c583a1",
+    "snapshot_to_integrated_production": "Only log-step text changes; independent review confirmed equivalent power/lid control flow.",
+    "test_fixture_review": "Root reviewed actual-source tests and required presenter cleanup and the closed-lid refusal control."
+  },
+  "provenance": "Original carries retain authorship and supplied sign-offs; adapted code credits the public source. No sign-off was invented.",
+  "limits": [
+    "No local camera or Studio Display XDR hardware qualification.",
+    "No measured colour accuracy, 10-bit scanout or compositor ICC hardware qualification.",
+    "No physical J613 DPMS, lid, suspend/resume, power measurement or lock-screen security qualification.",
+    "Compiler, host and QEMU checks do not establish firmware or hardware behaviour."
+  ],
+  "target_mutations": false,
+  "binary_release_or_catalog_changed": false
+}
