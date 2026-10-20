@@ -7,7 +7,7 @@
     "linux": {
       "url": "https://github.com/iconidentify/siliconforest-linux.git",
       "branch": "siliconforest/next",
-      "commit": "70ba3032516419b6c7d643c5c82da68d8b470d05",
+      "commit": "e4b97a383d11749300e72a40032c363db7e6c4c0",
       "upstream_url": "https://github.com/omacom/linux-aurora.git",
       "upstream_branch": "integration/aurora",
       "kernel_version": "7.2.11"
