@@ -122,6 +122,9 @@ def validate(data, *, install=False, testing=False):
     require(data['firmware'] and all(isinstance(f, str) and f and '*' not in f for f in data['firmware']),
             'Require exact firmware identities')
     boot = data['boot']
+    if 'stage2_logo_sha256' in boot:
+        require(isinstance(boot['stage2_logo_sha256'], str) and
+                bool(SHA.fullmatch(boot['stage2_logo_sha256'])), 'Invalid stage 2 artwork digest')
     require(bool(TOKEN.fullmatch(boot.get('stage2_version', ''))), 'Require an exact stage 2 build identity')
     relative(boot['dtb'])
     require(boot['dtb'].endswith('.dtb'), 'Require a DTB')
@@ -208,11 +211,16 @@ def verify_packages(directory, data):
                                modules + 'config': 'config_sha256',
                                modules + 'dtbs/' + data['boot']['dtb']: 'dtb_sha256'},
                     'mesa': {}, 'm1n1': {'usr/lib/siliconforest/m1n1.bin': 'm1n1_sha256'}}[component]
+        if component == 'm1n1' and 'stage2_logo_sha256' in data['boot']:
+            critical['usr/share/siliconforest/stage2-logo.bin'] = 'stage2_logo_sha256'
         for member, key in critical.items():
             require(member in members, 'Missing required payload: ' + member)
             raw = subprocess.check_output(['bsdtar', '-xOf', str(path), member])
             require(hashlib.sha256(raw).hexdigest() == data['boot'][key],
                     'Archived boot component differs: ' + member)
+            if key == 'stage2_logo_sha256':
+                from .bootlogo import validate as validate_logo
+                validate_logo(raw)
         dri = 'zink_dri.so' if package['source'].get('branch') == 'compat/m3-legacy' else 'asahi_dri.so'
         required = {'kernel': {modules + 'pkgbase'},
                     'mesa': {'usr/lib/libEGL_mesa.so.0', 'usr/lib/libgbm.so.1', 'usr/lib/dri/' + dri},

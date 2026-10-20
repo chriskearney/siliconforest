@@ -138,6 +138,12 @@ def stage(component, source, build, tree, profile):
                                                         'J700_CDC_PROXY', 'T8140_KIS_PROXY')),
                 'Refuse stage 1/proxy bootloader flags')
         copy(build / 'm1n1.bin', tree / 'usr/lib/siliconforest/m1n1.bin')
+        logo = build / 'stage2-logo.bin'
+        if logo.exists():
+            from installer.bootlogo import validate as validate_logo
+            require(logo.is_file() and not logo.is_symlink(), 'Invalid stage 2 artwork input')
+            validate_logo(logo.read_bytes())
+            copy(logo, tree / 'usr/share/siliconforest/stage2-logo.bin')
         symbols = {}
         for line in subprocess.check_output(['llvm-nm', '-n', str(build / 'm1n1-raw.elf')], text=True).splitlines():
             fields = line.split()
