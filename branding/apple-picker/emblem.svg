@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SiliconForest emblem: a wafer ring with its flat, and a fir drawn as a
+     spine and three branches ending in circuit pads; the tip breaks through
+     the ring. Square artwork (the viewBox must stay square).
+     Colours come from palette.json: each data-sf-* attribute names the
+     palette key that replaces the attribute it is named after. The literal
+     values are the current palette, so the file previews correctly. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<defs>
+ <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f8f9fa" data-sf-stop-color="emblem_rim_1"/><stop offset=".42" stop-color="#aeb8bf" data-sf-stop-color="emblem_rim_2"/><stop offset=".68" stop-color="#eef1f3" data-sf-stop-color="emblem_rim_3"/><stop offset="1" stop-color="#7f8b94" data-sf-stop-color="emblem_rim_4"/></linearGradient>
+ <linearGradient id="leaf" gradientUnits="userSpaceOnUse" x1="0" y1="40" x2="0" y2="430"><stop offset="0" stop-color="#9af5cd" data-sf-stop-color="emblem_leaf_1"/><stop offset=".5" stop-color="#2fd394" data-sf-stop-color="emblem_leaf_2"/><stop offset="1" stop-color="#0b8c62" data-sf-stop-color="emblem_leaf_3"/></linearGradient>
+ <mask id="mr" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><g stroke="#000" stroke-width="37.0" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M256.00,24.00 V88.00"/></g></mask>
+</defs>
+<g mask="url(#mr)"><path d="M177.62,446.00 A200.0,200.0 0 1 1 334.38,446.00 Z" fill="none" stroke="url(#rim)" stroke-width="13.0" stroke-linejoin="round"/></g>
+<g fill="none" stroke="url(#leaf)" stroke-width="15.0" stroke-linecap="round" stroke-linejoin="round"><path d="M192.00,158.08 L256.00,112.00 L320.00,158.08"/><path d="M156.00,262.00 L256.00,190.00 L356.00,262.00"/><path d="M120.00,365.92 L256.00,268.00 L392.00,365.92"/><path d="M256.00,24.00 V446.00"/></g>
+<g fill="url(#leaf)"><circle cx="192.00" cy="158.08" r="10.5"/><circle cx="320.00" cy="158.08" r="10.5"/><circle cx="156.00" cy="262.00" r="10.5"/><circle cx="356.00" cy="262.00" r="10.5"/><circle cx="120.00" cy="365.92" r="10.5"/><circle cx="392.00" cy="365.92" r="10.5"/></g>
+</svg>
