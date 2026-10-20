@@ -13,6 +13,11 @@ fail() { printf '\nSTOP: %s\nNo automatic reboot will be performed.\n' "$*" >&2;
 # EFI volume need not permit direct executable launches.
 sha_tool_expected=9f9c8c3e68055c8d3ceb1aed3c0edb15fcc11613bf345aa3e9745ea9725ba33e
 sha() { "$sha_tool" "$1"; }
+files_equal() {
+  local left right
+  left=$(sha "$1") && right=$(sha "$2") &&
+    [[ "$left" =~ ^[0-9a-f]{64}$ ]] && [ "$left" = "$right" ]
+}
 init_sha() {
   [ -f "$1" ] && [ ! -L "$1" ] || fail 'Missing self-contained SHA-256 utility'
   cp "$1" "$work/sf-sha256"
@@ -65,6 +70,11 @@ mode=${1:---inspect}
 case "$mode" in --inspect|--install) ;; *) fail 'Usage: prepare.sh [--inspect | --install]' ;; esac
 [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] || fail 'Run only on Apple Silicon in Recovery.'
 [ "$(id -u)" = 0 ] || fail 'Open Terminal from the Recovery Utilities menu.'
+# Check every external command used below before creating a backup or changing
+# policy. Recovery does not necessarily include a normal macOS userland.
+for required in uname id dirname mktemp rm cp chmod tr diskutil bputil kmutil grep sed stat od cat cut tail df awk date sync; do
+  command -v "$required" >/dev/null 2>&1 || fail "Required Recovery tool is missing: $required"
+done
 here=$(cd -- "$(dirname -- "$0")" && pwd -P)
 work=$(mktemp -d /tmp/siliconforest-stage1.XXXXXX)
 trap 'rm -rf -- "$work"' EXIT
@@ -228,7 +238,7 @@ hash_check "$here/m1n1-stage1.bin" "$image_sha"
 policy "$work/policy.recheck.txt"
 [ "$(policy_hash "$work/policy.recheck.txt" coih)" = "$coih" ] && [ "$(policy_hash "$work/policy.recheck.txt" nsih)" = "$nsih" ] || fail 'Boot policy changed during preparation'
 protected_hashes > "$work/boot-chain.recheck"
-cmp -s "$work/boot-chain.sha256" "$work/boot-chain.recheck" || fail 'Linux boot files changed during preparation'
+files_equal "$work/boot-chain.sha256" "$work/boot-chain.recheck" || fail 'Linux boot files changed during preparation'
 printf '\nFirst attended hardware trial: this candidate has passed build/source checks, not a Recovery boot test.\n'
 printf 'Verified backup: %s\n' "$backup"
 printf 'Recovery rollback command: bash %q\n' "$backup/restore.sh"
@@ -242,7 +252,7 @@ hash_check "$installed" "$installed_sha"
 policy "$work/policy.final.txt"
 [ "$(policy_hash "$work/policy.final.txt" coih)" = "$coih" ] && [ "$(policy_hash "$work/policy.final.txt" nsih)" = "$nsih" ] || fail 'Boot policy changed while waiting for confirmation'
 protected_hashes > "$work/boot-chain.final"
-cmp -s "$work/boot-chain.sha256" "$work/boot-chain.final" || fail 'Linux boot files changed while waiting for confirmation'
+files_equal "$work/boot-chain.sha256" "$work/boot-chain.final" || fail 'Linux boot files changed while waiting for confirmation'
 printf '%s\n' applying > "$backup/status"
 sync
 if ! kmutil configure-boot -c "$backup/neutral-stage1.bin" --raw --entry-point 2048 --lowest-virtual-address 0 -v "$system_dir"; then
@@ -257,7 +267,7 @@ new_coih=$(policy_hash "$backup/policy.after.txt" coih)
 new_installed="$preboot/$vgid/boot/$nsih/System/Library/Caches/com.apple.kernelcaches/kernelcache.custom.$new_coih"
 contains_payload "$new_installed" "$backup/neutral-stage1.bin" || fail "New custom image not verified. Keep Recovery open. Backup: $backup"
 protected_hashes > "$backup/boot-chain.after.sha256"
-cmp -s "$backup/boot-chain.sha256" "$backup/boot-chain.after.sha256" || fail "Linux boot files changed unexpectedly. Keep Recovery open. Backup: $backup"
+files_equal "$backup/boot-chain.sha256" "$backup/boot-chain.after.sha256" || fail "Linux boot files changed unexpectedly. Keep Recovery open. Backup: $backup"
 printf '%s\n' installed-awaiting-linux-boot-test > "$backup/status"
 sync
 printf '\nNeutral early stage1 installed; Linux boot files unchanged.\n'

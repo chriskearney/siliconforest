@@ -18,9 +18,10 @@ trap 'rm -rf -- "$work"' EXIT
 # Pin the whole already-staged helper. It pins its private per-Mac metadata and
 # both binary images. No UUIDs, original images, credentials or keys are public.
 expected_old=3b1c6dbdb4e554f77a7a99c06f57af163b5dc0858e3f7a9b9724287037f341ed
-expected_new=113ab917bf000bb3ce21f98607232ebbb3c9eba097b2d04ef5a2d4655ee9b78d
+expected_previous=113ab917bf000bb3ce21f98607232ebbb3c9eba097b2d04ef5a2d4655ee9b78d
+expected_new=e37936f3e84555f0562f1945758255e206c1a6dc421ab1db7bf3f2b05739065a
 expected_metadata=d0e3a2b6414e615d4fd6618fb23c83b0ff0b090f08df9b5920f2b09705345b49
-expected_template=3c9965d8b0830d8890b02b3713e1d339718a5944c4fa68f61fdf70f4aaf6fa34
+expected_template=b5633438e3bd7eeb838ef336aab897ccbd70e237b151f15559938c77b2007335
 expected_tool=9f9c8c3e68055c8d3ceb1aed3c0edb15fcc11613bf345aa3e9745ea9725ba33e
 # This executable and this launcher share the authenticated HTTPS publication
 # origin. No system checksum tool is assumed. The utility is built from the
@@ -30,7 +31,7 @@ curl --proto '=https' -fsSL https://github.com/iconidentify/siliconforest/releas
 chmod 700 "$sha_tool"
 "$sha_tool" --self-test
 [ "$(sha "$sha_tool")" = "$expected_tool" ] || stop 'Checksum utility differs from its pinned build'
-curl --proto '=https' -fsSL https://raw.githubusercontent.com/iconidentify/siliconforest/recovery2/scripts/stage1-recovery-prepare.sh -o "$work/prepare-template.sh"
+curl --proto '=https' -fsSL https://raw.githubusercontent.com/iconidentify/siliconforest/recovery3/scripts/stage1-recovery-prepare.sh -o "$work/prepare-template.sh"
 [ "$(sha "$work/prepare-template.sh")" = "$expected_template" ] || stop 'Repair template differs from its pinned source'
 diskutil list -plist > "$work/disks.plist"
 di=0; found=; count=0
@@ -45,7 +46,7 @@ while plist "$work/disks.plist" "AllDisksAndPartitions:$di:DeviceIdentifier" >/d
         capsule="$mountpoint/siliconforest/recovery-stage1"
         if [ -f "$capsule/prepare.sh" ] && [ ! -L "$capsule/prepare.sh" ]; then
           digest=$(sha "$capsule/prepare.sh")
-          if [ "$digest" = "$expected_old" ] || [ "$digest" = "$expected_new" ]; then
+          if [ "$digest" = "$expected_old" ] || [ "$digest" = "$expected_previous" ] || [ "$digest" = "$expected_new" ]; then
             count=$((count + 1)); found=$capsule
           fi
         fi
@@ -62,11 +63,17 @@ sed "s/@TARGET_CONF_SHA@/$expected_metadata/" "$work/prepare-template.sh" > "$wo
 # Repair only our own capsule files, preserving the old helper. Kernel, loader,
 # UKIs, menu, metadata and image bytes are never replaced by this launcher.
 [ ! -L "$found/sf-sha256" ] && [ ! -L "$found/.sf-sha256-new" ] && [ ! -L "$found/.prepare-new.sh" ] || stop 'Unsafe capsule repair slot'
-if [ -e "$found/prepare-before-sha-fix.sh" ]; then
+if [ -e "$found/prepare-before-sha-fix.sh" ] || [ -L "$found/prepare-before-sha-fix.sh" ]; then
   [ -f "$found/prepare-before-sha-fix.sh" ] && [ ! -L "$found/prepare-before-sha-fix.sh" ] && [ "$(sha "$found/prepare-before-sha-fix.sh")" = "$expected_old" ] || stop 'Original helper backup differs'
 elif [ "$(sha "$found/prepare.sh")" = "$expected_old" ]; then
   cp "$found/prepare.sh" "$found/prepare-before-sha-fix.sh"
   [ "$(sha "$found/prepare-before-sha-fix.sh")" = "$expected_old" ] || stop 'Original helper backup could not be verified'
+fi
+if [ -e "$found/prepare-before-cmp-fix.sh" ] || [ -L "$found/prepare-before-cmp-fix.sh" ]; then
+  [ -f "$found/prepare-before-cmp-fix.sh" ] && [ ! -L "$found/prepare-before-cmp-fix.sh" ] && [ "$(sha "$found/prepare-before-cmp-fix.sh")" = "$expected_previous" ] || stop 'Previous helper backup differs'
+elif [ "$(sha "$found/prepare.sh")" = "$expected_previous" ]; then
+  cp "$found/prepare.sh" "$found/prepare-before-cmp-fix.sh"
+  [ "$(sha "$found/prepare-before-cmp-fix.sh")" = "$expected_previous" ] || stop 'Previous helper backup could not be verified'
 fi
 cp "$sha_tool" "$found/.sf-sha256-new"
 [ "$(sha "$found/.sf-sha256-new")" = "$expected_tool" ] || stop 'Copied checksum utility differs'

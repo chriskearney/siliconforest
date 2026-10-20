@@ -211,6 +211,36 @@ sync() { :; }
         with Path(self.env['BASH_ENV']).open('a') as f:f.write('\nshasum() { echo unexpected >&2; return 127; }\nopenssl() { echo unexpected >&2; return 127; }\nsha256() { echo unexpected >&2; return 127; }\nsha256sum() { echo unexpected >&2; return 127; }\n')
         r=self.run_tool();self.assertEqual(r.returncode,0,r.stderr);self.assert_no_boot_write()
 
+    def test_install_and_rollback_without_cmp_or_system_crypto(self):
+        with Path(self.env['BASH_ENV']).open('a') as f:
+            for name in ('cmp','shasum','openssl','sha256','sha256sum'):
+                f.write('\n'+name+'() { echo unexpected-tool >&2; return 127; }\n')
+        r=self.run_tool('--install');self.assertEqual(r.returncode,0,r.stderr)
+        backup=list(self.capsule.glob('backup-*'))[0]
+        r=subprocess.run(['/bin/bash',str(backup/'restore.sh')],env=self.env,text=True,capture_output=True)
+        self.assertEqual(r.returncode,0,r.stderr);self.assertNotIn('unexpected-tool',r.stderr)
+
+    def test_missing_required_tool_stops_before_backup(self):
+        with Path(self.env['BASH_ENV']).open('a') as f:
+            f.write('\ncommand() { if [ "$1" = -v ] && [ "$2" = od ]; then return 1; fi; builtin command "$@"; }\n')
+        r=self.run_tool('--install');self.assertNotEqual(r.returncode,0)
+        self.assertIn('Required Recovery tool is missing: od',r.stderr)
+        self.assert_no_boot_write();self.assertFalse(list(self.capsule.glob('backup-*')))
+
+    def test_hash_comparison_fails_closed_on_hash_errors(self):
+        body=SOURCE.split('files_equal() {',1)[1].split('\n}',1)[0]
+        for implementation in ('return 1', 'printf not-a-digest', 'if [ "$1" = left ]; then printf "%064d" 0; else return 1; fi'):
+            script='sha() { '+implementation+'; }\nfiles_equal() {'+body+'\n}\nfiles_equal left right\n'
+            r=subprocess.run(['/bin/bash','-c',script],text=True,capture_output=True)
+            self.assertNotEqual(r.returncode,0,implementation)
+
+    def test_boot_file_change_during_preparation_refused_without_cmp(self):
+        with Path(self.env['BASH_ENV']).open('a') as f:
+            f.write('\ncmp() { return 127; }\ncp() { /usr/bin/cp "$@" || return; case "${@: -1}" in */backup-*/boot-chain.sha256) printf changed > "$MOCK_ROOT/EFI/EFI/Linux/recovery.efi";; esac; }\n')
+        r=self.run_tool('--install');self.assertNotEqual(r.returncode,0)
+        self.assertIn('Linux boot files changed during preparation',r.stderr)
+        self.assertFalse((self.root/'kmutil.log').exists())
+
     def test_install_and_native_rollback(self):
         r=self.run_tool('--install');self.assertEqual(r.returncode,0,r.stderr);backup=list(self.capsule.glob('backup-*'));self.assertEqual(len(backup),1);self.assertEqual((backup[0]/'original-stage1.bin').read_bytes(),self.old);self.assertEqual((backup[0]/'status').read_text(),'installed-awaiting-linux-boot-test\n')
         for name,data in self.boot_before.items():self.assertEqual((self.root/name).read_bytes(),data)

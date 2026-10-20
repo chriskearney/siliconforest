@@ -2,6 +2,8 @@
 
 This is the first owner-attended J516S migration to the neutral early m1n1 splash. It is separate from Linux releases and the public installation catalog. The candidate has source/build comparisons and mocked-interface host tests; it has not yet passed a native Recovery migration or a hardware boot. Do not describe it as qualified until that evidence exists.
 
+Revision 3 also removes the unavailable `cmp` command: protected boot-file inventories are compared with the same verified SHA-256 utility. Remaining external commands are checked before backup preparation or policy changes. The revision-2 failure at line 231 occurred before the confirmation prompt and policy-writing step; its backups are retained.
+
 Revision 2 fixes the observed absence of `shasum`, Perl and OpenSSL in Recovery. It uses a self-contained arm64 checksum utility built without cgo from the public Go standard-library source in `tools/recovery-sha256`. The launcher and utility are delivered from the same authenticated HTTPS publication origin; its published checksum detects corruption, and known-answer tests run before use. No installed checksum utility is assumed. The launcher recognizes and preserves the original staged helper, pins and validates the repair template and per-Mac metadata, and atomically replaces only its own helper and checksum utility. Existing boot images are not replaced by this repair. The native utility and restored helper still require actual Recovery execution; host tests do not prove native execution.
 
 The files must already be staged on the intended Mac's EFI partition by the maintainer. The launcher downloads no boot images. It finds exactly one staged helper with its pinned SHA-256, then that helper verifies its private per-Mac metadata and both images. No Mac UUIDs, original images, owner credentials or keys are included in the public launcher.
@@ -9,7 +11,7 @@ The files must already be staged on the intended Mac's EFI partition by the main
 Shut down with the Linux installation as the default Apple startup OS. Hold Power continuously to reach startup options, select Options, and open Utilities → Terminal. Run:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/iconidentify/siliconforest/recovery2/start.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/iconidentify/siliconforest/recovery3/start.sh)
 ```
 
 Use process substitution, not `curl | bash`: stdin must remain attached to Terminal for confirmation and Apple's own owner-authentication prompt. The script verifies paired 1TR before proceeding. If it refuses anything, keep Recovery open and inspect the failure; do not work around a guard or run a general OS installer.

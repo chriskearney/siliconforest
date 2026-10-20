@@ -18,7 +18,8 @@ class LauncherTests(RecoveryTests):
         repaired=template.replace('@TARGET_CONF_SHA@',metadata)
         old=b'#!/bin/bash\necho old-helper-must-not-run >&2\nexit 99\n'
         (self.capsule/'prepare.sh').write_bytes(old)
-        expected={'old':hashlib.sha256(old).hexdigest(),'new':hashlib.sha256(repaired.encode()).hexdigest(),'metadata':metadata,'template':hashlib.sha256(template.encode()).hexdigest(),'tool':host_sha}
+        self.previous=b'#!/bin/bash\necho previous-helper-must-not-run >&2\nexit 98\n'
+        expected={'old':hashlib.sha256(old).hexdigest(),'previous':hashlib.sha256(self.previous).hexdigest(),'new':hashlib.sha256(repaired.encode()).hexdigest(),'metadata':metadata,'template':hashlib.sha256(template.encode()).hexdigest(),'tool':host_sha}
         import re
         for name,value in expected.items():
             source,n=re.subn(r'^expected_'+name+r'=[0-9a-f]{64}$','expected_'+name+'='+value,source,flags=re.M)
@@ -59,8 +60,26 @@ class LauncherTests(RecoveryTests):
         bad=self.root/'bad-template';bad.write_text('bad');self.env['MOCK_TEMPLATE']=str(bad);r=self.launch();self.assertNotEqual(r.returncode,0);self.assert_no_boot_write()
 
     def test_launcher_requires_no_host_crypto_commands(self):
-        with Path(self.env['BASH_ENV']).open('a') as f:f.write('\nshasum() { return 127; }\nopenssl() { return 127; }\nsha256() { return 127; }\nsha256sum() { return 127; }\n')
+        with Path(self.env['BASH_ENV']).open('a') as f:f.write('\nshasum() { return 127; }\nopenssl() { return 127; }\nsha256() { return 127; }\nsha256sum() { return 127; }\ncmp() { echo unexpected-cmp >&2; return 127; }\n')
         r=self.launch();self.assertEqual(r.returncode,0,r.stderr);self.assertTrue((self.root/'kmutil.log').exists())
+
+    def test_launcher_upgrades_previous_helper_and_preserves_backups(self):
+        old=(self.capsule/'prepare.sh').read_bytes()
+        (self.capsule/'prepare-before-sha-fix.sh').write_bytes(old)
+        (self.capsule/'prepare.sh').write_bytes(self.previous)
+        preserved=self.capsule/'backup-prior-attempt';preserved.mkdir();(preserved/'original-stage1.bin').write_bytes(self.old)
+        with Path(self.env['BASH_ENV']).open('a') as f:f.write('\ncmp() { return 127; }\n')
+        r=self.launch();self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual((self.capsule/'prepare-before-cmp-fix.sh').read_bytes(),self.previous)
+        self.assertEqual((self.capsule/'prepare-before-sha-fix.sh').read_bytes(),old)
+        self.assertEqual((preserved/'original-stage1.bin').read_bytes(),self.old)
+
+    def test_launcher_refuses_dangling_previous_backup_symlink(self):
+        (self.capsule/'prepare.sh').write_bytes(self.previous)
+        outside=self.root/'must-not-be-created'
+        (self.capsule/'prepare-before-cmp-fix.sh').symlink_to(outside)
+        r=self.launch();self.assertNotEqual(r.returncode,0);self.assert_no_boot_write()
+        self.assertFalse(outside.exists());self.assertEqual((self.capsule/'prepare.sh').read_bytes(),self.previous)
 
 # Avoid rerunning inherited test methods under a second class; their fixture and
 # assertions are shared deliberately, the seven launcher cases are separate.
