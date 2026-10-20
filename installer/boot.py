@@ -17,6 +17,7 @@ END = '# <<< SiliconForest managed stage 2'
 ACTIVE = Path('/var/lib/siliconforest/active.json')
 INSTALLING = Path('/run/siliconforest-installing')
 CONFIG = Path('/etc/siliconforest/m1n1.conf')
+STAGE2_LOGO = Path('/usr/share/siliconforest/stage2-logo.bin')
 
 
 def run(*args):
@@ -112,11 +113,14 @@ def config_lines(text, overrides):
 
 def paths(data):
     modules = Path('/usr/lib/modules') / data['kernel_release']
-    return {'kernel_image_sha256': modules / 'vmlinuz',
+    result = {'kernel_image_sha256': modules / 'vmlinuz',
             'config_sha256': modules / 'config',
             'dtb_sha256': modules / 'dtbs' / data['boot']['dtb'],
             'm1n1_sha256': Path('/usr/lib/siliconforest/m1n1.bin'),
             'uboot_sha256': Path(data['boot']['uboot_path'])}
+    if 'stage2_logo_sha256' in data['boot']:
+        result['stage2_logo_sha256'] = STAGE2_LOGO
+    return result
 
 
 def check_files(data):
@@ -134,7 +138,10 @@ def check_files(data):
 
 def image(data, files, configuration):
     # m1n1 selects the board DTB, then consumes a self-delimiting gzip U-Boot.
-    buffers = {k: files[k].read_bytes() for k in ('m1n1_sha256', 'dtb_sha256', 'uboot_sha256')}
+    keys = ['m1n1_sha256', 'dtb_sha256', 'uboot_sha256']
+    if 'stage2_logo_sha256' in data['boot']:
+        keys.append('stage2_logo_sha256')
+    buffers = {k: files[k].read_bytes() for k in keys}
     for key, value in buffers.items():
         require(hashlib.sha256(value).hexdigest() == data['boot'][key],
                 'Boot input changed before assembly: ' + key)
@@ -143,7 +150,13 @@ def image(data, files, configuration):
     for line in data['boot']['m1n1_config']:
         key, value = line.split('=', 1)
         require(options.get(key) == value, 'Required handoff option differs: ' + key)
-    return (buffers['m1n1_sha256'] + buffers['dtb_sha256'] +
+    logo = buffers.get('stage2_logo_sha256', b'')
+    if 'stage2_logo_sha256' in data['boot']:
+        from .bootlogo import validate as validate_logo
+        validate_logo(logo)
+    # payload_logo() examines the FIRST payload, before fb_display_logo().
+    # A logo after the DTB is skipped by the scanner but never used for drawing.
+    return (buffers['m1n1_sha256'] + logo + buffers['dtb_sha256'] +
             gzip.compress(buffers['uboot_sha256'], mtime=0) + configuration)
 
 
