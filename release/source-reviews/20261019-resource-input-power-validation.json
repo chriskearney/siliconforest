@@ -1,0 +1,657 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "status": "Source, host and QEMU validation only; no hardware qualification or new release.",
+  "kernel": {
+    "base": "70ba3032516419b6c7d643c5c82da68d8b470d05",
+    "review_tip": "9e3efdd96a3df8e6894c094615bca47f37fa5792",
+    "merged_commit": "e4b97a383d11749300e72a40032c363db7e6c4c0",
+    "pr": "https://github.com/iconidentify/siliconforest-linux/pull/17",
+    "review_tree": "a2a592aa1840caf7e6e3a68fcfbda446f8f54f9e",
+    "merge_tree_equals_review_tip": true
+  },
+  "sources": [
+    {
+      "url": "https://github.com/omacom/linux-aurora/pull/151",
+      "head": "a5806fdc14736a14daace495ebe39153e5e55f0b",
+      "scope": "Four resource follow-ups after already-carried telemetry, including pending compute-pool releases; public draft source."
+    },
+    {
+      "url": "https://github.com/AsahiLinux/linux/pull/521",
+      "topic_commit": "922f0e157063a5aa20da5410fced6a68edf1e12a",
+      "scope": "CHLS battery topic commit alone; unrelated aggregate history excluded."
+    },
+    {
+      "url": "https://github.com/omacom/linux-aurora/pull/155",
+      "head": "68df87370abac4e227936552dd9be2252972e551",
+      "scope": "J700 C1FE palm rejection with reviewed contact-history fixes."
+    }
+  ],
+  "held": [
+    "https://github.com/omacom/linux-aurora/pull/154"
+  ],
+  "review_fixes": [
+    "Serialize charging setters and multi-key behaviour reads; read CHLS before clearing inhibitors; expose both auto and auto-discharge for CHLS-only devices. Preserve persistent preference and CHWA behaviour.",
+    "Own canonical GPU backing and both aliases before fallible initialization, ensuring aliases unmap before canonical storage on errors. This is defensive hardening, not a reproduced hardware crash.",
+    "Track touching and palm IDs separately; forget latched palm state on a new landing; keep zero-area touching contacts; scope nonpositive-area rejection and bounded geometry to C1FE.",
+    "Request contact-history reset on input reopen; consume the request only from the valid-report writer. Preserve non-J700 MTP/SPI numeric behaviour.",
+    "Carry the additional PR151 pool-release observation/admission follow-up. Keep the existing firmware witness and physical identity lifetime; apply a 200ms retry budget outside both the mutex and preparation lease."
+  ],
+  "validation": {
+    "toolchain": {
+      "llvm": "22.1.8",
+      "rust": "1.93.1",
+      "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0"
+    },
+    "battery_host": {
+      "cases": 249,
+      "compilers": [
+        "Clang ASan/UBSan",
+        "GCC ASan/UBSan"
+      ],
+      "runtime_mutants_rejected_each": 8,
+      "receipt_sha256": {
+        "clang": "98b3f05ff95cda4a74e2625308baa78586e5d02f1827a8372b1b5fa583816c7d",
+        "gcc": "2d89b40b3c287de939b6e8c170c20e9f4d7fe82be2b04a253d444e618c0b6025"
+      },
+      "transport": "Simulated SMC; actual extracted driver callbacks and capability helper."
+    },
+    "g17_host": {
+      "common_hole_combinations": 262144,
+      "focused_common_address_cases": 16,
+      "runtime_mutants_rejected": 13,
+      "receipt_sha256": "1fdc0e32aee21425e1a5103833e76e58843f229fff20103f2ea495ed5e6784f2",
+      "scope": "Actual source-derived queue/admission/address/constructor/wrapper bodies with simulated dependencies; no GPU hardware claim."
+    },
+    "production_builds": {
+      "normal": {
+        "config_sha256": "4c8b1779611790f8612048945f49cea93b9d14297b84e5d7bf36057e7caf8dbd",
+        "image_sha256": "0c0e727a87004d1ccb8757a1c1145f2f94656dbd43bf2ba83426b3af1f81c19d",
+        "image_bytes": 35359232,
+        "built_modules": 1875,
+        "dtbs_byte_identical_to_baseline": 115,
+        "dtb_baseline_revision": "54add20fd52e",
+        "bindings_byte_identical_to_baseline": {
+          "rust/bindings/bindings_generated.rs": "c724a0bf33c0b783d51a47c2d6bf26d76b571ea25e181603e2981c2d45a2bcd8",
+          "rust/bindings/bindings_helpers_generated.rs": "abe86e0007a1e424566ae84f3099e0ed0b282f19bd76ad5a2587fa72226db1de",
+          "rust/uapi/uapi_generated.rs": "96f5b1bac4df3976901f1ee6149fbc3ee5cef01a20b51f3bcfafcfbd22df81c2"
+        },
+        "layout_checked": true,
+        "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0",
+        "layout_evidence_sha256": "c9a364677204ce32817f915b97f4ecf8261ffdd934bc84e5444b638872996483",
+        "compile_only_kernelrelease": "7.2.11+",
+        "installed_or_packaged": false
+      },
+      "native": {
+        "config_sha256": "c018b8ed49b93cb8d3ff6bddb8a4fb0c45a997820df23748dee6834ee6b3d2c6",
+        "image_sha256": "8ff62b1f2049627ffad7e267f46804953e04f702db6c66628bed1c2b33da333d",
+        "image_bytes": 34769408,
+        "built_modules": 1875,
+        "dtbs_byte_identical_to_baseline": 115,
+        "dtb_baseline_revision": "54add20fd52e",
+        "bindings_byte_identical_to_baseline": {
+          "rust/bindings/bindings_generated.rs": "8ca557c98945ba2950caca83fbb76a118cbbb3ab26322e1df74bd01afb7d392d",
+          "rust/bindings/bindings_helpers_generated.rs": "abe86e0007a1e424566ae84f3099e0ed0b282f19bd76ad5a2587fa72226db1de",
+          "rust/uapi/uapi_generated.rs": "921c570c94a0aa72fe6003953e7d962641a5a1adf4dbe5c4e8a48e7dc3d81028"
+        },
+        "layout_checked": true,
+        "bindgen_sha256": "f9417ccb6c03a1aed2f919a4a69a20025af34afb8e8ae3305c28c3f0f69430a0",
+        "layout_evidence_sha256": "97e056087dcee1d1476285f658c6cf5520c0231d00a8a73840201706f8d5162d",
+        "compile_only_kernelrelease": "7.2.11+",
+        "installed_or_packaged": false
+      }
+    },
+    "hid_QEMU_KUnit": {
+      "tests": 12,
+      "passed": 12,
+      "source_test_sha256": "4150141ebbd89ee2e82414e88da4ce8020720bbe00653b45541ceb3c45f81064",
+      "runtime_mutants_rejected": 33,
+      "initial_sweep": {
+        "runtime_rejected": 29,
+        "invalid_compile_fixtures": 3,
+        "survived_missing_approach_case": 1
+      },
+      "targeted_rerun": {
+        "repaired_mutants_rejected": 4,
+        "positive_control_passed": 12,
+        "restored_control_passed": 12
+      },
+      "audit_sha256": "47b5f8f05c0ad64ffe64fd31fdf18659047942d47c2a36f777384b829e2baef3",
+      "results": [
+        {
+          "name": "latch-kept-at-landing",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "8a038985ad9cb67fc0b495ea64c7defe26df3940d08d046998430ac574e185cc"
+        },
+        {
+          "name": "latch-dropped",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse",
+            "hid-magicmouse-mtp.mm_c1fe_malformed",
+            "hid-magicmouse-mtp.mm_c1fe_reopen",
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch",
+            "hid-magicmouse-mtp.mm_c1fe_two_contacts"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "ae8c3b2e897f892872ffdc7dec9fbece1b56afafa85809a611edb20512ed09a9"
+        },
+        {
+          "name": "touching-not-kept",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse",
+            "hid-magicmouse-mtp.mm_c1fe_malformed",
+            "hid-magicmouse-mtp.mm_c1fe_reopen",
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch",
+            "hid-magicmouse-mtp.mm_c1fe_two_contacts"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "30c858e0c1f1e7c0f2a9e0fdd69d233a467d44eb1deaf7099940476424f3a5b9"
+        },
+        {
+          "name": "lift-off-not-palm",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "125893d5cb3872c7c0d4a92d2874cf5adc7d314a49c1ccf400dfb05af3ed4558"
+        },
+        {
+          "name": "state-ignored",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse",
+            "hid-magicmouse-mtp.mm_c1fe_zero_area"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_high_bit",
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse",
+            "hid-magicmouse-mtp.mm_c1fe_zero_area"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "dd1023162d568cc895695be99e48c10430b76b1b833cd5955bdd8fbafbbfe80a"
+        },
+        {
+          "name": "palm-at-threshold",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "ea40d362827d036b891f4b927bab656aa47979a73a5a5387e0314db6d807c261"
+        },
+        {
+          "name": "threshold-raised",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "6114c6403743f3ec6fd222d73fda792a943a9295de66ab3b1e48158dc8c7487a"
+        },
+        {
+          "name": "class-unbounded",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_classes"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_classes"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "510c76371bccd226c8e701247a7d27b14672a037406c4e848a20d55246f87b6a"
+        },
+        {
+          "name": "class-11-dropped",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_classes"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_classes"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "d6d1c3a7bcab91ff3a2f366a7827075cd926747f3af784d3481877ef7e8dfb13"
+        },
+        {
+          "name": "class-not-applied",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_classes"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_classes"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "ca3dfe2e545464bab5b409f9be09f5f317111edb96f3b540f793b7f701755a6c"
+        },
+        {
+          "name": "latch-not-applied",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_high_bit",
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse",
+            "hid-magicmouse-mtp.mm_c1fe_malformed",
+            "hid-magicmouse-mtp.mm_c1fe_reopen",
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch",
+            "hid-magicmouse-mtp.mm_c1fe_two_contacts"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "52a1d62848d90abbaa7f9dfb9ce3f487158c549b5f97fdc2a4688789307e2f69"
+        },
+        {
+          "name": "palms-never-cleared",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse",
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch",
+            "hid-magicmouse-mtp.mm_c1fe_two_contacts"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "55b529229e2beeec4577c874ba07d4bbfe2fc4442ff848752bfc6ec5fa3f254e"
+        },
+        {
+          "name": "zero-area-touching-dropped",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_zero_area",
+            "hid-magicmouse-mtp.mm_c1fe_high_bit"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_high_bit",
+            "hid-magicmouse-mtp.mm_c1fe_zero_area"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "f180f91bb9673cea225b989fd255695b9d50dae3c1faf6a36fea3706488845cc"
+        },
+        {
+          "name": "negative-area-contact",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_zero_area",
+            "hid-magicmouse-mtp.mm_c1fe_high_bit"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_high_bit",
+            "hid-magicmouse-mtp.mm_c1fe_zero_area"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "cfb0e35a4ac8ef80a21f785261949df1e61abe8a2aafc61fa544a4e5fd4b6e87"
+        },
+        {
+          "name": "zero-area-never-skipped",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_zero_area"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_high_bit",
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse",
+            "hid-magicmouse-mtp.mm_c1fe_zero_area"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "ac9870044df9cb5a422db5a617168d50b77d721a0de3778ac2d2fc6610a2497e"
+        },
+        {
+          "name": "zero-area-kept-any-board",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_other_reports"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_other_reports"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "0a17ce1633474a8c948ee21bd77812d7276bb4a4974b92ab0cf116397fcfff12"
+        },
+        {
+          "name": "negative-skipped-any-board",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_other_reports"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_other_reports"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "99494154877f35e7412b8d87354fedfd190ef27d7fe7640353fca0fd98c97721"
+        },
+        {
+          "name": "area-unclamped",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_high_bit"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_high_bit"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "1145d4097d43859d849577815b5aaa96038e2e4873ee799e4e2589bd05cd4d68"
+        },
+        {
+          "name": "area-clamped-any-board",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_other_reports"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_other_reports"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "5e30ccb55c9d3cdc43f80bf125ee14f6734c2c3f234b8c15c5341b5186fbcb59"
+        },
+        {
+          "name": "orientation-unclamped",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_high_bit"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_high_bit"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "247d421d75e253ba30a54781d15c218d658e2f0b9641ca4229ef12dacdd9bbf3"
+        },
+        {
+          "name": "orientation-clamped-any-board",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_other_reports"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_other_reports"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "faf471b7b966c4aa4deaa41bc8ad6bfe2d46e03cdb07e2528ac37ebb26353ce0"
+        },
+        {
+          "name": "tool-type-not-advertised",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_caps",
+            "hid-magicmouse-mtp.mm_c1fe_classes"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_caps",
+            "hid-magicmouse-mtp.mm_c1fe_classes",
+            "hid-magicmouse-mtp.mm_c1fe_high_bit",
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse",
+            "hid-magicmouse-mtp.mm_c1fe_malformed",
+            "hid-magicmouse-mtp.mm_c1fe_reopen",
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch",
+            "hid-magicmouse-mtp.mm_c1fe_two_contacts"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "37fa8e11b9f3d5d9d2c83b6381c814f45c1d8e1ca56f8b45ff0b6ea16ed33df0"
+        },
+        {
+          "name": "tool-type-any-board",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_other_caps"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_other_caps"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "d2bb4ba881eb17547b8f8bb507fc67d3c889af2cc760f07f38d9284f6ae952aa"
+        },
+        {
+          "name": "c1fe-area-range-5000",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_caps"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_caps"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "e55faf67774c1d0b3211cbf722c39f4ded87739152a08f10f8bb079e23dec189"
+        },
+        {
+          "name": "palms-not-updated",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_high_bit",
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse",
+            "hid-magicmouse-mtp.mm_c1fe_malformed",
+            "hid-magicmouse-mtp.mm_c1fe_reopen",
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch",
+            "hid-magicmouse-mtp.mm_c1fe_two_contacts"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "dec9298cae9e83b7fddc1a4b49b795ea3c98b9a43196d48b1b3847a247f981e0"
+        },
+        {
+          "name": "trailer-unchecked",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_malformed"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_malformed"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "36b9057683e7a09bc218a457de8207b34d3c3dd5ff8458e2e3285abd0542946c"
+        },
+        {
+          "name": "size-unchecked",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_malformed"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_malformed",
+            "hid-magicmouse-mtp.mm_c1fe_reopen"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "69ce2a25e8cbef08b16d83fae761a299a8c4b15929b4e0cc32d82d03445909cb"
+        },
+        {
+          "name": "open-no-reset",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_reopen"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_reopen"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "1619c2d132267d99853e0b8c8988e26cd9649739f7b7138a162465addf0449ac"
+        },
+        {
+          "name": "reset-every-board",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_reopen"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_reopen"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "31072853a774499c0acbbad78d0a21051eeaf4ee5997aa72b619e7b039a6b0a6"
+        },
+        {
+          "name": "reset-ignored",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_reopen"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_reopen"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "099b8e3d6786cf340844e63063fba4bddc2854380c351fcee9177e190f650384"
+        },
+        {
+          "name": "reset-keeps-palms",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_reopen"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_reopen"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "13c64e3f0268d75bdb78a585eed17b7620c3194969e0a1b25f965640f3d09d34"
+        },
+        {
+          "name": "reset-before-validation",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_reopen"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_reopen"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "b5328f798ea27ca6b58c48d8ba727a0ba602df06792ac9596cd670142a9997e5"
+        },
+        {
+          "name": "reset-every-report",
+          "expected_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch"
+          ],
+          "observed_failed_cases": [
+            "hid-magicmouse-mtp.mm_c1fe_lift_reuse",
+            "hid-magicmouse-mtp.mm_c1fe_malformed",
+            "hid-magicmouse-mtp.mm_c1fe_reopen",
+            "hid-magicmouse-mtp.mm_c1fe_tool_latch",
+            "hid-magicmouse-mtp.mm_c1fe_two_contacts"
+          ],
+          "runtime_caught": true,
+          "log_sha256": "96e63995b0fafc3b499bf412a44d9d588dcd4b6e4a13d9304bf6ebdbd64268d7"
+        }
+      ]
+    },
+    "production_W1": {
+      "normal": "28 existing Rust dead-code warnings; no new C/Rust diagnostics.",
+      "native_hid_power": "0 C/Rust source diagnostics.",
+      "production_KUNIT": false
+    },
+    "hid_sanitizer_QEMU": {
+      "tests": 12,
+      "passed": 12,
+      "failed": 0,
+      "sanitizer_or_locking_reports": 0,
+      "enabled_options": [
+        "KUNIT",
+        "HID_MAGICMOUSE_KUNIT_TEST",
+        "DEBUG_KERNEL",
+        "KASAN",
+        "KASAN_GENERIC",
+        "UBSAN",
+        "UBSAN_SHIFT",
+        "UBSAN_BOUNDS",
+        "UBSAN_ARRAY_BOUNDS",
+        "PROVE_LOCKING",
+        "DEBUG_ATOMIC_SLEEP"
+      ],
+      "log_sha256": "c43f625a523c6709dbc2fe39487a012399282ce67c68f38a647266a7424f3dca",
+      "config_sha256": "3c91a1c3960812d290f5b46af34aae7bb51b2e8cc5501a9fd5bb07f7d5f0eb70",
+      "test_source_sha256": "4150141ebbd89ee2e82414e88da4ce8020720bbe00653b45541ceb3c45f81064",
+      "public_fragment_matches_tested_input": true,
+      "source_scope": "Actual HID report/input/open-close code with simulated transport in ARM64 QEMU; production source differs only in comments."
+    },
+    "g17_pool_release_host": {
+      "runtime_mutants_rejected": 9,
+      "scope": "Production predicates and retry arm with simulated firmware, guards and clock. No firmware timing claim.",
+      "log_sha256": "5e58c582da399b1505e9be0a86a7ddf9e5d7bcbecc4a7aa7034c482009032e86",
+      "checks": [
+        "Published release keeps event polling alive; settled idle queues stop polling.",
+        "Only full physical-ID exhaustion with a pending release is retryable; other errors and spare capacity are preserved.",
+        "Drop state and preparation lease before event wake or sleep.",
+        "Settle after five simulated retries; return EBUSY on a 200ms elapsed-time retry budget."
+      ],
+      "negative_controls": [
+        "no-wake",
+        "terminal-admission",
+        "retry-holds-state",
+        "retry-holds-lease",
+        "retry-no-wake",
+        "retry-no-sleep",
+        "retry-no-timeout",
+        "retry-resets-deadline",
+        "retry-no-continue"
+      ]
+    },
+    "review_report_sha256": {
+      "grok-review.md": "6834e71ec904f9e886cd3bf912ffbb6b0a2dec40d272fd19c09d20bd92262a19",
+      "grok-pr151-late-review.md": "a005e1642fac8c598342d68ee196f81ef97888ff162301f51d7e7961d439fb08",
+      "claude-155-review.md": "57ac971579523217e1c6764c77be7daf4f6831474804c1c03e2dbb2e467b5e36"
+    },
+    "host_CI": {
+      "url": "https://github.com/iconidentify/siliconforest-linux/actions/runs/39372316283",
+      "head": "9e3efdd96a3df8e6894c094615bca47f37fa5792",
+      "conclusion": "success"
+    },
+    "source_invariants": {
+      "hid_test_snapshot": "0fd44329d4bf4b5115013aac0a0cfe63f14f5ac2",
+      "hid_code_unchanged_except_comments": true,
+      "protected_paths_unchanged": [
+        "arch/arm64/boot/dts",
+        "include/uapi",
+        "rust",
+        "drivers/gpu/drm/asahi-m3",
+        "drivers/gpu/drm/apple",
+        "drivers/gpu/drm/apple-m3",
+        "drivers/thunderbolt",
+        "drivers/soc/apple"
+      ],
+      "source_head": "9e3efdd96a3df8e6894c094615bca47f37fa5792",
+      "late_pr151_production_files": [
+        "drivers/gpu/drm/asahi/g17/queue/compute.rs",
+        "drivers/gpu/drm/asahi/g17/runtime.rs",
+        "drivers/gpu/drm/asahi/g17/runtime/events.rs"
+      ],
+      "late_pr151_patch_id": "22845ca5c96f6d467af09223eb03c3e5d664a68f",
+      "late_upstream_production_patch_equal": true,
+      "gpu_original_tested_source_hashes_unchanged": true
+    },
+    "production_build_source_commit": "9e3efdd96a3df8e6894c094615bca47f37fa5792",
+    "control_make_check": {
+      "result": "PASS",
+      "source_lock_verified": true,
+      "shellcheck": "0.11.0 official standalone binary; system ShellCheck failed to load a Haskell dependency. No system packages changed.",
+      "shellcheck_archive_sha256": "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198",
+      "shellcheck_source": "https://github.com/koalaman/shellcheck/releases/tag/v0.11.0",
+      "log_sha256": "2f956ae3346a854c1d7d590931e66d14a162b2cda7f766d30c9c594338c8de23",
+      "unit_tests": {
+        "ran": 49,
+        "passed": 48,
+        "skipped": 1,
+        "skip_reason": "Numeric ownership fixture requires root."
+      }
+    }
+  },
+  "protected_paths_unchanged": [
+    "arch/arm64/boot/dts",
+    "include/uapi",
+    "rust",
+    "drivers/gpu/drm/asahi-m3",
+    "drivers/gpu/drm/apple",
+    "drivers/gpu/drm/apple-m3",
+    "drivers/thunderbolt",
+    "drivers/soc/apple"
+  ],
+  "limits": [
+    "No battery, J700 trackpad or G17 GPU hardware qualification.",
+    "SMC writes span multiple firmware keys; a transport failure can still leave a partial update. No all-or-nothing firmware transaction is claimed.",
+    "Compiled artifacts are local validation outputs only; no packages, catalog, signatures, installer assets or target boot state changed.",
+    "Existing display-path modpost section-mismatch warnings and a libclang version-string diagnostic remain; affected W=1 compiles add no new source diagnostics.",
+    "A completely full compute-entry table still returns its slot ENOSPC before physical-ID classification. Growth releases also count as pending and may consume the retry budget.",
+    "The event worker may keep polling a stuck release witness after a submitter returns EBUSY; no hard realtime bound or firmware recovery guarantee is claimed.",
+    "Reopening deliberately starts a fresh C1FE classification epoch; a still-resting palm whose size has fallen below the threshold may be a finger until it lifts. Real palm thresholds, user-space behaviour and suspend/resume need J700 qualification."
+  ],
+  "targets_touched": false,
+  "signed_release_changed": false,
+  "private_source_published": false,
+  "upstream_comments_posted": false,
+  "independent_source_review": {
+    "gpu_battery": "ACCEPT; no blocker.",
+    "late_g17_release": "ACCEPT; no blocker. Actual production patch equals upstream; added host fixture closes the retry-arm coverage gap.",
+    "scope": "Read-only source review; no hardware qualification.",
+    "hid": "ACCEPT at d71c368f production, test0fd44329; root verified public C differs only in comments and test bytes match."
+  }
+}
