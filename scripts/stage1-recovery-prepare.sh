@@ -9,11 +9,19 @@ export LC_ALL=C
 umask 077
 
 fail() { printf '\nSTOP: %s\nNo automatic reboot will be performed.\n' "$*" >&2; exit 1; }
-sha() {
-  local output
-  if command -v shasum >/dev/null && output=$(shasum -a 256 "$1" 2>/dev/null); then printf '%s\n' "$output" | awk '{print $1}'
-  else openssl dgst -sha256 "$1" | awk '{print $NF}'; fi
+# Self-contained utility, copied to Recovery's temporary filesystem because the
+# EFI volume need not permit direct executable launches.
+sha_tool_expected=9f9c8c3e68055c8d3ceb1aed3c0edb15fcc11613bf345aa3e9745ea9725ba33e
+sha() { "$sha_tool" "$1"; }
+init_sha() {
+  [ -f "$1" ] && [ ! -L "$1" ] || fail 'Missing self-contained SHA-256 utility'
+  cp "$1" "$work/sf-sha256"
+  chmod 700 "$work/sf-sha256"
+  sha_tool="$work/sf-sha256"
+  "$sha_tool" --self-test >/dev/null || fail 'SHA-256 utility failed its self-test'
+  [ "$(sha "$sha_tool")" = "$sha_tool_expected" ] || fail 'SHA-256 utility differs from the pinned build'
 }
+
 plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1"; }
 same_uuid() { [ "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$2" | tr 'A-Z' 'a-z')" ]; }
 hash_check() { [ -f "$1" ] && [ ! -L "$1" ] && [ "$(sha "$1")" = "$2" ] || fail "File changed: $1"; }
@@ -60,6 +68,7 @@ case "$mode" in --inspect|--install) ;; *) fail 'Usage: prepare.sh [--inspect | 
 here=$(cd -- "$(dirname -- "$0")" && pwd -P)
 work=$(mktemp -d /tmp/siliconforest-stage1.XXXXXX)
 trap 'rm -rf -- "$work"' EXIT
+init_sha "$here/sf-sha256"
 
 # This file is generated from this Mac's live DT and stub metadata, never guessed.
 [ -f "$here/target.conf" ] && [ ! -L "$here/target.conf" ] || fail 'Missing target identity'
@@ -173,6 +182,8 @@ free_kib=$(df -Pk "$esp" | awk 'NR==2 {print $4}')
 [[ "$free_kib" =~ ^[0-9]+$ ]] && [ "$free_kib" -ge 32768 ] || fail 'Need32MiB free on the EFI partition for verified backups'
 backup=$(mktemp -d "$here/backup-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")
 printf '%s\n' preparing > "$backup/status"
+cp "$here/sf-sha256" "$backup/sf-sha256"
+hash_check "$backup/sf-sha256" "$sha_tool_expected"
 cp -p "$old" "$backup/original-stage1.bin"
 cp -p "$installed" "$backup/original-installed-custom-image"
 cp "$work/policy.before.txt" "$backup/policy.before.txt"
@@ -187,8 +198,8 @@ printf '%s\n' preparing > "$backup/status"
 # Store a restoration command with the exact old raw image and volume binding.
 {
   printf '#!/bin/bash\nset -euo pipefail\nexport PATH=/usr/bin:/bin:/usr/sbin:/sbin\n'
-  printf 'vgid=%q\nsystem_uuid=%q\nexpected=%q\n' "$vgid" "$system_uuid" "$old_sha"
-  declare -f fail sha plist
+  printf 'vgid=%q\nsystem_uuid=%q\nexpected=%q\nsha_tool_expected=%q\n' "$vgid" "$system_uuid" "$old_sha" "$sha_tool_expected"
+  declare -f fail sha init_sha plist
   cat <<'RESTORE'
 [ "$(uname -s)" = Darwin ] && [ "$(id -u)" = 0 ]
 work=$(mktemp -d /tmp/siliconforest-restore.XXXXXX)
@@ -198,6 +209,7 @@ grep -q ': Paired' "$work/policy"
 grep -q 'one true recoveryOS' "$work/policy"
 backup_dir=$(cd -- "$(dirname -- "$0")" && pwd -P)
 image="$backup_dir/original-stage1.bin"
+init_sha "$backup_dir/sf-sha256"
 [ -f "$image" ] && [ ! -L "$image" ]
 [ "$(sha "$image")" = "$expected" ]
 diskutil mount "$system_uuid" >/dev/null

@@ -15,6 +15,8 @@ import unittest
 
 BASE = Path(__file__).resolve().parent
 SOURCE = (BASE.parent / 'scripts/stage1-recovery-prepare.sh').read_text()
+HOST_TOOL = Path(os.environ.get('SF_SHA256_TEST_BINARY', str(BASE.parent/'build/recovery-tools/sf-sha256-host')))
+NATIVE_TOOL_SHA = '9f9c8c3e68055c8d3ceb1aed3c0edb15fcc11613bf345aa3e9745ea9725ba33e'
 VG = '11111111-1111-4111-8111-111111111111'
 EFI = '22222222-2222-4222-8222-222222222222'
 OLD = 'a' * 96
@@ -56,6 +58,10 @@ elif kind=='diskutil':
   d={'Containers':[{'ContainerReference':'disk4','VolumeGroups':groups}]}
  else:raise AssertionError(a)
  sys.stdout.buffer.write(plistlib.dumps(d))
+elif kind=='curl':
+ out=pathlib.Path(a[a.index('-o')+1]);url=next(x for x in a if x.startswith('https://'))
+ key='MOCK_TOOL' if url.endswith('/sf-sha256-darwin-arm64') else 'MOCK_TEMPLATE'
+ out.write_bytes(pathlib.Path(os.environ[key]).read_bytes())
 elif kind=='bputil':
  assert a==['-d','-v',s['requested_vg']]
  if s.get('not_paired'):print('Recovery: Not paired')
@@ -77,6 +83,7 @@ else:raise AssertionError(kind)
 
 class RecoveryTests(unittest.TestCase):
     def setUp(self):
+        assert HOST_TOOL.is_file(), 'Build the Recovery checksum host tool first (scripts/build-recovery-tools.sh)'
         self.tmp = tempfile.TemporaryDirectory(prefix='sf-stage1-tests-')
         self.root = Path(self.tmp.name)
         self.capsule = self.root / 'EFI/siliconforest/recovery-stage1'
@@ -97,6 +104,7 @@ class RecoveryTests(unittest.TestCase):
         self.installed.write_bytes(b'wrapper' + self.old + b'wrapper')
         (self.capsule / 'm1n1-neutral-stage1.bin').write_bytes(self.new[:-len(self.vars)-4])
         (self.capsule / 'm1n1-stage1.bin').write_bytes(self.new)
+        (self.capsule / 'sf-sha256').write_bytes(HOST_TOOL.read_bytes())
         conf = {'board':'j516s', 'vgid':VG, 'esp_uuid':EFI, 'raw_sha':sha(self.new[:-len(self.vars)-4]), 'image_sha':sha(self.new), 'stage2_sha':sha(b'm1n1/boot.bin'), 'old_version':'v1.6.1-dirty'}
         data = ''.join(k+'='+v+'\n' for k,v in conf.items()).encode()
         (self.capsule / 'target.conf').write_bytes(data)
@@ -106,7 +114,7 @@ class RecoveryTests(unittest.TestCase):
         self.pbuddy.write_text('#!/bin/bash\nexec /usr/bin/python3 '+str(driver)+' plist "$@"\n')
         self.pbuddy.chmod(0o700)
         assert SOURCE.count('/usr/libexec/PlistBuddy') == 1
-        source = SOURCE.replace('/usr/libexec/PlistBuddy', str(self.pbuddy)).replace('@TARGET_CONF_SHA@', sha(data))
+        source = SOURCE.replace(NATIVE_TOOL_SHA, sha(HOST_TOOL.read_bytes())).replace('/usr/libexec/PlistBuddy', str(self.pbuddy)).replace('@TARGET_CONF_SHA@', sha(data))
         (self.capsule / 'prepare.sh').write_text(source)
         self.driver = driver
         self.env = dict(os.environ, MOCK_ROOT=str(self.root))
@@ -116,7 +124,7 @@ id() { echo0; }
 stat() { /usr/bin/stat --printf='%s\\n' "$3"; }
 sync() { :; }
 '''.replace('return1','return 1').replace('echo0','echo 0') + '\n' +
-                        '\n'.join(k+'() { /usr/bin/python3 '+str(driver)+' '+k+' "$@"; }' for k in ('diskutil','bputil','kmutil')) + '\n')
+                        '\n'.join(k+'() { /usr/bin/python3 '+str(driver)+' '+k+' "$@"; }' for k in ('diskutil','bputil','kmutil','curl')) + '\n')
         self.env['BASH_ENV'] = str(mock)
         self.state = {'requested_vg':VG,'requested_efi':EFI,'vg':VG,'efi':EFI,'nsih':NSIH,'coih':OLD,'old':OLD,'new':NEW,'system_uuid':SYSTEM_UUID}
         self.save_state()
@@ -182,7 +190,7 @@ sync() { :; }
 
     def test_partial_backup_copy_never_calls_kmutil(self):
         env=Path(self.env['BASH_ENV'])
-        with env.open('a') as f:f.write('\ncp() { printf partial > "${@: -1}"; return 1; }\n')
+        with env.open('a') as f:f.write('\ncp() { case "${@: -1}" in */original-stage1.bin) printf partial > "${@: -1}"; return 1;; *) /usr/bin/cp "$@";; esac; }\n')
         r=self.run_tool('--install');self.assertNotEqual(r.returncode,0);self.assert_no_boot_write()
 
     def test_wrong_old_version(self):
@@ -199,8 +207,8 @@ sync() { :; }
         state=json.loads((self.root/'state.json').read_text());state['system_mount']='Omarchy Pro 1';(self.root/'state.json').write_text(json.dumps(state));(self.root/'Omarchy Pro').rename(self.root/'Omarchy Pro 1')
         r=subprocess.run(['/bin/bash',str(moved/'restore.sh')],env=self.env,text=True,capture_output=True);self.assertEqual(r.returncode,0,r.stderr);a=json.loads((self.root/'kmutil.log').read_text().splitlines()[-1]);self.assertEqual(a[2],str(moved/'original-stage1.bin'));self.assertEqual(a[-1],str(self.root/'Omarchy Pro 1'))
 
-    def test_broken_shasum_uses_openssl(self):
-        with Path(self.env['BASH_ENV']).open('a') as f:f.write('\nshasum() { return 1; }\n')
+    def test_no_host_crypto_commands_required(self):
+        with Path(self.env['BASH_ENV']).open('a') as f:f.write('\nshasum() { echo unexpected >&2; return 127; }\nopenssl() { echo unexpected >&2; return 127; }\nsha256() { echo unexpected >&2; return 127; }\nsha256sum() { echo unexpected >&2; return 127; }\n')
         r=self.run_tool();self.assertEqual(r.returncode,0,r.stderr);self.assert_no_boot_write()
 
     def test_install_and_native_rollback(self):
