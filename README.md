@@ -62,6 +62,15 @@ T6030/T6031. The GPU retains its 512 MiB logical PB address range, starts with
 records the checks and limits. This allocator awaits hardware qualification;
 the public installer continues to use the qualified `0e1f4666` M3 Pro kernel.
 
+The development source also carries the UVC zero-length control crash fix,
+external-display colour controls and XRGB2101010 correction, and J613 panel
+power handling for DPMS and sleep. Colour conversion and link preferences are
+opt-in; the J613 change extends the existing lid/Type-C state. The
+[source-validation ledger](release/source-reviews/20261019-display-camera-validation.json)
+records independent review, compiler and sanitizer controls, and ARM64 QEMU
+checks. These changes have no local hardware qualification or signed installer
+release yet.
+
 ## Repositories
 
 | Purpose | Repository / branch |
