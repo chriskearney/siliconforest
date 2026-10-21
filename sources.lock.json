@@ -36,9 +36,9 @@
     "configs/kernel.config": "843320f0fc947daad8f0a0c4472a8b4e7bf598f19aed176b686b9eebb1ce9eea",
     "configs/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c",
     "release/profiles.json": "540a3fe9cdcf178c1c80309bb8b4ce79786ba6d56dfac426987929ae54f63194",
-    "release/neo-candidate.json": "e5627537fe81a809c221e63efb0e007c811272175dc444df4497e1ebd90d2c22",
+    "release/neo-candidate.json": "30bbf7d8ac596b788b0ceb3ce360e727af288d0d82113ae8af12892b9038407c",
     "scripts/build-neo-m1n1.py": "ac05ee536f74a48c3ed5736626a8b23f9a92271bb4eb6851e7c5d4e37a69be7c",
-    "release/source-reviews/20261021-neo-candidate.json": "44ef18f7ea9e52e80d6ee0245a93e22e3421ceb21363bf40d86b12965513c5c3"
+    "release/source-reviews/20261021-neo-candidate.json": "ea56afb6af65f9f99c7e3f9f93c07d75355f9fd767fe33a0e36b6e9b1246b5b9"
   },
   "toolchains": {
     "kernel_llvm": "22.1.8",
@@ -57,7 +57,7 @@
   "m1n1_profiles": [
     {
       "branch": "experimental/neo",
-      "commit": "636318ba66822f3377c654b24c46ae01831c57ae",
+      "commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
       "source_commit": "1b36287e04788f4a028e6180c64d3d96e49f06b1",
       "tested": false,
       "test_scope": "Host/build tested source candidate; no hardware qualification; paired-kernel G2 lifecycle remains open",

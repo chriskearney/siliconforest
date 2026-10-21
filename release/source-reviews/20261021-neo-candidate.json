@@ -2,7 +2,7 @@
   "schema": 1,
   "date": "2026-10-21",
   "scope": "Neo/J700 source and build candidate; no installer admission",
-  "candidate_commit": "636318ba66822f3377c654b24c46ae01831c57ae",
+  "candidate_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
   "hardware_qualified": false,
   "public_installable": false,
   "source_pr": "https://github.com/iconidentify/siliconforest-m1n1/pull/2",
@@ -326,22 +326,22 @@
     }
   },
   "combined_loader": {
-    "full_suite_commit": "17eaf3d94dda78039315f4fe76d90bbcf6d5e59a",
-    "pytest_passed": 163,
+    "full_suite_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+    "pytest_passed": 165,
     "pytest_skipped": 7,
-    "final_commit_difference": "Two test assertions only; production/build inputs unchanged",
     "final_alias_tests": {
       "passed": 2,
       "full_and_reduced_dtb": true
     },
     "stage1_and_esp_stage2_builds": {
-      "commit": "17eaf3d94dda78039315f4fe76d90bbcf6d5e59a",
+      "commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
       "result": "pass",
       "rust": "1.89.0",
       "llvm": "22.1.8",
+      "make": "4.3",
       "installed": false
     },
-    "github_ci": {
+    "previous_github_ci": {
       "commit": "636318ba66822f3377c654b24c46ae01831c57ae",
       "result": "pass",
       "runs": [
@@ -349,7 +349,11 @@
         39691005948
       ]
     },
-    "final_control_wrapper_build": {
+    "current_github_ci": {
+      "commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+      "result": "pending feature-branch CI"
+    },
+    "previous_control_wrapper_build": {
       "source_commit": "636318ba66822f3377c654b24c46ae01831c57ae",
       "control_commit": "8f5bbc059349a1a5712ee417948053d2d8e8d7e3",
       "result": "pass",
@@ -428,5 +432,138 @@
     "No firmware, target ESP, main M1-M3 source pins or release catalog changed.",
     "Runtime USB selection conversion is deferred; Neo USB DMA guards are preserved.",
     "Aura source pin bf6a6417410215d3039905d12e26b82763a6381b; newer fb12 delta excluded."
-  ]
+  ],
+  "review_followups": {
+    "reviewed_source": "636318ba66822f3377c654b24c46ae01831c57ae",
+    "scope": "Root series and GNU Make fix; display series excluded",
+    "verdict": "No blockers; reviewer and independent read-only reviewer",
+    "report_sha256": "e1718b5b86fed8c83813a4397b185027a9e37c1cabe6ebe0e78f9cac3f30b81e",
+    "dispositions": {
+      "R2": "Active non-virtual PMGR orphan cleanup stays strict; known limitation documented, no speculative broadening.",
+      "R4": "Existing 300-second join without IPI resend documented; failure still refuses handoff.",
+      "R5": "Safe versus unsafe post-M4 NVMe log and successful stage-2 entry are required on first attended J700 boot; OPEN on hardware.",
+      "R6": "C/Rust prefix maps, artifact host-path refusal and normalized logs/receipt implemented. Two fresh builds produce identical binaries, ELFs and receipt. Whole-bundle reproducibility not claimed.",
+      "R7": "GNU Make >=4.3 enforced; complete normalized Make argv and Rust flags recorded.",
+      "R8": "SEP fixture SPDX corrected to MIT; exact pre-boundary source blob and MIT LICENSE verified.",
+      "R9": "Public Ryan carry URLs enumerated and PMGR mixed-license adaptation explicitly attributed.",
+      "R11": "Pre-existing comments outside added-line/message review scope; no change in this follow-up."
+    },
+    "commits": [
+      "b60b323a5c311f4f662a901f3af8c628f9d3877c",
+      "93f678f92128c28216a5cb0f710cec2d8b0ab5b1"
+    ],
+    "recipe_independent_review": {
+      "verdict": "accept",
+      "findings": [],
+      "commits": [
+        "b60b323a5c311f4f662a901f3af8c628f9d3877c",
+        "93f678f92128c28216a5cb0f710cec2d8b0ab5b1"
+      ],
+      "receipt_sha256": "88c6968b5571521ca9f75b04d457ed70047328595073745ef7e41be1e6328c35",
+      "method": "Independent source review and artifact/log verification; builds and tests not re-executed by reviewer"
+    }
+  },
+  "reproducible_artifacts": {
+    "source_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+    "toolchain": {
+      "make": "4.3",
+      "rust": "1.89.0",
+      "llvm": "22.1.8"
+    },
+    "checks": [
+      {
+        "path": "receipt.json",
+        "equal": true,
+        "sha256_a": "78228414444cdd8c9447d9982a113c6e33a69bf784e6d2c562f3c53fdbd6de8e",
+        "sha256_b": "78228414444cdd8c9447d9982a113c6e33a69bf784e6d2c562f3c53fdbd6de8e"
+      },
+      {
+        "path": "stage1/m1n1.bin",
+        "equal": true,
+        "sha256_a": "d2809d23c0520f991eb15473c40ea393fc45a97e01de1004f13835828584813e",
+        "sha256_b": "d2809d23c0520f991eb15473c40ea393fc45a97e01de1004f13835828584813e"
+      },
+      {
+        "path": "stage1/m1n1-raw.elf",
+        "equal": true,
+        "sha256_a": "b6fdc85b0728a90c6ef42883d97b6ac0d060fceabc5d7b5a24f0b908d290d7c0",
+        "sha256_b": "b6fdc85b0728a90c6ef42883d97b6ac0d060fceabc5d7b5a24f0b908d290d7c0"
+      },
+      {
+        "path": "stage1/m1n1.elf",
+        "equal": true,
+        "sha256_a": "02ae7c3133daa0c4411ed6e74213d9fe4ec632ee06f253c12eece64aabefc48e",
+        "sha256_b": "02ae7c3133daa0c4411ed6e74213d9fe4ec632ee06f253c12eece64aabefc48e"
+      },
+      {
+        "path": "stage1/build_cfg.h",
+        "equal": true,
+        "sha256_a": "000e7e45139ff82ce64b64ade603a4ee315d0c6eb01cee830e1f7d4118c5c2b6",
+        "sha256_b": "000e7e45139ff82ce64b64ade603a4ee315d0c6eb01cee830e1f7d4118c5c2b6"
+      },
+      {
+        "path": "stage1/build_tag.h",
+        "equal": true,
+        "sha256_a": "eb0fa664d2ad0ae45f8e1237e4cb90ca3ff70c9fa5cd59a480ecde71d3fefd01",
+        "sha256_b": "eb0fa664d2ad0ae45f8e1237e4cb90ca3ff70c9fa5cd59a480ecde71d3fefd01"
+      },
+      {
+        "path": "esp-stage2/m1n1.bin",
+        "equal": true,
+        "sha256_a": "db729301b65442a34a4572fda46e8c3a64e21334f77aae449b447a62dfb8e0aa",
+        "sha256_b": "db729301b65442a34a4572fda46e8c3a64e21334f77aae449b447a62dfb8e0aa"
+      },
+      {
+        "path": "esp-stage2/m1n1-raw.elf",
+        "equal": true,
+        "sha256_a": "430e019ac8b90d80216024283d64446273e6245dcf0f4abea16dc334de18a7c6",
+        "sha256_b": "430e019ac8b90d80216024283d64446273e6245dcf0f4abea16dc334de18a7c6"
+      },
+      {
+        "path": "esp-stage2/m1n1.elf",
+        "equal": true,
+        "sha256_a": "d479c1d6043c651a468fccd7727715a659d95cf5e1f4540d761bd95572c9b337",
+        "sha256_b": "d479c1d6043c651a468fccd7727715a659d95cf5e1f4540d761bd95572c9b337"
+      },
+      {
+        "path": "esp-stage2/build_cfg.h",
+        "equal": true,
+        "sha256_a": "63e8409bbcfb69344d62f58e06bd8e327daa676b46f5e275c11d67ddd627cb6e",
+        "sha256_b": "63e8409bbcfb69344d62f58e06bd8e327daa676b46f5e275c11d67ddd627cb6e"
+      },
+      {
+        "path": "esp-stage2/build_tag.h",
+        "equal": true,
+        "sha256_a": "eb0fa664d2ad0ae45f8e1237e4cb90ca3ff70c9fa5cd59a480ecde71d3fefd01",
+        "sha256_b": "eb0fa664d2ad0ae45f8e1237e4cb90ca3ff70c9fa5cd59a480ecde71d3fefd01"
+      }
+    ],
+    "host_path_leaks": [],
+    "whole_bundle_reproducibility_claim": false,
+    "reason": "Build logs preserve actual parallel ordering and timing.",
+    "receipt_sha256": "78228414444cdd8c9447d9982a113c6e33a69bf784e6d2c562f3c53fdbd6de8e"
+  },
+  "recipe_path_map_mutations": {
+    "source_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+    "control": "Two real clean builds passed with maps; images, ELFs and receipt identical",
+    "mutants": [
+      {
+        "id": "no-c-prefix-map",
+        "status": "KILLED",
+        "exit_code": 1,
+        "failure": "build host path remains in m1n1-raw.elf",
+        "published_output": false,
+        "log_sha256": "992486346753676593f3126d950a4a0e320b631a146b84f0814f88cf671e0602"
+      },
+      {
+        "id": "no-rust-prefix-map",
+        "status": "KILLED",
+        "exit_code": 1,
+        "failure": "build host path remains in m1n1.bin",
+        "published_output": false,
+        "log_sha256": "108188158e4d862afee45d3a4bf158bb996e362f201e5952003ab16191e7eb3c"
+      }
+    ],
+    "method": "Private recipe copies remove one language map at a time; original source worktree unchanged; real compilation/linking completes before artifact refusal."
+  }
 }

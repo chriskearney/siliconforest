@@ -30,7 +30,7 @@
     "m1n1": {
       "url": "https://github.com/iconidentify/siliconforest-m1n1.git",
       "branch": "experimental/neo",
-      "commit": "636318ba66822f3377c654b24c46ae01831c57ae"
+      "commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1"
     }
   },
   "toolchains": {
