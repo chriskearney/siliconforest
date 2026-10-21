@@ -348,6 +348,65 @@
         39690999410,
         39691005948
       ]
+    },
+    "final_control_wrapper_build": {
+      "source_commit": "636318ba66822f3377c654b24c46ae01831c57ae",
+      "control_commit": "8f5bbc059349a1a5712ee417948053d2d8e8d7e3",
+      "result": "pass",
+      "make": "4.3",
+      "rust": "1.89.0",
+      "llvm": "22.1.8",
+      "receipt_sha256": "8a51f2cc9964796bd0ff02eb936a520b0109d11fbeaf016276010d96f2fff5ad",
+      "sha256sums_verified": true,
+      "roles": {
+        "stage1": {
+          "image_sha256": "482c415f9dc3f609e74f6b1fb8b9922112811e6df5579dc337671a2f91859f20",
+          "image_bytes": 3538944,
+          "raw_elf_sha256": "4d3037fe490e73d65b7f4b4c68d24c75d6264f73ab407c004ec129b6497f7c90",
+          "effective_defines": [
+            "BUILTIN_LOGO bootlogo",
+            "CHAINLOADING",
+            "RELEASE",
+            "T8140_KIS_PROXY",
+            "T8140_PROXY_WINDOW_MS 15000",
+            "USE_DEBUG_USB"
+          ],
+          "linked_artwork_verified": true,
+          "make_options": [
+            "RELEASE=1",
+            "CHAINLOADING=1",
+            "T8140_KIS_PROXY=1",
+            "T8140_PROXY_WINDOW_MS=15000",
+            "USE_CLANG=1",
+            "ARCH=aarch64-linux-gnu",
+            "EXTRA_CFLAGS=-Werror",
+            "BUILTIN_LOGO=bootlogo"
+          ]
+        },
+        "esp-stage2": {
+          "image_sha256": "77d79e8745aab0f6ceb08ad2ae300bc54f63ce4f74facad0af99ac702a9b345f",
+          "image_bytes": 3538944,
+          "raw_elf_sha256": "b093338c43708b92054bb052fbe3deb696e97f211be137e89aefec7f5081ed97",
+          "effective_defines": [
+            "BUILTIN_LOGO bootlogo",
+            "CHAINLOADING",
+            "ESP_STAGE2",
+            "RELEASE"
+          ],
+          "linked_artwork_verified": true,
+          "make_options": [
+            "RELEASE=1",
+            "CHAINLOADING=1",
+            "ESP_STAGE2=1",
+            "USE_CLANG=1",
+            "ARCH=aarch64-linux-gnu",
+            "EXTRA_CFLAGS=-Werror",
+            "BUILTIN_LOGO=bootlogo"
+          ]
+        }
+      },
+      "installed": false,
+      "signed": false
     }
   },
   "review": {

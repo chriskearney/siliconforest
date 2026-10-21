@@ -38,7 +38,7 @@
     "release/profiles.json": "540a3fe9cdcf178c1c80309bb8b4ce79786ba6d56dfac426987929ae54f63194",
     "release/neo-candidate.json": "e5627537fe81a809c221e63efb0e007c811272175dc444df4497e1ebd90d2c22",
     "scripts/build-neo-m1n1.py": "ac05ee536f74a48c3ed5736626a8b23f9a92271bb4eb6851e7c5d4e37a69be7c",
-    "release/source-reviews/20261021-neo-candidate.json": "07da71cb49c3a3796e886273ec61b84a3bbeb4dc8b6b4fcccbab1b52734608b6"
+    "release/source-reviews/20261021-neo-candidate.json": "44ef18f7ea9e52e80d6ee0245a93e22e3421ceb21363bf40d86b12965513c5c3"
   },
   "toolchains": {
     "kernel_llvm": "22.1.8",
