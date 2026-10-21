@@ -131,6 +131,24 @@ anything into its boot partition.
 | --- | --- |
 | Kernel | LLVM/Clang/LLD 22.1.8, Rust 1.93.1 with rust-src, the corrected bindgen from `sources/linux/tools/aurora-bindgen/`, make, host C compiler, bc, flex, bison, cpio, perl, Python, libelf, OpenSSL development files, pahole, kmod |
 | m1n1 stage 2 | LLVM/Clang/LLD 22.1.8, llvm-objcopy, make, Rust 1.99.0 with `aarch64-unknown-none-softfloat` |
+| Neo loader candidate | Linux, Python 3.12+, GNU Make 4.3+, LLVM/Clang/LLD/llvm-objcopy 22.1.8, Rust 1.89.0 with `aarch64-unknown-none-softfloat`, cached Cargo dependencies and a generated branding export |
+
+Neo/J700 uses the separate, unqualified [candidate profile](release/neo-candidate.json).
+Keep its clean m1n1 checkout separate from the released M1–M3 source and use
+the exact commit recorded there. Inspect the locked build command with:
+
+```sh
+python3 scripts/build-neo-m1n1.py --source /path/to/neo-checkout \
+  --artwork /path/to/branding-export --output /path/to/new-output --plan
+```
+
+From a clean, committed control checkout, omit `--plan` to build the unsigned
+stage-1/ESP-stage-2 pair. The output directory must not exist and its parent
+must exist. The builder checks source and artwork hashes, effective role flags
+and binary layout; it never switches an existing checkout or installs a boot
+component. The matched kernel lifecycle, firmware, boot backend, physical
+display and rebooted rollback still need qualification. This profile is not
+admitted by the public installer.
 
 For an already provisioned Rust builder:
 

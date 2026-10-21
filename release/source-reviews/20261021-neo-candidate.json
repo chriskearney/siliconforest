@@ -1,0 +1,373 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "scope": "Neo/J700 source and build candidate; no installer admission",
+  "candidate_commit": "636318ba66822f3377c654b24c46ae01831c57ae",
+  "hardware_qualified": false,
+  "public_installable": false,
+  "source_pr": "https://github.com/iconidentify/siliconforest-m1n1/pull/2",
+  "p4_p5": {
+    "frozen_head": "ecc3f6d6482f0e3238d9e22408bcfb2bef0035d8",
+    "receipt_sha256": "198323d1705522869d19fad905b4208f6def72e6cb3a71fc9337baa0c22ae032",
+    "commits": [
+      {
+        "sha": "1294481c114af7aed21c82d1c64166ff629b0607",
+        "subject": "kboot: Accept an idle inherited T8140 external DCP",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "2d50ac8ae456e8a424e3346526894821413eb0db",
+        "kind": "carried"
+      },
+      {
+        "sha": "fab6fce6291b5d087a2bffdbca379ca83bc62008",
+        "subject": "asc: admit the external DCP only in the idle state Linux adopts",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      },
+      {
+        "sha": "a06b66f1c1051a01a44e5ffb99212fa719660fc7",
+        "subject": "kboot: enable the external display dependency group together",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "b575b99394a8e280e8ebe5c6773581f03e913166",
+        "kind": "carried"
+      },
+      {
+        "sha": "fc1ae0f5de8e0ee820fec755f9533b32241bb7be",
+        "subject": "kboot: publish validated external power suppliers with their consumers",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "e46cc7dbe059db14093f0d0987df853379bb93e3",
+        "kind": "carried"
+      },
+      {
+        "sha": "505fd6e9725f9f7319647a63fe30c5fc4d98639c",
+        "subject": "kboot: withdraw external scanout translations on refused handoff",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "ce2c482397cc2360ac4437b6ba3158727c07fffc",
+        "kind": "carried"
+      },
+      {
+        "sha": "5c8fe622287bf43671d76f8e697faa197eecee30",
+        "subject": "kboot: bound power supplier path output by caller capacity",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "91ac1b21419870edb08acd103ef4c157d580aa03",
+        "kind": "carried"
+      },
+      {
+        "sha": "119b0b82c29d1c0790546e76bda3c4823043e406",
+        "subject": "tests: expose incomplete T8140 DP refusal supplier withdrawal",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "df9fec35a355cb819f5d38e0b6e0ce841d19fd76",
+        "kind": "carried"
+      },
+      {
+        "sha": "9bcc6f7bd02f59241f7f3e5bac8244c4f11dd958",
+        "subject": "kboot: withdraw external PIODMA IOMMU providers without aliases",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "c98410d9597d7d4add768d56050574cc1ea6b64e",
+        "kind": "carried"
+      },
+      {
+        "sha": "cd478317b37e7ecc483154986281d4b83b0423d3",
+        "subject": "kboot: withdraw external suppliers on whole-display refusal",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "fbc96140313739d88450a096780da45c5abbebbb",
+        "kind": "carried"
+      },
+      {
+        "sha": "b18bd1d22cd5b75b4698f7cc3b77344684b43bd3",
+        "subject": "kboot: reject incomplete display refusal topology",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "d755fed9cbc777d9d47b78ca926fea23af4b664d",
+        "kind": "carried"
+      },
+      {
+        "sha": "ccda158b94487272532c15627473b1b1e094de19",
+        "subject": "kboot: validate refusal aliases before following them",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "498830ac4480cdf5774f118176816b2a46815fe1",
+        "kind": "carried"
+      },
+      {
+        "sha": "90650841c3d629e612440f08804aef1a9704f28c",
+        "subject": "kboot: validate refusal ownership against display dependencies",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "70f07beaf66f0fd5a4e9a8005f1eb33f5fc2f763",
+        "kind": "carried"
+      },
+      {
+        "sha": "49c48f101c0d051248b990a58dee4e95a039edb5",
+        "subject": "kboot: preserve supplier identity during display refusal",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "9ce297852b7f8ccb9119a17a4db8e9d9ebd5afa8",
+        "kind": "carried"
+      },
+      {
+        "sha": "33c9c8bb7293a5bb5061af899e0b21f29439369a",
+        "subject": "tests: compile withdrawal fixture with portable libfdt host declarations",
+        "author": "Dj <hey@djdev.me>",
+        "aura_source": "c4331a90ef324eab33d34d1515d7e42748a293ab",
+        "kind": "carried"
+      },
+      {
+        "sha": "88122865696cdf3f487c7a8249c6cf59bbc6d94c",
+        "subject": "kboot: reserve and publish T8140 display DARTs by owner",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      },
+      {
+        "sha": "fab7b670f3393f4581bc073acd99cc74a6b65808",
+        "subject": "kboot: disable the J700 Touch ID controller when firmware omits it",
+        "author": "DjDeveloperr <hey@djdev.me>",
+        "aura_source": "e4cbfa5aa70d805aa715a5c574f54824dd660b32",
+        "kind": "carried"
+      },
+      {
+        "sha": "aa67c5374b69367e2e1ed6db70fcc3b6be7ab99b",
+        "subject": "license: mark files carrying Aura display and Touch ID contributions",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      },
+      {
+        "sha": "1c0fe386ebc7949a225cb39678297cc0ee94c44a",
+        "subject": "tests: scope the ISP fixtures to their helper after the Touch ID fixup",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      },
+      {
+        "sha": "25d267b413f79a8fb02522aa364d746f12007858",
+        "subject": "kboot: validate the T8140 display aliases before following them",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      },
+      {
+        "sha": "ecc3f6d6482f0e3238d9e22408bcfb2bef0035d8",
+        "subject": "tests: require display alias refusal before any DART read",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      }
+    ],
+    "changed_files": [
+      {
+        "path": "src/asc.c",
+        "status": "modified",
+        "added": 22,
+        "deleted": 6,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "src/asc.h",
+        "status": "modified",
+        "added": 8,
+        "deleted": 2,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "src/kboot.c",
+        "status": "modified",
+        "added": 760,
+        "deleted": 64,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "tests/data/t8140-iommu-withdrawal.c",
+        "status": "added",
+        "added": 79,
+        "deleted": 0,
+        "spdx": "MIT"
+      },
+      {
+        "path": "tests/data/t8140-j700-display.dts",
+        "status": "added",
+        "added": 285,
+        "deleted": 0,
+        "spdx": "GPL-2.0+ OR MIT"
+      },
+      {
+        "path": "tests/data/t8140-j700-display.py",
+        "status": "added",
+        "added": 87,
+        "deleted": 0,
+        "spdx": "MIT"
+      },
+      {
+        "path": "tests/python/test_dcp_iboot_public_wire_contract.py",
+        "status": "added",
+        "added": 161,
+        "deleted": 0,
+        "spdx": "MIT"
+      },
+      {
+        "path": "tests/python/test_display_alias_compat.py",
+        "status": "modified",
+        "added": 9,
+        "deleted": 3,
+        "spdx": "GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_external_dependency_group.py",
+        "status": "added",
+        "added": 93,
+        "deleted": 0,
+        "spdx": "MIT"
+      },
+      {
+        "path": "tests/python/test_isp_heap.py",
+        "status": "modified",
+        "added": 2,
+        "deleted": 1,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_isp_reservation_full.py",
+        "status": "modified",
+        "added": 2,
+        "deleted": 1,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_j700_touch_id_fdt.py",
+        "status": "added",
+        "added": 83,
+        "deleted": 0,
+        "spdx": "GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_t8140_display_handoff.py",
+        "status": "modified",
+        "added": 86,
+        "deleted": 17,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_t8140_display_iommu_withdrawal.py",
+        "status": "added",
+        "added": 43,
+        "deleted": 0,
+        "spdx": "MIT",
+        "note": "identifier on line 2 after the shebang, as in Aura"
+      },
+      {
+        "path": "tests/python/test_t8140_display_j700_dt.py",
+        "status": "added",
+        "added": 685,
+        "deleted": 0,
+        "spdx": "GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_t8140_display_refusal_contract.py",
+        "status": "added",
+        "added": 549,
+        "deleted": 0,
+        "spdx": "MIT"
+      }
+    ],
+    "pytest": {
+      "passed": 147,
+      "skipped": 7,
+      "baseline_passed": 80,
+      "baseline_skipped": 7,
+      "full_composed_j700_dtb": true
+    },
+    "target_compile": {
+      "compiler": "clang 22.1.8",
+      "files": [
+        "src/kboot.c",
+        "src/asc.c"
+      ],
+      "extra_flags": [
+        "-Werror",
+        "-Wextra"
+      ],
+      "diagnostics": 0
+    },
+    "wording_scan": {
+      "hits": 0,
+      "positive_control_hits": 8
+    },
+    "mutation_sets": {
+      "01-idle": {
+        "runtime_kills": 8,
+        "survived": 0,
+        "nobuild": 0,
+        "controls": "pass",
+        "result_sha256": "a5d178f467b297dbd038496b3a363d9627e26ea483ea82e62ed30b56c3001232"
+      },
+      "02-owner": {
+        "runtime_kills": 11,
+        "survived": 0,
+        "nobuild": 0,
+        "controls": "pass",
+        "result_sha256": "7afb88243c38415b7f1049f1091a9a01630831f1e30d8304d01d228eab7e66f4"
+      },
+      "03-carry-adaptations": {
+        "runtime_kills": 3,
+        "survived": 0,
+        "nobuild": 0,
+        "controls": "pass",
+        "result_sha256": "231e66b1ca0681140f9ee32b6d70df5ec508a272a038976c27c1d1148f30f611"
+      },
+      "04-alias": {
+        "runtime_kills": 3,
+        "survived": 0,
+        "nobuild": 0,
+        "controls": "pass",
+        "result_sha256": "b171c5fae80312810ebba914b01670945bbb4e48fdaf764ebeeaf7f9be9bcab3"
+      }
+    },
+    "dtb": {
+      "composed_dtb_sha256": "2fefe07a6bb5a547384ce12bf9387cb7308880324ba94207f380ce4863d8f20b",
+      "kernel": "e4b97a383d11749300e72a40032c363db7e6c4c0",
+      "fixture": "tests/data/t8140-j700-display.dts"
+    }
+  },
+  "combined_loader": {
+    "full_suite_commit": "17eaf3d94dda78039315f4fe76d90bbcf6d5e59a",
+    "pytest_passed": 163,
+    "pytest_skipped": 7,
+    "final_commit_difference": "Two test assertions only; production/build inputs unchanged",
+    "final_alias_tests": {
+      "passed": 2,
+      "full_and_reduced_dtb": true
+    },
+    "stage1_and_esp_stage2_builds": {
+      "commit": "17eaf3d94dda78039315f4fe76d90bbcf6d5e59a",
+      "result": "pass",
+      "rust": "1.89.0",
+      "llvm": "22.1.8",
+      "installed": false
+    },
+    "github_ci": {
+      "commit": "636318ba66822f3377c654b24c46ae01831c57ae",
+      "result": "pass",
+      "runs": [
+        39690999410,
+        39691005948
+      ]
+    }
+  },
+  "review": {
+    "root_series": "Independent Grok review accepted 4235c0dc7f8f59caf442a23ca31c8f2a0381ad2a",
+    "display_series": "Independent Grok review accepted aa67c5374b69367e2e1ed6db70fcc3b6be7ab99b with ISP test fixture fix 1c0fe386ebc7949a225cb39678297cc0ee94c44a",
+    "alias_followups": "Root reviewed 25d267b413f79a8fb02522aa364d746f12007858 and test-only ecc3f6d6482f0e3238d9e22408bcfb2bef0035d8",
+    "gnu_make_43_fix": "Independent Grok review accepted 3757cb47e704db43a7b6983e5491e3aa97d6d4ec; real GNU Make 4.3 before/after reproduction and seven focused tests on 4.3 and 4.4.1"
+  },
+  "remaining_gates": [
+    "Paired-kernel G2 no-start external refusal lifecycle",
+    "Actual J700 firmware/boot/recovery inventory",
+    "Built kernel/Mesa native G17 ABI/dependency evidence",
+    "Attended boot, physical display, recovery and reboot-verified rollback",
+    "Exact versioned installer qualification before any catalog admission"
+  ],
+  "limits": [
+    "G2 kernel implementation and review are separate and pending.",
+    "No actual J700 boot, physical display, recovery, rollback or installer qualification.",
+    "No firmware, target ESP, main M1-M3 source pins or release catalog changed.",
+    "Runtime USB selection conversion is deferred; Neo USB DMA guards are preserved.",
+    "Aura source pin bf6a6417410215d3039905d12e26b82763a6381b; newer fb12 delta excluded."
+  ]
+}

@@ -35,7 +35,10 @@
   "inputs": {
     "configs/kernel.config": "843320f0fc947daad8f0a0c4472a8b4e7bf598f19aed176b686b9eebb1ce9eea",
     "configs/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c",
-    "release/profiles.json": "540a3fe9cdcf178c1c80309bb8b4ce79786ba6d56dfac426987929ae54f63194"
+    "release/profiles.json": "540a3fe9cdcf178c1c80309bb8b4ce79786ba6d56dfac426987929ae54f63194",
+    "release/neo-candidate.json": "e5627537fe81a809c221e63efb0e007c811272175dc444df4497e1ebd90d2c22",
+    "scripts/build-neo-m1n1.py": "ac05ee536f74a48c3ed5736626a8b23f9a92271bb4eb6851e7c5d4e37a69be7c",
+    "release/source-reviews/20261021-neo-candidate.json": "07da71cb49c3a3796e886273ec61b84a3bbeb4dc8b6b4fcccbab1b52734608b6"
   },
   "toolchains": {
     "kernel_llvm": "22.1.8",
@@ -54,9 +57,21 @@
   "m1n1_profiles": [
     {
       "branch": "experimental/neo",
-      "commit": "c57f27f473de3d75266cf4d3f17e02866acd0edb",
+      "commit": "636318ba66822f3377c654b24c46ae01831c57ae",
       "source_commit": "1b36287e04788f4a028e6180c64d3d96e49f06b1",
-      "tested": true
+      "tested": false,
+      "test_scope": "Host/build tested source candidate; no hardware qualification; paired-kernel G2 lifecycle remains open",
+      "paired_sources": {
+        "linux": {
+          "url": "https://github.com/iconidentify/siliconforest-linux.git",
+          "commit": "e4b97a383d11749300e72a40032c363db7e6c4c0"
+        },
+        "mesa": {
+          "url": "https://github.com/iconidentify/siliconforest-mesa.git",
+          "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+        }
+      },
+      "validation_report": "release/source-reviews/20261021-neo-candidate.json"
     },
     {
       "branch": "experimental/m4",
