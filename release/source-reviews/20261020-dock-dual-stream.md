@@ -53,3 +53,14 @@ The forced-pairing build bc1c1b78b41e did not establish a Dell picture. Both ext
 The follow-up e3291940988f gives T6030 one provider attempt per ordered work item. Not-ready results schedule delayed work at 500 ms, retaining the original 60/240-attempt bounds across immutable binding replacements. Callback admission is revoked before a refused binding is freed. A new generation resets the budget. M1/M2 retain their previous synchronous provider loop.
 
 Source gates: display plus DP-IN lifecycle KUnit 404 run, 403 pass, one existing skip. Actual provider-loop controls catch four broken variants: blocking the queue, yielding on legacy platforms, omitting token revocation and removing retry bounds. Production build and a valid reversed pairing remain hardware gates. This is still a diagnostic branch with a forced default that must never be merged or promoted.
+
+
+## Current dock5 result and next adapter isolation
+
+The queued readiness correction boots with both external connectors and separate active CRTCs. The owner still sees only the Samsung. The Samsung has worked through each external DCP source; the Dell has failed through each. Both host packet counters and the corresponding dock ingress counters advance without counter errors. Physical video on the Dell remains FAILED, so no merge or promotion follows from the software checks.
+
+Known results are accepted: the same adapter works directly on the Mac USB-C port and built-in HDMI works. Repeating those tests is unnecessary. The allocation-mode enable bit is clear on both host DP adapters; an allocated-bandwidth reading of zero does not establish a missing grant. No grant or undocumented-register experiment is justified by that reading.
+
+The prior processor swap did not change the tunnel pairing: Samsung remained on DPIN0 and Dell on DPIN1. The separate diagnostic branch now reverses the initial DP IN resource preference only on a dual-stream T6030 host, leaving device-router priority and other machines unchanged. This should pair the Samsung with DPIN1 and the Dell with DPIN0 without cable changes. The actual pairing must be verified in the new boot's logs before drawing conclusions. The diagnostic default is explicitly never-promote; no clock, adapter register, bandwidth or mode programming is altered.
+
+The actual changed resource-list function passes 32 combinations of machine, dual-stream capability, host/device router, opt-out and resource availability under ASan/UBSan, plus a device-router priority case. Removing reversal, removing the machine gate and removing the dual-stream gate each makes the corresponding assertions fail. Production compilation and independent review must pass before an attended test. A physical picture remains the acceptance criterion.
