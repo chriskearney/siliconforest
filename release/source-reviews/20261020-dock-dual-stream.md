@@ -39,3 +39,9 @@ A follow-up adds opt-in packet counters with distinct downstream indices for bot
 At 77d1631f0324, both host video counters increase and both corresponding dock ingress counters increase. Crossbar gate status agrees with its configuration. The owner still reports that the Dell is black; compositor screenshots and packet counters are not physical HDMI qualification.
 
 0303da29c078 tests a possible missing converter-service path on the existing fixed-HDMI T6030 pipeline while borrowed by USB4. It is disabled by default and controllable only by root through appledrm.usb4_sink_service. No new platform or initialization scope is enabled. Direct Type-C, disconnected and crashed paths remain excluded. Display KUnit passes 364 with one existing skip; three deliberate broken variants are caught, and the restored service suite passes 7/7. This experiment must not become a release default without a real picture and further review.
+
+## Processor-isolation branch: never promote its forced default
+
+The opt-in USB4 converter-service poll delivered requests successfully but did not restore the Dell picture, including after a software output restart. The switch was disabled. This experiment did not qualify a fix.
+
+The next attended diagnostic branch pins source 0 to DPIN0 and source 2 to DPIN1, reversing the actual source-to-tunnel assignment. It is intended to distinguish failure of a particular processor from failure of the second tunnel or converter path. It deliberately defaults to the forced pairing and must not be merged or promoted as a release. No permanent desktop configuration or target boot parameter changes are needed. The standard automatic pairing remains available with -1.
