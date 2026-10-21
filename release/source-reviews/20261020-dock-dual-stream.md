@@ -1,0 +1,27 @@
+# M3 Pro: two displays through a Thunderbolt dock
+
+Source candidate: `7223764041eebfd3c5c9c1ff0a0b090837abc6ba`, based on the installed SiliconForest `e4b97a383d11` kernel. This is an attended test candidate, not a hardware qualification claim.
+
+The reproduced topology is a CalDigit TS3 Plus with one monitor on DisplayPort and a second monitor on a USB-C-to-HDMI adapter in the downstream Thunderbolt port. The installed driver starts the first DisplayPort tunnel but rejects the second with `-EOPNOTSUPP`. Both fabric admission and the T6030 PHY clock helper explicitly exclude DP IN1.
+
+The carry adapts the previously built, never boot-tested implementation `8753b9ff351e`. Each tunnel has a source owner, rate and clock-user bit. A disconnect stops only that stream, and the shared PLL is stopped only for the last user. PCLK1 remains enabled while DP IN1 needs it. Failed PLL shutdown retains ownership. Stale sources cannot stop another source's clock, and one source cannot drive both streams simultaneously.
+
+Physical dual-stream wiring is separated from the ordered M1/M2 allocation policy. Native T6030 processors retain their route ownership and expose each connector's actual CRTC. Named mux descriptions are added to the J514S/J516S device trees. Other machines retain their prior policy and clock sequences; this does not enable a new SoC or remove its qualification checks. The GPU UAPI is unchanged.
+
+## Source evidence
+
+- Actual-body clock/callback harness: 19 cases, including 128 complete rate/source/start/stop combinations with independent retunes, startup faults, failed cleanup and failed final stop.
+- Shared DT-wiring harness: 22 cases; absent, invalid, partial, legacy and named descriptions.
+- Existing M1/M2 clock controls: 16 cases.
+- Route snapshot/control harness passes after adding the current clamshell fields to its host fixture.
+- Replacing the callback or wiring classifier with the installed driver's body fails the new tests. Removing the shared-clock prerequisite fails the modeled register assertions.
+- All 115 production Apple DTBs compared: only `t6030-j514s.dtb` and `t6030-j516s.dtb` change.
+- No changes to `include/uapi` or `rust/uapi`.
+
+Full production build, display/PHY KUnit and hardware results must be recorded before promotion. The older broad `dp-release-tests.py` host fixture has pre-existing drift against current display/Type-C fields and does not compile against this baseline; it is not counted as a passing gate. The new clock harness executes the real changed callback and PHY functions directly.
+
+## Installation and hardware gates
+
+Use a new signed matched candidate assembled from the installed bootlogo1 bundle, retaining its stage-1 admission and stage-2 artwork. Kernel and device tree must be installed together; never substitute a DTB independently. Retain the previous UKI, loader, packages and exact configuration for rollback.
+
+Capture both DRM connectors and their actual modes, verify GL/Vulkan readback and kernel health, then test dock reconnect and individual monitor disconnects with the owner. A successful compile or EDID read alone does not establish a working picture. A native HDMI port consumes one of the two external processors; this change does not create a third external display pipeline. Bandwidth sharing PR154 remains outside this carry.
