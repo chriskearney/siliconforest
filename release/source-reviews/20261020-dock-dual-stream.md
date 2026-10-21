@@ -19,7 +19,7 @@ Physical dual-stream wiring is separated from the ordered M1/M2 allocation polic
 - All 115 production Apple DTBs compared: only `t6030-j514s.dtb` and `t6030-j516s.dtb` change.
 - No changes to `include/uapi` or `rust/uapi`.
 
-Full production build, display/PHY KUnit and hardware results must be recorded before promotion. The older broad `dp-release-tests.py` host fixture has pre-existing drift against current display/Type-C fields and does not compile against this baseline; it is not counted as a passing gate. The new clock harness executes the real changed callback and PHY functions directly.
+Display/PHY/fabric KUnit on the candidate: 362 run, 361 pass, one existing skip, zero failures. Full production build and hardware results must be recorded before promotion. The older broad `dp-release-tests.py` host fixture has pre-existing drift against current display/Type-C fields and does not compile against this baseline; it is not counted as a passing gate. The new clock harness executes the real changed callback and PHY functions directly.
 
 ## Installation and hardware gates
 
