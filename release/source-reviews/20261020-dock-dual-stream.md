@@ -33,3 +33,9 @@ Capture both DRM connectors and their actual modes, verify GL/Vulkan readback an
 The first attended candidate (88eee3ea5595) boots and passes hardware OpenGL and Vulkan readback. Both external displays have EDID, separate active CRTCs and firmware mode/swap completions. The owner reports that the downstream USB-C/HDMI Dell still has no HDMI signal, including at 1280x720. The Samsung remains usable. This is a failed physical-display result, not release qualification.
 
 A follow-up adds opt-in packet counters with distinct downstream indices for both streams and dynamic-debug crossbar clock snapshots. Defaults remain unchanged. No release promotion or merge is authorized by these source tests alone.
+
+## USB4 converter-service experiment
+
+At 77d1631f0324, both host video counters increase and both corresponding dock ingress counters increase. Crossbar gate status agrees with its configuration. The owner still reports that the Dell is black; compositor screenshots and packet counters are not physical HDMI qualification.
+
+0303da29c078 tests a possible missing converter-service path on the existing fixed-HDMI T6030 pipeline while borrowed by USB4. It is disabled by default and controllable only by root through appledrm.usb4_sink_service. No new platform or initialization scope is enabled. Direct Type-C, disconnected and crashed paths remain excluded. Display KUnit passes 364 with one existing skip; three deliberate broken variants are caught, and the restored service suite passes 7/7. This experiment must not become a release default without a real picture and further review.
