@@ -1,6 +1,6 @@
 # M3 Pro: two displays through a Thunderbolt dock
 
-Source candidate: `cd765ba2791223eb271da77d4799220eeb848d4c`, based on the installed SiliconForest `e4b97a383d11` kernel. This is an attended test candidate, not a hardware qualification claim.
+Source candidate: `88eee3ea5595849a5b8eefe508b7981f488b9bc8`, based on the installed SiliconForest `e4b97a383d11` kernel. This is an attended test candidate, not a hardware qualification claim.
 
 The reproduced topology is a CalDigit TS3 Plus with one monitor on DisplayPort and a second monitor on a USB-C-to-HDMI adapter in the downstream Thunderbolt port. The installed driver starts the first DisplayPort tunnel but rejects the second with `-EOPNOTSUPP`. Both fabric admission and the T6030 PHY clock helper explicitly exclude DP IN1.
 
@@ -10,6 +10,7 @@ Physical dual-stream wiring is separated from the ordered M1/M2 allocation polic
 
 ## Source evidence
 
+- CI runs the new clock/mutation and wiring controls alongside existing M1/M2 clock and route checks.
 - Actual-body clock/callback harness: 19 cases, including 128 complete rate/source/start/stop combinations with independent retunes, startup faults, failed cleanup and failed final stop.
 - ASan/UBSan is run on the same extracted clock/callback translation unit.
 - Shared DT-wiring harness: 22 cases; absent, invalid, partial, legacy and named descriptions.
