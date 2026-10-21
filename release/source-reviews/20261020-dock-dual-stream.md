@@ -15,7 +15,7 @@ Physical dual-stream wiring is separated from the ordered M1/M2 allocation polic
 - Shared DT-wiring harness: 22 cases; absent, invalid, partial, legacy and named descriptions.
 - Existing M1/M2 clock controls: 16 cases.
 - Route snapshot/control harness passes after adding the current clamshell fields to its host fixture.
-- Replacing the callback or wiring classifier with the installed driver's body fails the new tests. Removing the shared-clock prerequisite fails the modeled register assertions.
+- Replacing the callback or wiring classifier with the installed driver's body fails the new tests. Six deliberately broken variants are detected: dropping the shared-clock prerequisite, removing source ownership, allowing a duplicate source, stopping a shared PLL, losing a failed-start owner, and selecting the wrong clock.
 - All 115 production Apple DTBs compared: only `t6030-j514s.dtb` and `t6030-j516s.dtb` change.
 - No changes to `include/uapi` or `rust/uapi`.
 
