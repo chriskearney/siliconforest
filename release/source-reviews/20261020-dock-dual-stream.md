@@ -27,3 +27,9 @@ Display/PHY/fabric KUnit on the candidate: 362 run, 361 pass, one existing skip,
 Use a new signed matched candidate assembled from the installed bootlogo1 bundle, retaining its stage-1 admission and stage-2 artwork. Kernel and device tree must be installed together; never substitute a DTB independently. Retain the previous UKI, loader, packages and exact configuration for rollback.
 
 Capture both DRM connectors and their actual modes, verify GL/Vulkan readback and kernel health, then test dock reconnect and individual monitor disconnects with the owner. A successful compile or EDID read alone does not establish a working picture. A native HDMI port consumes one of the two external processors; this change does not create a third external display pipeline. Bandwidth sharing PR154 remains outside this carry.
+
+## Hardware admission remains blocked
+
+The first attended candidate (88eee3ea5595) boots and passes hardware OpenGL and Vulkan readback. Both external displays have EDID, separate active CRTCs and firmware mode/swap completions. The owner reports that the downstream USB-C/HDMI Dell still has no HDMI signal, including at 1280x720. The Samsung remains usable. This is a failed physical-display result, not release qualification.
+
+A follow-up adds opt-in packet counters with distinct downstream indices for both streams and dynamic-debug crossbar clock snapshots. Defaults remain unchanged. No release promotion or merge is authorized by these source tests alone.
