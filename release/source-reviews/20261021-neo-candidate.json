@@ -411,6 +411,100 @@
       },
       "installed": false,
       "signed": false
+    },
+    "final_control_wrapper_build": {
+      "source_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+      "control_commit": "2dac69c2d8158ab11daebef13f7e867a25bba648",
+      "result": "pass",
+      "make": "4.3",
+      "rust": "1.89.0",
+      "llvm": "22.1.8",
+      "receipt_sha256": "78228414444cdd8c9447d9982a113c6e33a69bf784e6d2c562f3c53fdbd6de8e",
+      "receipt_identical_to_both_direct_builds": true,
+      "sha256sums_verified": true,
+      "roles": {
+        "stage1": {
+          "image_sha256": "d2809d23c0520f991eb15473c40ea393fc45a97e01de1004f13835828584813e",
+          "image_bytes": 3538944,
+          "raw_elf_sha256": "b6fdc85b0728a90c6ef42883d97b6ac0d060fceabc5d7b5a24f0b908d290d7c0",
+          "effective_defines": [
+            "BUILTIN_LOGO bootlogo",
+            "CHAINLOADING",
+            "RELEASE",
+            "T8140_KIS_PROXY",
+            "T8140_PROXY_WINDOW_MS 15000",
+            "USE_DEBUG_USB"
+          ],
+          "linked_artwork_verified": true,
+          "make_argv": [
+            "make",
+            "-j8",
+            "RELEASE=1",
+            "CHAINLOADING=1",
+            "T8140_KIS_PROXY=1",
+            "T8140_PROXY_WINDOW_MS=15000",
+            "USE_CLANG=1",
+            "ARCH=aarch64-linux-gnu",
+            "EXTRA_CFLAGS=-Werror -ffile-prefix-map=/siliconforest/neo/home=/siliconforest/neo/home -ffile-prefix-map=/siliconforest/neo/cargo=/siliconforest/neo/cargo -ffile-prefix-map=/siliconforest/neo/rustup=/siliconforest/neo/rustup -ffile-prefix-map=/siliconforest/neo/build=/siliconforest/neo/build -ffile-prefix-map=/siliconforest/neo/stage1=/siliconforest/neo/stage1",
+            "TOOLCHAIN=",
+            "LLDDIR=",
+            "RUSTARCH=aarch64-unknown-none-softfloat",
+            "BUILTIN_LOGO=bootlogo",
+            "BOOTLOGO_DIR=/siliconforest/neo/build/artwork",
+            "M1N1_VERSION_TAG=v2.0.0-siliconforest.neo.dev.g93f678f92128"
+          ],
+          "rustflags": [
+            "-D",
+            "warnings",
+            "--remap-path-prefix=/siliconforest/neo/home=/siliconforest/neo/home",
+            "--remap-path-prefix=/siliconforest/neo/cargo=/siliconforest/neo/cargo",
+            "--remap-path-prefix=/siliconforest/neo/rustup=/siliconforest/neo/rustup",
+            "--remap-path-prefix=/siliconforest/neo/build=/siliconforest/neo/build",
+            "--remap-path-prefix=/siliconforest/neo/stage1=/siliconforest/neo/stage1"
+          ],
+          "host_paths_absent": true
+        },
+        "esp-stage2": {
+          "image_sha256": "db729301b65442a34a4572fda46e8c3a64e21334f77aae449b447a62dfb8e0aa",
+          "image_bytes": 3538944,
+          "raw_elf_sha256": "430e019ac8b90d80216024283d64446273e6245dcf0f4abea16dc334de18a7c6",
+          "effective_defines": [
+            "BUILTIN_LOGO bootlogo",
+            "CHAINLOADING",
+            "ESP_STAGE2",
+            "RELEASE"
+          ],
+          "linked_artwork_verified": true,
+          "make_argv": [
+            "make",
+            "-j8",
+            "RELEASE=1",
+            "CHAINLOADING=1",
+            "ESP_STAGE2=1",
+            "USE_CLANG=1",
+            "ARCH=aarch64-linux-gnu",
+            "EXTRA_CFLAGS=-Werror -ffile-prefix-map=/siliconforest/neo/home=/siliconforest/neo/home -ffile-prefix-map=/siliconforest/neo/cargo=/siliconforest/neo/cargo -ffile-prefix-map=/siliconforest/neo/rustup=/siliconforest/neo/rustup -ffile-prefix-map=/siliconforest/neo/build=/siliconforest/neo/build -ffile-prefix-map=/siliconforest/neo/esp-stage2=/siliconforest/neo/esp-stage2",
+            "TOOLCHAIN=",
+            "LLDDIR=",
+            "RUSTARCH=aarch64-unknown-none-softfloat",
+            "BUILTIN_LOGO=bootlogo",
+            "BOOTLOGO_DIR=/siliconforest/neo/build/artwork",
+            "M1N1_VERSION_TAG=v2.0.0-siliconforest.neo.dev.g93f678f92128"
+          ],
+          "rustflags": [
+            "-D",
+            "warnings",
+            "--remap-path-prefix=/siliconforest/neo/home=/siliconforest/neo/home",
+            "--remap-path-prefix=/siliconforest/neo/cargo=/siliconforest/neo/cargo",
+            "--remap-path-prefix=/siliconforest/neo/rustup=/siliconforest/neo/rustup",
+            "--remap-path-prefix=/siliconforest/neo/build=/siliconforest/neo/build",
+            "--remap-path-prefix=/siliconforest/neo/esp-stage2=/siliconforest/neo/esp-stage2"
+          ],
+          "host_paths_absent": true
+        }
+      },
+      "installed": false,
+      "signed": false
     }
   },
   "review": {
