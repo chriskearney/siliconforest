@@ -45,3 +45,11 @@ At 77d1631f0324, both host video counters increase and both corresponding dock i
 The opt-in USB4 converter-service poll delivered requests successfully but did not restore the Dell picture, including after a software output restart. The switch was disabled. This experiment did not qualify a fix.
 
 The next attended diagnostic branch pins source 0 to DPIN0 and source 2 to DPIN1, reversing the actual source-to-tunnel assignment. It is intended to distinguish failure of a particular processor from failure of the second tunnel or converter path. It deliberately defaults to the forced pairing and must not be merged or promoted as a release. No permanent desktop configuration or target boot parameter changes are needed. The standard automatic pairing remains available with -1.
+
+## Ordered-queue readiness failure in the isolation boot
+
+The forced-pairing build bc1c1b78b41e did not establish a Dell picture. Both external processors finished booting within seven seconds. DPIN0 deferred while its fixed-HDMI-capable pipeline became available; DPIN1 then waited synchronously for DPIN0 tile discovery on the same ordered adapter queue. The pending DPIN0 retry could not run until DPIN1 DPRX timed out. After teardown, DPIN0 attached to source 0 and exposed the Samsung at 4K60; DPIN1 never completed attachment. This boot therefore cannot qualify the intended source-2/DPIN1 pairing.
+
+The follow-up e3291940988f gives T6030 one provider attempt per ordered work item. Not-ready results schedule delayed work at 500 ms, retaining the original 60/240-attempt bounds across immutable binding replacements. Callback admission is revoked before a refused binding is freed. A new generation resets the budget. M1/M2 retain their previous synchronous provider loop.
+
+Source gates: display plus DP-IN lifecycle KUnit 404 run, 403 pass, one existing skip. Actual provider-loop controls catch four broken variants: blocking the queue, yielding on legacy platforms, omitting token revocation and removing retry bounds. Production build and a valid reversed pairing remain hardware gates. This is still a diagnostic branch with a forced default that must never be merged or promoted.

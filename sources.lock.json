@@ -7,7 +7,7 @@
     "linux": {
       "url": "https://github.com/iconidentify/siliconforest-linux.git",
       "branch": "diagnostic/dock-source-isolation-20261020",
-      "commit": "bc1c1b78b41e972e7b3a94539df1a32caf4d001b",
+      "commit": "e3291940988f74e7850c29feb41259f098de967d",
       "upstream_url": "https://github.com/omacom/linux-aurora.git",
       "upstream_branch": "integration/aurora",
       "kernel_version": "7.2.11"
