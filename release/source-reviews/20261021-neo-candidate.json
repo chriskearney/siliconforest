@@ -514,14 +514,14 @@
     "gnu_make_43_fix": "Independent Grok review accepted 3757cb47e704db43a7b6983e5491e3aa97d6d4ec; real GNU Make 4.3 before/after reproduction and seven focused tests on 4.3 and 4.4.1"
   },
   "remaining_gates": [
-    "Paired-kernel G2 no-start external refusal lifecycle",
+    "Paired-kernel G2 implemented and source-tested; independent final review pending",
     "Actual J700 firmware/boot/recovery inventory",
     "Built kernel/Mesa native G17 ABI/dependency evidence",
     "Attended boot, physical display, recovery and reboot-verified rollback",
     "Exact versioned installer qualification before any catalog admission"
   ],
   "limits": [
-    "G2 kernel implementation and review are separate and pending.",
+    "G2 source/test implementation exists at exact paired kernel commit; final independent review and hardware qualification remain separate.",
     "No actual J700 boot, physical display, recovery, rollback or installer qualification.",
     "No firmware, target ESP, main M1-M3 source pins or release catalog changed.",
     "Runtime USB selection conversion is deferred; Neo USB DMA guards are preserved.",
@@ -659,5 +659,152 @@
       }
     ],
     "method": "Private recipe copies remove one language map at a time; original source worktree unchanged; real compilation/linking completes before artifact refusal."
+  },
+  "paired_kernel_G2": {
+    "candidate_commit": "008ce3c9295a1319233f71d023a06109cc54da0d",
+    "base_commit": "e4b97a383d11749300e72a40032c363db7e6c4c0",
+    "source_pr": "https://github.com/iconidentify/siliconforest-linux/pull/19",
+    "author_freeze_ref_claimed": false,
+    "author_receipt_sha256": "a1883098cbdf7c1693c030f6595cb641548aeae718afda7a65b04df6d50bb04b",
+    "mutation_result_sha256": "915d1397e8e0c04b5585a93d84a39c5a472c87298740d5aff8ad645240e642ab",
+    "source_review_root_sha256": "85c96230d5f45edd4685aba0c3d9e64aff85e4f1d27c7afd300486bcb8b55142",
+    "independent_review": "pending",
+    "native_compile": {
+      "scope": "drivers/gpu/drm/apple with W=1, native GPU config, normal display driver",
+      "base_warnings": 0,
+      "candidate_warnings": 0,
+      "base_rc": 0,
+      "candidate_rc": 0
+    },
+    "focused_kunit": {
+      "arch": "arm64 QEMU",
+      "source_commit": "008ce3c9295a1319233f71d023a06109cc54da0d",
+      "tests_passed": 15,
+      "controls_passed": 2,
+      "guest_diagnostics": 0,
+      "config": [
+        "DEBUG_OBJECTS",
+        "DEBUG_OBJECTS_WORK",
+        "DEBUG_OBJECTS_TIMERS",
+        "KASAN_GENERIC"
+      ],
+      "final_source_evidence": "Clean control-before and control-after runs at exact 008ce3c9; earlier run3 not used as exact-source final evidence."
+    },
+    "mutations": {
+      "valid": true,
+      "counts": {
+        "KILLED": 17,
+        "SURVIVED": 2
+      },
+      "results": [
+        {
+          "id": "callsite1-returns-ebusy",
+          "result": "KILLED"
+        },
+        {
+          "id": "callsite2-returns-ebusy",
+          "result": "KILLED"
+        },
+        {
+          "id": "callsite2-releases-unpinned",
+          "result": "KILLED"
+        },
+        {
+          "id": "refuse-without-pin",
+          "result": "KILLED"
+        },
+        {
+          "id": "refuse-sets-dead-only",
+          "result": "KILLED"
+        },
+        {
+          "id": "bind-noop-after-quiescing",
+          "result": "KILLED"
+        },
+        {
+          "id": "unbind-wrapper-guard-dropped",
+          "result": "SURVIVED"
+        },
+        {
+          "id": "unbind-h17p-guard-dropped",
+          "result": "KILLED"
+        },
+        {
+          "id": "shutdown-guard-dropped",
+          "result": "SURVIVED"
+        },
+        {
+          "id": "suspend-guard-dropped",
+          "result": "KILLED"
+        },
+        {
+          "id": "resume-guard-dropped",
+          "result": "KILLED"
+        },
+        {
+          "id": "probe-prepares-refused",
+          "result": "KILLED"
+        },
+        {
+          "id": "ready-ignores-refused",
+          "result": "KILLED"
+        },
+        {
+          "id": "admit-ignores-refused",
+          "result": "KILLED"
+        },
+        {
+          "id": "release-context-ignores-pin",
+          "result": "KILLED"
+        },
+        {
+          "id": "idle-ignores-run",
+          "result": "KILLED"
+        },
+        {
+          "id": "internal-refused-too",
+          "result": "KILLED"
+        },
+        {
+          "id": "wrapper-and-unbind-h17p-guards-dropped",
+          "result": "KILLED"
+        },
+        {
+          "id": "shutdown-and-unbind-h17p-guards-dropped",
+          "result": "KILLED"
+        }
+      ],
+      "survivor_explanation": "Each surviving single outer-guard removal is masked by the inner H17P unbind guard. Both combined removals are runtime kills."
+    },
+    "positive_control": {
+      "actual_diagnostic": "WARNING: kernel/workqueue.c:4335 at __flush_work",
+      "call_chain": [
+        "__flush_work",
+        "cancel_work_sync",
+        "dcp_comp_unbind_h17p",
+        "refusal_entry_points",
+        "refusal_entry_points_first_test"
+      ],
+      "real_kernel_api": true,
+      "literal_odebug_seen": false,
+      "literal_odebug_gate": "Not met as written; superseded by explicit root disposition accepting the actual kernel workqueue warning for the intended real-work negative control.",
+      "interpretation": "Removal reaches the actual uninitialized-work WARN_ON in the cancellation path. Debugobjects activation/deactivation hooks are distinct. No artificial ODEBUG required or generated.",
+      "decision": {
+        "status": "accepted as a correction to the diagnostic expectation",
+        "requirement": "The deliberately unguarded driver must reach the real kernel work API and its invalid uninitialized-work operation must be detected in the guest; clean controls must not warn.",
+        "evidence": "Actual guest trace __flush_work -> cancel_work_sync -> dcp_comp_unbind_h17p -> refusal_entry_points_first_test, with WARNING at workqueue.c:4335 from WARN_ON(!work->func). Both controls have zero guest diagnostics.",
+        "rationale": "DEBUG_OBJECTS_WORK activation/deactivation hooks cover queue/dequeue; this tested invalid operation is cancellation. A real kernel API check was required rather than a particular diagnostic prefix. No fabricated ODEBUG, substitute stub or assertion-only positive control was used.",
+        "hardware_qualification": false,
+        "independent_source_review": "pending"
+      }
+    },
+    "baseline_modpost_warning": "Same section mismatch in e4b97a3 KUnit baseline; build diagnostic excluded from guest kill counts.",
+    "limits": [
+      "Hardware discovery supplied by QEMU fixture; primary Apple IOMMU unuse is not observed on virtual hardware.",
+      "Probe-time state is reproduced; fixture exercises actual idle callsites and probe tail, not the full physical probe.",
+      "Cached-route test validates context/route memory lifetime, not the mux callback or a real OF route subtree.",
+      "External display remains unavailable until reboot after a refusal.",
+      "No actual Neo/J700 boot, physical display, firmware, suspend or rollback qualification."
+    ]
   }
 }

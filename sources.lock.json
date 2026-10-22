@@ -36,9 +36,9 @@
     "configs/kernel.config": "843320f0fc947daad8f0a0c4472a8b4e7bf598f19aed176b686b9eebb1ce9eea",
     "configs/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c",
     "release/profiles.json": "540a3fe9cdcf178c1c80309bb8b4ce79786ba6d56dfac426987929ae54f63194",
-    "release/neo-candidate.json": "30bbf7d8ac596b788b0ceb3ce360e727af288d0d82113ae8af12892b9038407c",
+    "release/neo-candidate.json": "9bcb5e058b14b94f67d9e032d4be7de78d9c536ab22b3b354275f5571861c2a4",
     "scripts/build-neo-m1n1.py": "ac05ee536f74a48c3ed5736626a8b23f9a92271bb4eb6851e7c5d4e37a69be7c",
-    "release/source-reviews/20261021-neo-candidate.json": "efd5f1a7cc80c78418e386c62202aa26ed92fdde059c408bede0609c22879d55"
+    "release/source-reviews/20261021-neo-candidate.json": "52debcb76412d605321b7c202e0dd0ead9016053201d84d3154a739d7084f996"
   },
   "toolchains": {
     "kernel_llvm": "22.1.8",
@@ -64,7 +64,7 @@
       "paired_sources": {
         "linux": {
           "url": "https://github.com/iconidentify/siliconforest-linux.git",
-          "commit": "e4b97a383d11749300e72a40032c363db7e6c4c0"
+          "commit": "008ce3c9295a1319233f71d023a06109cc54da0d"
         },
         "mesa": {
           "url": "https://github.com/iconidentify/siliconforest-mesa.git",
