@@ -1,0 +1,856 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "scope": "Neo/J700 source and build candidate; no installer admission",
+  "candidate_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+  "hardware_qualified": false,
+  "public_installable": false,
+  "source_pr": "https://github.com/iconidentify/siliconforest-m1n1/pull/2",
+  "p4_p5": {
+    "frozen_head": "ecc3f6d6482f0e3238d9e22408bcfb2bef0035d8",
+    "receipt_sha256": "198323d1705522869d19fad905b4208f6def72e6cb3a71fc9337baa0c22ae032",
+    "commits": [
+      {
+        "sha": "1294481c114af7aed21c82d1c64166ff629b0607",
+        "subject": "kboot: Accept an idle inherited T8140 external DCP",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "2d50ac8ae456e8a424e3346526894821413eb0db",
+        "kind": "carried"
+      },
+      {
+        "sha": "fab6fce6291b5d087a2bffdbca379ca83bc62008",
+        "subject": "asc: admit the external DCP only in the idle state Linux adopts",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      },
+      {
+        "sha": "a06b66f1c1051a01a44e5ffb99212fa719660fc7",
+        "subject": "kboot: enable the external display dependency group together",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "b575b99394a8e280e8ebe5c6773581f03e913166",
+        "kind": "carried"
+      },
+      {
+        "sha": "fc1ae0f5de8e0ee820fec755f9533b32241bb7be",
+        "subject": "kboot: publish validated external power suppliers with their consumers",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "e46cc7dbe059db14093f0d0987df853379bb93e3",
+        "kind": "carried"
+      },
+      {
+        "sha": "505fd6e9725f9f7319647a63fe30c5fc4d98639c",
+        "subject": "kboot: withdraw external scanout translations on refused handoff",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "ce2c482397cc2360ac4437b6ba3158727c07fffc",
+        "kind": "carried"
+      },
+      {
+        "sha": "5c8fe622287bf43671d76f8e697faa197eecee30",
+        "subject": "kboot: bound power supplier path output by caller capacity",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "91ac1b21419870edb08acd103ef4c157d580aa03",
+        "kind": "carried"
+      },
+      {
+        "sha": "119b0b82c29d1c0790546e76bda3c4823043e406",
+        "subject": "tests: expose incomplete T8140 DP refusal supplier withdrawal",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "df9fec35a355cb819f5d38e0b6e0ce841d19fd76",
+        "kind": "carried"
+      },
+      {
+        "sha": "9bcc6f7bd02f59241f7f3e5bac8244c4f11dd958",
+        "subject": "kboot: withdraw external PIODMA IOMMU providers without aliases",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "c98410d9597d7d4add768d56050574cc1ea6b64e",
+        "kind": "carried"
+      },
+      {
+        "sha": "cd478317b37e7ecc483154986281d4b83b0423d3",
+        "subject": "kboot: withdraw external suppliers on whole-display refusal",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "fbc96140313739d88450a096780da45c5abbebbb",
+        "kind": "carried"
+      },
+      {
+        "sha": "b18bd1d22cd5b75b4698f7cc3b77344684b43bd3",
+        "subject": "kboot: reject incomplete display refusal topology",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "d755fed9cbc777d9d47b78ca926fea23af4b664d",
+        "kind": "carried"
+      },
+      {
+        "sha": "ccda158b94487272532c15627473b1b1e094de19",
+        "subject": "kboot: validate refusal aliases before following them",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "498830ac4480cdf5774f118176816b2a46815fe1",
+        "kind": "carried"
+      },
+      {
+        "sha": "90650841c3d629e612440f08804aef1a9704f28c",
+        "subject": "kboot: validate refusal ownership against display dependencies",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "70f07beaf66f0fd5a4e9a8005f1eb33f5fc2f763",
+        "kind": "carried"
+      },
+      {
+        "sha": "49c48f101c0d051248b990a58dee4e95a039edb5",
+        "subject": "kboot: preserve supplier identity during display refusal",
+        "author": "Ryan Murray <ryan@aurorasilicon.org>",
+        "aura_source": "9ce297852b7f8ccb9119a17a4db8e9d9ebd5afa8",
+        "kind": "carried"
+      },
+      {
+        "sha": "33c9c8bb7293a5bb5061af899e0b21f29439369a",
+        "subject": "tests: compile withdrawal fixture with portable libfdt host declarations",
+        "author": "Dj <hey@djdev.me>",
+        "aura_source": "c4331a90ef324eab33d34d1515d7e42748a293ab",
+        "kind": "carried"
+      },
+      {
+        "sha": "88122865696cdf3f487c7a8249c6cf59bbc6d94c",
+        "subject": "kboot: reserve and publish T8140 display DARTs by owner",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      },
+      {
+        "sha": "fab7b670f3393f4581bc073acd99cc74a6b65808",
+        "subject": "kboot: disable the J700 Touch ID controller when firmware omits it",
+        "author": "DjDeveloperr <hey@djdev.me>",
+        "aura_source": "e4cbfa5aa70d805aa715a5c574f54824dd660b32",
+        "kind": "carried"
+      },
+      {
+        "sha": "aa67c5374b69367e2e1ed6db70fcc3b6be7ab99b",
+        "subject": "license: mark files carrying Aura display and Touch ID contributions",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      },
+      {
+        "sha": "1c0fe386ebc7949a225cb39678297cc0ee94c44a",
+        "subject": "tests: scope the ISP fixtures to their helper after the Touch ID fixup",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      },
+      {
+        "sha": "25d267b413f79a8fb02522aa364d746f12007858",
+        "subject": "kboot: validate the T8140 display aliases before following them",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      },
+      {
+        "sha": "ecc3f6d6482f0e3238d9e22408bcfb2bef0035d8",
+        "subject": "tests: require display alias refusal before any DART read",
+        "author": "Chris Kearney <chris@kearneymail.com>",
+        "aura_source": null,
+        "kind": "adaptation"
+      }
+    ],
+    "changed_files": [
+      {
+        "path": "src/asc.c",
+        "status": "modified",
+        "added": 22,
+        "deleted": 6,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "src/asc.h",
+        "status": "modified",
+        "added": 8,
+        "deleted": 2,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "src/kboot.c",
+        "status": "modified",
+        "added": 760,
+        "deleted": 64,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "tests/data/t8140-iommu-withdrawal.c",
+        "status": "added",
+        "added": 79,
+        "deleted": 0,
+        "spdx": "MIT"
+      },
+      {
+        "path": "tests/data/t8140-j700-display.dts",
+        "status": "added",
+        "added": 285,
+        "deleted": 0,
+        "spdx": "GPL-2.0+ OR MIT"
+      },
+      {
+        "path": "tests/data/t8140-j700-display.py",
+        "status": "added",
+        "added": 87,
+        "deleted": 0,
+        "spdx": "MIT"
+      },
+      {
+        "path": "tests/python/test_dcp_iboot_public_wire_contract.py",
+        "status": "added",
+        "added": 161,
+        "deleted": 0,
+        "spdx": "MIT"
+      },
+      {
+        "path": "tests/python/test_display_alias_compat.py",
+        "status": "modified",
+        "added": 9,
+        "deleted": 3,
+        "spdx": "GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_external_dependency_group.py",
+        "status": "added",
+        "added": 93,
+        "deleted": 0,
+        "spdx": "MIT"
+      },
+      {
+        "path": "tests/python/test_isp_heap.py",
+        "status": "modified",
+        "added": 2,
+        "deleted": 1,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_isp_reservation_full.py",
+        "status": "modified",
+        "added": 2,
+        "deleted": 1,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_j700_touch_id_fdt.py",
+        "status": "added",
+        "added": 83,
+        "deleted": 0,
+        "spdx": "GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_t8140_display_handoff.py",
+        "status": "modified",
+        "added": 86,
+        "deleted": 17,
+        "spdx": "MIT AND GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_t8140_display_iommu_withdrawal.py",
+        "status": "added",
+        "added": 43,
+        "deleted": 0,
+        "spdx": "MIT",
+        "note": "identifier on line 2 after the shebang, as in Aura"
+      },
+      {
+        "path": "tests/python/test_t8140_display_j700_dt.py",
+        "status": "added",
+        "added": 685,
+        "deleted": 0,
+        "spdx": "GPL-2.0-only"
+      },
+      {
+        "path": "tests/python/test_t8140_display_refusal_contract.py",
+        "status": "added",
+        "added": 549,
+        "deleted": 0,
+        "spdx": "MIT"
+      }
+    ],
+    "pytest": {
+      "passed": 147,
+      "skipped": 7,
+      "baseline_passed": 80,
+      "baseline_skipped": 7,
+      "full_composed_j700_dtb": true
+    },
+    "target_compile": {
+      "compiler": "clang 22.1.8",
+      "files": [
+        "src/kboot.c",
+        "src/asc.c"
+      ],
+      "extra_flags": [
+        "-Werror",
+        "-Wextra"
+      ],
+      "diagnostics": 0
+    },
+    "wording_scan": {
+      "hits": 0,
+      "positive_control_hits": 8
+    },
+    "mutation_sets": {
+      "01-idle": {
+        "runtime_kills": 8,
+        "survived": 0,
+        "nobuild": 0,
+        "controls": "pass",
+        "result_sha256": "a5d178f467b297dbd038496b3a363d9627e26ea483ea82e62ed30b56c3001232"
+      },
+      "02-owner": {
+        "runtime_kills": 11,
+        "survived": 0,
+        "nobuild": 0,
+        "controls": "pass",
+        "result_sha256": "7afb88243c38415b7f1049f1091a9a01630831f1e30d8304d01d228eab7e66f4"
+      },
+      "03-carry-adaptations": {
+        "runtime_kills": 3,
+        "survived": 0,
+        "nobuild": 0,
+        "controls": "pass",
+        "result_sha256": "231e66b1ca0681140f9ee32b6d70df5ec508a272a038976c27c1d1148f30f611"
+      },
+      "04-alias": {
+        "runtime_kills": 3,
+        "survived": 0,
+        "nobuild": 0,
+        "controls": "pass",
+        "result_sha256": "b171c5fae80312810ebba914b01670945bbb4e48fdaf764ebeeaf7f9be9bcab3"
+      }
+    },
+    "dtb": {
+      "composed_dtb_sha256": "2fefe07a6bb5a547384ce12bf9387cb7308880324ba94207f380ce4863d8f20b",
+      "kernel": "e4b97a383d11749300e72a40032c363db7e6c4c0",
+      "fixture": "tests/data/t8140-j700-display.dts"
+    }
+  },
+  "combined_loader": {
+    "full_suite_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+    "pytest_passed": 165,
+    "pytest_skipped": 7,
+    "final_alias_tests": {
+      "passed": 2,
+      "full_and_reduced_dtb": true
+    },
+    "stage1_and_esp_stage2_builds": {
+      "commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+      "result": "pass",
+      "rust": "1.89.0",
+      "llvm": "22.1.8",
+      "make": "4.3",
+      "installed": false
+    },
+    "previous_github_ci": {
+      "commit": "636318ba66822f3377c654b24c46ae01831c57ae",
+      "result": "pass",
+      "runs": [
+        39690999410,
+        39691005948
+      ]
+    },
+    "current_github_ci": {
+      "commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+      "result": "pass",
+      "runs": [
+        39694225962,
+        39694231660
+      ]
+    },
+    "previous_control_wrapper_build": {
+      "source_commit": "636318ba66822f3377c654b24c46ae01831c57ae",
+      "control_commit": "8f5bbc059349a1a5712ee417948053d2d8e8d7e3",
+      "result": "pass",
+      "make": "4.3",
+      "rust": "1.89.0",
+      "llvm": "22.1.8",
+      "receipt_sha256": "8a51f2cc9964796bd0ff02eb936a520b0109d11fbeaf016276010d96f2fff5ad",
+      "sha256sums_verified": true,
+      "roles": {
+        "stage1": {
+          "image_sha256": "482c415f9dc3f609e74f6b1fb8b9922112811e6df5579dc337671a2f91859f20",
+          "image_bytes": 3538944,
+          "raw_elf_sha256": "4d3037fe490e73d65b7f4b4c68d24c75d6264f73ab407c004ec129b6497f7c90",
+          "effective_defines": [
+            "BUILTIN_LOGO bootlogo",
+            "CHAINLOADING",
+            "RELEASE",
+            "T8140_KIS_PROXY",
+            "T8140_PROXY_WINDOW_MS 15000",
+            "USE_DEBUG_USB"
+          ],
+          "linked_artwork_verified": true,
+          "make_options": [
+            "RELEASE=1",
+            "CHAINLOADING=1",
+            "T8140_KIS_PROXY=1",
+            "T8140_PROXY_WINDOW_MS=15000",
+            "USE_CLANG=1",
+            "ARCH=aarch64-linux-gnu",
+            "EXTRA_CFLAGS=-Werror",
+            "BUILTIN_LOGO=bootlogo"
+          ]
+        },
+        "esp-stage2": {
+          "image_sha256": "77d79e8745aab0f6ceb08ad2ae300bc54f63ce4f74facad0af99ac702a9b345f",
+          "image_bytes": 3538944,
+          "raw_elf_sha256": "b093338c43708b92054bb052fbe3deb696e97f211be137e89aefec7f5081ed97",
+          "effective_defines": [
+            "BUILTIN_LOGO bootlogo",
+            "CHAINLOADING",
+            "ESP_STAGE2",
+            "RELEASE"
+          ],
+          "linked_artwork_verified": true,
+          "make_options": [
+            "RELEASE=1",
+            "CHAINLOADING=1",
+            "ESP_STAGE2=1",
+            "USE_CLANG=1",
+            "ARCH=aarch64-linux-gnu",
+            "EXTRA_CFLAGS=-Werror",
+            "BUILTIN_LOGO=bootlogo"
+          ]
+        }
+      },
+      "installed": false,
+      "signed": false
+    },
+    "final_control_wrapper_build": {
+      "source_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+      "control_commit": "2dac69c2d8158ab11daebef13f7e867a25bba648",
+      "result": "pass",
+      "make": "4.3",
+      "rust": "1.89.0",
+      "llvm": "22.1.8",
+      "receipt_sha256": "78228414444cdd8c9447d9982a113c6e33a69bf784e6d2c562f3c53fdbd6de8e",
+      "receipt_identical_to_both_direct_builds": true,
+      "sha256sums_verified": true,
+      "roles": {
+        "stage1": {
+          "image_sha256": "d2809d23c0520f991eb15473c40ea393fc45a97e01de1004f13835828584813e",
+          "image_bytes": 3538944,
+          "raw_elf_sha256": "b6fdc85b0728a90c6ef42883d97b6ac0d060fceabc5d7b5a24f0b908d290d7c0",
+          "effective_defines": [
+            "BUILTIN_LOGO bootlogo",
+            "CHAINLOADING",
+            "RELEASE",
+            "T8140_KIS_PROXY",
+            "T8140_PROXY_WINDOW_MS 15000",
+            "USE_DEBUG_USB"
+          ],
+          "linked_artwork_verified": true,
+          "make_argv": [
+            "make",
+            "-j8",
+            "RELEASE=1",
+            "CHAINLOADING=1",
+            "T8140_KIS_PROXY=1",
+            "T8140_PROXY_WINDOW_MS=15000",
+            "USE_CLANG=1",
+            "ARCH=aarch64-linux-gnu",
+            "EXTRA_CFLAGS=-Werror -ffile-prefix-map=/siliconforest/neo/home=/siliconforest/neo/home -ffile-prefix-map=/siliconforest/neo/cargo=/siliconforest/neo/cargo -ffile-prefix-map=/siliconforest/neo/rustup=/siliconforest/neo/rustup -ffile-prefix-map=/siliconforest/neo/build=/siliconforest/neo/build -ffile-prefix-map=/siliconforest/neo/stage1=/siliconforest/neo/stage1",
+            "TOOLCHAIN=",
+            "LLDDIR=",
+            "RUSTARCH=aarch64-unknown-none-softfloat",
+            "BUILTIN_LOGO=bootlogo",
+            "BOOTLOGO_DIR=/siliconforest/neo/build/artwork",
+            "M1N1_VERSION_TAG=v2.0.0-siliconforest.neo.dev.g93f678f92128"
+          ],
+          "rustflags": [
+            "-D",
+            "warnings",
+            "--remap-path-prefix=/siliconforest/neo/home=/siliconforest/neo/home",
+            "--remap-path-prefix=/siliconforest/neo/cargo=/siliconforest/neo/cargo",
+            "--remap-path-prefix=/siliconforest/neo/rustup=/siliconforest/neo/rustup",
+            "--remap-path-prefix=/siliconforest/neo/build=/siliconforest/neo/build",
+            "--remap-path-prefix=/siliconforest/neo/stage1=/siliconforest/neo/stage1"
+          ],
+          "host_paths_absent": true
+        },
+        "esp-stage2": {
+          "image_sha256": "db729301b65442a34a4572fda46e8c3a64e21334f77aae449b447a62dfb8e0aa",
+          "image_bytes": 3538944,
+          "raw_elf_sha256": "430e019ac8b90d80216024283d64446273e6245dcf0f4abea16dc334de18a7c6",
+          "effective_defines": [
+            "BUILTIN_LOGO bootlogo",
+            "CHAINLOADING",
+            "ESP_STAGE2",
+            "RELEASE"
+          ],
+          "linked_artwork_verified": true,
+          "make_argv": [
+            "make",
+            "-j8",
+            "RELEASE=1",
+            "CHAINLOADING=1",
+            "ESP_STAGE2=1",
+            "USE_CLANG=1",
+            "ARCH=aarch64-linux-gnu",
+            "EXTRA_CFLAGS=-Werror -ffile-prefix-map=/siliconforest/neo/home=/siliconforest/neo/home -ffile-prefix-map=/siliconforest/neo/cargo=/siliconforest/neo/cargo -ffile-prefix-map=/siliconforest/neo/rustup=/siliconforest/neo/rustup -ffile-prefix-map=/siliconforest/neo/build=/siliconforest/neo/build -ffile-prefix-map=/siliconforest/neo/esp-stage2=/siliconforest/neo/esp-stage2",
+            "TOOLCHAIN=",
+            "LLDDIR=",
+            "RUSTARCH=aarch64-unknown-none-softfloat",
+            "BUILTIN_LOGO=bootlogo",
+            "BOOTLOGO_DIR=/siliconforest/neo/build/artwork",
+            "M1N1_VERSION_TAG=v2.0.0-siliconforest.neo.dev.g93f678f92128"
+          ],
+          "rustflags": [
+            "-D",
+            "warnings",
+            "--remap-path-prefix=/siliconforest/neo/home=/siliconforest/neo/home",
+            "--remap-path-prefix=/siliconforest/neo/cargo=/siliconforest/neo/cargo",
+            "--remap-path-prefix=/siliconforest/neo/rustup=/siliconforest/neo/rustup",
+            "--remap-path-prefix=/siliconforest/neo/build=/siliconforest/neo/build",
+            "--remap-path-prefix=/siliconforest/neo/esp-stage2=/siliconforest/neo/esp-stage2"
+          ],
+          "host_paths_absent": true
+        }
+      },
+      "installed": false,
+      "signed": false
+    }
+  },
+  "review": {
+    "root_series": "Independent Grok review accepted 4235c0dc7f8f59caf442a23ca31c8f2a0381ad2a",
+    "display_series": "Independent Grok review accepted aa67c5374b69367e2e1ed6db70fcc3b6be7ab99b with ISP test fixture fix 1c0fe386ebc7949a225cb39678297cc0ee94c44a",
+    "alias_followups": "Root reviewed 25d267b413f79a8fb02522aa364d746f12007858 and test-only ecc3f6d6482f0e3238d9e22408bcfb2bef0035d8",
+    "gnu_make_43_fix": "Independent Grok review accepted 3757cb47e704db43a7b6983e5491e3aa97d6d4ec; real GNU Make 4.3 before/after reproduction and seven focused tests on 4.3 and 4.4.1"
+  },
+  "remaining_gates": [
+    "Actual J700 firmware/boot/recovery inventory",
+    "Built kernel/Mesa native G17 ABI/dependency evidence",
+    "Attended boot, physical display, recovery and reboot-verified rollback",
+    "Exact versioned installer qualification before any catalog admission"
+  ],
+  "limits": [
+    "Paired-kernel G2 source/test review is complete within the current J700 contract. Route containment remains a documented follow-up; physical hardware qualification is open.",
+    "No actual J700 boot, physical display, recovery, rollback or installer qualification.",
+    "No firmware, target ESP, main M1-M3 source pins or release catalog changed.",
+    "Runtime USB selection conversion is deferred; Neo USB DMA guards are preserved.",
+    "Aura source pin bf6a6417410215d3039905d12e26b82763a6381b; newer fb12 delta excluded."
+  ],
+  "review_followups": {
+    "reviewed_source": "636318ba66822f3377c654b24c46ae01831c57ae",
+    "scope": "Root series and GNU Make fix; display series excluded",
+    "verdict": "No blockers; reviewer and independent read-only reviewer",
+    "report_sha256": "e1718b5b86fed8c83813a4397b185027a9e37c1cabe6ebe0e78f9cac3f30b81e",
+    "dispositions": {
+      "R2": "Active non-virtual PMGR orphan cleanup stays strict; known limitation documented, no speculative broadening.",
+      "R4": "Existing 300-second join without IPI resend documented; failure still refuses handoff.",
+      "R5": "Safe versus unsafe post-M4 NVMe log and successful stage-2 entry are required on first attended J700 boot; OPEN on hardware.",
+      "R6": "C/Rust prefix maps, artifact host-path refusal and normalized logs/receipt implemented. Two fresh builds produce identical binaries, ELFs and receipt. Whole-bundle reproducibility not claimed.",
+      "R7": "GNU Make >=4.3 enforced; complete normalized Make argv and Rust flags recorded.",
+      "R8": "SEP fixture SPDX corrected to MIT; exact pre-boundary source blob and MIT LICENSE verified.",
+      "R9": "Public Ryan carry URLs enumerated and PMGR mixed-license adaptation explicitly attributed.",
+      "R11": "Pre-existing comments outside added-line/message review scope; no change in this follow-up."
+    },
+    "commits": [
+      "b60b323a5c311f4f662a901f3af8c628f9d3877c",
+      "93f678f92128c28216a5cb0f710cec2d8b0ab5b1"
+    ],
+    "recipe_independent_review": {
+      "verdict": "accept",
+      "findings": [],
+      "commits": [
+        "b60b323a5c311f4f662a901f3af8c628f9d3877c",
+        "93f678f92128c28216a5cb0f710cec2d8b0ab5b1"
+      ],
+      "receipt_sha256": "88c6968b5571521ca9f75b04d457ed70047328595073745ef7e41be1e6328c35",
+      "method": "Independent source review and artifact/log verification; builds and tests not re-executed by reviewer"
+    }
+  },
+  "reproducible_artifacts": {
+    "source_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+    "toolchain": {
+      "make": "4.3",
+      "rust": "1.89.0",
+      "llvm": "22.1.8"
+    },
+    "checks": [
+      {
+        "path": "receipt.json",
+        "equal": true,
+        "sha256_a": "78228414444cdd8c9447d9982a113c6e33a69bf784e6d2c562f3c53fdbd6de8e",
+        "sha256_b": "78228414444cdd8c9447d9982a113c6e33a69bf784e6d2c562f3c53fdbd6de8e"
+      },
+      {
+        "path": "stage1/m1n1.bin",
+        "equal": true,
+        "sha256_a": "d2809d23c0520f991eb15473c40ea393fc45a97e01de1004f13835828584813e",
+        "sha256_b": "d2809d23c0520f991eb15473c40ea393fc45a97e01de1004f13835828584813e"
+      },
+      {
+        "path": "stage1/m1n1-raw.elf",
+        "equal": true,
+        "sha256_a": "b6fdc85b0728a90c6ef42883d97b6ac0d060fceabc5d7b5a24f0b908d290d7c0",
+        "sha256_b": "b6fdc85b0728a90c6ef42883d97b6ac0d060fceabc5d7b5a24f0b908d290d7c0"
+      },
+      {
+        "path": "stage1/m1n1.elf",
+        "equal": true,
+        "sha256_a": "02ae7c3133daa0c4411ed6e74213d9fe4ec632ee06f253c12eece64aabefc48e",
+        "sha256_b": "02ae7c3133daa0c4411ed6e74213d9fe4ec632ee06f253c12eece64aabefc48e"
+      },
+      {
+        "path": "stage1/build_cfg.h",
+        "equal": true,
+        "sha256_a": "000e7e45139ff82ce64b64ade603a4ee315d0c6eb01cee830e1f7d4118c5c2b6",
+        "sha256_b": "000e7e45139ff82ce64b64ade603a4ee315d0c6eb01cee830e1f7d4118c5c2b6"
+      },
+      {
+        "path": "stage1/build_tag.h",
+        "equal": true,
+        "sha256_a": "eb0fa664d2ad0ae45f8e1237e4cb90ca3ff70c9fa5cd59a480ecde71d3fefd01",
+        "sha256_b": "eb0fa664d2ad0ae45f8e1237e4cb90ca3ff70c9fa5cd59a480ecde71d3fefd01"
+      },
+      {
+        "path": "esp-stage2/m1n1.bin",
+        "equal": true,
+        "sha256_a": "db729301b65442a34a4572fda46e8c3a64e21334f77aae449b447a62dfb8e0aa",
+        "sha256_b": "db729301b65442a34a4572fda46e8c3a64e21334f77aae449b447a62dfb8e0aa"
+      },
+      {
+        "path": "esp-stage2/m1n1-raw.elf",
+        "equal": true,
+        "sha256_a": "430e019ac8b90d80216024283d64446273e6245dcf0f4abea16dc334de18a7c6",
+        "sha256_b": "430e019ac8b90d80216024283d64446273e6245dcf0f4abea16dc334de18a7c6"
+      },
+      {
+        "path": "esp-stage2/m1n1.elf",
+        "equal": true,
+        "sha256_a": "d479c1d6043c651a468fccd7727715a659d95cf5e1f4540d761bd95572c9b337",
+        "sha256_b": "d479c1d6043c651a468fccd7727715a659d95cf5e1f4540d761bd95572c9b337"
+      },
+      {
+        "path": "esp-stage2/build_cfg.h",
+        "equal": true,
+        "sha256_a": "63e8409bbcfb69344d62f58e06bd8e327daa676b46f5e275c11d67ddd627cb6e",
+        "sha256_b": "63e8409bbcfb69344d62f58e06bd8e327daa676b46f5e275c11d67ddd627cb6e"
+      },
+      {
+        "path": "esp-stage2/build_tag.h",
+        "equal": true,
+        "sha256_a": "eb0fa664d2ad0ae45f8e1237e4cb90ca3ff70c9fa5cd59a480ecde71d3fefd01",
+        "sha256_b": "eb0fa664d2ad0ae45f8e1237e4cb90ca3ff70c9fa5cd59a480ecde71d3fefd01"
+      }
+    ],
+    "host_path_leaks": [],
+    "whole_bundle_reproducibility_claim": false,
+    "reason": "Build logs preserve actual parallel ordering and timing.",
+    "receipt_sha256": "78228414444cdd8c9447d9982a113c6e33a69bf784e6d2c562f3c53fdbd6de8e"
+  },
+  "recipe_path_map_mutations": {
+    "source_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+    "control": "Two real clean builds passed with maps; images, ELFs and receipt identical",
+    "mutants": [
+      {
+        "id": "no-c-prefix-map",
+        "status": "KILLED",
+        "exit_code": 1,
+        "failure": "build host path remains in m1n1-raw.elf",
+        "published_output": false,
+        "log_sha256": "992486346753676593f3126d950a4a0e320b631a146b84f0814f88cf671e0602"
+      },
+      {
+        "id": "no-rust-prefix-map",
+        "status": "KILLED",
+        "exit_code": 1,
+        "failure": "build host path remains in m1n1.bin",
+        "published_output": false,
+        "log_sha256": "108188158e4d862afee45d3a4bf158bb996e362f201e5952003ab16191e7eb3c"
+      }
+    ],
+    "method": "Private recipe copies remove one language map at a time; original source worktree unchanged; real compilation/linking completes before artifact refusal."
+  },
+  "paired_kernel_G2": {
+    "candidate_commit": "008ce3c9295a1319233f71d023a06109cc54da0d",
+    "base_commit": "e4b97a383d11749300e72a40032c363db7e6c4c0",
+    "source_pr": "https://github.com/iconidentify/siliconforest-linux/pull/19",
+    "author_freeze_ref_claimed": false,
+    "author_receipt_sha256": "a1883098cbdf7c1693c030f6595cb641548aeae718afda7a65b04df6d50bb04b",
+    "mutation_result_sha256": "915d1397e8e0c04b5585a93d84a39c5a472c87298740d5aff8ad645240e642ab",
+    "source_review_root_sha256": "85c96230d5f45edd4685aba0c3d9e64aff85e4f1d27c7afd300486bcb8b55142",
+    "independent_review": {
+      "verdict": "one should-fix",
+      "blockers": [],
+      "receipt_sha256": "61af546fbb443d868bc309befa57903d8c94ef903cfa82b7fcbea6fc3e1c34ce",
+      "method": "Independent exact-source and recorded-artifact review; tests not re-executed by reviewer"
+    },
+    "native_compile": {
+      "scope": "drivers/gpu/drm/apple with W=1, native GPU config, normal display driver",
+      "base_warnings": 0,
+      "candidate_warnings": 0,
+      "base_rc": 0,
+      "candidate_rc": 0
+    },
+    "focused_kunit": {
+      "arch": "arm64 QEMU",
+      "source_commit": "008ce3c9295a1319233f71d023a06109cc54da0d",
+      "tests_passed": 15,
+      "controls_passed": 2,
+      "guest_diagnostics": 0,
+      "config": [
+        "DEBUG_OBJECTS",
+        "DEBUG_OBJECTS_WORK",
+        "DEBUG_OBJECTS_TIMERS",
+        "KASAN_GENERIC"
+      ],
+      "final_source_evidence": "Clean control-before and control-after runs at exact 008ce3c9; earlier run3 not used as exact-source final evidence."
+    },
+    "mutations": {
+      "valid": true,
+      "counts": {
+        "KILLED": 17,
+        "SURVIVED": 2
+      },
+      "results": [
+        {
+          "id": "callsite1-returns-ebusy",
+          "result": "KILLED"
+        },
+        {
+          "id": "callsite2-returns-ebusy",
+          "result": "KILLED"
+        },
+        {
+          "id": "callsite2-releases-unpinned",
+          "result": "KILLED"
+        },
+        {
+          "id": "refuse-without-pin",
+          "result": "KILLED"
+        },
+        {
+          "id": "refuse-sets-dead-only",
+          "result": "KILLED"
+        },
+        {
+          "id": "bind-noop-after-quiescing",
+          "result": "KILLED"
+        },
+        {
+          "id": "unbind-wrapper-guard-dropped",
+          "result": "SURVIVED"
+        },
+        {
+          "id": "unbind-h17p-guard-dropped",
+          "result": "KILLED"
+        },
+        {
+          "id": "shutdown-guard-dropped",
+          "result": "SURVIVED"
+        },
+        {
+          "id": "suspend-guard-dropped",
+          "result": "KILLED"
+        },
+        {
+          "id": "resume-guard-dropped",
+          "result": "KILLED"
+        },
+        {
+          "id": "probe-prepares-refused",
+          "result": "KILLED"
+        },
+        {
+          "id": "ready-ignores-refused",
+          "result": "KILLED"
+        },
+        {
+          "id": "admit-ignores-refused",
+          "result": "KILLED"
+        },
+        {
+          "id": "release-context-ignores-pin",
+          "result": "KILLED"
+        },
+        {
+          "id": "idle-ignores-run",
+          "result": "KILLED"
+        },
+        {
+          "id": "internal-refused-too",
+          "result": "KILLED"
+        },
+        {
+          "id": "wrapper-and-unbind-h17p-guards-dropped",
+          "result": "KILLED"
+        },
+        {
+          "id": "shutdown-and-unbind-h17p-guards-dropped",
+          "result": "KILLED"
+        }
+      ],
+      "survivor_explanation": "Each surviving single outer-guard removal is masked by the inner H17P unbind guard. Both combined removals are runtime kills."
+    },
+    "positive_control": {
+      "actual_diagnostic": "WARNING: kernel/workqueue.c:4335 at __flush_work",
+      "call_chain": [
+        "__flush_work",
+        "cancel_work_sync",
+        "dcp_comp_unbind_h17p",
+        "refusal_entry_points",
+        "refusal_entry_points_first_test"
+      ],
+      "real_kernel_api": true,
+      "literal_odebug_seen": false,
+      "literal_odebug_gate": "Not met as written; superseded by explicit root disposition accepting the actual kernel workqueue warning for the intended real-work negative control.",
+      "interpretation": "Removal reaches the actual uninitialized-work WARN_ON in the cancellation path. Debugobjects activation/deactivation hooks are distinct. No artificial ODEBUG required or generated.",
+      "decision": {
+        "status": "accepted as a correction to the diagnostic expectation",
+        "requirement": "The deliberately unguarded driver must reach the real kernel work API and its invalid uninitialized-work operation must be detected in the guest; clean controls must not warn.",
+        "evidence": "Actual guest trace __flush_work -> cancel_work_sync -> dcp_comp_unbind_h17p -> refusal_entry_points_first_test, with WARNING at workqueue.c:4335 from WARN_ON(!work->func). Both controls have zero guest diagnostics.",
+        "rationale": "DEBUG_OBJECTS_WORK activation/deactivation hooks cover queue/dequeue; this tested invalid operation is cancellation. A real kernel API check was required rather than a particular diagnostic prefix. No fabricated ODEBUG, substitute stub or assertion-only positive control was used.",
+        "hardware_qualification": false,
+        "independent_source_review": "pending"
+      }
+    },
+    "baseline_modpost_warning": "Same section mismatch in e4b97a3 KUnit baseline; build diagnostic excluded from guest kill counts.",
+    "limits": [
+      "Hardware discovery supplied by QEMU fixture; primary Apple IOMMU unuse is not observed on virtual hardware.",
+      "Probe-time state is reproduced; fixture exercises actual idle callsites and probe tail, not the full physical probe.",
+      "Cached-route test validates context/route memory lifetime, not the mux callback or a real OF route subtree.",
+      "External display remains unavailable until reboot after a refusal.",
+      "No actual Neo/J700 boot, physical display, firmware, suspend or rollback qualification."
+    ],
+    "final_source_disposition": {
+      "schema": 1,
+      "date": "2026-10-21",
+      "source_commit": "008ce3c9295a1319233f71d023a06109cc54da0d",
+      "source_validation": "complete within stated J700 source/test scope",
+      "hardware_qualified": false,
+      "public_installable": false,
+      "reviews": {
+        "root_sha256": "85c96230d5f45edd4685aba0c3d9e64aff85e4f1d27c7afd300486bcb8b55142",
+        "grok_sha256": "61af546fbb443d868bc309befa57903d8c94ef903cfa82b7fcbea6fc3e1c34ce",
+        "grok_verdict": "one should-fix",
+        "grok_blockers": [],
+        "claude_route_assessment_sha256": "76150034f87007ede069aa9b6c2a504ca5fbf7689d058a4b536b6a3c2c4728a0"
+      },
+      "positive_control_disposition": "Accept actual workqueue-core WARN_ON(!work->func) through cancel_work_sync, with clean real-source controls. Literal ODEBUG was not observed or claimed. This explicitly corrects the original diagnostic expectation.",
+      "route_containment_disposition": {
+        "classification": "documented nonblocking J700 limitation; should-fix follow-up",
+        "effect": "An in-flight pre-probe callback can leave typec0 crossbar selected and its host owner recorded until reboot after refusal.",
+        "bounds": "Firmware start and power remain gated by external_prepared=false. DMA and context remain pinned. Current J700 has one display route; USB uses the separate ATC mode switch. This does not qualify generic shared-port/multi-pipeline behavior.",
+        "source_context": "Pre-bind route activation pre-existed; G2 retains context that the old probe failure could free.",
+        "followup": "Publish refusal under fabric mutex and recheck after taking it, with deterministic callback-interleaving KUnit, mutation and lockdep checks.",
+        "cleanup": "No new post-refusal route deactivate, crossbar deselect or firmware cleanup in this candidate."
+      },
+      "tests": {
+        "kernel_focused_passed": 15,
+        "controls_passed": 2,
+        "guest_diagnostics": 0,
+        "runtime_mutants_killed": 17,
+        "redundant_survivors": 2,
+        "native_driver_compile_warnings": 0,
+        "kernel_pr_ci": "pass"
+      },
+      "limits": [
+        "QEMU hardware discovery is stubbed; no physical Apple IOMMU or mux callback qualification.",
+        "No J700 boot, physical display, firmware inventory, suspend, recovery or rebooted rollback.",
+        "No author freeze ref is claimed; review pins the exact immutable commit."
+      ]
+    }
+  }
+}

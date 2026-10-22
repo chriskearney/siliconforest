@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "id": "neo-first-candidate",
+  "status": "reviewed source/build candidate; hardware unqualified",
+  "public_installable": false,
+  "hardware_qualified": false,
+  "target": {
+    "board": "apple,j700",
+    "soc": "apple,t8140",
+    "dtb": "apple/t8140-j700.dtb",
+    "firmware_tuple": null
+  },
+  "boot_backend": {
+    "selected": null,
+    "qualified": false,
+    "candidates": [
+      "direct Image/DTB/initramfs",
+      "U-Boot/UEFI"
+    ]
+  },
+  "sources": {
+    "linux": {
+      "url": "https://github.com/iconidentify/siliconforest-linux.git",
+      "commit": "008ce3c9295a1319233f71d023a06109cc54da0d"
+    },
+    "mesa": {
+      "url": "https://github.com/iconidentify/siliconforest-mesa.git",
+      "commit": "7515336b3dfbe8943b555ffec9817b9ed64379a8"
+    },
+    "m1n1": {
+      "url": "https://github.com/iconidentify/siliconforest-m1n1.git",
+      "branch": "experimental/neo",
+      "commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1"
+    }
+  },
+  "toolchains": {
+    "m1n1_rust": "1.89.0",
+    "m1n1_llvm": "22.1.8",
+    "python_minimum": "3.12"
+  },
+  "kernel_config_candidate": {
+    "SILICONFOREST_NATIVE_GPU": "y",
+    "SILICONFOREST_M3": "n"
+  },
+  "gates": [
+    "Actual J700 firmware/boot/recovery inventory",
+    "Built kernel/Mesa native G17 ABI/dependency evidence",
+    "Attended boot, physical display, recovery and reboot-verified rollback",
+    "Exact versioned installer qualification before any catalog admission"
+  ],
+  "validation_report": "release/source-reviews/20261021-neo-candidate.json",
+  "source_validation": {
+    "loader_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+    "paired_kernel_commit": "008ce3c9295a1319233f71d023a06109cc54da0d",
+    "status": "source/test gates complete; documented J700 limitation retained",
+    "report": "release/source-reviews/20261021-neo-candidate.json"
+  }
+}
