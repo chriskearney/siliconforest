@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "id": "neo-first-candidate",
-  "status": "source/build candidate only",
+  "status": "reviewed source/build candidate; hardware unqualified",
   "public_installable": false,
   "hardware_qualified": false,
   "target": {
@@ -43,12 +43,16 @@
     "SILICONFOREST_M3": "n"
   },
   "gates": [
-    "Loader source reviewed and host/build tested; this does not qualify a hardware boot",
-    "Paired-kernel G2 implemented and source-tested; independent final review pending",
     "Actual J700 firmware/boot/recovery inventory",
     "Built kernel/Mesa native G17 ABI/dependency evidence",
     "Attended boot, physical display, recovery and reboot-verified rollback",
     "Exact versioned installer qualification before any catalog admission"
   ],
-  "validation_report": "release/source-reviews/20261021-neo-candidate.json"
+  "validation_report": "release/source-reviews/20261021-neo-candidate.json",
+  "source_validation": {
+    "loader_commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
+    "paired_kernel_commit": "008ce3c9295a1319233f71d023a06109cc54da0d",
+    "status": "source/test gates complete; documented J700 limitation retained",
+    "report": "release/source-reviews/20261021-neo-candidate.json"
+  }
 }

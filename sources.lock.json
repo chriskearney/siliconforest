@@ -36,9 +36,9 @@
     "configs/kernel.config": "843320f0fc947daad8f0a0c4472a8b4e7bf598f19aed176b686b9eebb1ce9eea",
     "configs/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c",
     "release/profiles.json": "540a3fe9cdcf178c1c80309bb8b4ce79786ba6d56dfac426987929ae54f63194",
-    "release/neo-candidate.json": "9bcb5e058b14b94f67d9e032d4be7de78d9c536ab22b3b354275f5571861c2a4",
+    "release/neo-candidate.json": "3e60c4faa7cc58b7f39d54b22c1433d4d06e43b7c09dbf20ae813377fc8b9339",
     "scripts/build-neo-m1n1.py": "ac05ee536f74a48c3ed5736626a8b23f9a92271bb4eb6851e7c5d4e37a69be7c",
-    "release/source-reviews/20261021-neo-candidate.json": "52debcb76412d605321b7c202e0dd0ead9016053201d84d3154a739d7084f996"
+    "release/source-reviews/20261021-neo-candidate.json": "72275b1275dcc6f5390c728a8142fc0fe9d211cbf075c4c63eb835ad806f044f"
   },
   "toolchains": {
     "kernel_llvm": "22.1.8",
@@ -60,7 +60,7 @@
       "commit": "93f678f92128c28216a5cb0f710cec2d8b0ab5b1",
       "source_commit": "1b36287e04788f4a028e6180c64d3d96e49f06b1",
       "tested": false,
-      "test_scope": "Host/build tested source candidate; no hardware qualification; paired-kernel G2 lifecycle remains open",
+      "test_scope": "Source/host/build validated within documented J700 scope; hardware unqualified; not admitted to public installer",
       "paired_sources": {
         "linux": {
           "url": "https://github.com/iconidentify/siliconforest-linux.git",
