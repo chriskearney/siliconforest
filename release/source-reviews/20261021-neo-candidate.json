@@ -672,10 +672,17 @@
     "mutation_result_sha256": "915d1397e8e0c04b5585a93d84a39c5a472c87298740d5aff8ad645240e642ab",
     "source_review_root_sha256": "85c96230d5f45edd4685aba0c3d9e64aff85e4f1d27c7afd300486bcb8b55142",
     "independent_review": {
-      "verdict": "one should-fix",
+      "verdict": "accept",
       "blockers": [],
-      "receipt_sha256": "61af546fbb443d868bc309befa57903d8c94ef903cfa82b7fcbea6fc3e1c34ce",
-      "method": "Independent exact-source and recorded-artifact review; tests not re-executed by reviewer"
+      "receipt_sha256": "ea76413d4f5873a1d02a3bdf8bdf2e9441ebe1c59dec6edd48c462caffc0f703",
+      "method": "Independent exact-source and recorded-artifact review; tests not re-executed by reviewer",
+      "superseded_receipts": [
+        {
+          "sha256": "61af546fbb443d868bc309befa57903d8c94ef903cfa82b7fcbea6fc3e1c34ce",
+          "note": "Earlier reviewer draft; final receipt records the same exact source and no safety blockers."
+        }
+      ],
+      "immutable_snapshot_verified": true
     },
     "native_compile": {
       "scope": "drivers/gpu/drm/apple with W=1, native GPU config, normal display driver",
@@ -823,10 +830,11 @@
       "public_installable": false,
       "reviews": {
         "root_sha256": "85c96230d5f45edd4685aba0c3d9e64aff85e4f1d27c7afd300486bcb8b55142",
-        "grok_sha256": "61af546fbb443d868bc309befa57903d8c94ef903cfa82b7fcbea6fc3e1c34ce",
-        "grok_verdict": "one should-fix",
+        "grok_sha256": "ea76413d4f5873a1d02a3bdf8bdf2e9441ebe1c59dec6edd48c462caffc0f703",
+        "grok_verdict": "accept",
         "grok_blockers": [],
-        "claude_route_assessment_sha256": "76150034f87007ede069aa9b6c2a504ca5fbf7689d058a4b536b6a3c2c4728a0"
+        "claude_route_assessment_sha256": "76150034f87007ede069aa9b6c2a504ca5fbf7689d058a4b536b6a3c2c4728a0",
+        "prior_grok_receipt_sha256": "61af546fbb443d868bc309befa57903d8c94ef903cfa82b7fcbea6fc3e1c34ce"
       },
       "positive_control_disposition": "Accept actual workqueue-core WARN_ON(!work->func) through cancel_work_sync, with clean real-source controls. Literal ODEBUG was not observed or claimed. This explicitly corrects the original diagnostic expectation.",
       "route_containment_disposition": {
