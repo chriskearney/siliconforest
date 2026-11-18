@@ -17,6 +17,7 @@
 #define SF_STRING(name, value) SF_EXPORT const CFStringRef name = CFSTR(value)
 
 #if SF_LIB == 1 /* CoreFoundation: URL resource keys; each value is the key's own name */
+#ifndef SF_MOVED /* in the CoreFoundation wrapper: terminal-app/compat/CoreFoundation.m */
 SF_STRING(NSURLNameKey, "NSURLNameKey");
 SF_STRING(NSURLFileSizeKey, "NSURLFileSizeKey");
 SF_STRING(NSURLContentModificationDateKey, "NSURLContentModificationDateKey");
@@ -27,12 +28,14 @@ SF_STRING(NSURLVolumeIsReadOnlyKey, "NSURLVolumeIsReadOnlyKey");
 SF_STRING(NSURLHasHiddenExtensionKey, "NSURLHasHiddenExtensionKey");
 SF_STRING(NSURLEffectiveIconKey, "NSURLEffectiveIconKey");
 SF_STRING(NSURLFileResourceIdentifierKey, "NSURLFileResourceIdentifierKey");
+#endif
 
 #elif SF_LIB == 2 /* CoreGraphics */
 typedef struct { double x, y, w, h; } SFRect;
 typedef int32_t CGError;
 enum { kSFCGErrorSuccess = 0, kSFCGErrorIllegalArgument = 1001, kSFCGErrorNotImplemented = 1006 };
 
+#ifndef SF_MOVED /* in CoreGraphics: cocoa patch 0342 */
 /* Public: the displays whose bounds intersect a rectangle. Real, over the display list. */
 SF_EXPORT CGError CGGetDisplaysWithRect(SFRect rect, uint32_t maxDisplays, uint32_t *displays, uint32_t *matching) {
     CGError (*list)(uint32_t, uint32_t *, uint32_t *) = dlsym(RTLD_DEFAULT, "CGGetActiveDisplayList");
@@ -56,6 +59,8 @@ SF_EXPORT CGError CGGetDisplaysWithRect(SFRect rect, uint32_t maxDisplays, uint3
     *matching = displays ? (found < maxDisplays ? found : maxDisplays) : found;
     return kSFCGErrorSuccess;
 }
+
+#endif
 
 /* Private window-server calls. SiliconForest's desktop is a Wayland compositor: there are
  * no window-server Spaces to create or show, no global hot keys and no connection
@@ -189,6 +194,7 @@ SF_EXPORT int32_t FigAssetCreateWithURL(void) {
 }
 
 #elif SF_LIB == 9 /* CoreAudio */
+#ifndef SF_MOVED /* in CoreAudio: cocoa patch 0346 */
 #include <Block.h>
 #include <dispatch/dispatch.h>
 typedef struct { uint32_t selector, scope, element; } SFPropertyAddress;
@@ -230,6 +236,7 @@ SF_EXPORT int32_t AudioObjectAddPropertyListenerBlock(uint32_t object, const SFP
     }
     return status;
 }
+#endif
 #else
 #error SF_LIB selects the framework
 #endif

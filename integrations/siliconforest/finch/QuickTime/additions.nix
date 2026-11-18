@@ -17,7 +17,13 @@
 # by path, never by install name, so a different name changes nothing else.
 #
 # omit: names of additions to leave out (-DSF_OMIT_<name>) when the system gained them.
-{ omit ? [] }:
+#
+# movedInFrameworks: the general names have moved into the frameworks themselves (../../cocoa/patches 0340-0347
+# and the wrappers of ../../terminal-app/compat, docs/roadmap/issues/SF-AI-quicktime.md "The 112 names", column
+# "Provided by"). True (the default): built for a system with those frameworks; the moved names are left out
+# (-DSF_MOVED), and CoreFoundation and CoreAudio need no additions at all. False: everything, for a system
+# without them (the M1 as installed on 18 November 2026).
+{ omit ? [], movedInFrameworks ? true }:
 let
  e=import ../environment.nix;
  a=import ../../cocoa/arm64.nix;
@@ -41,16 +47,19 @@ let
   ["CoreImage" "/System/Library/Frameworks/CoreImage.framework/Versions/A/CoreImage" "small.m" "-DSF_LIB=2" 0 ""]
   ["WebKit" "/System/Library/Frameworks/WebKit.framework/Versions/A/WebKit" "small.m" "-DSF_LIB=3" 0 ""]
  ];
- omitFlags=builtins.concatStringsSep " " (map (n: "-DSF_OMIT_${n}") omit);
+ omitFlags=builtins.concatStringsSep " " (map (n: "-DSF_OMIT_${n}") omit) + (if movedInFrameworks then " -DSF_MOVED" else "");
+ # with the moved names in the frameworks these two have nothing left to add
+ emptyWhenMoved=[ "CoreFoundation" "CoreAudio" ];
+ built=if movedInFrameworks then builtins.filter (l: !(builtins.elem (builtins.elemAt l 0) emptyWhenMoved)) libs else libs;
  one=l: let name=builtins.elemAt l 0; in ''
   ${e.cc} $CF -DSF_STANDIN=${toString (builtins.elemAt l 4)} -dynamiclib ${./additions/standin.m} $LF -Wl,-install_name,@loader_path/${name}.sf-under -o standin/${name}.sf-under
   ${e.cc} $CF ${builtins.elemAt l 3} ${omitFlags} -I${./additions} -dynamiclib ${./additions + "/${builtins.elemAt l 2}"} $LF \
     -Wl,-reexport_library,standin/${name}.sf-under -Wl,-compatibility_version,1 -Wl,-current_version,1 \
     -Wl,-install_name,${builtins.elemAt l 1}.sf-additions ${builtins.elemAt l 5} -o $out/additions/${name}
  '';
- manifest=builtins.toJSON (map (l: { name=builtins.elemAt l 0; load_path=builtins.elemAt l 1; }) libs
+ manifest=builtins.toJSON (map (l: { name=builtins.elemAt l 0; load_path=builtins.elemAt l 1; }) built
    ++ [ { name="VideoToolbox"; load_path="/System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox"; } ]);
-in e.pkgs.runCommand "siliconforest-quicktime-additions-arm64" {} ''
+in e.pkgs.runCommand "siliconforest-quicktime-additions${if movedInFrameworks then "" else "-full"}-arm64" {} ''
  export DARWIN_SDK_ROOT=${e.sdk}
  mkdir -p $out/additions $out/source standin
  CF="-O2 -fblocks -fobjc-exceptions -fno-objc-arc -fvisibility=hidden -isysroot ${e.sdk} -I${e.libsystem}/usr/include -I${a.base.libobjc}/usr/include -I${a.base.foundation}/usr/include -I${a.base.corefoundation}/include -I${a.appDeps.coregraphics}/usr/include -I${a.appDeps.onyx2d}/usr/include -I${a.src}/src/Frameworks -I${a.mesa}/usr/include -F${a.openglFramework}/System/Library/Frameworks -Wno-objc-root-class -Wno-incomplete-implementation -Wno-objc-designated-initializers"
@@ -58,7 +67,7 @@ in e.pkgs.runCommand "siliconforest-quicktime-additions-arm64" {} ''
  # NSFileWrapper: on this system the class is AppKit's (Cocotron). The Foundation additions
  # re-export AppKit's class symbols instead of defining a second class of the same name.
  ${e.cc} $CF -DSF_STANDIN=5 -dynamiclib ${./additions/standin.m} $LF -Wl,-install_name,/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit -o standin/AppKit-public
- ${builtins.concatStringsSep "\n" (map one libs)}
+ ${builtins.concatStringsSep "\n" (map one built)}
  # VideoToolbox: SF-AB's two capability queries (../QuickTime/VTDecoderQueries.c), packaged the same way.
  ${e.cc} $CF -DSF_STANDIN=0 -dynamiclib ${./additions/standin.m} $LF -Wl,-install_name,@loader_path/VideoToolbox.sf-under -o standin/VideoToolbox.sf-under
  ${e.cc} $CF -fvisibility=default -dynamiclib ${./VTDecoderQueries.c} $LF -F${cm}/System/Library/Frameworks -framework CoreMedia \

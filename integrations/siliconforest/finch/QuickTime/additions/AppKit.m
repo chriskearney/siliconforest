@@ -9,22 +9,22 @@
 #include "absent.h"
 
 /* Bindings are named by the property they bind: documented values. */
-#ifndef SF_OMIT_NSEnabledBinding
+#if !defined(SF_OMIT_NSEnabledBinding) && !defined(SF_MOVED) /* in AppKit: cocoa patch 0340 */
 SF_EXPORT NSString *const NSEnabledBinding = @"enabled";
 #endif
-#ifndef SF_OMIT_NSHiddenBinding
+#if !defined(SF_OMIT_NSHiddenBinding) && !defined(SF_MOVED) /* in AppKit: cocoa patch 0340 */
 SF_EXPORT NSString *const NSHiddenBinding = @"hidden";
 #endif
-#ifndef SF_OMIT_NSTitleBinding
+#if !defined(SF_OMIT_NSTitleBinding) && !defined(SF_MOVED) /* in AppKit: cocoa patch 0340 */
 SF_EXPORT NSString *const NSTitleBinding = @"title";
 #endif
-#ifndef SF_OMIT_NSToolTipBinding
+#if !defined(SF_OMIT_NSToolTipBinding) && !defined(SF_MOVED) /* in AppKit: cocoa patch 0340 */
 SF_EXPORT NSString *const NSToolTipBinding = @"toolTip";
 #endif
 
 /* Text styles are opaque keys for +[NSFont preferredFontForTextStyle:options:]. The values
  * are the ones UIKit and CoreText share; believed correct, not verified against macOS. */
-#ifndef SF_OMIT_NSFontTextStyle
+#if !defined(SF_OMIT_NSFontTextStyle) && !defined(SF_MOVED) /* in AppKit: cocoa patch 0340 */
 SF_EXPORT NSString *const NSFontTextStyleLargeTitle = @"UICTFontTextStyleTitle0";
 SF_EXPORT NSString *const NSFontTextStyleTitle1 = @"UICTFontTextStyleTitle1";
 SF_EXPORT NSString *const NSFontTextStyleTitle3 = @"UICTFontTextStyleTitle3";
@@ -45,7 +45,7 @@ SF_EXPORT NSString *const NSRecentDocumentsMenuName = @"NSRecentDocumentsMenu";
 
 /* A click recogniser in the manner of this AppKit's other recognisers: it keeps its
  * configuration and recognises nothing. */
-#ifndef SF_OMIT_NSClickGestureRecognizer
+#if !defined(SF_OMIT_NSClickGestureRecognizer) && !defined(SF_MOVED) /* in AppKit: cocoa patch 0340 */
 @interface NSGestureRecognizer : NSObject
 @end
 SF_EXPORT

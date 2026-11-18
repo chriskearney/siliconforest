@@ -188,3 +188,17 @@ Offline, against the 15 November copy of the system: 965 imports, none unbound. 
 M1 (18 November, probe only, no window): all 154 names found by the real dyld through the
 prefix, every behaviour check passes, each system image loaded once. QuickTime Player
 itself has not been loaded yet.
+
+## Names moved into the frameworks (18 November 2026, SF-AI)
+
+28 of the 112 names were general, not QuickTime Player's alone, and now live in the
+frameworks: Cocoa patches 0340-0347 (`../../cocoa/patches`: AppKit, CoreGraphics,
+QuartzCore, CoreAudio, libFoundation) and the framework wrappers of
+`../../terminal-app/compat` (the URL key names, `NSFileCoordinator`). `additions.nix`
+leaves them out by default (`-DSF_MOVED`), and then builds no additions for CoreFoundation
+or CoreAudio at all; `additions.nix { movedInFrameworks = false; }` still builds the full
+set, for a system without those frameworks (the M1 as installed on 18 November; the load
+test uses it). `additions/symbols.json` says for each name what provides it
+(`provided_by`); `additions-check.nix` checks the full set, the shrunk set and the
+frameworks separately.
+

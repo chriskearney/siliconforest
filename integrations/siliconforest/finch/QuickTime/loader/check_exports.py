@@ -14,6 +14,7 @@ its path or "<path>.sf-additions", is not arm64, or lacks a symbol. This predict
 """
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,15 +22,25 @@ from pathlib import Path
 ADDITIONS_SUFFIX = '.sf-additions'
 
 
-def load_imports(path):
-    """{install name: [symbol, ...]} with the comment entry dropped; raises on a malformed file."""
+ADDITIONS_PROVIDERS = ('QuickTime additions', 'staged AVKit')
+
+
+def load_imports(path, provided=None):
+    """{install name: [symbol, ...]} with the comment entry dropped; raises on a malformed file.
+    provided (per-symbol table only): 'additions' keeps the rows the QuickTime prefix supplies,
+    'frameworks' the rows the frameworks themselves supply; None keeps all."""
     data = json.loads(Path(path).read_text())
     out = {}
     if isinstance(data.get('symbols'), list):       # the per-symbol table form (additions/symbols.json)
         kinds = {'real', 'constant', 'model', 'absence'}
         for row in data['symbols']:
-            if set(row) != {'library', 'symbol', 'kind', 'note'} or row['kind'] not in kinds or not row['note']:
+            if not {'library', 'symbol', 'kind', 'note'} <= set(row) <= {'library', 'symbol', 'kind', 'note', 'provided_by'} \
+                    or row['kind'] not in kinds or not row['note']:
                 raise ValueError(f'{path}: bad row {row!r}')
+            by = row.get('provided_by', ADDITIONS_PROVIDERS[0])
+            ours = by.startswith(ADDITIONS_PROVIDERS)
+            if (provided == 'additions' and not ours) or (provided == 'frameworks' and ours):
+                continue
             if not row['library'].startswith('/') or not row['symbol'].startswith('_'):
                 raise ValueError(f'{path}: bad library or symbol in {row!r}')
             out.setdefault(row['library'], []).append(row['symbol'])
@@ -68,9 +79,10 @@ def exports_of(install, find, load, seen=None):
     return symbols
 
 
-def check(imports, find, load):
+def check(imports, find, load, resolved=lambda install: install):
     """[problem, ...] (empty when every library is present and exports all it must) and
-    {install name: (needed, found)}."""
+    {install name: (needed, found)}. resolved(install name): the install path the file found
+    there has through version links (Versions/C/AppKit -> Versions/A/AppKit), also accepted."""
     problems, counts = [], {}
     for install, needed in imports.items():
         path = find(install)
@@ -82,7 +94,7 @@ def check(imports, find, load):
         # A library is found by path; its install name is the path (a framework the system does not
         # have) or "<path>.sf-additions" (an additions library: it must not repeat the install name of
         # the system image it re-exports, which dyld would fold onto it).
-        if not image.id or image.id['name'] not in (install, install + ADDITIONS_SUFFIX):
+        if not image.id or image.id['name'] not in (install, install + ADDITIONS_SUFFIX, resolved(install)):
             problems.append(f'{install}: the file there has install name {image.id and image.id["name"]}')
         if not getattr(image, 'arm64', True):
             problems.append(f'{install}: not an arm64 image')
@@ -99,6 +111,7 @@ def main(argv):
     ap.add_argument('--root', required=True)
     ap.add_argument('--under', action='append', default=[])
     ap.add_argument('--macho', required=True)
+    ap.add_argument('--provided', choices=('additions', 'frameworks'), help='per-symbol table: check only the rows the prefix (or the frameworks) supply')
     args = ap.parse_args(argv)
     sys.path.insert(0, args.macho)
     import hb_macho
@@ -117,7 +130,14 @@ def main(argv):
         image.arm64 = image.cputype == hb_macho.CPU_ARM64
         return image
 
-    problems, counts = check(load_imports(args.imports), find, load)
+    def resolved(install):
+        for tree in trees:
+            p = tree / install.lstrip('/')
+            if p.is_file():
+                return '/' + str(Path(os.path.realpath(p)).relative_to(os.path.realpath(tree)))
+        return install
+
+    problems, counts = check(load_imports(args.imports, args.provided), find, load, resolved)
     for install, (needed, found) in counts.items():
         print(f'{found:3} of {needed:3}  {install}')
     for p in problems:

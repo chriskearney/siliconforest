@@ -108,6 +108,7 @@ SF_EXPORT
  * re-exports AppKit's class symbols (additions/foundation-reexports.txt), so that one class of
  * that name exists in the process. */
 
+#ifndef SF_MOVED /* in the Foundation wrapper: terminal-app/compat/Foundation.m */
 /* File coordination. With no other process presenting files and no coordination service,
  * coordinating an access is running it: the accessor is called at once with the same URL.
  * Presenters are kept so that adding and removing them balances. */
@@ -171,3 +172,4 @@ static NSMutableArray *sfPresenters;
     [super dealloc];
 }
 @end
+#endif

@@ -10,8 +10,10 @@
 #include "absent.h"
 
 /* Documented values. */
+#ifndef SF_MOVED /* in QuartzCore: cocoa patch 0343 */
 SF_EXPORT NSString *const kCATruncationMiddle = @"middle";
 SF_EXPORT NSString *const kCAAlignmentCenter = @"center";
+#endif
 SF_EXPORT NSString *const kCAFilterDestOut = @"destOut";
 
 @interface CAAnimation : NSObject
@@ -33,6 +35,7 @@ SF_EXPORT NSString *const kCAFilterDestOut = @"destOut";
     - (type)getter { return ivar; } \
     - (void)setter:(type)value { ivar = value; }
 
+#ifndef SF_MOVED /* in QuartzCore: cocoa patch 0344 */
 SF_EXPORT
 @interface CAKeyframeAnimation : CAPropertyAnimation {
     NSArray *_sfValues, *_sfKeyTimes, *_sfTimingFunctions;
@@ -64,7 +67,9 @@ SF_OBJECT(NSString *, rotationMode, setRotationMode, _sfRotationMode)
     [super dealloc];
 }
 @end
+#endif
 
+#ifndef SF_MOVED /* in QuartzCore: cocoa patch 0343 */
 SF_EXPORT
 @interface CATextLayer : CALayer {
     id _sfString;
@@ -110,6 +115,7 @@ SF_SCALAR(BOOL, allowsFontSubpixelQuantization, setAllowsFontSubpixelQuantizatio
     [super dealloc];
 }
 @end
+#endif
 
 /* A tiled layer is, here, an ordinary layer that remembers its tiling parameters: its
  * content is drawn whole. */
@@ -133,6 +139,7 @@ SF_SCALAR(size_t, levelsOfDetail, setLevelsOfDetail, _sfLevels)
 SF_SCALAR(size_t, levelsOfDetailBias, setLevelsOfDetailBias, _sfBias)
 @end
 
+#ifndef SF_MOVED /* in QuartzCore: cocoa patch 0345 */
 /* Constraint attributes, in the documented order. */
 enum { SFMinX, SFMidX, SFMaxX, SFWidth, SFMinY, SFMidY, SFMaxY, SFHeight };
 
@@ -257,6 +264,7 @@ SF_EXPORT
     (void)layer;
 }
 @end
+#endif
 
 /* Private. A named filter with parameters; this compositor applies no layer filters. */
 SF_EXPORT

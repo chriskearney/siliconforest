@@ -101,10 +101,32 @@ class SymbolTableTests(unittest.TestCase):
         kinds = {}
         for row in table:
             kinds[row['kind']] = kinds.get(row['kind'], 0) + 1
-        self.assertEqual(kinds, {'absence': 49, 'constant': 37, 'real': 17, 'model': 9})
+        self.assertEqual(kinds, {'absence': 49, 'constant': 37, 'real': 19, 'model': 7})
         by_library = check_exports.load_imports(QT / 'additions/symbols.json')
         self.assertEqual(len(by_library), 18)
         self.assertEqual(sum(map(len, by_library.values())), 112)
+
+    def test_moved_names_and_what_is_left(self):
+        path = QT / 'additions/symbols.json'
+        prefix = check_exports.load_imports(path, 'additions')
+        frameworks = check_exports.load_imports(path, 'frameworks')
+        self.assertEqual(sum(map(len, prefix.values())), 84)
+        self.assertEqual(sum(map(len, frameworks.values())), 28)
+        # nothing is supplied by both, and nothing is lost
+        both = {(k, s) for k, v in prefix.items() for s in v} & {(k, s) for k, v in frameworks.items() for s in v}
+        self.assertEqual(both, set())
+        # with the moved names in the frameworks, CoreFoundation and CoreAudio need no additions
+        self.assertFalse([k for k in prefix if k.endswith(('/CoreFoundation', '/CoreAudio'))])
+        # every moved name is guarded out of the additions' sources
+        sources = ''.join((QT / 'additions' / f).read_text() for f in ('AppKit.m', 'Foundation.m', 'plain.c', 'QuartzCore.m'))
+        self.assertGreaterEqual(sources.count('SF_MOVED'), 8)
+
+    def test_version_link_is_accepted(self):
+        appkit = Image('/F/AppKit.framework/Versions/A/AppKit', ['_x'])
+        install = '/F/AppKit.framework/Versions/C/AppKit'
+        problems, _ = check_exports.check({install: ['_x']}, lambda i: i, lambda p: appkit,
+                                          resolved=lambda i: '/F/AppKit.framework/Versions/A/AppKit')
+        self.assertEqual(problems, [])
 
     def test_symbol_table_rules(self):
         with tempfile.TemporaryDirectory() as d:
@@ -112,7 +134,7 @@ class SymbolTableTests(unittest.TestCase):
             good = {'library': '/L/A', 'symbol': '_a', 'kind': 'real', 'note': 'n'}
             p.write_text(json.dumps({'symbols': [good]}))
             self.assertEqual(check_exports.load_imports(p), {'/L/A': ['_a']})
-            for bad in (dict(good, kind='works'), dict(good, note=''), dict(good, library='L/A'), dict(good, symbol='a')):
+            for bad in (dict(good, kind='works'), dict(good, note=''), dict(good, library='L/A'), dict(good, symbol='a'), dict(good, extra=1)):
                 p.write_text(json.dumps({'symbols': [bad]}))
                 with self.assertRaises(ValueError):
                     check_exports.load_imports(p)
