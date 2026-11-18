@@ -13,6 +13,15 @@ change('    AVPlayer *_fplayer;\n    AVPlayerLayer *_fplayerLayer;','    AVPlaye
 change('_fcontrols = [[NSView alloc] initWithFrame:', '_fcontrols = [[SFTransportView alloc] initWithFrame:')
 a=s.index('        _fplayButton = [[NSButton alloc]');b=s.index('        [self addSubview:_fcontrols];',a)
 s=s[:a]+'        [(SFTransportView *)_fcontrols setPlayerView:self];\n'+s[b:]
+# (QTP) the controls' frame follows the style: the inline bar, or the floating panel over the picture
+change('''    BOOL visible = _fcontrolsStyle != AVPlayerViewControlsStyleNone;
+    _fcontrols.hidden = !visible;
+    _ffullScreenButton.hidden = !_fshowsFullscreen;''','''    BOOL visible = _fcontrolsStyle != AVPlayerViewControlsStyleNone;
+    _fcontrols.hidden = !visible || [(SFTransportView *)_fcontrols sfIdleHidden];
+    _fcontrols.frame = SFControlsFrame(self);
+    _fcontrols.autoresizingMask = _fcontrolsStyle == AVPlayerViewControlsStyleFloating ? (NSViewMinXMargin | NSViewMaxXMargin | NSViewMaxYMargin) : (NSViewWidthSizable | NSViewMaxYMargin);
+    _ffullScreenButton.hidden = !_fshowsFullscreen || _fcontrolsStyle == AVPlayerViewControlsStyleFloating;''')
+change('    _fcontrols.frame = NSMakeRect(0, 0, NSWidth(self.bounds), 38);','    _fcontrols.frame = SFControlsFrame(self);')
 change('''    [_fplayer release]; [_fplayerLayer release];''','''    _sfDrawToken.owner=nil;
     if(_sfPeriodic) [_fplayer removeTimeObserver:_sfPeriodic];
     [_sfDrawToken release];

@@ -306,6 +306,29 @@ The load test now takes a capture and the window list 3 s before it stops the ap
 the exit reason, refuses to start the application while the owner is at the machine, and passes
 `--movie` as the `NSOpen` default (the way AppKit is told about a file named at launch).
 
+## Playback and the controls on the machine (18 November)
+- **Streamed playback.** The staged player decoded a whole file into memory before playing (capped at
+  512 MiB, about 5 s of 1080p). It now keeps about a second of pictures ahead of the display and reads
+  the sound as the queue needs it (`finch/AVFoundation/player`, checked by `stream-probe.nix`). On the M1,
+  Big Buck Bunny's 30 s 1080p cut matches an independent FFmpeg decode in all 900 pictures (time and
+  NV12 MD5), and QuickTime Player plays it with its sound through coreaudiod without underruns.
+- **The window.** A large movie opens fitting the screen, as on macOS (libFoundation 0361: an unbounded
+  rectangle meets a finite one in NSIntersectionRect).
+- **The controls.** QuickTime Player asks for AVKit's floating controls. They are drawn by our AVKit from
+  shapes, over the bottom of the picture: volume (the speaker mutes), skip back and forward 15 s,
+  play/pause, full screen (the window's own full screen), and the scrubber between the elapsed and the
+  remaining time, which seeks by a click or a drag. They hide while a movie plays and the pointer rests for
+  3 s, and come back when it moves. Space plays and pauses, the arrows step a picture.
+- Not done: the playback-speed menu, sharing and AirPlay buttons (absent), subtitles and alternative
+  audio (absent), trimming.
+
+## General pieces for the system install
+These are corrections or additions any application can meet; they live in the private prefix until the
+guarded install: libFoundation 0347, 0348, 0349, 0352, 0354, 0355, 0359, 0361; AppKit 0340, 0341, 0350,
+0351, 0353, 0356, 0357, 0358, 0360; CoreGraphics 0342; QuartzCore 0343-0345; CoreAudio 0346; the URL key
+names and NSFileCoordinator in the framework wrappers. QuickTime Player's own prefix keeps only what is
+its alone (the additions, the private frameworks' absences, the AVKit and AVFoundation stages).
+
 ## The 112 names
 Kinds: **real** (implemented), **constant**, **model** (holds what it is given; nothing in the system acts on
 it yet), **absence** (binds; when used it fails as its interface documents, or does nothing it cannot do
