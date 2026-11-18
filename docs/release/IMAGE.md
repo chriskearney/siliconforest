@@ -239,7 +239,7 @@ build of `release/packages.nix` was not finished when this was written.
   forest wallpaper, the dock (launcher strip and instrument column) and the terminal; a
   command typed on the emulated USB keyboard (through QEMU's VNC server) runs in the terminal
   and its output is on screen (`uname -m` printed `arm64`), and the desktop and dock stay up
-  afterwards. Pictures: `runs/image/qemu/run20/shots/latest.png` (dock and terminal) and
+  afterwards: the session ran its full 1,500 s and the compositor exited 0 (`QDDESK_PASS`). Pictures: `runs/image/qemu/run20/shots/latest.png` (dock and terminal) and
   `typed.png` (after typing), taken over VNC, not inside the guest. Three compositor/dock
   patches made this work (`integrations/siliconforest/terminal-app/compositor/`):
   - `wm-darwin-app-ready-deadline-env.patch`: the 25 s READY deadline and the autopilot's 15 s
