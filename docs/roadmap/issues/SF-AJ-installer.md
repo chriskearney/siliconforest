@@ -148,9 +148,10 @@ adds the plan, the gate, the identifiers and the firmware slot. Recommendation: 
   non-default volume names replaced, the user name replaced, drive statistics dropped, and the
   output searched for every original value. `system_profiler` was recorded but not kept (the installer
   reads the model with `sysctl`).
-- shellcheck: **not run locally** (the workstation's shellcheck binary is broken and fetching another
-  was refused); a CI step `shellcheck -s sh install.sh install/bootstrap.sh` was added and has not run
-  yet. `sh -n` and `bash --posix -n` pass.
+- shellcheck: not run on this workstation (its shellcheck binary is broken; fetching another was
+  refused). The CI step `shellcheck -s sh install.sh install/bootstrap.sh` on GitHub's runner found one
+  warning (SC2034, an unused variable) in commit 63ed753d3, already gone in 0a294f565, whose CI run passed
+  in full. `sh -n` and `bash --posix -n` pass.
 - `python3 tools/ci_check.py`: accepted (one known test NOT RUN for a missing artefact, as on every clone).
 
 ## Real-hardware test (designed, not run; needs a machine and the owner's go)
