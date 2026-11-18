@@ -259,7 +259,22 @@ speakersafetyd reference files kept unchanged for comparison are hash-recorded i
 directories (m1-thunderbolt/upstream, m1-sound/safetyd/tests/upstream-ref). Licences of
 Retro68 and Infinite Mac: not verified.
 
+Homebrew packages in release images
+-----------------------------------
+The public image entry includes the Homebrew client and a set of public arm64 bottles.
+The client is Homebrew/brew at 8679d30f156018b0b184c64ab21a784f64b1d880, BSD-2-Clause;
+its unchanged licence text is in LICENSES/third-party/Homebrew-LICENSE.txt.
+Source: https://github.com/Homebrew/brew/tree/8679d30f156018b0b184c64ab21a784f64b1d880
+
+The bottle versions, content hashes and licence identifiers are recorded in
+sources.lock (homebrew) and checked against release/image/homebrew.lock.json.
+These packages are fetched binaries, not compiled by the public image entry.
+They retain their own licences, including portable Ruby. The recipe retains licence
+files present in the archives and writes the package list to
+/opt/homebrew/.sf-licences.tsv. The identifiers are Homebrew metadata, not an
+independent review of every package licence or a decision to distribute the image.
+
 Tools used to build and study, not shipped
 ------------------------------------------
 Nix and nixpkgs (MIT), LLVM/clang (Apache-2.0 with LLVM exception), the Rust toolchain
-(MIT OR Apache-2.0), QEMU (GPL-2.0), Homebrew (BSD-2-Clause) as a compatibility test.
+(MIT OR Apache-2.0), QEMU (GPL-2.0).
