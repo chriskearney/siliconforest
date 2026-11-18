@@ -14,9 +14,11 @@ behaviour, and stage it beside the system until the application runs. Nothing fr
 private headers is in this repository; only names appear here, because names are the interface.
 
 ## State (18 November 2026, evening)
-**Launched, past dyld, no window of its own yet.** The application starts on the M1 from the private
-prefix, runs its launch code and waits in its event loop ("Stage 1 on the machine"). Before that, our
-own probe ran against the prefix without a window:
+**A movie's document window is on screen.** On the M1, from the private prefix (nothing installed), the
+application opens a movie named at launch and shows its document window: the menu strip ("QuickTime
+Player  File  Edit  View  Window  Help"), the movie's first frame and the transport bar. Started without
+a file, it shows its Open panel, as on macOS. How it got there: "Stage 1 on the machine". Before that,
+our own probe ran against the prefix without a window:
 
 - **All 154 names the prefix supplies are found by the real dyld** in the libraries the application binds
   them from (the 112 additions and the 42 of the loader libraries), and every behaviour check of the probe
@@ -288,6 +290,14 @@ main thread's stack on request.
   once on stderr where it matters), the controller's initialiser, content size, looping, autoplay and
   frame stepping, and "no" for chapters, alternative audio, subtitles and sharing, which this player
   does not read.
+- **The document window (18 November, evening).** Nine more bounded launches, each ending at the next
+  message nothing answered, brought the window up: to-many change notifications (libFoundation 0354),
+  the player item's track field mode and "has video", the player view's remaining settings
+  (slow-motion range, unobscured content, share controller: none, edit controls: none), the
+  application's gesture event mask, menu item identifiers and a document's restorable state (AppKit
+  0357; nothing is restored here). Written ahead from the call sites in the same rounds: libFoundation
+  0355 (file manager URL forms, set union, security scope: none here, locale names) and AppKit 0356
+  (title-bar height, symbol images, writing direction, layer coordinates).
 - **Where the menu bar is.** This desktop has no global menu bar: an application's main menu is
   drawn in the first row of each of its titled windows that is not a panel. The Open panel is a panel,
   so the menus appear with the first document window.

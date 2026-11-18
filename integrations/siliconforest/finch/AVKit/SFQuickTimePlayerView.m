@@ -145,8 +145,56 @@ static CGSize sfContentSize(AVPlayerView *view)
    time only, so none is offered to choose from; the chosen one is kept */
 static char kTimeStyle;
 - (NSArray *)allowedTimeDisplayStyles { return [NSArray array]; }
+- (NSArray *)availableTimeDisplayStyles { return [NSArray array]; }
+
+/* whether the view keeps its controls off the picture (full screen); they are drawn below it here */
+static char kUnobscured;
+- (BOOL)prefersUnobscuredContent { return [objc_getAssociatedObject(self, &kUnobscured) boolValue]; }
+- (void)setPrefersUnobscuredContent:(BOOL)value { objc_setAssociatedObject(self, &kUnobscured, [NSNumber numberWithBool:value], OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+
+/* the magnification at which the picture is shown at its own size (View > Actual Size) */
+- (double)_calculateMagnificationForActualSize
+{
+    CGSize content = sfContentSize(self);
+    CGRect frame = [self playerLayerFrame];
+    if (content.width <= 0 || frame.size.width <= 0)
+        return 1.0;
+    return [self magnification] * content.width / frame.size.width;
+}
 - (NSInteger)timeDisplayStyle { return [objc_getAssociatedObject(self, &kTimeStyle) integerValue]; }
 - (void)setTimeDisplayStyle:(NSInteger)style { objc_setAssociatedObject(self, &kTimeStyle, [NSNumber numberWithInteger:style], OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+
+/* the slow part of a high-frame-rate movie, which the view marks on its time line on macOS: slow motion is not
+   offered here (PhotosFormats), so the range is kept and nothing is marked */
+static char kSlowMotionRange;
+- (CMTimeRange)slowMotionTimeRange
+{
+    CMTimeRange range = kCMTimeRangeInvalid;
+    [(NSValue *)objc_getAssociatedObject(self, &kSlowMotionRange) getValue:&range];
+    return range;
+}
+- (void)setSlowMotionTimeRange:(CMTimeRange)range
+{
+    objc_setAssociatedObject(self, &kSlowMotionRange, [NSValue valueWithBytes:&range objCType:@encode(CMTimeRange)], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+/* the object behind the view's Share menu on macOS: sharing is not offered by this view */
+- (id)shareController { return nil; }
+
+/* the bar of edit (trim) controls: not available here; the handler is called as when the change is done */
+- (void)hideEditControlsViewControllerWithCompletionHandler:(void (^)(void))handler
+{
+    if (handler)
+        handler();
+}
+
+- (void)showEditControlsViewController:(id)controller withCompletionHandler:(void (^)(void))handler
+{
+    (void)controller;
+    sfOnce("edit (trim) controls are not shown by this view");
+    if (handler)
+        handler();
+}
 
 /* trimming (public on macOS) is not available in this view */
 - (BOOL)canBeginTrimming { return NO; }
@@ -168,5 +216,70 @@ static char kTimeStyle;
 static char kMultichannel;
 - (void)setMultichannelAudioStrategy:(id)strategy { objc_setAssociatedObject(self, &kMultichannel, strategy, OBJC_ASSOCIATION_COPY_NONATOMIC); }
 - (id)multichannelAudioStrategy { return objc_getAssociatedObject(self, &kMultichannel); }
+
+@end
+
+/* Media names QuickTime Player asks AVFoundation objects for that this AVFoundation does not have. */
+static char kFieldMode;
+
+@implementation AVPlayerItemTrack (SFQuickTimePrivate)
+
+/* (public on macOS) how interlaced video is shown; nil is the default, as there: the field mode is kept and the
+   frames are shown as decoded (no deinterlacing here) */
+- (NSString *)videoFieldMode { return objc_getAssociatedObject(self, &kFieldMode); }
+- (void)setVideoFieldMode:(NSString *)mode
+{
+    if (mode != nil)
+        sfOnce("deinterlacing is not done here: video fields are shown as decoded");
+    objc_setAssociatedObject(self, &kFieldMode, mode, OBJC_ASSOCIATION_COPY_NONATOMIC);
+}
+
+@end
+
+@implementation AVAsset (SFQuickTimePrivate)
+
+/* groups of alternate tracks (one plays at a time): the asset's track groups */
+- (NSArray *)alternateTrackGroups
+{
+    return [self respondsToSelector:@selector(trackGroups)] ? [self performSelector:@selector(trackGroups)] : [NSArray array];
+}
+
+/* the group of alternate audio tracks: alternative audio is not read here */
+- (id)audioAlternatesTrackGroup { return nil; }
+
+/* the video dynamic ranges the asset has: this player shows standard range only, so none beyond it is reported */
+- (NSArray *)availableVideoDynamicRanges { return [NSArray array]; }
+
+@end
+
+@implementation AVAssetTrack (SFQuickTimePrivate)
+- (NSArray *)availableVideoDynamicRanges { return [NSArray array]; }
+@end
+
+@implementation AVPlayerItem (SFQuickTimePrivate)
+
+/* whether the item's asset has video or audio (private on macOS; QuickTime Player picks its video or audio-only
+   view by it): from the asset's tracks; an item track that is turned off does not count for the "enabled" forms */
+- (BOOL)sfHasTrackOfType:(NSString *)type enabledOnly:(BOOL)enabledOnly
+{
+    if (enabledOnly) {
+        for (AVPlayerItemTrack *track in self.tracks)
+            if ([track isEnabled] && [[[track assetTrack] mediaType] isEqualToString:type])
+                return YES;
+        if ([self.tracks count] > 0)
+            return NO;
+    }
+    return [[self.asset tracksWithMediaType:type] count] > 0;
+}
+
+- (BOOL)hasVideo { return [self sfHasTrackOfType:AVMediaTypeVideo enabledOnly:NO]; }
+
+/* (private on macOS) a hint that the item will be the only one playing (full screen): kept, no effect here */
+static char kExclusive;
+- (BOOL)shouldOptimizeForExclusivePlayback { return [objc_getAssociatedObject(self, &kExclusive) boolValue]; }
+- (void)setShouldOptimizeForExclusivePlayback:(BOOL)value { objc_setAssociatedObject(self, &kExclusive, [NSNumber numberWithBool:value], OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+- (BOOL)hasAudio { return [self sfHasTrackOfType:AVMediaTypeAudio enabledOnly:NO]; }
+- (BOOL)hasEnabledVideo { return [self sfHasTrackOfType:AVMediaTypeVideo enabledOnly:YES]; }
+- (BOOL)hasEnabledAudio { return [self sfHasTrackOfType:AVMediaTypeAudio enabledOnly:YES]; }
 
 @end

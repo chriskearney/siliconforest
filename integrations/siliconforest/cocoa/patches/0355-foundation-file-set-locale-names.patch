@@ -1,0 +1,126 @@
+diff --git a/src/Frameworks/Foundation/Collections.subproj/NSSet.m b/src/Frameworks/Foundation/Collections.subproj/NSSet.m
+index a74a552..0e9ddc0 100644
+--- a/src/Frameworks/Foundation/Collections.subproj/NSSet.m
++++ b/src/Frameworks/Foundation/Collections.subproj/NSSet.m
+@@ -475,6 +475,15 @@ static CFMutableSetRef _setFromArguments(id firstObject, va_list arguments) {
+     return [[result copy] autorelease];
+ }
+ 
++// (QTP) missing; first caller Apple's QuickTime Player
++- (NSSet *)setByAddingObjectsFromSet:(NSSet *)other {
++    NSMutableSet *result = [[[NSMutableSet alloc] initWithSet:self] autorelease];
++
++    if (other != nil)
++        [result unionSet:other];
++    return result;
++}
++
+ - (NSSet *)setByAddingObjectsFromArray:(NSArray *)other {
+     NSMutableSet *result = [[[NSMutableSet alloc] initWithSet:self] autorelease];
+ 
+diff --git a/src/Frameworks/Foundation/FileManager.subproj/NSFileManager.m b/src/Frameworks/Foundation/FileManager.subproj/NSFileManager.m
+index 222fd98..1229ea7 100644
+--- a/src/Frameworks/Foundation/FileManager.subproj/NSFileManager.m
++++ b/src/Frameworks/Foundation/FileManager.subproj/NSFileManager.m
+@@ -405,6 +405,34 @@ static void _setPOSIXError(NSError **error) {
+     return result;
+ }
+ 
++// (QTP) the URL forms of the path methods (missing; first caller Apple's QuickTime Player). The keys to prefetch
++// are a hint (each URL answers them when asked); the options skip hidden files (names starting with ".")
++- (BOOL)removeItemAtURL:(NSURL *)url error:(NSError **)error {
++    return [self removeItemAtPath:[url path] error:error];
++}
++
++- (BOOL)copyItemAtURL:(NSURL *)source toURL:(NSURL *)destination error:(NSError **)error {
++    return [self copyItemAtPath:[source path] toPath:[destination path] error:error];
++}
++
++- (NSArray<NSURL *> *)contentsOfDirectoryAtURL:(NSURL *)url
++                    includingPropertiesForKeys:(NSArray *)keys
++                                       options:(NSUInteger)options
++                                         error:(NSError **)error {
++    NSArray *names = [self contentsOfDirectoryAtPath:[url path] error:error];
++    NSMutableArray *result = [NSMutableArray arrayWithCapacity:[names count]];
++
++    (void)keys;
++    if (names == nil)
++        return nil;
++    for (NSString *name in names) {
++        if ((options & (1UL << 2)) && [name hasPrefix:@"."])   // NSDirectoryEnumerationSkipsHiddenFiles
++            continue;
++        [result addObject:[url URLByAppendingPathComponent:name]];
++    }
++    return result;
++}
++
+ - (BOOL)moveItemAtURL:(NSURL *)source toURL:(NSURL *)destination error:(NSError **)error {
+     return [self moveItemAtPath:[source path] toPath:[destination path] error:error];
+ }
+diff --git a/src/Frameworks/Foundation/Locale.subproj/NSLocale.m b/src/Frameworks/Foundation/Locale.subproj/NSLocale.m
+index 9797727..8759980 100644
+--- a/src/Frameworks/Foundation/Locale.subproj/NSLocale.m
++++ b/src/Frameworks/Foundation/Locale.subproj/NSLocale.m
+@@ -50,6 +50,25 @@ NSLocaleKey const NSLocaleGroupingSeparator = @"kCFLocaleGroupingSeparatorKey";
+     return (id)CFLocaleGetValue((CFLocaleRef)self, (CFStringRef)key);
+ }
+ 
++// (QTP) display names in this locale's language (CoreFoundation's tables); first caller Apple's QuickTime Player
++- (NSString *)localizedStringForLanguageCode:(NSString *)code {
++    if (code == nil)
++        return nil;
++    return [(NSString *)CFLocaleCopyDisplayNameForPropertyValue((CFLocaleRef)self, kCFLocaleLanguageCode, (CFStringRef)code) autorelease];
++}
++
++- (NSString *)localizedStringForCountryCode:(NSString *)code {
++    if (code == nil)
++        return nil;
++    return [(NSString *)CFLocaleCopyDisplayNameForPropertyValue((CFLocaleRef)self, kCFLocaleCountryCode, (CFStringRef)code) autorelease];
++}
++
++- (NSString *)localizedStringForLocaleIdentifier:(NSString *)identifier {
++    if (identifier == nil)
++        return nil;
++    return [(NSString *)CFLocaleCopyDisplayNameForPropertyValue((CFLocaleRef)self, kCFLocaleIdentifier, (CFStringRef)identifier) autorelease];
++}
++
+ - (id)copyWithZone:(NSZone *)zone {
+     return (id)CFRetain((CFTypeRef)self);
+ }
+diff --git a/src/Frameworks/Foundation/URL.subproj/NSURL.m b/src/Frameworks/Foundation/URL.subproj/NSURL.m
+index f816a3f..17c3b94 100644
+--- a/src/Frameworks/Foundation/URL.subproj/NSURL.m
++++ b/src/Frameworks/Foundation/URL.subproj/NSURL.m
+@@ -334,6 +334,32 @@ static void __NSCFURLBridgeInit(void) {
+     return NO;
+ }
+ 
++// (QTP) There is no sandbox here: no URL is security-scoped, so access is never started (NO, as macOS answers for
++// a URL that is not security-scoped) and there is nothing to stop.
++- (BOOL)startAccessingSecurityScopedResource {
++    return NO;
++}
++
++- (void)stopAccessingSecurityScopedResource {
++}
++
++// (QTP) Resource values a file system lets a program set: none here, so each is refused with an error that says so
++// (the value is unchanged)
++- (BOOL)setResourceValue:(id)value forKey:(NSString *)key error:(NSError **)error {
++    (void)value;
++    if (error != NULL)
++        *error = [NSError errorWithDomain:NSCocoaErrorDomain code:3328 /* NSFeatureUnsupportedError */
++                                 userInfo:[NSDictionary dictionaryWithObject:[NSString stringWithFormat:@"Setting the resource value %@ is not supported.", key]
++                                                                      forKey:NSLocalizedDescriptionKey]];
++    return NO;
++}
++
++- (BOOL)setResourceValues:(NSDictionary *)values error:(NSError **)error {
++    for (NSString *key in values)
++        return [self setResourceValue:[values objectForKey:key] forKey:key error:error];
++    return YES;
++}
++
+ - (NSURL *)URLByResolvingSymlinksInPath {
+     if (![self isFileURL])
+         return self;

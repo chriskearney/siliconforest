@@ -1,0 +1,180 @@
+diff --git a/src/Frameworks/Foundation/KVC.subproj/NSKeyValueObserving.m b/src/Frameworks/Foundation/KVC.subproj/NSKeyValueObserving.m
+index 57c3a6e..518b91b 100644
+--- a/src/Frameworks/Foundation/KVC.subproj/NSKeyValueObserving.m
++++ b/src/Frameworks/Foundation/KVC.subproj/NSKeyValueObserving.m
+@@ -485,6 +485,175 @@ static BOOL observationMatches(id object, NSKVOObservation *entry, NSString *key
+     [list release];
+ }
+ 
++/* (QTP) Changes of a to-many key, as on macOS: an observation of exactly that key is told the kind of change, the
++ * indexes (ordered) and the old and new values at them (for a set: the objects that went and came); an observation
++ * that only depends on the key (a longer key path, an affecting key) is told of a setting, as for
++ * -willChangeValueForKey:. First caller: Apple's QuickTime Player (its media tracks). */
++// macOS's NSKeyValueSetMutationKind (not declared in this Foundation's headers: a stage of ours declares the type itself)
++enum { SFUnionSetMutation = 1, SFMinusSetMutation = 2, SFIntersectSetMutation = 3, SFSetSetMutation = 4 };
++
++static BOOL entryIsToManyOf(NSKVOObservation *entry, NSString *key) {
++    return entry->_rest == nil && [entry->_head isEqualToString:key];
++}
++
++static void toManyWill(NSObject *object, NSKVOObservation *entry, NSKeyValueChange kind, NSIndexSet *indexes, id old) {
++    if (entry->_depth++ > 0)
++        return;
++    [entry->_priorValue release];
++    entry->_priorValue = [old retain];
++    if (entry->_options & NSKeyValueObservingOptionPrior) {
++        NSMutableDictionary *change = [NSMutableDictionary dictionary];
++
++        [change setObject:[NSNumber numberWithUnsignedInteger:kind] forKey:NSKeyValueChangeKindKey];
++        if (indexes != nil)
++            [change setObject:indexes forKey:NSKeyValueChangeIndexesKey];
++        [change setObject:[NSNumber numberWithBool:YES] forKey:NSKeyValueChangeNotificationIsPriorKey];
++        if ((entry->_options & NSKeyValueObservingOptionOld) && old != nil && kind != NSKeyValueChangeInsertion)
++            [change setObject:old forKey:NSKeyValueChangeOldKey];
++        [entry->_observer observeValueForKeyPath:entry->_keyPath ofObject:object change:change context:entry->_context];
++    }
++}
++
++static void toManyDid(NSObject *object, NSKVOObservation *entry, NSKeyValueChange kind, NSIndexSet *indexes, id now) {
++    if (entry->_depth > 0 && --entry->_depth > 0)
++        return;
++
++    NSMutableDictionary *change = [NSMutableDictionary dictionary];
++
++    [change setObject:[NSNumber numberWithUnsignedInteger:kind] forKey:NSKeyValueChangeKindKey];
++    if (indexes != nil)
++        [change setObject:indexes forKey:NSKeyValueChangeIndexesKey];
++    if ((entry->_options & NSKeyValueObservingOptionOld) && kind != NSKeyValueChangeInsertion && entry->_priorValue != nil)
++        [change setObject:entry->_priorValue forKey:NSKeyValueChangeOldKey];
++    if ((entry->_options & NSKeyValueObservingOptionNew) && kind != NSKeyValueChangeRemoval && now != nil)
++        [change setObject:now forKey:NSKeyValueChangeNewKey];
++    [entry->_priorValue release];
++    entry->_priorValue = nil;
++    [entry->_observer observeValueForKeyPath:entry->_keyPath ofObject:object change:change context:entry->_context];
++}
++
++static id valuesAtIndexes(NSObject *object, NSString *key, NSIndexSet *indexes) {
++    id collection = valueOrNil(object, key);
++
++    if (indexes == nil || ![collection respondsToSelector:@selector(objectsAtIndexes:)])
++        return nil;
++    @try {
++        return [collection objectsAtIndexes:indexes];
++    } @catch (id exception) {
++        return nil;
++    }
++}
++
++- (void)willChange:(NSKeyValueChange)change valuesAtIndexes:(NSIndexSet *)indexes forKey:(NSString *)key {
++    if (CFDictionaryGetCount(observationsByObject()) == 0)
++        return;
++
++    NSArray *list = copyObservations(self);
++
++    for (NSKVOObservation *entry in list) {
++        if (entry->_observer == nil || !observationMatches(self, entry, key))
++            continue;
++        if (entryIsToManyOf(entry, key))
++            toManyWill(self, entry, change, indexes, (entry->_options & (NSKeyValueObservingOptionOld | NSKeyValueObservingOptionPrior)) && change != NSKeyValueChangeInsertion ? valuesAtIndexes(self, key, indexes) : nil);
++        else
++            entryWillChange(self, entry);
++    }
++    [list release];
++}
++
++- (void)didChange:(NSKeyValueChange)change valuesAtIndexes:(NSIndexSet *)indexes forKey:(NSString *)key {
++    if (CFDictionaryGetCount(observationsByObject()) == 0)
++        return;
++
++    NSArray *list = copyObservations(self);
++
++    for (NSKVOObservation *entry in list) {
++        if (entry->_observer == nil || !observationMatches(self, entry, key))
++            continue;
++        if (entryIsToManyOf(entry, key)) {
++            toManyDid(self, entry, change, indexes, (entry->_options & NSKeyValueObservingOptionNew) && change != NSKeyValueChangeRemoval ? valuesAtIndexes(self, key, indexes) : nil);
++        } else {
++            if (entry->_rest != nil && entry->_depth <= 1) {
++                unhookEntry(entry);
++                hookEntry(self, entry);
++            }
++            entryDidChange(self, entry);
++        }
++    }
++    [list release];
++}
++
++static NSKeyValueChange setMutationChange(NSUInteger mutation) {
++    switch (mutation) {
++    case SFUnionSetMutation: return NSKeyValueChangeInsertion;
++    case SFMinusSetMutation:
++    case SFIntersectSetMutation: return NSKeyValueChangeRemoval;
++    default: return NSKeyValueChangeReplacement;
++    }
++}
++
++- (void)willChangeValueForKey:(NSString *)key withSetMutation:(NSUInteger)mutation usingObjects:(NSSet *)objects {
++    if (CFDictionaryGetCount(observationsByObject()) == 0)
++        return;
++
++    NSArray *list = copyObservations(self);
++
++    for (NSKVOObservation *entry in list) {
++        if (entry->_observer == nil || !observationMatches(self, entry, key))
++            continue;
++        if (entryIsToManyOf(entry, key)) {
++            // the set before the change; -didChange... keeps what went and what came
++            id before = valueOrNil(self, key);
++            toManyWill(self, entry, setMutationChange(mutation), nil, before != nil ? [NSSet setWithSet:before] : [NSSet set]);
++        } else {
++            entryWillChange(self, entry);
++        }
++    }
++    [list release];
++    (void)objects;
++}
++
++- (void)didChangeValueForKey:(NSString *)key withSetMutation:(NSUInteger)mutation usingObjects:(NSSet *)objects {
++    if (CFDictionaryGetCount(observationsByObject()) == 0)
++        return;
++
++    NSArray *list = copyObservations(self);
++
++    for (NSKVOObservation *entry in list) {
++        if (entry->_observer == nil || !observationMatches(self, entry, key))
++            continue;
++        if (entryIsToManyOf(entry, key)) {
++            id after = valueOrNil(self, key);
++            NSSet *now = after != nil ? [NSSet setWithSet:after] : [NSSet set];
++            NSSet *before = [[entry->_priorValue retain] autorelease];
++            NSKeyValueChange kind = setMutationChange(mutation);
++            NSMutableSet *went = [NSMutableSet setWithSet:before != nil ? before : [NSSet set]];
++            NSMutableSet *came = [NSMutableSet setWithSet:now];
++
++            [went minusSet:now];
++            if (before != nil)
++                [came minusSet:before];
++            if (kind == NSKeyValueChangeReplacement) {
++                [entry->_priorValue release];
++                entry->_priorValue = [before retain];
++                toManyDid(self, entry, kind, nil, now);
++            } else {
++                [entry->_priorValue release];
++                entry->_priorValue = [went retain];
++                toManyDid(self, entry, kind, nil, came);
++            }
++        } else {
++            if (entry->_rest != nil && entry->_depth <= 1) {
++                unhookEntry(entry);
++                hookEntry(self, entry);
++            }
++            entryDidChange(self, entry);
++        }
++    }
++    [list release];
++    (void)objects;
++}
++
+ - (void)didChangeValueForKey:(NSString *)key {
+     if (CFDictionaryGetCount(observationsByObject()) == 0)
+         return;

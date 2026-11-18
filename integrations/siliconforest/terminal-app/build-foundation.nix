@@ -37,6 +37,10 @@
 #   ../cocoa/patches/0349: +[NSString pathWithComponents:] (missing; QuickTime Player got an exception at launch)
 #   ../cocoa/patches/0352: -[NSURL fileReferenceURL] answered by the file's path URL (no reference URLs here),
 #     -filePathURL, -isFileReferenceURL (QuickTime Player asks when it reads a movie)
+#   ../cocoa/patches/0354: change notifications of to-many keys (at indexes; by set mutation), as on macOS
+#   ../cocoa/patches/0355: NSFileManager's URL forms of remove, copy and directory contents, -[NSSet
+#     setByAddingObjectsFromSet:], security-scoped access (none here), -setResourceValue:forKey:error: (refused),
+#     NSLocale's display names for language, country and locale codes
 # A file every Objective-C program loads: QEMU pass and the guarded procedure before it replaces
 # the disk root's; until then it is tried from a scratch prefix (DYLD_LIBRARY_PATH).
 #
@@ -45,7 +49,7 @@ let
   pd = (import ../rebase/pd.nix).pd;
 in pd.packages.x86_64-linux."foundation-arm64".overrideAttrs (old: {
   pname = "siliconforest-foundation-macos-apps";
-  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ../cocoa/patches/0347-foundation-url-resource-values.patch ../cocoa/patches/0348-foundation-bundle-without-a-path-is-nil.patch ../cocoa/patches/0349-foundation-path-with-components.patch ../cocoa/patches/0352-foundation-file-reference-urls-by-path.patch ];
+  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ../cocoa/patches/0347-foundation-url-resource-values.patch ../cocoa/patches/0348-foundation-bundle-without-a-path-is-nil.patch ../cocoa/patches/0349-foundation-path-with-components.patch ../cocoa/patches/0352-foundation-file-reference-urls-by-path.patch ../cocoa/patches/0354-foundation-to-many-change-notifications.patch ../cocoa/patches/0355-foundation-file-set-locale-names.patch ];
   patchFlags = [ "-p4" ];
   buildPhase = let
     r = builtins.replaceStrings

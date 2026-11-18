@@ -619,11 +619,22 @@
 #         -_autosaveDirectoryURLCreateIfNecessary: (where autosaved untitled documents are kept)
 #   0352  libFoundation (QTP, applied by ../terminal-app/build-foundation.nix): -[NSURL fileReferenceURL] answered by
 #         the file's path URL, -filePathURL, -isFileReferenceURL
+#   0354, 0355 libFoundation (QTP, applied by ../terminal-app/build-foundation.nix): to-many change notifications;
+#         NSFileManager URL forms, -setByAddingObjectsFromSet:, security scope (none), resource setting (refused),
+#         locale display names
 #   0353  AppKit (QTP): names a document window is made with: NSWindow's layer-hosting request and title-bar
 #         opacity (kept, answered, no effect here), -[NSDocument _windowTitleDisplayName], system-spacing anchors,
 #         -[NSWindow isModalPanel], NSMenu's names (_setMenuName:, _menusWithName:), -[NSMenuItem
 #         _matchesKeyEquivalent:modifierMask:], the light and medium system fonts, -[NSWindow _borderView] (its title bar
 #         has no versions button here)
+#   0356  AppKit (QTP): -[NSWindow titlebarHeight] (the menu strip's row here), symbol images by private name and at a
+#         configuration (our few drawings), +[NSParagraphStyle defaultWritingDirectionForLanguage:],
+#         -[NSMutableAttributedString setBaseWritingDirection:range:], NSView's layer coordinate conversions (identity)
+#   0357  AppKit (QTP): -[NSApplication gestureEventMask] (kept; every gesture arrives), -[NSTextField
+#         maximumNumberOfLines], accessibility value descriptions (kept), the diagonal resize cursors, the Open panel's
+#         New Document button setting (no such button here), -[NSDocument _isDuplicate]/_originalDocumentURL (no Duplicate),
+#         NSMenuItem's identifier (and from nibs), NSDocument's restorable-state methods (nothing is restored here) and
+#         -unblockUserInteraction
 #   0009  Security: SecItemCopyMatching writes its result on every path and answers
 #         errSecItemNotFound when nothing was found (Firefox crashed on the unwritten result)
 #   (0007 and 0008 are libSystem's sandbox profile compiler: ./build-libsystem-cocoa.nix)
@@ -747,6 +758,8 @@ let
     ./patches/0350-appkit-document-application-launch.patch
     ./patches/0351-appkit-document-types-by-identifier.patch
     ./patches/0353-appkit-document-window-names.patch
+    ./patches/0356-appkit-player-view-names.patch
+    ./patches/0357-appkit-movie-window-names.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
