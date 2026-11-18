@@ -1,0 +1,352 @@
+kc-tools: a kext's import binds by its declared libraries, not by where a bisection lands
+
+SPDX-License-Identifier: MIT (this header and the added lines; kc-tools keeps its own licence)
+
+link_kext() resolved every import with symtab_lookup(): one table of the kernel's exported names
+and every earlier kext's, sorted by name (qsort, equal names in no defined order) and searched by
+bisection. A name defined twice (IO80211Family's compat hz, m_gethdr, m_freem, microuptime, m_adj,
+m_copydata ... are kernel names too) went to whichever copy the bisection landed on, and four
+names added to the kernel moved four bindings (ext4, SFBwfm, SFAppleCIO). Now bind_lookup():
+a pin (KC_BIND_PINS) first; one definition as before; then the importer's OSBundleLibraries;
+then the kernel, the base; then one other kext, if one address remains. An import still
+ambiguous, a pin that does not resolve, or a pin no import uses fails the build. Each import
+with more than one definition is printed with its choice. Applies after kc-tools-arm64-text.patch.
+UPSTREAM: yes (without the pins it is the plain rule).
+
+--- a/include/linker.h
++++ b/include/linker.h
+@@ -5,6 +5,7 @@
+ typedef struct {
+   char *name;
+   uint64_t addr;
++  const char *owner;  // bundle identifier of the kext that exports it, NULL for the kernel
+ } Sym;
+ 
+ typedef struct {
+@@ -42,6 +43,8 @@
+ void symtab_free(SymTable *st);
+ int patch_kmod_info(LinkedKext *lk);
+ uint64_t symtab_lookup(const SymTable *st, const char *name);
++// Pins of KC_BIND_PINS that no import used (each printed); the build must fail on any.
++int kc_bind_unused_pins(void);
+ 
+ // Compute the highest VM address across all non-zero segments in a kernel Mach-O.
+ uint64_t macho_kernel_vm_end(const uint8_t *data, size_t size);
+--- a/lib/linker.c
++++ b/lib/linker.c
+@@ -1,6 +1,7 @@
+ #include "linker.h"
+ #include "macho_view.h"
+ #include "macho_fmt.h"
++#include "plist.h"
+ #include <stdlib.h>
+ #include <string.h>
+ #include <stdio.h>
+@@ -134,13 +135,14 @@
+ 
+ typedef struct { uint64_t fileoff; uint64_t vmaddr; uint64_t filesize; } SegInfo;
+ 
+-static void symtab_add(SymTable *st, const char *name, uint64_t addr) {
++static void symtab_add(SymTable *st, const char *name, uint64_t addr, const char *owner) {
+   if (st->count == st->cap) {
+     st->cap = st->cap ? st->cap * 2 : 4096;
+     st->syms = realloc(st->syms, st->cap * sizeof(Sym));
+   }
+   st->syms[st->count].name = strdup(name);
+   st->syms[st->count].addr = addr;
++  st->syms[st->count].owner = owner;
+   st->count++;
+ }
+ 
+@@ -187,7 +189,8 @@
+     if ((n.n_type & N_EXT) && (n.n_type & 0xe) == N_SECT && n.n_value)
+       /* ARM: carry the Thumb bit in bit 0, as a function pointer would */
+       symtab_add(st, strtab + n.n_strx,
+-                 n.n_value | (mv.cputype == CPU_TYPE_ARM && (n.n_desc & N_ARM_THUMB_DEF) ? 1 : 0));
++                 n.n_value | (mv.cputype == CPU_TYPE_ARM && (n.n_desc & N_ARM_THUMB_DEF) ? 1 : 0),
++                 NULL);
+   }
+ 
+   qsort(st->syms, st->count, sizeof(Sym), sym_cmp);
+@@ -375,6 +378,8 @@
+     (const char *)(data + symcmd->stroff);
+ 
+   size_t added = 0;
++  // one copy of the owner's identifier for all its symbols, kept for the whole run
++  const char *owner = strdup(lk->bundle_id);
+ 
+   for (uint32_t i = 0; i < symcmd->nsyms; i++) {
+     MachoSym sym;
+@@ -418,7 +423,8 @@
+     }
+ 
+     symtab_add(st, name,
+-               n->n_value | (mv.cputype == CPU_TYPE_ARM && (n->n_desc & N_ARM_THUMB_DEF) ? 1 : 0));
++               n->n_value | (mv.cputype == CPU_TYPE_ARM && (n->n_desc & N_ARM_THUMB_DEF) ? 1 : 0),
++               owner);
+     added++;
+   }
+ 
+@@ -910,6 +916,204 @@
+   return 0;
+ }
+ 
++/*
++ * SiliconForest: which definition an import of a kext binds to.
++ *
++ * The table is one list of the kernel's exported names and the exported names of every kext
++ * linked so far, sorted by name; a name can be in it more than once (IO80211Family's compat
++ * copies of hz, m_gethdr, m_freem, microuptime, ... are kernel names too). symtab_lookup()
++ * returns whichever copy its bisection lands on, so one name added anywhere could move a kext's
++ * binding. bind_lookup() resolves an import the way the kext linker does, with the kernel as the
++ * base every kext links against:
++ *   1. a pin for this kext and name (KC_BIND_PINS, lines "<kext> <symbol> <kernel|kext>"):
++ *      that provider's definition; a pin whose provider has no such definition, or that no
++ *      import uses, fails the build;
++ *   2. one definition only: that one (as before; one in a kext the importer does not declare
++ *      is printed as a note);
++ *   3. the kexts the importer's OSBundleLibraries names: the one that defines it; two of them
++ *      with different addresses fail the build;
++ *   4. the kernel;
++ *   5. any other linked kext, if exactly one address remains; else the build fails.
++ * Every import that had more than one definition to choose from is printed with its choice.
++ */
++typedef struct { char *kext, *symbol, *provider; int used; } BindPin;
++static BindPin *bind_pins;
++static size_t bind_npins;
++static int bind_pins_loaded;
++static const char *bind_kext = "";
++static char **bind_deps;
++static size_t bind_ndeps;
++
++static void bind_fail(const char *what, const char *name) {
++  fprintf(stderr, "kc-bind: FATAL %s: %s imports %s\n", what, bind_kext, name);
++  exit(2);
++}
++
++static void bind_load_pins(void) {
++  if (bind_pins_loaded)
++    return;
++  bind_pins_loaded = 1;
++  const char *path = getenv("KC_BIND_PINS");
++  if (!path || !*path)
++    return;
++  FILE *f = fopen(path, "r");
++  if (!f) {
++    fprintf(stderr, "kc-bind: FATAL cannot read KC_BIND_PINS %s\n", path);
++    exit(2);
++  }
++  char line[1024];
++  while (fgets(line, sizeof(line), f)) {
++    char *hash = strchr(line, '#');
++    if (hash)
++      *hash = '\0';
++    char kext[256], symbol[512], provider[256], extra[2];
++    int n = sscanf(line, "%255s %511s %255s %1s", kext, symbol, provider, extra);
++    if (n <= 0)
++      continue;
++    if (n != 3) {
++      fprintf(stderr, "kc-bind: FATAL bad line in %s: %s\n", path, line);
++      exit(2);
++    }
++    bind_pins = realloc(bind_pins, (bind_npins + 1) * sizeof(*bind_pins));
++    bind_pins[bind_npins].kext = strdup(kext);
++    bind_pins[bind_npins].symbol = strdup(symbol);
++    bind_pins[bind_npins].provider = strdup(provider);
++    bind_pins[bind_npins].used = 0;
++    bind_npins++;
++  }
++  fclose(f);
++  fprintf(stderr, "kc-bind: %zu pin(s) from %s\n", bind_npins, path);
++}
++
++int kc_bind_unused_pins(void) {
++  bind_load_pins();
++  int unused = 0;
++  for (size_t i = 0; i < bind_npins; i++) {
++    if (!bind_pins[i].used) {
++      fprintf(stderr, "kc-bind: FATAL pin not used: %s %s %s\n", bind_pins[i].kext,
++              bind_pins[i].symbol, bind_pins[i].provider);
++      unused++;
++    }
++  }
++  return unused;
++}
++
++// the kext about to be linked: its identifier and the bundles its OSBundleLibraries names
++static void bind_begin(const LinkedKext *lk) {
++  for (size_t i = 0; i < bind_ndeps; i++)
++    free(bind_deps[i]);
++  free(bind_deps);
++  bind_deps = NULL;
++  bind_ndeps = 0;
++  bind_kext = lk ? lk->bundle_id : "";
++  bind_load_pins();
++  if (!lk || !lk->info_plist_xml)
++    return;
++  PlistNode *root = plist_parse(lk->info_plist_xml, lk->info_plist_len);
++  PlistNode *libs = root ? plist_dict_get(root, "OSBundleLibraries") : NULL;
++  if (libs && libs->type == PLIST_DICT) {
++    for (PlistNode *e = libs->child; e; e = e->next) {
++      if (!e->key)
++        continue;
++      bind_deps = realloc(bind_deps, (bind_ndeps + 1) * sizeof(*bind_deps));
++      bind_deps[bind_ndeps++] = strdup(e->key);
++    }
++  }
++  plist_free(root);
++}
++
++static int bind_declared(const char *owner) {
++  for (size_t i = 0; i < bind_ndeps; i++)
++    if (!strcmp(bind_deps[i], owner))
++      return 1;
++  return 0;
++}
++
++static uint64_t bind_lookup(const SymTable *st, const char *name) {
++  size_t lo = 0, hi = st->count;
++  while (lo < hi) {
++    size_t mid = (lo + hi) / 2;
++    if (strcmp(st->syms[mid].name, name) < 0)
++      lo = mid + 1;
++    else
++      hi = mid;
++  }
++  size_t end = lo;
++  while (end < st->count && !strcmp(st->syms[end].name, name))
++    end++;
++  if (end == lo)
++    return 0;
++
++  for (size_t p = 0; p < bind_npins; p++) {
++    BindPin *pin = &bind_pins[p];
++    if (strcmp(pin->kext, bind_kext) || strcmp(pin->symbol, name))
++      continue;
++    for (size_t i = lo; i < end; i++) {
++      const char *owner = st->syms[i].owner ? st->syms[i].owner : "kernel";
++      if (!strcmp(owner, pin->provider)) {
++        pin->used = 1;
++        fprintf(stderr, "kc-bind: %s %s -> %s (pinned, %zu definitions)\n", bind_kext, name,
++                owner, end - lo);
++        return st->syms[i].addr;
++      }
++    }
++    bind_fail("pinned provider has no such definition", name);
++  }
++
++  if (end - lo == 1) {
++    const char *owner = st->syms[lo].owner;
++    if (owner && !bind_declared(owner))
++      fprintf(stderr, "kc-bind: note: %s imports %s from %s, which it does not declare\n",
++              bind_kext, name, owner);
++    return st->syms[lo].addr;
++  }
++
++  uint64_t dep = 0, kern = 0, other = 0;
++  const char *dep_owner = NULL, *other_owner = NULL;
++  int ndep = 0, nkern = 0, nother = 0;
++  for (size_t i = lo; i < end; i++) {
++    const Sym *s = &st->syms[i];
++    if (!s->owner) {
++      if (nkern && kern != s->addr)
++        bind_fail("two kernel definitions", name);
++      kern = s->addr;
++      nkern++;
++    } else if (bind_declared(s->owner)) {
++      if (ndep && dep != s->addr)
++        bind_fail("ambiguous between declared dependencies", name);
++      dep = s->addr;
++      dep_owner = s->owner;
++      ndep++;
++    } else {
++      if (nother && other != s->addr)
++        nother = -1000;
++      other = s->addr;
++      other_owner = s->owner;
++      nother++;
++    }
++  }
++  const char *chosen;
++  uint64_t v;
++  if (ndep) {
++    chosen = dep_owner;
++    v = dep;
++  } else if (nkern) {
++    chosen = "kernel";
++    v = kern;
++  } else if (nother > 0) {
++    chosen = other_owner;
++    v = other;
++  } else {
++    bind_fail("ambiguous between kexts it does not declare", name);
++    return 0;
++  }
++  fprintf(stderr, "kc-bind: %s %s -> %s (%zu definitions:", bind_kext, name, chosen, end - lo);
++  for (size_t i = lo; i < end; i++)
++    fprintf(stderr, " %s", st->syms[i].owner ? st->syms[i].owner : "kernel");
++  fprintf(stderr, ")\n");
++  return v;
++}
++
+ uint64_t symtab_lookup(const SymTable *st, const char *name) {
+   size_t lo = 0, hi = st->count;
+   while (lo < hi) {
+@@ -1015,9 +1219,9 @@
+ 
+ static uint64_t resolve_import(const SymTable *kernel_syms, const char *name,
+                                uint64_t trampoline) {
+-  uint64_t v = symtab_lookup(kernel_syms, name);
++  uint64_t v = bind_lookup(kernel_syms, name);
+   if (!v && name[0] == '_')
+-    v = symtab_lookup(kernel_syms, name + 1);
++    v = bind_lookup(kernel_syms, name + 1);
+   if (!v) {
+     fprintf(stderr, "  BIND UNRESOLVED (-> panic trampoline): %s\n", name);
+     v = trampoline;
+@@ -1196,6 +1400,7 @@
+               uint64_t load_vmaddr,
+               LinkedKext *out)
+ {
++  bind_begin(out);
+   size_t sl;
+   const uint8_t *slice = find_slice(kext_data, kext_size, &sl);
+   if (!slice) {
+@@ -1294,9 +1499,9 @@
+        * unresolved.
+        */
+       const char *name = strtab + n->n_strx;
+-      uint64_t ka = symtab_lookup(kernel_syms, name);
++      uint64_t ka = bind_lookup(kernel_syms, name);
+       if (!ka && name[0] == '_')
+-        ka = symtab_lookup(kernel_syms, name + 1);
++        ka = bind_lookup(kernel_syms, name + 1);
+       if (ka)
+         sym_addrs[i] = ka;
+       else
+@@ -1645,8 +1850,8 @@
+       uint64_t symval = 0;
+       int done = 0;
+       #define RESOLVE_SYM() do { \
+-        symval = sym ? symtab_lookup(kernel_syms, sym) : 0; \
+-        if (!symval && sym && sym[0] == '_') symval = symtab_lookup(kernel_syms, sym + 1); \
++        symval = sym ? bind_lookup(kernel_syms, sym) : 0; \
++        if (!symval && sym && sym[0] == '_') symval = bind_lookup(kernel_syms, sym + 1); \
+         if (!symval) { \
+           if (sym && strcmp(sym, "dyld_stub_binder")) \
+             fprintf(stderr, "  BIND UNRESOLVED (-> panic trampoline): %s\n", sym); \
+--- a/src/kc_builder.c
++++ b/src/kc_builder.c
+@@ -405,6 +405,12 @@
+     nlinked++;
+   }
+ 
++  // every pin must have been used: a pin for an import that went away is a stale record
++  if (kc_bind_unused_pins()) {
++    fprintf(stderr, "kc-bind: FATAL unused pins\n");
++    return 1;
++  }
++
+   // A kernel-only KC (nlinked == 0) is allowed for bring-up validation.
+   if (nkexts > 0 && nlinked == 0) {
+     fprintf(stderr, "No kexts linked\n");

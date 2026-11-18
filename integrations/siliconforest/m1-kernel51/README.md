@@ -14,11 +14,12 @@ nothing else. No fix of the stuck exit is in this kernel.
 
 ## Proof that only the kernel changed
 
-1. Derivations: the collection's link phase (`kernel48-link-phase.sh`) is kernel 50's with one
-   line different, `KERNEL_BIN=` naming the new kernel; its other 20 store inputs (the boot kexts,
-   the 17 added kexts, kc-tools, the strip and compaction tools) are the same store paths as
-   kernel 50's. The collection derivation differs from kernel 50's only in that script, its name
-   and its output path.
+1. Derivations: the collection's link phase (`kernel48-link-phase.sh`) is kernel 50's with two
+   lines different: `KERNEL_BIN=` naming the new kernel, and kc-builder from kc-tools with
+   `../m1-kc-bind/kc-tools-bind.patch` (`KC_BIND_PINS` set on the derivation). Its other 19 store
+   inputs (the boot kexts, the 17 added kexts, the strip and compaction tools) are the same store
+   paths as kernel 50's. Linked with the old tool, kernel 51 is the same file byte for byte, and so
+   is kernel 50 linked with the new one (`../m1-exit-waits/kc-tools-duplicate-names.md`).
 2. The linked collections, entry by entry (`compare-collections.py`, results in the kit): every
    kext entry is at the same addresses; its code and constant segments are identical, and the
    only bytes that differ in its data segments are chained-fixup pointers into the kernel whose
@@ -52,7 +53,11 @@ kernel 50, but `boot.bin.old` stays the old-name stage 2 (81d58f1b), so `--rollb
 pair: the way back to kernel 50 is the normal install of the same `boot.bin` with
 `runs/ext4-state/kit50/kernel.bin`.
 
-## Found while proving it: kexts bind duplicate names by chance
+## Found while proving it: kexts bind duplicate names by chance (fixed in the tool)
+
+Now fixed in kc-tools for this recipe: `../m1-kc-bind/`, `../m1-exit-waits/kc-tools-duplicate-names.md`.
+The note as first written:
+
 
 kc-tools links each kext against one flat table: the kernel's exported names plus every earlier
 kext's, sorted by name with `qsort` and searched by bisection (`lib/linker.c`

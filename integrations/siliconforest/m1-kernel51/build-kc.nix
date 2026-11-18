@@ -2,7 +2,9 @@
 # Kernel 51: kernel 50 (../m1-kernel50/build-kc.nix, unchanged) with ONE member replaced: the
 # kernel, built with ../m1-exit-waits/kernel.patch after kernel 48's patch series (the report
 # kern.sf_exitwait of what processes stuck in exit wait for; off by default, root only). The 56
-# kexts, the link phase and its checks are kernel 50's, by derivation.
+# kexts, the link phase and its checks are kernel 50's, by derivation. The link uses kc-tools with
+# ../m1-kc-bind/kc-tools-bind.patch and ../m1-kc-bind/pins-kernel48.txt: imports bind by declared
+# libraries, never by a bisection over duplicate names (the same bytes as the old tool here).
 #   nix-build build-kc.nix --no-out-link                 the collection ($out/kernel)
 #   nix-build build-kc.nix -A kernel --no-out-link       the one changed member
 #   nix-build build-kc.nix -A members --no-out-link      every member as built (for the proof:
@@ -20,6 +22,7 @@ let
     patches = o.patches ++ [ ../m1-exit-waits/kernel.patch ];
   });
   collection = k50.override (o: {
+    kcTools = import ../m1-kc-bind/build-tools.nix;
     kernel = assert o.kernel == old; kernel;
     # the unpatched tree, as for kernel 48 and 50 (the patch adds no header a kext uses)
     kernelSource = assert o.kernelSource == old.src && kernel.src == old.src; o.kernelSource;
@@ -34,5 +37,6 @@ let
   '';
 in collection.overrideAttrs (o: {
   name = "siliconforest-kc-kernel51";
+  KC_BIND_PINS = ../m1-kc-bind/pins-kernel48.txt;
   passthru = (o.passthru or { }) // { inherit kernel members; kernel50 = k50; };
 })
