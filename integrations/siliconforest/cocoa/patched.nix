@@ -533,6 +533,16 @@
 #   0321  QuartzCore (VLC): -[CALayerContext setLayer:] with the root it already has gives that root its pointer to
 #         the context back when it lost it (AppKit detaches a view's layer when the view moves under a superview
 #         without a layer): new contents asked for no frame, a player's picture stayed at its first frame
+#   0322  AppKit (VLC): -[NSMenuItem parentItem] (VLC's menu validation asked for it; each of its menus ended in an
+#         exception before it opened)
+#   0323  AppKit (VLC): a layer the view's -makeBackingLayer made follows the window's backingScaleFactor (contentsScale),
+#         a delegate answering -layer:shouldInheritContentsScale:fromWindow: deciding; AppKit's own backing layers are
+#         unchanged (VLC's video was rendered at scale 1 and enlarged 1.5x)
+#   0324  AppKit (VLC): when the desktop answers an application's request for a larger window with a smaller size, the
+#         window keeps to that size until the desktop configures a larger one (VLC asks for its video's size in pixels,
+#         larger than the screen; it was shown cut off, its controls out of sight)
+#   0325  AppKit (VLC): NSAnimation's current value follows its progress (curve or delegate); -startWhenAnimation:reachesProgress:, -stopWhenAnimation:reachesProgress:,
+#         -clearStartAnimation, -clearStopAnimation (VLC chains its fullscreen transition: it ended at the button)
 #   0304, 0305w (FXPERF2's FX-029 follow-ups, adopted by TERM11 unchanged; opt-in SFFX_GPU_DAMAGE=1): a layer-only
 #         flush with nothing drawn into the window's own backing store tells the window server so, which then skips its
 #         whole-backing-store compare (11 MB a present; ~10 % of Firefox's parent main thread on cnn.com)
@@ -720,6 +730,10 @@ let
     ./patches/0176-appkit-clipboard-offered-data-follows-writes.patch
     ./patches/0177-appkit-clipboard-write-not-replaced-before-its-offer.patch
     ./patches/0178a-appkit-gpu-layers-presented-from-the-render-thread.patch
+    ./patches/0322-appkit-menu-item-parent-item.patch
+    ./patches/0323-appkit-custom-backing-layer-follows-window-scale.patch
+    ./patches/0324-appkit-window-keeps-the-size-the-desktop-allows.patch
+    ./patches/0325-appkit-linked-animations-and-current-value.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
     ./patches/0004-windowserver-server-decorations-and-scale.patch

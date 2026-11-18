@@ -38,7 +38,12 @@ let
   pd = (import ../rebase/pd.nix).pd;
 in pd.packages.x86_64-linux."foundation-arm64".overrideAttrs (old: {
   pname = "siliconforest-foundation-macos-apps";
-  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ];
+  patches = (old.patches or []) ++ [
+    ./patches/foundation-macos-applications.patch
+    # -performSelectorOnMainThread:withObject:waitUntilDone:NO is queued on the main thread too
+    # (VLC media player: docs/roadmap/issues/SF-AH-vlc.md)
+    ./patches/foundation-main-thread-perform-is-queued.patch
+  ];
   patchFlags = [ "-p4" ];
   buildPhase = let
     r = builtins.replaceStrings

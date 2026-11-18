@@ -4,13 +4,17 @@ Goal: the official VLC media player for macOS (arm64), unmodified, starts from a
 own on SiliconForest, opens a file and plays video with sound in its own window, with working
 transport controls, on the M1.
 
-Status on 18 November 2026: **it plays, from a private prefix; acceptance is not done.** The
-unmodified program starts, loads its macOS interface, opens a 1080p H.264/AAC MP4 and a VP9/Opus
-WebM, decodes in software, shows the moving picture in its own window and plays the sound into the
-system's audio server. A captured frame matches ffmpeg's decode of the same frame. Not done yet:
-controls driven through the interface (pause, seek, fullscreen, quit), the 12 launch-play-quit
-cycles, CPU and dropped-frame numbers, hardware decoding, `/Applications/VLC.app`, any system
-install. Everything below says what was observed on the M1 and what was not.
+Status on 18 November 2026, 08:25Z: **it plays, driven through its own interface, with hardware
+decoding, from a private prefix.** `/Applications/VLC.app` starts the unmodified VLC through the launcher; File >
+Open File opens a movie; play, pause, resume, seeking on the timeline, fullscreen and back, resizing the
+window, playing to the end and Quit (menu and Command-Q, no process left) were each seen working on the M1
+with synthetic input on the compositor's virtual seat. The picture is rendered at the panel's own pixel
+size (35.0 dB against ffmpeg's decode of the same frame, from 27.7 dB when it was rendered at scale 1 and
+enlarged). H.264 is decoded by the M1's video decoder through VideoToolbox (decoder jobs rise at the frame
+rate while it plays and stop when it is paused). Sound: heard by the owner on 18 November; the speakers
+were muted in coreaudiod from 08:13Z. Not done yet: the 12 launch-play-quit cycles, CPU and dropped-frame
+numbers, `--vout=macosx`, VideoToolbox's IOSurface path to OpenGL (green picture), any system install of the
+framework changes.
 
 ## The program
 
@@ -44,6 +48,12 @@ program met them on the M1.
 | 10 | The picture, VLC's default output (`caopengllayer`): the window stayed black, then showed only the first frame | two faults in QuartzCore | `cocoa/patches/0320`: an opaque `CAOpenGLLayer`'s picture is taken without its alpha (VLC draws its video with alpha 0 into an opaque layer). `0321`: a layer context gives its root layer the pointer back that AppKit's re-parenting of the view had cleared, so new contents ask for a frame again | candidate, private; **the picture works** |
 | 11 | The picture, second output (`--vout=macosx`, NSOpenGLView): starts, then `CGLSetCurrentContext` fails (10004) when the video thread takes the context | not established yet. VLC makes a context current on its own thread and locks it with `CGLLockContext`; our CGL sits on EGL, where a context is current on one thread at a time | open; not needed for the default output | **open** |
 | 12 | Hardware decoding: `/dev/sfavd` is root's alone, so VideoToolbox's hardware decoder refuses the account `sf` ("Cannot open the AVD device: Permission denied") and VLC decodes in software | device permission | interim in the launcher, off by default and **not yet tried**: while still root it gives the node group staff and mode 0660 (lasts until reboot). The proper fix is a kernel item: see below | open |
+| 15 | AppKit: `-[NSMenuItem parentItem]` missing; every VLC menu ended in an exception before it opened | missing method | `cocoa/patches/0322` | candidate, private; menus work |
+| 16 | Foundation: `-performSelectorOnMainThread:withObject:waitUntilDone:NO` on the main thread ran the message at once. VLC's playlist adds an item while it holds its lock and sends itself the update this way; the update took the same lock and the interface stopped (its Open dialog never started a file; sampled: main thread waiting on the playlist mutex) | semantics differ from macOS, which queues it | `terminal-app/patches/foundation-main-thread-perform-is-queued.patch`: queued on the main run loop as on macOS | candidate, private (a core library: the QEMU rehearsal and the guarded installer before any system install; it changes when other programs' main-thread messages run) |
+| 17 | The picture at scale 1: VLC's video layer kept `contentsScale` 1, so VLC rendered 1708x960 and the panel showed it enlarged 1.5x | AppKit gave custom backing layers no scale | `cocoa/patches/0323`: a layer made by the view's `-makeBackingLayer` follows the window's `backingScaleFactor`; a delegate answering `-layer:shouldInheritContentsScale:fromWindow:` decides | candidate, private; works |
+| 18 | VLC sizes its window to the video in pixels (larger than the screen) and clamps to `NSScreen visibleFrame`, which here is the whole panel; the desktop gave the window less and AppKit laid it out for the size asked: the picture was cut on the right and the controls bar was below the visible area | AppKit/desktop | `cocoa/patches/0324`: when the desktop answers an application's larger request with a smaller size, the window keeps to that size until the desktop configures a larger one. The proper fix is the desktop telling clients its work area (`xdg_toplevel.configure_bounds`) and `visibleFrame` following it: a request for the desktop's owners | candidate, private; works |
+| 19 | Fullscreen: VLC ended at its fullscreen button (`-[NSAnimation startWhenAnimation:reachesProgress:]` raised "not implemented"), and after that was fixed the main window stayed empty after leaving fullscreen (NSAnimation's `currentValue` stayed 0; VLC finishes its transition when it reaches 1) | missing AppKit behaviour | `cocoa/patches/0325`: linked animations, and the current value follows the progress through the curve or the delegate | candidate, private; fullscreen in and out works (the desktop's docks stay drawn over it) |
+| 20 | Hardware decoding: `/dev/sfavd` root's alone; then VideoToolbox's pictures reached OpenGL green (VLC's IOSurface converter, `glconv_cvpx`) | permission; IOSurface texture path | the launcher (still root) gives the node group staff, mode 0660, until reboot (`"hardware_decode": true`); `--glconv=none` in the release's arguments makes VLC copy the decoded pictures to its textures itself (`cvpx` converter) | works with the copy; the IOSurface path is open; the proper device permission is a kernel item |
 | 13 | Button pictures (`VLCPlayTemplate`, ...) not found; subtitle font `HelveticaNeue.dfont` absent | AppKit named-image lookup in the bundle; font | open | open |
 | 14 | DiskArbitration (Blu-ray plug-in), Growl's Carbon and Secure Transport calls, `SecTrustGetResult` and others in the TLS plug-in | not on the path to playing a local file | not done; those plug-ins fail to load and VLC goes on without them | listed |
 

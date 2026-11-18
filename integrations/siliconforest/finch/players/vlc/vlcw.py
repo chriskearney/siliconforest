@@ -101,7 +101,13 @@ def wins(text=None):
 
 
 def cap(name, wait_ms=0):
-    inj(('wait %d\n' % wait_ms if wait_ms else '') + 'capture ' + name)
+    # the display may be asleep: try, and on a timeout wake it with the virtual pointer's motion, then try again
+    try:
+        inj(('wait %d\n' % wait_ms if wait_ms else '') + 'capture ' + name)
+    except RuntimeError as e:
+        if 'no frame completed' not in str(e):
+            raise
+        inj(at(1300, 820) + '\nwait 30\n' + at(1302, 822) + '\nwait 600\ncapture ' + name)
     return fetch(name)
 
 
@@ -136,7 +142,9 @@ def click(x, y, button=1):
 
 
 def launch(tag, *args):
-    r = sh(M1 + ' launch %s %s' % (tag, ' '.join(args)))
+    import shlex
+    r = sh(M1 + ' launch %s %s' % (tag, ' '.join(shlex.quote(a) for a in args)))
+    print(r.stderr.strip()[-300:])
     if r.returncode == 3:
         raise OwnerActive(r.stdout)
     return r.stdout.strip()

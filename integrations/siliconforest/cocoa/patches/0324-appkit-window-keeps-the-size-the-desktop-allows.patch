@@ -1,0 +1,67 @@
+--- a/src/Frameworks/AppKit/NSWindow.m
++++ b/src/Frameworks/AppKit/NSWindow.m
+@@ -38,6 +38,9 @@
+ #import <AppKit/NSColorSpace.h>
+ #import <AppKit/NSTextField.h>
+ #import <objc/runtime.h>
++
++// (VLC) the size the desktop allows a window after refusing a larger one, and the application's last size request
++static char SFServerLimitKey, SFAskedSizeKey;
+ #import <objc/message.h>
+ #include <stdio.h>
+ #include <time.h>
+@@ -1136,6 +1139,30 @@
+        newFrame.size.height = MIN(NSHeight(newFrame), [self maxSize].height);
+     }
+ 
++    /* (VLC) the size the desktop let this window have when the application last asked for more: an application that
++     * asks again for that size gets the desktop's (a window server keeps a window within the screen's usable area;
++     * VLC asks for its video's size in pixels, larger than the screen, and was shown cut off with its controls out of
++     * sight while it laid itself out for the size it asked for). The user's own resizing, which comes as configures,
++     * is never limited, and a configure larger than the limit lifts it. */
++    if (tellWS) {
++        NSValue *limit = objc_getAssociatedObject(self, &SFServerLimitKey);
++
++        if (limit != nil) {
++            NSSize most = [limit sizeValue];
++            CGFloat top = NSMaxY(newFrame);
++
++            if (NSWidth(newFrame) > most.width)
++                newFrame.size.width = most.width;
++            if (NSHeight(newFrame) > most.height) {
++                newFrame.size.height = most.height;
++                newFrame.origin.y = top - most.height;
++            }
++        }
++        if (!NSEqualSizes(newFrame.size, _frame.size))
++            objc_setAssociatedObject(self, &SFAskedSizeKey, [NSArray arrayWithObjects:[NSValue valueWithSize:newFrame.size],
++                [NSNumber numberWithDouble:[NSDate timeIntervalSinceReferenceDate]], nil], OBJC_ASSOCIATION_RETAIN);
++    }
++
+     BOOL didSize=NSEqualSizes(newFrame.size,_frame.size)?NO:YES;
+     BOOL didMove=NSEqualPoints(newFrame.origin,_frame.origin)?NO:YES;
+ 
+@@ -2255,6 +2282,23 @@
+    if(latest!=nil && latest!=value && !NSEqualSizes([latest sizeValue],size))
+     return;
+ 
++   // (VLC) the desktop answered the application's request for a larger size with a smaller one: the size it allows
++   // is the most this window asks for from now on (-setFrame:display:animate:tellWS:); a larger configure lifts it
++   {
++    NSArray *asked=objc_getAssociatedObject(self,&SFAskedSizeKey);
++    NSValue *limit=objc_getAssociatedObject(self,&SFServerLimitKey);
++
++    if(limit!=nil && (size.width>[limit sizeValue].width || size.height>[limit sizeValue].height))
++     objc_setAssociatedObject(self,&SFServerLimitKey,nil,OBJC_ASSOCIATION_RETAIN);
++    if(asked!=nil && [NSDate timeIntervalSinceReferenceDate]-[[asked objectAtIndex:1] doubleValue]<2.0){
++     NSSize wanted=[[asked objectAtIndex:0] sizeValue];
++
++     if(size.width<wanted.width || size.height<wanted.height)
++      objc_setAssociatedObject(self,&SFServerLimitKey,value,OBJC_ASSOCIATION_RETAIN);
++     objc_setAssociatedObject(self,&SFAskedSizeKey,nil,OBJC_ASSOCIATION_RETAIN);
++    }
++   }
++
+    if(!(_styleMask&NSResizableWindowMask) || NSEqualSizes(size,frame.size))
+     return;
+ 
