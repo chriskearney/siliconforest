@@ -367,14 +367,27 @@ the exit reason, refuses to start the application while the owner is at the mach
   were replaced before any flip showed them, depending on the run. A path without that copy, for this player and
   any CPU-drawn video: the picture handed to the desk as a dma-buf (a subsurface for the video, or the whole-window
   GPU presenter that Firefox's windows use, 0209w), or the desk uploading only the damaged rows.
-- Not done: the playback-speed menu, sharing and AirPlay buttons (absent), subtitles and alternative
-  audio (absent), trimming.
+- **The About panel (QTP2, AppKit 0364).** It showed nothing ("Cannot load NSSystemInfoPanel.nib": the installed
+  AppKit has none of its nibs). QuickTime Player also replaces `-showInfoPanel:` and `-windowWillClose:` of AppKit's
+  `NSSystemInfoPanel`, reads its `copyrightView` and `_optionsDictionary` by offset and calls `-loadNib` and
+  `-unloadNib:`, as macOS's class has them. 0364 gives the class those (the nib, Cocotron's own from this tree, loaded
+  when the panel is shown and let go when it closes; the options kept and applied), and the recipe installs the nib.
+  On the M1 (private prefix, passes a1, a2): the panel shows QuickTime Player's icon, name, "10.5 (1252.3)" and its
+  copyright; it closes and opens again; 16 s later (QuickTime's own timer re-lays it out) it is unchanged and nothing
+  failed; the load-time warning about the missing variables is gone. Its text is drawn in a serif face (the nib's
+  font is not installed: the general font fallback). Apple's Terminal and Activity Monitor have not been tried with
+  it (QTP2 launches only its own QuickTime Player): for the guarded install's lifecycle set.
+- **Open.** The playback-speed menu: the staged player plays at rate 1 only, on purpose (no time-stretched sound);
+  speeds need time-stretched sound in the player, a larger piece of work not started. Sharing and AirPlay buttons
+  (absent), subtitles and alternative audio (absent), trimming.
 
 ## General pieces for the system install
 These are corrections or additions any application can meet; they live in the private prefix until the
 guarded install: libFoundation 0347, 0348, 0349, 0352, 0354, 0355, 0359, 0361; AppKit 0340, 0341, 0350,
 0351, 0353, 0356, 0357, 0358, 0360, 0362 (in full screen the menu strip auto-hides as macOS's menu bar does: a
-change every application on the desk sees, to be checked with Firefox, Terminal and Activity Monitor first); Onyx2D 0363 (an opaque image drawn within two pixels of its own size on
+change every application on the desk sees, to be checked with Firefox, Terminal and Activity Monitor first), 0364 with the
+About panel's nib installed among AppKit's resources (`patched.nix`: every application's About panel failed with "Cannot
+load NSSystemInfoPanel.nib", the recipe installed only the string tables); Onyx2D 0363 (an opaque image drawn within two pixels of its own size on
 device pixels is copied, not resampled: every application that draws such an image, through the guarded install
 only, to be checked with Firefox, Terminal and Activity Monitor; `O2_NO_IMAGE_FAST_PATH=1` turns it off and
 `O2_IMAGE_TRACE=1` says why an image was resampled); CoreGraphics 0342; QuartzCore 0343-0345; CoreAudio 0346; the URL key
@@ -576,7 +589,7 @@ What the offline numbers cannot say, and the test will:
 | `finch/AVKit/SFQuickTimeControls.m` | the rest of AVKit's names: controls view controller, time resolver, volume slider, Touch Bar provider, menu builders, `AVAudioView` |
 | `finch/QuickTime/qt_prefix.py` | assembles the private prefix; reports names the system has gained |
 | `finch/QuickTime/additions-probe.m`, `additions-probe.nix` | our probe program for the prefix, to run on SiliconForest |
-| `finch/QuickTime/loader-check.nix`, `additions-check.nix` | static checks: 42 of 42 loader names; the full additions 112 of 112, the shrunk additions 84 of 84 and the frameworks 28 of 28, each from the right library (pass; nothing is run) |
+| `finch/QuickTime/loader-check.nix`, `additions-check.nix` | static checks: 42 of 42 loader names; the full additions 112 of 112, the shrunk additions 82 of 82 and the frameworks 30 of 30 (with AppKit 0364), each from the right library (pass; nothing is run) |
 | `tests/test_quicktime_loader.py` | unit tests of the export check, the symbol table and the prefix assembler, on synthetic input |
 | `terminal-app/build-swift-runtime-cgfloat.nix` | proposal: CGFloat in the Swift CoreFoundation overlay |
 | `cocoa/patches/0340-…0347-…` | the names moved into AppKit, CoreGraphics, QuartzCore, CoreAudio and libFoundation |

@@ -94,7 +94,8 @@ SF_EXPORT
  *   _optionsDictionary  our class's if it has one. If not, there is nothing honest to point
  *                       at: the offset stays 0 and using the About panel will fail. This is
  *                       said at load. The fix is two instance variables in AppKit. */
-#ifndef SF_OMIT_NSSystemInfoPanel_ivars
+#if !defined(SF_OMIT_NSSystemInfoPanel_ivars) && !defined(SF_MOVED) /* in AppKit: cocoa patch 0364 (with the class's own variables the
+   offsets below resolve to them; this stays for an AppKit without them) */
 SF_EXPORT ptrdiff_t SFAboutCopyrightViewOffset __asm__("_OBJC_IVAR_$_NSSystemInfoPanel.copyrightView") = 0;
 SF_EXPORT ptrdiff_t SFAboutOptionsDictionaryOffset __asm__("_OBJC_IVAR_$_NSSystemInfoPanel._optionsDictionary") = 0;
 __attribute__((constructor)) static void SFResolveAboutPanelOffsets(void) {

@@ -88,16 +88,16 @@
   {
    "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
    "symbol": "_OBJC_IVAR_$_NSSystemInfoPanel._optionsDictionary",
-   "kind": "absence",
-   "note": "our class has no such variable: offset 0, said at load; the About panel will fail until AppKit gains it",
-   "provided_by": "QuickTime additions"
+   "kind": "real",
+   "note": "the options the About panel was last shown with (AppKit's class gained the variable)",
+   "provided_by": "AppKit (cocoa patch 0364)"
   },
   {
    "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
    "symbol": "_OBJC_IVAR_$_NSSystemInfoPanel.copyrightView",
    "kind": "real",
-   "note": "resolved at load to our About panel class's copyright field (legalTextField)",
-   "provided_by": "QuickTime additions"
+   "note": "the About panel's copyright view (its legal text field; AppKit's class gained the variable)",
+   "provided_by": "AppKit (cocoa patch 0364)"
   },
   {
    "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",

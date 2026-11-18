@@ -1,0 +1,233 @@
+diff --git a/src/Frameworks/AppKit/NSSystemInfoPanel/NSSystemInfoPanel.h b/src/Frameworks/AppKit/NSSystemInfoPanel/NSSystemInfoPanel.h
+index 5cba734..3920abb 100644
+--- a/src/Frameworks/AppKit/NSSystemInfoPanel/NSSystemInfoPanel.h
++++ b/src/Frameworks/AppKit/NSSystemInfoPanel/NSSystemInfoPanel.h
+@@ -19,6 +19,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+     IBOutlet NSPanel *infoPanel;
+     IBOutlet NSTextField *legalTextField;
+     IBOutlet NSTextField *versionField;
++    // (0364) as macOS's class has them, read by applications that extend the panel (QuickTime Player): the view
++    // with the copyright (here the legal text field) and the options the panel was last shown with
++    NSView *copyrightView;
++    NSDictionary *_optionsDictionary;
+ }
+ 
+ + (NSSystemInfoPanel *)standardAboutPanel;
+@@ -26,4 +30,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+ - (void)showInfoPanel:(id)sender withOptions:(NSDictionary *)options;
+ 
+ - (void)_resetInfoPanel;
++// (0364) the panel's nib is loaded when it is first shown and let go when it closes, as on macOS
++- (void)loadNib;
++- (void)unloadNib:(BOOL)flag;
+ @end
+diff --git a/src/Frameworks/AppKit/NSSystemInfoPanel/NSSystemInfoPanel.m b/src/Frameworks/AppKit/NSSystemInfoPanel/NSSystemInfoPanel.m
+index 70521d5..1da8c48 100644
+--- a/src/Frameworks/AppKit/NSSystemInfoPanel/NSSystemInfoPanel.m
++++ b/src/Frameworks/AppKit/NSSystemInfoPanel/NSSystemInfoPanel.m
+@@ -15,22 +15,59 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+ #import <AppKit/NSScreen.h>
+ #import <AppKit/NSImageView.h>
+ #import <AppKit/NSText.h>
++#import <AppKit/NSTextView.h>
++#import <AppKit/NSTextStorage.h>
++#import <AppKit/NSTextField.h>
++#import <AppKit/NSScrollView.h>
++#import <AppKit/NSPanel.h>
+ 
+ @implementation NSSystemInfoPanel
+ 
+ static NSSystemInfoPanel *_sharedInfoPanel = nil;
+ 
++/* (0364) As macOS's panel object: made once, its nib loaded when it is shown (-loadNib) and let go when its window
++ * closes (-unloadNib:), the options of -showInfoPanel:withOptions: kept in _optionsDictionary and applied each time the
++ * fields are filled, and copyrightView the view with the copyright. Applications extend the panel through these:
++ * QuickTime Player replaces -showInfoPanel: and -windowWillClose: and reads the two instance variables by offset.
++ * The nib is this framework's own (NSSystemInfoPanel/<language>.lproj, installed with the framework's resources). */
+ + (NSSystemInfoPanel *)standardAboutPanel
+ {
+    if(_sharedInfoPanel == nil)
+-   {
+-      _sharedInfoPanel = [NSSystemInfoPanel alloc];
+-      if(![NSBundle loadNibNamed:@"NSSystemInfoPanel" owner:_sharedInfoPanel])
+-         NSLog(@"Cannot load NSSystemInfoPanel.nib");
+-   }
++      _sharedInfoPanel = [[NSSystemInfoPanel alloc] init];
+    return _sharedInfoPanel;
+ }
+ 
++- (void)loadNib
++{
++   if(infoPanel != nil)
++      return;
++   if(![NSBundle loadNibNamed:@"NSSystemInfoPanel" owner:self] || infoPanel == nil){
++      NSLog(@"Cannot load NSSystemInfoPanel.nib");
++      return;
++   }
++   // the owner keeps the panel; closing it only orders it out (-unloadNib: lets it go)
++   [infoPanel setReleasedWhenClosed:NO];
++   copyrightView = legalTextField;
++}
++
++- (void)unloadNib:(BOOL)flag
++{
++   (void)flag;
++   if(infoPanel == nil)
++      return;
++   [infoPanel setDelegate:nil];
++   // (asked from -windowWillClose: as the window closes: it goes once that is done)
++   [infoPanel autorelease];
++   infoPanel = nil;
++   appIconView = nil; appNameField = nil; creditScrollView = nil; creditView = nil; legalTextField = nil; versionField = nil;
++   copyrightView = nil;
++}
++
++- (void)windowWillClose:(NSNotification *)note
++{
++   (void)note;
++}
++
+ - (void)awakeFromNib
+ {
+    [self _resetInfoPanel];
+@@ -38,17 +75,32 @@ static NSSystemInfoPanel *_sharedInfoPanel = nil;
+ 
+ - (void)_resetInfoPanel
+ {
++   NSDictionary *options = _optionsDictionary;
+    NSImage *icon = [NSImage imageNamed:[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleIconFile"]];
++   if ([options objectForKey:@"ApplicationIcon"] != nil)
++      icon = [options objectForKey:@"ApplicationIcon"];
+    if (icon != nil)
+       [appIconView setImage:icon];
+    
+-   [appNameField setStringValue:[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleName"]];
++   NSString *name = [options objectForKey:@"ApplicationName"];
++   if (name == nil)
++      name = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleName"];
++   if (name != nil)
++      [appNameField setStringValue:name];
+    
+    NSString *bundleVersion=[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleVersion"];
+    NSString *bundleShortVersion=[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"];
++   NSString *Version = [options objectForKey:@"Version"];
++   NSString *ApplicationVersion = [options objectForKey:@"ApplicationVersion"];
+    NSString *versionString=bundleVersion;
+    
+-   if(bundleShortVersion!=nil)
++   if(Version != nil || ApplicationVersion != nil){
++    // as the options' documentation has it: "ApplicationVersion (Version)"
++    NSString *VerUsed = Version ? Version : bundleVersion;
++    NSString *AppVerUsed = ApplicationVersion ? ApplicationVersion : (bundleShortVersion ? [NSString stringWithFormat:@"Version %@", bundleShortVersion] : nil);
++    versionString = AppVerUsed ? (VerUsed ? [NSString stringWithFormat:@"%@ (%@)", AppVerUsed, VerUsed] : AppVerUsed) : (VerUsed ? [NSString stringWithFormat:@"Version %@", VerUsed] : @"");
++   }
++   else if(bundleShortVersion!=nil)
+     versionString=[NSString stringWithFormat:@"%@ (%@)",bundleShortVersion,bundleVersion];
+ 
+    if(versionString!=nil)
+@@ -60,8 +112,14 @@ static NSSystemInfoPanel *_sharedInfoPanel = nil;
+    if(resetFrameSize == 0)
+       resetFrameSize = frame.size.height;
+    frame.size.height = resetFrameSize;
++   id credits = [options objectForKey:@"Credits"];
+    NSString *resourceFileName = [[NSBundle mainBundle] pathForResource:@"Credits" ofType:@"rtf"];
+-   if (resourceFileName != nil)
++   if ([credits isKindOfClass:[NSAttributedString class]])
++   {
++      frame.size.height += 170;
++      [[creditView textStorage] setAttributedString:credits];
++   }
++   else if (resourceFileName != nil)
+    {
+       frame.size.height += 170;
+       [creditView readRTFDFromFile:resourceFileName];
+@@ -69,78 +127,30 @@ static NSSystemInfoPanel *_sharedInfoPanel = nil;
+    else
+       [creditScrollView setFrame:NSMakeRect(0, 0, 0, 0)];
+ 
+-   [legalTextField setStringValue:[[NSBundle mainBundle] localizedStringForKey:@"NSHumanReadableCopyright" value:@" " table:@"InfoPlist"]];
++   NSString *copyright = [options objectForKey:@"Copyright"];
++   if (copyright == nil)
++      copyright = [[NSBundle mainBundle] localizedStringForKey:@"NSHumanReadableCopyright" value:@" " table:@"InfoPlist"];
++   [legalTextField setStringValue:copyright];
+ 
+    frame.origin.y = [[NSScreen mainScreen] frame].size.height - 150 - frame.size.height;
+    frame.origin.x = ([[NSScreen mainScreen] frame].size.width - frame.size.width)/2.0;
+    [infoPanel setFrame:frame display:YES];
+-  // [[infoPanel contentView] setNeedsDisplay:YES];
+ }
+ 
+ - (IBAction)showInfoPanel:(id)sender
+ {
++   [self loadNib];
+    [self _resetInfoPanel]; 
+    [infoPanel makeKeyAndOrderFront:sender];
+ }
++
+ - (void)showInfoPanel:(id)sender withOptions:(NSDictionary*)options
+ {
+-   if(!options) 
+-   {
+-      [self showInfoPanel:sender];
+-      return;
++   // (kept for the fields and for applications that read them; -showInfoPanel: shows it, whoever implements it)
++   if (_optionsDictionary != options) {
++      [_optionsDictionary release];
++      _optionsDictionary = [options copy];
+    }
+-
+-
+-   [self _resetInfoPanel];
+-   
+-   // read user prefs (for easier use below)
+-   NSImage  *ApplicationIcon = [options objectForKey:@"ApplicationIcon"];
+-   NSString *ApplicationName = [options objectForKey:@"ApplicationName"];
+-   NSString *Version = [options objectForKey:@"Version"];
+-   NSString *ApplicationVersion = [options objectForKey:@"ApplicationVersion"];
+-   NSString *Copyright = [options objectForKey:@"Copyright"];
+-   
+-   // read plist contents
+-   NSString *CFBundleVersion=[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleVersion"];
+-   NSString *CFBundleShortVersionString=[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"];
+-
+-   // now begin setup
+-
+-   // set up icon using NSImage
+-   if(ApplicationIcon) 
+-      [appIconView setImage:ApplicationIcon];
+-   
+-   // set up app name
+-   if(ApplicationName) 
+-      [appNameField setStringValue:ApplicationName];
+-
+-   // construct version string according to docs
+-   NSString *VerUsed = Version ? Version : CFBundleVersion;
+-   NSString *AppVerUsed = ApplicationVersion ? ApplicationVersion : [NSString stringWithFormat:@"Version %@", CFBundleShortVersionString];
+-   if(!AppVerUsed)
+-   {
+-      if(VerUsed)
+-          [versionField setStringValue:[NSString stringWithFormat: @"Version %@", VerUsed]];
+-      else
+-          [versionField setStringValue:@""];
+-   }
+-   else
+-   {
+-      if(VerUsed)
+-          [versionField setStringValue:[NSString stringWithFormat:@"%@ (%@)", AppVerUsed, VerUsed]];
+-      else
+-          [versionField setStringValue:AppVerUsed];
+-   }
+-
+-   // set up copyright
+-   [legalTextField setStringValue:Copyright];
+-
+-   // it may be a good idea to inform developer about not supporting Credits being set up here
+-   if([options objectForKey:@"Credits"])
+-   {
+-	   // TODO warn somehow or implement setting NSAttributedString into the text field!
+-   }
+-
+-   [infoPanel makeKeyAndOrderFront:sender];   
++   [self showInfoPanel:sender];
+ }
+ @end

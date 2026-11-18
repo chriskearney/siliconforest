@@ -643,6 +643,10 @@
 #   0362  AppKit (QTP; for every application, through the guarded install only): in full screen the menu strip
 #         auto-hides as macOS's menu bar does - it lies over the content and slides in while the pointer is at the
 #         top edge or over it; NSApplicationPresentationHideMenuBar hides it, options without a menu-bar bit keep it
+#   0364  AppKit (QTP2; every application, through the guarded install only): the About panel as macOS's: its nib (this
+#         framework's own, now installed with the resources) loaded when it is shown and let go when it closes
+#         (-loadNib, -unloadNib:), the options kept and applied each time, the copyrightView and _optionsDictionary
+#         instance variables (QuickTime Player replaces -showInfoPanel: and -windowWillClose: and reads them by offset)
 #   0363  Onyx2D (QTP2; every application, through the guarded install only): an opaque image drawn on the device at
 #         its own size (within two pixels) is copied a row at a time instead of resampled and blended pixel by pixel
 #         (QuickTime Player's picture cost 150 ms a draw: two pictures a second); O2_NO_IMAGE_FAST_PATH=1 turns it off,
@@ -775,6 +779,7 @@ let
     ./patches/0358-appkit-window-title-and-device-pixels.patch
     ./patches/0360-appkit-document-window-title-is-the-name.patch
     ./patches/0362-appkit-full-screen-menu-strip-auto-hides.patch
+    ./patches/0364-appkit-about-panel-nib-loaded-when-shown.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
@@ -891,7 +896,19 @@ let
   }));
   # (0110) against the libFoundation the root has (NSIndexPath is in it), not upstream's
   foundation = import ../terminal-app/build-foundation.nix;
-  appkit = optimised (pd."appkit-msm-arm64".override { src = appkitSrc; inherit windowserver foundation; });
+  # (0364) the About panel's nib, this framework's own (Cocotron's NSSystemInfoPanel, MIT), installed with its resources:
+  # upstream's recipe installs only the string tables, so every application's About panel failed to load
+  appkit = (optimised (pd."appkit-msm-arm64".override { src = appkitSrc; inherit windowserver foundation; })).overrideAttrs (old: {
+    postInstall = (old.postInstall or "") + ''
+      for l in "$src"/NSSystemInfoPanel/*.lproj; do
+        d="$out/System/Library/Frameworks/AppKit.framework/Versions/A/Resources/$(basename "$l")/NSSystemInfoPanel.nib"
+        mkdir -p "$d"
+        for f in keyedobjects.nib classes.nib info.nib; do
+          if [ -e "$l/NSSystemInfoPanel.nib/$f" ]; then install -m644 "$l/NSSystemInfoPanel.nib/$f" "$d/"; fi
+        done
+      done
+    '';
+  });
   # Security for arm64 (upstream's build) with SecItemCopyMatching's result defined on every path
   security = pd."security-arm64".overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./patches/0009-security-secitemcopymatching-defined-result.patch ];

@@ -101,7 +101,7 @@ class SymbolTableTests(unittest.TestCase):
         kinds = {}
         for row in table:
             kinds[row['kind']] = kinds.get(row['kind'], 0) + 1
-        self.assertEqual(kinds, {'absence': 49, 'constant': 37, 'real': 19, 'model': 7})
+        self.assertEqual(kinds, {'absence': 48, 'constant': 37, 'real': 20, 'model': 7})
         by_library = check_exports.load_imports(QT / 'additions/symbols.json')
         self.assertEqual(len(by_library), 18)
         self.assertEqual(sum(map(len, by_library.values())), 112)
@@ -110,8 +110,8 @@ class SymbolTableTests(unittest.TestCase):
         path = QT / 'additions/symbols.json'
         prefix = check_exports.load_imports(path, 'additions')
         frameworks = check_exports.load_imports(path, 'frameworks')
-        self.assertEqual(sum(map(len, prefix.values())), 84)
-        self.assertEqual(sum(map(len, frameworks.values())), 28)
+        self.assertEqual(sum(map(len, prefix.values())), 82)
+        self.assertEqual(sum(map(len, frameworks.values())), 30)
         # nothing is supplied by both, and nothing is lost
         both = {(k, s) for k, v in prefix.items() for s in v} & {(k, s) for k, v in frameworks.items() for s in v}
         self.assertEqual(both, set())

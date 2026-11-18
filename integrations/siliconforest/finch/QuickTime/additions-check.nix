@@ -6,7 +6,7 @@
 #   full        additions.nix { movedInFrameworks = false; } and the staged AVKit: all 112 (the M1 as installed
 #               on 18 November 2026, without the patched frameworks)
 #   shrunk      additions.nix (the default) and the staged AVKit: the names the prefix still supplies
-#   frameworks  the frameworks with the Cocoa patches 0340-0347 and the framework wrappers: the names that moved
+#   frameworks  the frameworks with the Cocoa patches 0340-0347 and 0364 and the framework wrappers: the names that moved
 # The libraries are checked by themselves, without the system images they stand in front of. This predicts
 # dyld's binding verdict for these names; it runs nothing.
 let
