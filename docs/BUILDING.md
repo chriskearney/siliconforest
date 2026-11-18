@@ -18,8 +18,10 @@ tree; `release/cocoa-base.nix` generates the earlier base still used by the Coco
 patch series. Neither needs a workstation checkout.
 
 Named outputs include `m1-kernel`, `qemu-base`, `root-base`, `desktop`, `terminal`,
-`boot-stage1`, `boot-stage2`, `boot-stage2-template`, and the individual user-space
-pieces in `release/packages.nix`. Image assembly is being integrated separately.
+`boot-stage1`, `boot-stage2`, `boot-stage2-release`, and the individual user-space
+pieces in `release/packages.nix`. Integrated outputs `root-image`, `bootfiles`,
+`release` (also the default), and `qemu-image` are under validation. Their presence
+is not yet evidence of a successful complete build.
 
 `boot-stage2` defaults to RAM roots only. A disk build explicitly binds its stage
 to the release root filesystem's UUID through `release/boot-stages.nix`. Partition

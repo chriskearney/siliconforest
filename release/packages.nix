@@ -7,6 +7,11 @@ let
   p = base.pd.packages.x86_64-linux;
   desktop = import ./desktop.nix { inherit base; };
   boot = import ./boot-stages.nix { inherit base; };
+  version = "0.1.0";
+  releaseBoot = import ./boot-stages.nix {
+    inherit base;
+    rootUUID = (import ./identity.nix { inherit version; }).rootUUID;
+  };
   templateBoot = import ./boot-stages.nix {
     inherit base;
     rootUUID = "53465f52-4f4f-5455-5549-445f5f5f5f5f";
@@ -22,6 +27,24 @@ let
     homebrew-overlay = recipe "homebrew/build-overlay.nix";
     cgl = recipe "firefox/perf/tools/term12/cgl.nix" { };
     corevideo = recipe "cocoa/corevideo-displaylink-0149.nix";
+    iosurface = recipe "cocoa/iosurface.nix";
+    cocoa-root = recipe "cocoa/build-cocoa-root.nix" { };
+    system-perl = recipe "macos-compat/build-perl.nix";
+    foundation-networking = recipe "terminal-app/build-foundation-networking.nix";
+    libcompression = recipe "finch/libcompression/build.nix";
+    finch-frameworks = let
+      paths = map (name: recipe "finch/${name}/build.nix") [
+        "Accounts" "CloudKit" "CoreBluetooth" "CoreLocation" "CoreWLAN"
+        "CryptoTokenKit" "LocalAuthentication" "OpenDirectory" "StoreKit"
+        "UserNotifications" "CFNetwork"
+      ];
+    in pkgs.runCommand "siliconforest-finch-frameworks" { } ''
+      mkdir -p "$out"
+      for layer in ${pkgs.lib.concatStringsSep " " paths}; do
+        cp -RP "$layer"/. "$out/"
+        chmod -R u+w "$out"
+      done
+    '';
     vulkan-system = rootLayout "graphics" (recipe "m1-vulkan/system.nix") "/root";
     mesa-libdrm = recipe "m1-mesa-asahi/agx-offscreen-test.nix";
     netd = recipe "m1-bwfm/netd/build-pd-netd.nix";
@@ -52,8 +75,18 @@ let
     ffmpeg-x264 = recipe "desktop/recording/build-ffmpeg-x264.nix";
     sfvideo = recipe "m1-avd/player/build-sfvideo.nix" { };
   };
+  image = import ./image.nix {
+    inherit pkgs pieces version;
+    base = p.image-arm64-virt-minimal-release;
+    qemuBase = recipe "qemu-dev/build-image.nix" { };
+    kernel = recipe "m1-kernel50/build-kc.nix";
+    boot = {
+      stage1 = "${boot.stage1}/sf-stage1.bin";
+      stage2 = "${releaseBoot.stage2}/boot.bin";
+    };
+  };
 in {
-  inherit pieces desktop;
+  inherit pieces desktop image;
   packages = pieces // {
     source-manifest = pkgs.writeText "siliconforest-sources.json" (builtins.readFile ../sources.lock);
     base-source = base.renamed;
@@ -62,6 +95,12 @@ in {
     boot-stage1 = boot.stage1;
     boot-stage2 = boot.stage2;
     boot-stage2-template = templateBoot.stage2;
+    boot-stage2-release = releaseBoot.stage2;
+    root-image = image.rootfs;
+    bootfiles = image.bootfiles;
+    release = image.release;
+    qemu-image = image.qemu;
+    default = image.release;
     qemu-base = recipe "qemu-dev/build-image.nix" { };
     qemu-runner = import ./qemu-runner.nix { inherit pkgs; };
     qemu-smoke-image = import ./qemu-smoke.nix { inherit base; };

@@ -2,7 +2,7 @@
 # Copyright (c) 2026 SiliconForest contributors
 # Evaluate upstream's flake with its own pinned dependency graph, after the
 # deterministic source rename. No local Git checkout or registry is consulted.
-{ sourceName ? "upstream-base", corecryptoName ? "corecrypto", forkRev ? "cd001928e0223fd77a7850f09e43580b51bde239" }:
+{ sourceName ? "upstream-base", corecryptoName ? "corecrypto", forkRev ? null }:
 let
   lock = builtins.fromJSON (builtins.readFile ../sources.lock);
   sources = import ./sources.nix;
@@ -45,7 +45,9 @@ let
     // { outPath = renamed; inherit inputs; };
 in {
   inherit pd pkgs sources renamed renameTools;
-  rev = forkRev;
+  rev = if forkRev != null then forkRev
+    else if sourceName == "upstream-cocoa" then lock.cocoaRename.expectedForkCommit
+    else lock.baseRename.expectedForkCommit;
   which = "tip";
   tip = true;
   pick = { pin, tip }: tip;

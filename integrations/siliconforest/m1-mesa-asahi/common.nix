@@ -6,8 +6,8 @@ let
 in rec {
   inherit pd pkgs;
   p = pd.packages.x86_64-linux;
-  mesaRev = "147a62f619001f5f2588c7417c2b1fac3b0d93ad";
-  mesaVersion = "26.3.0-devel-147a62f6190";
+  mesaRev = (builtins.fromJSON (builtins.readFile ../../../sources.lock)).auxiliarySources.mesa-gl.revision;
+  mesaVersion = "26.3.0-devel-${builtins.substring 0 11 mesaRev}";
   mesaSrc = (import ../../../release/fetch.nix { pkgs = pkgs; }) "mesa-gl";
   pythonEnv = pkgs.python3.withPackages (ps: [ ps.mako ps.pyyaml ps.packaging ps.setuptools ]);
   triple = "arm64-apple-darwin20.4";
