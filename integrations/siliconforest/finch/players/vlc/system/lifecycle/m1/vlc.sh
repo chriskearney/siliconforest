@@ -24,8 +24,8 @@ if [ -n "$WV" ]; then
   cap $T-fs 100; ok "full screen by the control bar's button ($FS)" '[ -n "$FS" ]'
   [ -n "$FS" ] && { typ $FS "$ESC" > /dev/null; sleep 3; }
   req "list $T-fb\n" 30 > /dev/null; back=$(grep "^window $WV " $D/$T-fb.txt | rect); cap $T-back 100
-  nbig=$(grep "app_id=\"$VLCAPP\"" $D/$T-fb.txt | grep "mapped=true" | grep -v 'Fullscreen Controls' | grep -cE 'size: Size \{ w: 25[0-9][0-9], h: 1[5-6][0-9][0-9]')
-  ok "back from full screen by Esc (window $WV mapped at $back; full-screen windows mapped: $nbig)" 'grep "^window $WV " $D/$T-fb.txt | grep -q "mapped=true" && [ "$nbig" = 0 ]'
+  fsm=$(grep "^window ${FS:-none} " $D/$T-fb.txt | grep -o 'mapped=[a-z]*')
+  ok "back from full screen by Esc (window $WV mapped at $back; full-screen window ${FS:-none}: ${fsm:-gone})" 'grep "^window $WV " $D/$T-fb.txt | grep -q "mapped=true" && [ -n "$FS" ] && [ "$fsm" != "mapped=true" ]'
   a3=$(avd); ok "decoder still busy (jobs $a1 -> $a3)" '[ "$a3" -gt $(( a1 + 60 )) ]'
   SET=$(tree $VP)
 fi

@@ -14,21 +14,21 @@ SF=(ssh -o UserKnownHostsFile="$HOME/.ssh/known_hosts_m1_siliconforest" -o Globa
 note() { echo "$(date -u +%FT%TZ) SYSINSTALL $*" >> $LOG; }
 N=${1:?step}; A=${2:?forward|back|check}; S=/private/var/db/sfsysinst/stage; OUT=$M/work/step$N-$A-$(date -u +%H%M%S).txt
 CHECK='S=/private/var/db/sfsysinst/stage; N='$N'
-while read -r kind path want mode; do
-  if [ "$kind" = l ]; then echo "HASH link $path -> $(readlink "$path" 2>/dev/null || echo ABSENT) (want $want)"; continue; fi
-  now=$(sha256sum "$path" 2>/dev/null | cut -c1-64); pre=$(sha256sum "$path.pre-vlc" 2>/dev/null | cut -c1-64)
-  echo "HASH $path now ${now:-ABSENT} staged $want $([ "$now" = "$want" ] && echo NEW || echo NOT-NEW) inode $(ls -i "$path" 2>/dev/null | awk "{print \$1}") pre-vlc ${pre:-none} inode $(ls -i "$path.pre-vlc" 2>/dev/null | awk "{print \$1}")"
+while read -r kind pth want mode; do
+  if [ "$kind" = l ]; then echo "HASH link $pth -> $(readlink "$pth" 2>/dev/null || echo ABSENT) (want $want)"; continue; fi
+  now=$(sha256sum "$pth" 2>/dev/null | cut -c1-64); pre=$(sha256sum "$pth.pre-vlc" 2>/dev/null | cut -c1-64)
+  echo "HASH $pth now ${now:-ABSENT} staged $want $([ "$now" = "$want" ] && echo NEW || echo NOT-NEW) inode $(ls -i "$pth" 2>/dev/null | awk "{print \$1}") pre-vlc ${pre:-none} inode $(ls -i "$pth.pre-vlc" 2>/dev/null | awk "{print \$1}")"
 done < $S/step$N/list
 $S/test/sf-vlc-features-probe 2>&1 | grep -E "SFVLCFEATURE|SFVLCLOADERROR" | sed "s/^/FEATURE /"'
 [ "${HAVE_CORE:-}" = 1 ] || { exec 8>"$CORE"; flock -w 1800 8 || { echo "core.lock not free within 1800 s"; exit 6; }; }
 case $A in
 forward)
   note "core.lock${HAVE_CORE:+ (held by the step run)}: step $N forward: $(awk '{print $2}' $H/runs/sf-vlc-system/stage/step$N/list | grep -v Source.m | sed 's|.*/||' | sort -u | tr '\n' ' ')(sf_vlc_restore.sh forward; previous files kept as .pre-vlc; back: sf_vlc_restore.sh back $N)"
-  "${SF[@]}" "sh $S/sf_vlc_restore.sh forward $S $N 2>&1; echo RC=\$?; $CHECK" | tee $OUT;;
+  "${SF[@]}" "sh $S/sf_vlc_restore.sh forward $S $N 2>&1; echo RC=\$?" | tee $OUT; printf '%s\n' "$CHECK" | "${SF[@]}" "sh -s" | tee -a $OUT;;
 back)
   note "core.lock: step $N BACK (sf_vlc_restore.sh back $N)"
-  "${SF[@]}" "sh $S/sf_vlc_restore.sh back $N 2>&1; echo RC=\$?; $CHECK" | tee $OUT;;
+  "${SF[@]}" "sh $S/sf_vlc_restore.sh back $N 2>&1; echo RC=\$?" | tee $OUT; printf '%s\n' "$CHECK" | "${SF[@]}" "sh -s" | tee -a $OUT;;
 check)
-  "${SF[@]}" "$CHECK" | tee $OUT;;
+  printf '%s\n' "$CHECK" | "${SF[@]}" "sh -s" | tee $OUT;;
 esac
 [ "${HAVE_CORE:-}" = 1 ] || note "core.lock released (step $N $A; record $(basename $OUT))"

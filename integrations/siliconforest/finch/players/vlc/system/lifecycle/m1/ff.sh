@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
-# Firefox: starts, loads a page, plays a video, opens and closes a second window, quits (by process) with no process left
+# Firefox: starts, loads a page, plays a video, opens and closes a second window, quits from its own menu (Firefox >
+# Quit Firefox; TERM only after 10 s) with no process left
 req "list $T-l0\n" > /dev/null; say "to Space 2: $(space_next)"
 a0=$(avd); ff_start https://en.wikipedia.org/wiki/XNU file://$W/video.html
 WF=$(win $T org.mozilla.firefox 60); ok "Firefox window mapped ($WF)" '[ -n "$WF" ]'
@@ -23,6 +24,6 @@ if [ -n "$WF" ]; then
 fi
 say "processes of my Firefox: $(nw $SET): $(for p in $SET; do ps -o comm= -p $p | sed "s|.*/||"; done | sort | uniq -c | tr -s ' ' | tr '\n' ',')"
 main=$(for p in $SET; do ps -o pid=,command= -p $p; done | grep -F "Contents/MacOS/firefox" | grep -v -e contentproc -e surface-session | awk '{print $1}' | head -1)
-quit_set "${main:-$(cat $W/ff.pid)}" 25 $SET
+if [ -n "$WF" ]; then quit_menu $WF "${main:-$(cat $W/ff.pid)}" $SET; else quit_set "${main:-$(cat $W/ff.pid)}" 25 $SET; fi
 left=$(procs "$FFP"); ok "no process with my profile left" '[ -z "$left" ]'
 say "back to Space 1: $(space_back)"

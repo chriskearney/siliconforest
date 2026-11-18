@@ -3,7 +3,6 @@
 # "About <app>" from the app's menu (the desk's strip inside the window), for Apple's Terminal and Activity Monitor:
 # the panel appears (a new window of the app), is closed by its title-bar Close button, opens again, closes; quit by process
 req "list $T-l0\n" > /dev/null; say "to Space 2: $(space_next)"
-newest_shell_rect() { req "list $T-sh\n" 30 > /dev/null; grep '^shell' $D/$T-sh.txt | grep 'mapped=true' | while read -r line; do id=$(echo "$line" | cut -d' ' -f2); grep -q "^shell $id " $D/$T-l0.txt || echo "$line"; done | tail -1 | grep -o 'rect=Rect { pos: Point { x: [-0-9]*, y: [-0-9]* }, size: Size { w: [0-9]*, h: [0-9]* }' | grep -o '[-0-9][0-9]*' | tr '\n' ' '; }
 open_about() { # <main window> <tag>: click the app menu's title, then its first row
   set -- $1 $2 $(wrect $1); click $(( $3 + 45 )) $(( $4 + 17 )) 900; m=$(newest_shell_rect); say "app menu at: $m"; cap $T-$2-menu 50
   set -- $m; [ -n "$4" ] || return 1; click $(( $1 + 80 )) $(( $2 + ${ROW1:-47} )) 2200; }

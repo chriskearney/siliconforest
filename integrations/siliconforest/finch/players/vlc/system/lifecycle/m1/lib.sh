@@ -64,6 +64,16 @@ STATEF="theme wallpaper scale policy dock dock-clock appearance"
 state_save() { mkdir -p $W/state-owner; ( cd $ST && for f in $STATEF; do [ -e $f ] && cp -p $f $W/state-owner/$f; done; shasum -a 256 $STATEF > $W/state-owner.sha 2>/dev/null ); }
 state_check() { ( cd $ST; for f in $STATEF; do [ -e $W/state-owner/$f ] || continue; cmp -s $W/state-owner/$f $f || { cp -p $W/state-owner/$f $f.sfsys && mv -f $f.sfsys $f; echo "STATE $f put back from the copy"; }; done
   shasum -a 256 $STATEF > $W/state-after.sha 2>/dev/null; cmp -s $W/state-owner.sha $W/state-after.sha && say "PASS owner's desk state identical ($(wc -l < $W/state-owner.sha) files: theme=$(cat theme) scale=$(cat scale))" || { say "FAIL owner's desk state differs"; diff $W/state-owner.sha $W/state-after.sha; } ); }
+# the newest mapped shell surface (a menu) not in the list taken at the start of the pass: x y w h
+newest_shell_rect() { req "list $T-sh\n" 30 > /dev/null; grep '^shell' $D/$T-sh.txt | grep 'mapped=true' | while read -r line; do id=$(echo "$line" | cut -d' ' -f2); grep -q "^shell $id " $D/$T-l0.txt || echo "$line"; done | tail -1 | grep -o 'rect=Rect { pos: Point { x: [-0-9]*, y: [-0-9]* }, size: Size { w: [0-9]*, h: [0-9]* }' | grep -o '[-0-9][0-9]*' | tr '\n' ' '; }
+# quit from the app's own menu (its first menu, last row: "Quit <app>", 48 px above the menu surface's bottom), as the
+# owner does; <window> <pid to TERM after 10 s> <processes that must end>
+quit_menu() { w=$1; sig=$2; shift 2; set_=$*; set -- $(wrect $w); [ -n "$4" ] || { quit_set "$sig" 15 $set_; return; }
+  click $(( $1 + 45 )) $(( $2 + 17 )) 900; m=$(newest_shell_rect); cap $T-quitmenu 50
+  set -- $m; if [ -n "$4" ]; then click $(( $1 + 80 )) $(( $2 + $4 - 48 )) 200; fi; i=0
+  while [ -n "$(alive_of $set_)" ] && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
+  if [ -z "$(alive_of $set_)" ]; then say "PASS quit from its menu: all $(nw $set_) processes gone after $((i / 5)).$((i % 5 * 2)) s"; return 0; fi
+  say "FAIL quit from its menu: processes left after 10 s ($(alive_of $set_)): TERM as the fallback"; quit_set "$sig" 15 $set_; return 1; }
 # every descendant of <pid> and itself
 tree() { ps ax -o pid=,ppid= > $W/ps.txt; t=" $1 "; n=0; m=1; while [ $n -lt $m ]; do n=$m
   for p in $(awk -v T="$t" 'index(T, " " $2 " ") && !index(T, " " $1 " ") {print $1}' $W/ps.txt); do t="$t$p "; done; set -- $t; m=$#; done; echo $t; }

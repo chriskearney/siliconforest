@@ -24,6 +24,8 @@ fi
 "${SF[@]}" "mkdir -p /private/var/db/sfsysinst/fetched; cd /private/var/run/gpu-desktop/inject && ls | grep '^$T-' > /private/var/db/sfsysinst/fetch.lst; tar -cf - -T /private/var/db/sfsysinst/fetch.lst && sh -c 'while read -r f; do rm -f \"/private/var/run/gpu-desktop/inject/\$f\"; done < /private/var/db/sfsysinst/fetch.lst'" | tar -xf - -C "$M/raw" 2>/dev/null
 note "gui.lock released ($T, rc $rc)"
 flock -u 9
-for f in "$M"/raw/$T-*.ppm; do [ -e "$f" ] || continue; magick "$f" -resize 50% "$M/caps/$(basename "${f%.ppm}").png" && rm -f "$f"; done
+for f in "$M"/raw/$T-*.ppm; do [ -e "$f" ] || continue
+  case "$f" in *-ff-a.ppm) magick "$f" -crop 1000x560+240+300 +repage "$M/caps/$(basename "${f%.ppm}")-full.png";; esac   # text at full resolution
+  magick "$f" -resize 50% "$M/caps/$(basename "${f%.ppm}").png" && rm -f "$f"; done
 grep -a '^LIFE' "$M/work/out-$T.txt" | grep -c PASS | sed 's/^/passes: /'; grep -a '^LIFE.*FAIL' "$M/work/out-$T.txt"
 exit $rc
