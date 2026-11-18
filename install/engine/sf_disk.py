@@ -190,8 +190,11 @@ class Layout:
     def find_ours(self):
         """SiliconForest as the installer lays it out: stub container, then SFBOOT, then root."""
         inst = Install()
-        stubs = [p for p in self.parts if p.container is not None and STUB_NAME in p.container.system_names()
-                 and p.container.ref != self.macos_ref]
+        def ours(c):
+            # complete: a System volume named SiliconForest; interrupted early: the first volume
+            # diskutil made ("SiliconForest", no role yet) or the renamed "SiliconForest - Data"
+            return any(v.name == STUB_NAME or v.name == STUB_NAME + ' - Data' for v in c.volumes)
+        stubs = [p for p in self.parts if p.container is not None and p.container.ref != self.macos_ref and ours(p.container)]
         if not stubs:
             boots = [p for p in self.parts if p.kind() == 'efi' and p.label.upper().startswith(BOOT_LABEL)]
             if boots:

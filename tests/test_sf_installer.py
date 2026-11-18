@@ -184,6 +184,16 @@ class Plans(unittest.TestCase):
             sf_plan.plan_install(facts('m1-partial-siliconforest'), MODELS)
         self.assertIn('partial', codes(e.exception.findings))
 
+    def test_interrupted_right_after_the_stub_partition(self):
+        mac = fakemac.FakeMac(name='early', macos_bytes=420 * GB)
+        mp = mac.part('disk0s2')
+        mac.add_stub('SiliconForest', mp['offset'] + mp['size'], sf_plan.STUB_BYTES, complete=False)
+        f = sf_plan.gather(mac)
+        with self.assertRaises(sf_plan.Refusal) as e:
+            sf_plan.plan_install(f, MODELS)
+        self.assertIn('partial', codes(e.exception.findings))
+        self.assertEqual([r['action'] for r in sf_plan.plan_uninstall(f, MODELS)['remove']], ['deleteContainer'])
+
     def test_uninstall_plans(self):
         p = sf_plan.plan_uninstall(facts('m1-siliconforest'), MODELS)
         self.assertEqual([r['action'] for r in p['remove']], ['deleteContainer', 'eraseVolume', 'eraseVolume'])
