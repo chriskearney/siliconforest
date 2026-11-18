@@ -14,7 +14,8 @@ in pkgs.stdenv.mkDerivation {
     mkdir -p $out/integrations/siliconforest/terminal-app/system
     cp ${../terminal-app/system/open.c} $out/integrations/siliconforest/terminal-app/system/open.c
   '';
-  patches = [ ./system-patches/0001-open-http-url.patch ];
+  # The tracked open.c already contains HTTP(S) LaunchServices handling and
+  # later fixes. The historical proposal must not be applied again.
   dontConfigure = true;
   buildPhase = ''
     ${tc}/bin/${triple}-clang -O2 -g -isysroot ${sdk} \
