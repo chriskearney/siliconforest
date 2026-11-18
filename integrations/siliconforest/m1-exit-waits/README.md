@@ -46,10 +46,15 @@ Names for the addresses, on the workstation:
 
     nix-build ../m1-kernel51/build-kc.nix --no-out-link            # the collection that booted
     nix-build ../m1-kernel51/build-kc.nix -A members --no-out-link # its members, with symbols
-    python3 symbolicate.py COLLECTION MEMBERS report.txt
+    python3 symbolicate.py COLLECTION MEMBERS report.txt \
+        --map <SFAgx derivation>/nix-support/SFAgx.map --map <SFDcp derivation>/nix-support/SFDcp.map
 
 Each `bt` address gets `[<bundle> <symbol>+0x<offset>]` from the member's own symbol table
-(local symbols included, so Rust and static C functions are named). Checked against kernel 50's
+(local symbols included, so Rust and static C functions are named). SFAgx and SFDcp are built
+without local symbols: their link maps (`--map`) name those functions. On the M1 (kernel 51,
+18 November, `runs/kexit/m1/selftest-*`) every frame of 140 kernel threads was named that way,
+e.g. an SFAgx worker: `machine_switch_context` ← `thread_invoke` ← `thread_block_reason` ←
+`sfos_wait_sleep` ← `acquire_sem_etc` ← `callout_thread` ← `spawn_trampoline` ← `thread_entry`. Checked against kernel 50's
 collection: 2,624 text symbols of the collection's own symbol tables resolve to the same name
 at offset 0 through the members; the only mismatches are the 48 of ext4, whose member there was
 kernel 48's (the one member kernel 50 changed).
@@ -116,7 +121,8 @@ established from the source: the report's `kernel=1` view of the DRM scheduler w
 0. First, that it reads real stacks on this machine: `sysctl kern.sf_exitwait.pid=$(pgrep -x sshd |
    head -1); sysctl kern.sf_exitwait.report; sysctl kern.sf_exitwait.pid=0`. Expected: the
    listener's threads waiting in Mach message or kevent paths, frames that symbolicate to them.
-   Nothing on the M1 has run this report yet.
+   Done on kernel 51 (18 November): sshd's listener waits in `select` (continuation
+   `_sleep_continue`, no stack); kernel_task's 140 threads give full named frame chains.
 1. Before the run: `sysctl kern.sf_exitwait.kernel=1` (the report stays off until read).
 2. VLC drag session as rM9/d1; on a stuck exit (`ps -axo pid,ppid,stat,command | grep '?E'`):
    `sysctl kern.sf_exitwait.report > /private/var/tmp/exitwait-$(date +%s).txt` (twice, a minute

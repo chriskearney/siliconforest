@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: MIT
 """Names for the addresses in a kern.sf_exitwait report (../m1-exit-waits/kernel.patch).
 
-  symbolicate.py COLLECTION MEMBERS [REPORT]
+  symbolicate.py COLLECTION MEMBERS [REPORT] [--map LINKMAP]...
       COLLECTION  the kernel collection the M1 booted ($out/kernel of build-kc.nix, or the
                   store path that holds it)
       MEMBERS     nix-build build-kc.nix -A members: kernel/ and kexts/ as built, with their
                   symbol tables (local symbols included: Rust and static C functions)
       REPORT      the report (sysctl kern.sf_exitwait.report, or dmesg lines); stdin if absent
+      LINKMAP     a kext's ld64 link map (nix-support/<kext>.map of its derivation, e.g. SFAgx,
+                  SFDcp): its symbols are added to that member's, which names the functions
+                  a kext binary built without local symbols does not (the Rust and C of SFAgx)
 
 Every 0x... word of a "bt" or "continuation" line, and every "event 0x..." that lies in the
 collection, gets " <bundle> <symbol>+0x<offset>" after it. The report's addresses are unslid,
@@ -82,6 +85,24 @@ def demangle(name):
     return text
 
 
+def link_map(path):
+    """(kext directory name, [(address, name)]) of an ld64 map file"""
+    kext, syms, live = None, [], False
+    for line in open(path, errors='replace'):
+        if line.startswith('# Path:'):
+            m = re.search(r'([^/]+\.kext)/', line)
+            kext = m.group(1) if m else None
+        elif line.startswith('# Symbols:'):
+            live = True
+        elif line.startswith('# Dead Stripped'):
+            break
+        elif live:
+            m = re.match(r'0x([0-9A-Fa-f]+)\s+0x([0-9A-Fa-f]+)\s+\[\s*\d+\]\s+(.+)', line)
+            if m and int(m.group(2), 16):
+                syms.append((int(m.group(1), 16), m.group(3).strip()))
+    return kext, syms
+
+
 def member_binaries(members):
     """bundle identifier -> binary path of every member under MEMBERS"""
     out = {}
@@ -102,7 +123,7 @@ def member_binaries(members):
 
 
 class Collection:
-    def __init__(self, path, members):
+    def __init__(self, path, members, maps=()):
         if os.path.isdir(path):
             path = os.path.join(path, 'kernel')
         self.data = open(path, 'rb').read()
@@ -126,6 +147,16 @@ class Collection:
                     self.ranges.append((addr, addr + size, bundle, base, key))
         self.ranges.sort()
         self.starts = [r[0] for r in self.ranges]
+        # link maps: matched to a member by the .kext directory the map names
+        bydir = {os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(v)))): k
+                 for k, v in self.binaries.items()}
+        for mp in maps:
+            kext, syms = link_map(mp)
+            bundle = bydir.get(kext)
+            if bundle is None:
+                sys.exit('%s: no member %s' % (mp, kext))
+            merged = sorted(set(self.syms.get(bundle, ([], []))[0]) | set(syms))
+            self.syms[bundle] = (merged, [x[0] for x in merged])
 
     def name(self, addr):
         i = bisect.bisect_right(self.starts, addr) - 1
@@ -144,10 +175,15 @@ class Collection:
 
 
 def main():
-    if len(sys.argv) not in (3, 4):
+    args, maps = sys.argv[1:], []
+    while '--map' in args:
+        i = args.index('--map')
+        maps.append(args[i + 1])
+        del args[i:i + 2]
+    if len(args) not in (2, 3):
         sys.exit(__doc__)
-    kc = Collection(sys.argv[1], sys.argv[2])
-    report = open(sys.argv[3]) if len(sys.argv) == 4 else sys.stdin
+    kc = Collection(args[0], args[1], maps)
+    report = open(args[2]) if len(args) == 3 else sys.stdin
     for line in report:
         line = line.rstrip('\n')
         if re.search(r'(^|: )\s+(bt|continuation)\b', line):
