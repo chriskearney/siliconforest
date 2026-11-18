@@ -4,7 +4,7 @@
 #pragma once
 #import <Foundation/Foundation.h>
 #import <dispatch/dispatch.h>
-@class PDFAction, PDFActionURL, PDFActionGoTo, PDFDestination, PDFBorder, PDFAnnotation, PDFOutline, PDFPage, PDFSelection, PDFDocument;
+@class PDFAction, PDFActionURL, PDFActionGoTo, PDFDestination, PDFBorder, PDFAnnotation, PDFOutline, PDFPage, PDFSelection, PDFDocument, PDFView, PDFThumbnailView;
 /* SPDX-License-Identifier: MIT */
 #import <AppKit/AppKit.h>
 #import <CoreGraphics/CoreGraphics.h>
@@ -16,8 +16,18 @@ typedef NSPoint PDFPoint;
 typedef NSSize PDFSize;
 typedef NSInteger PDFDisplayBox,PDFBorderStyle,PDFDocumentPermissions,PDFPrintScalingMode;
 typedef NSUInteger PDFAccessPermissions,PDFSelectionGranularity;
-@class PDFView;
+typedef NSInteger PDFDisplayMode, PDFDisplayDirection, PDFInterpolationQuality;
+typedef NSUInteger PDFAreaOfInterest;
+typedef NSEdgeInsets PDFEdgeInsets;
+enum {
+    kPDFNoArea = 0,
+    kPDFInterpolationQualityHigh = 2,
+};
 @protocol PDFDocumentDelegate <NSObject>
+@end
+@protocol PDFViewDelegate <NSObject>
+@end
+@protocol PDFPageOverlayViewProvider <NSObject>
 @end
 
 extern NSString * const PDFDocumentDidUnlockNotification;
@@ -273,6 +283,7 @@ extern NSString * const PDFThumbnailViewDocumentEditedNotification;
 - (BOOL)writeToFile:(NSString *)path withOptions:(NSDictionary *)options;
 - (BOOL)writeToURL:(NSURL *)url;
 - (BOOL)writeToURL:(NSURL *)url withOptions:(NSDictionary *)options;
+- (NSPrintOperation *)printOperationForPrintInfo:(NSPrintInfo *)printInfo scalingMode:(PDFPrintScalingMode)scaleMode autoRotate:(BOOL)doRotate;
 - (PDFSelection *)outlineItemForSelection:(PDFSelection *)selection;
 - (Class)classForAnnotationType:(NSString *)annotationType;
 - (id)copyWithZone:(NSZone *)zone;
@@ -280,6 +291,127 @@ extern NSString * const PDFThumbnailViewDocumentEditedNotification;
 @property(readonly,getter=isEncrypted) BOOL encrypted;
 @property(readonly,getter=isLocked) BOOL locked;
 @property(readonly,getter=isFinding) BOOL finding;
+@end
+
+@interface PDFView : NSView
+- (instancetype)initWithFrame:(NSRect)frame;
+- (instancetype)initWithCoder:(NSCoder *)coder;
+- (PDFDocument *)document;
+- (void)setDocument:(PDFDocument *)document;
+- (PDFPage *)currentPage;
+- (BOOL)canGoToFirstPage;
+- (BOOL)canGoToLastPage;
+- (BOOL)canGoToNextPage;
+- (BOOL)canGoToPreviousPage;
+- (BOOL)canGoBack;
+- (BOOL)canGoForward;
+- (void)goToFirstPage:(id)sender;
+- (void)goToLastPage:(id)sender;
+- (void)goToNextPage:(id)sender;
+- (void)goToPreviousPage:(id)sender;
+- (void)goBack:(id)sender;
+- (void)goForward:(id)sender;
+- (void)goToPage:(PDFPage *)page;
+- (PDFDestination *)currentDestination;
+- (void)goToDestination:(PDFDestination *)destination;
+- (void)goToSelection:(PDFSelection *)selection;
+- (void)goToRect:(PDFRect)rect onPage:(PDFPage *)page;
+- (PDFDisplayMode)displayMode;
+- (void)setDisplayMode:(PDFDisplayMode)mode;
+- (PDFDisplayDirection)displayDirection;
+- (void)setDisplayDirection:(PDFDisplayDirection)direction;
+- (BOOL)displaysPageBreaks;
+- (void)setDisplaysPageBreaks:(BOOL)value;
+- (PDFEdgeInsets)pageBreakMargins;
+- (void)setPageBreakMargins:(PDFEdgeInsets)margins;
+- (PDFDisplayBox)displayBox;
+- (void)setDisplayBox:(PDFDisplayBox)box;
+- (BOOL)displaysAsBook;
+- (void)setDisplaysAsBook:(BOOL)value;
+- (BOOL)displaysRTL;
+- (void)setDisplaysRTL:(BOOL)value;
+- (NSColor *)backgroundColor;
+- (void)setBackgroundColor:(NSColor *)color;
+- (PDFInterpolationQuality)interpolationQuality;
+- (void)setInterpolationQuality:(PDFInterpolationQuality)quality;
+- (BOOL)pageShadowsEnabled;
+- (void)enablePageShadows:(BOOL)enabled;
+- (id<PDFViewDelegate>)delegate;
+- (void)setDelegate:(id<PDFViewDelegate>)delegate;
+- (id<PDFPageOverlayViewProvider>)pageOverlayViewProvider;
+- (void)setPageOverlayViewProvider:(id<PDFPageOverlayViewProvider>)provider;
+- (CGFloat)scaleFactor;
+- (void)setScaleFactor:(CGFloat)scale;
+- (CGFloat)minScaleFactor;
+- (void)setMinScaleFactor:(CGFloat)value;
+- (CGFloat)maxScaleFactor;
+- (void)setMaxScaleFactor:(CGFloat)value;
+- (BOOL)autoScales;
+- (void)setAutoScales:(BOOL)value;
+- (CGFloat)scaleFactorForSizeToFit;
+- (void)zoomIn:(id)sender;
+- (BOOL)canZoomIn;
+- (void)zoomOut:(id)sender;
+- (BOOL)canZoomOut;
+- (PDFAreaOfInterest)areaOfInterestForMouse:(NSEvent *)event;
+- (PDFAreaOfInterest)areaOfInterestForPoint:(PDFPoint)point;
+- (void)setCursorForAreaOfInterest:(PDFAreaOfInterest)area;
+- (void)performAction:(PDFAction *)action;
+- (PDFSelection *)currentSelection;
+- (void)setCurrentSelection:(PDFSelection *)selection;
+- (void)setCurrentSelection:(PDFSelection *)selection animate:(BOOL)animate;
+- (void)clearSelection;
+- (void)selectAll:(id)sender;
+- (void)scrollSelectionToVisible:(id)sender;
+- (NSArray *)highlightedSelections;
+- (void)setHighlightedSelections:(NSArray *)selections;
+- (void)drawPage:(PDFPage *)page toContext:(CGContextRef)context;
+- (void)drawPagePost:(PDFPage *)page toContext:(CGContextRef)context;
+- (void)drawRect:(NSRect)dirtyRect;
+- (void)copy:(id)sender;
+- (void)printWithInfo:(NSPrintInfo *)printInfo autoRotate:(BOOL)rotate;
+- (void)printWithInfo:(NSPrintInfo *)printInfo autoRotate:(BOOL)rotate pageScaling:(PDFPrintScalingMode)scale;
+- (PDFPage *)pageForPoint:(PDFPoint)point nearest:(BOOL)nearest;
+- (PDFPoint)convertPoint:(PDFPoint)point toPage:(PDFPage *)page;
+- (PDFRect)convertRect:(PDFRect)rect toPage:(PDFPage *)page;
+- (PDFPoint)convertPoint:(PDFPoint)point fromPage:(PDFPage *)page;
+- (PDFRect)convertRect:(PDFRect)rect fromPage:(PDFPage *)page;
+- (NSView *)documentView;
+- (void)layoutDocumentView;
+- (void)annotationsChangedOnPage:(PDFPage *)page;
+- (PDFSize)rowSizeForPage:(PDFPage *)page;
+- (BOOL)acceptsDraggedFiles;
+- (void)setAcceptsDraggedFiles:(BOOL)value;
+- (NSArray *)visiblePages;
+- (BOOL)enableDataDetectors;
+- (void)setEnableDataDetectors:(BOOL)value;
+- (BOOL)isInMarkupMode;
+- (void)setInMarkupMode:(BOOL)value;
+- (void)dealloc;
+@property(readonly,getter=isInMarkupMode) BOOL inMarkupMode;
+@end
+
+@interface PDFThumbnailView : NSView
+- (instancetype)initWithFrame:(NSRect)frame;
+- (instancetype)initWithCoder:(NSCoder *)coder;
+- (PDFView *)PDFView;
+- (void)setPDFView:(PDFView *)view;
+- (NSColor *)backgroundColor;
+- (void)setBackgroundColor:(NSColor *)color;
+- (NSArray *)selectedPages;
+- (NSSize)thumbnailSize;
+- (void)setThumbnailSize:(NSSize)size;
+- (NSUInteger)maximumNumberOfColumns;
+- (void)setMaximumNumberOfColumns:(NSUInteger)columns;
+- (NSFont *)labelFont;
+- (void)setLabelFont:(NSFont *)font;
+- (BOOL)allowsDragging;
+- (void)setAllowsDragging:(BOOL)value;
+- (BOOL)allowsMultipleSelection;
+- (void)setAllowsMultipleSelection:(BOOL)value;
+- (void)drawRect:(NSRect)dirtyRect;
+- (void)encodeWithCoder:(NSCoder *)coder;
+- (void)dealloc;
 @end
 extern PDFDocumentAttribute const PDFDocumentTitleAttribute;
 extern PDFDocumentAttribute const PDFDocumentAuthorAttribute;

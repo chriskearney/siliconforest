@@ -1,48 +1,39 @@
-# PDFKit non-GUI source port: blocked on retained CGPDF provider
+# Finch PDFKit for SiliconForest
 
-build.nix attempts the pinned PDFKit.m document/page/text/model implementation
-(ten public classes). It excludes PDFView.m and the print-operation method which
-instantiates a PDFView. Own declarations and numeric facts use Finch method
-signatures and public maintainer objc2-pdf-kit0.3.2 facts,not Apple SDK headers.
-No candidate library has built or been staged. A build failure is not app support.
+The recipe builds the pinned Finch document, page, selection, and view sources.
+The declarations are generated from Finch method signatures with local types and
+public numeric values. The AppKit patch uses the retained NSGraphicsContext
+graphics port. It adds no Apple implementation or SDK headers to the framework.
 
-The first actual Linux/Nix build fails on missing public CGPDF declarations.
-provider-audit.py additionally measures the retained CoreGraphics+Onyx2D exports:
-11 of56 called CGPDF functions are present,45 are absent. This was rechecked
-against the current M1 CoreGraphics after the graphics owner's color-space update.
-Thus adding declarations alone would leave unresolved imports. The audit keeps
-constant/enum identifiers separate from functions;enums have no Mach-O export.
+PDFView and PDFThumbnailView compile as an arm64 object. Linking the framework
+still requires a CoreGraphics PDF provider with compatible public declarations
+and implementations. The retained CoreGraphics and Onyx2D audit found 11 of
+the 56 CGPDF functions used by PDFKit.m. Onyx2D has parser and scanner code,
+but its integer and real output types differ from the arm64 CoreGraphics API.
 
-The graphics-owner request covers real scanner/operator-table/content-stream,
-array/dictionary/object/string/decoded-stream,page dictionary/rotation,document
-metadata/version/security/permission/outline and context-writing APIs. O2PDF has
-underlying parser classes and several C scanner operations,but its int/float
-integer/real output ABI differs from arm64 public CGPDF integer/CGFloat. Do not
-blindly alias the functions or invent unlocked/permission/writer success states.
-No CoreGraphics,Onyx2D,AppKit or other owned provider is modified here.
+A caller can supply a candidate CoreGraphics derivation by overriding the
+recipe's `coregraphics` attribute. The recipe takes the public headers and
+library from that same output. The provider audit checks exports before staging,
+and the linker checks required symbols when building PDFKit.
 
-The independent public document probe does build in Linux/Nix via tests.nix.
-It dynamically loads the actual PDFKit framework and looks up PDFDocument;there
-is no dummy PDFKit link stub. fixture.py generates an original one-page72x72
-PDF with title,text and a standard Type1 font name (no font bytes or Apple files).
-No view,printing,rendering/output device or service API is invoked.
-
-Native M5 reference of the Linux-built program passes:one page,PDF1.4,title,
-unencrypted/unlocked,72x72 bounds,rotation0,text and one PDF search/selection.
-SHA256 checked remotely,30s timeout,core0,no DYLD overrides,no builds or installs,
-fresh /tmp directory deleted. Only our stdout/stderr/receipts returned. First
-fixture used text too wide for the page;native extraction clipped it and the
-assertion failed. That failure is retained;the six-point fixture fits and passes.
-M1 execution/comparison awaits a real resolved candidate;there is no M1 PASS.
-
-```
+```sh
 nix-build --no-out-link integrations/siliconforest/finch/PDFKit/tests.nix
-python3 integrations/siliconforest/finch/PDFKit/fixture.py NEW_FIXTURE.pdf
+python3 integrations/siliconforest/finch/PDFKit/fixture.py NEW_DOCUMENT.pdf
+python3 integrations/siliconforest/finch/PDFKit/fixture.py --view NEW_READING.pdf
 python3 integrations/siliconforest/finch/PDFKit/provider-audit.py \
   --source sources/finch/userland/PDFKit/PDFKit.m \
   --provider CAPTURED_CoreGraphics --provider CAPTURED_Onyx2D --output AUDIT.json
 ```
 
-The canonical PDFKit path was absent in the M1 inventory. Whole non-GUI runtime,
-annotations,writing,outline preservation,encryption and application integration
-remain unverified. All eventual framework work remains stage-only.
+The probes dynamically load PDFKit. The document probe checks the original
+single-page fixture's metadata, bounds, text, and search. The view probe opens
+the three-page fixture, uses PDFView to draw and navigate the pages, checks the
+red, green, and blue center pixels, searches for a word on the second page,
+and requests a thumbnail. Set the optional second argument of the view probe
+to the private staged dylib path.
+
+Both probes build as arm64 Mach-O executables with Nix. Native builds of those
+probe sources passed against the macOS 27.2.1 PDFKit on the M6. Independent
+Poppler output agrees on the three page labels and color patches. A SiliconForest
+PDFKit runtime pass, on-screen view behavior, printing, editing, and Preview app
+integration are still pending.

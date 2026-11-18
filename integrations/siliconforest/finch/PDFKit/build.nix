@@ -1,19 +1,22 @@
 # SPDX-License-Identifier: MIT
-# Non-GUI document/page/selection/model file; PDFView and printing are excluded.
+# Build against the supplied CoreGraphics library and its public CGPDF headers.
 let
   e = import ../environment.nix;
   inherit (e) pkgs p finch libsystem sdk cc ld;
   appkit = p.appkit-msm-arm64;
 in pkgs.stdenv.mkDerivation {
-  name = "siliconforest-finch-PDFKit-documents-arm64";
+  pname = "siliconforest-finch-PDFKit-arm64";
+  version = "1451.4.2";
   src = finch;
-  patches = [ ./patches/0001-no-print-view.patch ];
+  patches = [ ./patches/0001-appkit-graphics-port.patch ];
+  coregraphics = p.coregraphics-arm64;
   dontConfigure = true;
   buildPhase = ''
     export DARWIN_SDK_ROOT=${sdk}
-    CF="-isysroot ${sdk} -mmacosx-version-min=26.5 -O2 -fblocks -fobjc-exceptions -fno-objc-arc -D_DARWIN_C_SOURCE -Wno-nullability-completeness -Wno-macro-redefined -Wno-incomplete-implementation -I${./include} -I${appkit}/usr/include -I${p.foundation-arm64}/usr/include -I${p.coreFoundation-arm64}/include -I${p.libobjc-arm64}/usr/include -I${p.coregraphics-arm64}/usr/include -I${p.coretext-arm64}/usr/include -I${p.onyx2d-arm64}/usr/include -I${e.pd.outPath}/src/Frameworks -I${e.pd.outPath}/src/Frameworks/OpenGL/include -I${p.mesa-msm-arm64}/usr/include"
+    CF="-isysroot ${sdk} -mmacosx-version-min=26.5 -O2 -fblocks -fobjc-exceptions -fno-objc-arc -D_DARWIN_C_SOURCE -Wno-nullability-completeness -Wno-macro-redefined -Wno-incomplete-implementation -I${./include} -I${appkit}/usr/include -I${p.foundation-arm64}/usr/include -I${p.coreFoundation-arm64}/include -I${p.libobjc-arm64}/usr/include -I$coregraphics/usr/include -I${p.coretext-arm64}/usr/include -I${p.onyx2d-arm64}/usr/include -I${e.pd.outPath}/src/Frameworks -I${e.pd.outPath}/src/Frameworks/OpenGL/include -I${p.mesa-msm-arm64}/usr/include"
+    ${cc} $CF -c userland/PDFKit/PDFView.m -o PDFView.o
     ${cc} $CF -c userland/PDFKit/PDFKit.m -o PDFKit.o
-    ${cc} -dynamiclib PDFKit.o --ld-path=${ld} -nostdlib -isysroot ${sdk} -L${libsystem}/usr/lib -L${libsystem}/usr/lib/system -L${p.foundation-arm64}/usr/lib -L${p.coreFoundation-arm64}/usr/lib -L${p.libobjc-arm64}/usr/lib -L${p.coregraphics-arm64}/usr/lib -L${p.coretext-arm64}/usr/lib -F${appkit}/System/Library/Frameworks -framework AppKit -lCoreGraphics -lCoreText -lFoundation -lCoreFoundation -lobjc -lSystem -Wl,-dylib_file,/usr/lib/system/libdyld.dylib:${libsystem}/usr/lib/system/libdyld.dylib -Wl,-platform_version,macos,26.5,26.5 -install_name /System/Library/Frameworks/PDFKit.framework/Versions/A/PDFKit -current_version 1451.4.2 -compatibility_version 1 -o PDFKit
+    ${cc} -dynamiclib PDFKit.o PDFView.o --ld-path=${ld} -nostdlib -isysroot ${sdk} -L${libsystem}/usr/lib -L${libsystem}/usr/lib/system -L${p.foundation-arm64}/usr/lib -L${p.coreFoundation-arm64}/usr/lib -L${p.libobjc-arm64}/usr/lib -L$coregraphics/usr/lib -L${p.coretext-arm64}/usr/lib -F${appkit}/System/Library/Frameworks -framework AppKit -lCoreGraphics -lCoreText -lFoundation -lCoreFoundation -lobjc -lSystem -Wl,-dylib_file,/usr/lib/system/libdyld.dylib:${libsystem}/usr/lib/system/libdyld.dylib -Wl,-platform_version,macos,26.5,26.5 -install_name /System/Library/Frameworks/PDFKit.framework/Versions/A/PDFKit -current_version 1451.4.2 -compatibility_version 1 -o PDFKit
   '';
   installPhase = ''
     fw=$out/System/Library/Frameworks/PDFKit.framework

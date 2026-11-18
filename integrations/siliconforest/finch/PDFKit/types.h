@@ -9,6 +9,16 @@ typedef NSPoint PDFPoint;
 typedef NSSize PDFSize;
 typedef NSInteger PDFDisplayBox,PDFBorderStyle,PDFDocumentPermissions,PDFPrintScalingMode;
 typedef NSUInteger PDFAccessPermissions,PDFSelectionGranularity;
-@class PDFView;
+typedef NSInteger PDFDisplayMode, PDFDisplayDirection, PDFInterpolationQuality;
+typedef NSUInteger PDFAreaOfInterest;
+typedef NSEdgeInsets PDFEdgeInsets;
+enum {
+    kPDFNoArea = 0,
+    kPDFInterpolationQualityHigh = 2,
+};
 @protocol PDFDocumentDelegate <NSObject>
+@end
+@protocol PDFViewDelegate <NSObject>
+@end
+@protocol PDFPageOverlayViewProvider <NSObject>
 @end
