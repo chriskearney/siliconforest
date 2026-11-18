@@ -18,4 +18,5 @@ in e.pkgs.runCommand "siliconforest-avfoundation-player-complete-stage-arm64" {}
  mkdir -p $F/Resources/PlayerSource
  cp ${./SFPlayerMedia.m} $F/Resources/PlayerSource/SFPlayerMedia.m
  cp ${./SFPlayerMedia.h} $F/Resources/PlayerSource/SFPlayerMedia.h
+ cp ${./SFPlaybackClock.h} $F/Resources/PlayerSource/SFPlaybackClock.h
 ''

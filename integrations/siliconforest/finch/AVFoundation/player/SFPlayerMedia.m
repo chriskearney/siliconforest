@@ -27,6 +27,7 @@
 #include <stdatomic.h>
 #include <time.h>
 #include <sys/time.h>
+#include "SFPlaybackClock.h"
 
 #define SF_AHEAD_SECONDS 1.0
 #define SF_MAX_PICTURES 96
@@ -52,6 +53,7 @@ typedef struct { CMTime pts; size_t width,height; uint8_t *bytes; } SFMediaFrame
  ExtAudioFileRef _audio;AudioStreamBasicDescription _format;SInt64 _audioFrames,_audioRead,_audioStartFrame;
  size_t _audioQueued,_audioReturned;BOOL _audioEnd;
  AudioQueueRef _queue;double _baseSeconds,_deviceRate;BOOL _running,_closing;
+ SFPlaybackClock _playbackClock;double _rawClock,_clockError;
  _Atomic(OSStatus) _error;unsigned _callbacks;
 }
 - (void)closeQueue;
@@ -301,7 +303,7 @@ static void *sfTakePixels(size_t size){
 - (void)closeQueue {
  pthread_mutex_lock(&_lock);_closing=YES;AudioQueueRef queue=_queue;pthread_mutex_unlock(&_lock);
  if(queue){AudioQueueStop(queue,true);AudioQueueDispose(queue,true);}
- pthread_mutex_lock(&_lock);_queue=NULL;_running=NO;_closing=NO;pthread_mutex_unlock(&_lock);
+ pthread_mutex_lock(&_lock);_queue=NULL;_running=NO;_closing=NO;sfPlaybackClockReset(&_playbackClock);pthread_mutex_unlock(&_lock);
 }
 - (BOOL)startAtSeconds:(double)seconds volume:(float)volume {
  sfStartThread(self);
@@ -322,15 +324,22 @@ static void *sfTakePixels(size_t size){
   pthread_mutex_unlock(&_lock);
  }
  if(!_error)_error=AudioQueueSetParameter(_queue,kAudioQueueParam_Volume,volume);
- if(!_error)sfKeepStatus(self,AudioQueueStart(_queue,NULL));_running=!_error;return _running;
+ if(!_error)sfKeepStatus(self,AudioQueueStart(_queue,NULL));
+ pthread_mutex_lock(&_lock);_running=!_error;sfPlaybackClockReset(&_playbackClock);BOOL running=_running;pthread_mutex_unlock(&_lock);return running;
 }
-- (void)pause {if(_queue){OSStatus status=AudioQueuePause(_queue);if(status)_error=status;}_running=NO;}
+- (void)pause {if(_queue){OSStatus status=AudioQueuePause(_queue);if(status)_error=status;}pthread_mutex_lock(&_lock);_running=NO;sfPlaybackClockReset(&_playbackClock);pthread_mutex_unlock(&_lock);}
 - (void)setVolume:(float)volume {if(_queue){OSStatus status=AudioQueueSetParameter(_queue,kAudioQueueParam_Volume,volume);if(status)_error=status;}}
 - (double)clockSeconds {
  if(!_queue||!_deviceRate)return NAN;AudioTimeStamp time={0};OSStatus status=AudioQueueGetCurrentTime(_queue,NULL,&time,NULL);if(status){_error=status;return NAN;}
  double seconds=_baseSeconds+time.mSampleTime/_deviceRate;
  if([self isAudioDrained])seconds=MAX(seconds,(double)_audioFrames/_format.mSampleRate);
- return seconds;
+ struct timespec host;clock_gettime(CLOCK_MONOTONIC,&host);
+ pthread_mutex_lock(&_lock);
+ _rawClock=seconds;
+ double value=sfPlaybackClockSample(&_playbackClock,seconds,host.tv_sec+host.tv_nsec/1e9,_running);
+ _clockError=value-seconds;
+ pthread_mutex_unlock(&_lock);
+ return value;
 }
 - (CGImageRef)copyImageAtTime:(CMTime)time index:(size_t *)outIndex {
  if(!_hasVideo||!CMTIME_IS_NUMERIC(time))return NULL;
@@ -420,6 +429,7 @@ static void *sfTakePixels(size_t size){
 - (NSDictionary *)statistics {
  double clock=[self clockSeconds];pthread_mutex_lock(&_lock);
  NSDictionary *result=@{@"videoFrames":@(_decoded),@"videoSamples":@(_submitted),@"hardware":@(_hardware),@"audioFrames":@(_audioFrames),@"audioQueued":@(_audioRead),@"audioReturned":@(_audioReturned),@"callbacks":@(_callbacks),@"clientRate":@(_format.mSampleRate),@"deviceRate":@(_deviceRate),@"clock":@(isfinite(clock)?clock:0),@"error":@(_error),@"frameBytes":@(_frameBytes),@"framesHeld":@(_frameCount),@"endOfVideo":@(_endOfVideo),@"readerRestarts":@(_seeks),@"digestConflicts":@(_digestConflicts),@"mediaOffset":@(CMTIME_IS_NUMERIC(_mediaOffset)?CMTimeGetSeconds(_mediaOffset):0)};
- pthread_mutex_unlock(&_lock);return result;
+ NSMutableDictionary *withClock=[result mutableCopy];withClock[@"rawClock"]=@(_rawClock);withClock[@"clockError"]=@(_clockError);withClock[@"clockResyncs"]=@(_playbackClock.resyncs);
+ pthread_mutex_unlock(&_lock);return withClock;
 }
 @end

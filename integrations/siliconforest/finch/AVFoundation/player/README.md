@@ -39,6 +39,23 @@ whole-file preparation (4096 pictures, 512 MiB NV12, 64 MiB PCM) is gone, so lon
 outside it, the end of the file and the sound on the machine, and prints every
 picture's NV12 MD5 for an FFmpeg comparison.
 
+The playback clock follows host monotonic time between audio observations. The
+output queue reports a block counter (1024 device frames on the measured M1),
+so using that staircase directly to select pictures at 30 Hz can repeat one
+picture and skip the next even when every player timer fires. `SFPlaybackClock.h`
+keeps a continuous clock within 40 ms of the queue counter, freezes when audio
+stalls, and resets for pause/resume, queue replacement and seeks. Statistics
+include `rawClock`, `clockError` and `clockResyncs`. These bound the relationship
+to the queue counter; they do not measure speaker or panel latency.
+
+Host regression (128 audio-counter phases over five minutes each, plus stalls,
+pause/resume, forward/backward seeks and clock discontinuities):
+
+```sh
+cc -std=c11 -Wall -Wextra -Werror -O2 clock-test.c -lm -o /tmp/sf-playback-clock-test
+/tmp/sf-playback-clock-test
+```
+
 Limits: local files, mono/stereo PCM output, rate 1 and pause/seek. This is not
 a network player, a zero-copy path, reverse/time-pitch playback, HDR/wide-gamut
 tone mapping, arbitrary track

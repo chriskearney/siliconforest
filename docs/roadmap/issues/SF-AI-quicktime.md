@@ -396,6 +396,39 @@ the exit reason, refuses to start the application while the owner is at the mach
   speeds need time-stretched sound in the player, a larger piece of work not started. Sharing and AirPlay buttons
   (absent), subtitles and alternative audio (absent), trimming.
 
+## Recorded cadence recovery (18 November, DESKPERF)
+
+The 30 Hz player timer was firing, but direct use of the output queue's stepped
+audio position selected repeated pictures followed by skipped pictures. An M1
+trace measured 29.998 timer calls/s and only 18.366 distinct picture indices/s;
+the counter advanced in 1024/48000-second steps. Flooring those observations
+to movie PTS reproduced the loss. The compositor was showing almost every
+commit and the recorder reported no buffer or GPU losses.
+
+`finch/AVFoundation/player/SFPlaybackClock.h` now advances a continuous
+monotonic clock while keeping it within 40 ms of the audio counter. It freezes
+through stalled output and resets for pause/resume, queue replacement and
+seeks. The source-built candidate ran from a separate private library overlay;
+the existing QuickTime prefix and compositor were preserved.
+
+On the M1, original BBB playback with the candidate produced 300 commits and
+300 shown per ten seconds, including with the recorder. A separate BBB-derived
+test clip carried a machine-readable picture counter to distinguish actual
+movie changes from dock redraws and lossy compression differences. Without a
+diagnostic interposer, its eight-second recordings contained 241 consecutive
+picture changes (30.124/s) windowed and 240 (29.999/s) full screen, with no
+skipped source pictures; 97.93% and 98.75% of changes were two refreshes apart.
+Input was synthetic on the virtual seat. This is recording/trace evidence,
+not a physical panel or acoustic witness.
+
+Pause/resume and forward seeking were exercised in a 95-second original-BBB
+trace. A second pass sought forward to 120 seconds, back to 15 seconds, and
+resumed after holding the picture and audio position constant while paused.
+The corrected clock stayed within -31.1 to +33.9 ms of the queue counter
+across the two passes. Seeking had a temporary late picture while the reader settled; these
+transition samples are separate from steady playback. Host regression covers
+128 counter phases, drift, stalls, pause/resume, seeks and clock discontinuities.
+
 ## General pieces for the system install
 These are corrections or additions any application can meet; they live in the private prefix until the
 guarded install: libFoundation 0347, 0348, 0349, 0352, 0354, 0355, 0359, 0361; AppKit 0340, 0341, 0350,
