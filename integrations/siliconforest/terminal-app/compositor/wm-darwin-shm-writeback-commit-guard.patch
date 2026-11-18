@@ -1,0 +1,438 @@
+diff --git a/crates/wm-darwin/src/desktop_entry.rs b/crates/wm-darwin/src/desktop_entry.rs
+index d1018a0..6d62854 100644
+--- a/crates/wm-darwin/src/desktop_entry.rs
++++ b/crates/wm-darwin/src/desktop_entry.rs
+@@ -254,9 +254,15 @@ impl SessionIo for NativeIo<'_> {
+             Server::add_client(self.display, stream).map_err(|e| e.to_string())?;
+         }
+         lap(1, &mut parts);
+-        self.display
+-            .dispatch_clients(self.server)
+-            .map_err(|e| e.to_string())?;
++        // deskperf-002: a client's request handled right before a drawn frame's commit moment made the commit late
++        // (a 2556x1437 shm commit took 4-12 ms): it waits for the next turn, after the commit
++        if self.server.commit_imminent() {
++            self.server.note_dispatch_held();
++        } else {
++            self.display
++                .dispatch_clients(self.server)
++                .map_err(|e| e.to_string())?;
++        }
+         lap(2, &mut parts);
+         let ms = self.elapsed().as_millis() as u32;
+         // Nothing the keyboard or the trackpad gives can end the desktop: an event it cannot
+diff --git a/crates/wm-darwin/src/glrender.rs b/crates/wm-darwin/src/glrender.rs
+index c2876f4..2464c5b 100644
+--- a/crates/wm-darwin/src/glrender.rs
++++ b/crates/wm-darwin/src/glrender.rs
+@@ -120,7 +120,7 @@ pub trait GlTarget {
+     }
+     /// DESKPERF: a GPU buffer for a window's shared-memory picture (`Kms::create_upload_buffer`); `Ok(None)`:
+     /// this target makes none (off screen: the renderer keeps the rows itself and uploads them).
+-    fn create_upload_buffer(&mut self, _: &Libraries, _: &Context, _: (u32, u32), _: u32, _: bool) -> Result<Option<crate::kms::UploadBuffer>, String> {
++    fn create_upload_buffer(&mut self, _: &Libraries, _: &Context, _: (u32, u32), _: u32, _: bool, _: bool) -> Result<Option<crate::kms::UploadBuffer>, String> {
+         Ok(None)
+     }
+     fn free_upload_buffer(&mut self, _: &Libraries, _: &Context, _: &crate::kms::UploadBuffer) {}
+@@ -860,8 +860,8 @@ impl GlTarget for KmsTarget {
+     fn create_record_buffer(&mut self, libs: &Libraries, context: &Context, size: (u32, u32), writeback: bool) -> Result<Option<crate::kms::RecordBuffer>, String> {
+         self.core().kms.create_record_buffer(libs, context, size, writeback).map(Some)
+     }
+-    fn create_upload_buffer(&mut self, libs: &Libraries, context: &Context, size: (u32, u32), pitch: u32, xrgb: bool) -> Result<Option<crate::kms::UploadBuffer>, String> {
+-        self.core().kms.create_upload_buffer(libs, context, size, pitch, xrgb).map(Some)
++    fn create_upload_buffer(&mut self, libs: &Libraries, context: &Context, size: (u32, u32), pitch: u32, xrgb: bool, writeback: bool) -> Result<Option<crate::kms::UploadBuffer>, String> {
++        self.core().kms.create_upload_buffer(libs, context, size, pitch, xrgb, writeback).map(Some)
+     }
+     fn free_upload_buffer(&mut self, libs: &Libraries, context: &Context, buffer: &crate::kms::UploadBuffer) {
+         self.core().kms.free_upload_buffer(libs, context, buffer)
+@@ -1237,6 +1237,7 @@ struct ShmUpload {
+     width: u32,
+     height: u32,
+     xrgb: bool,
++    writeback: bool,
+     pitch: usize,
+     /// the frame number when it was made (it is given back once no window shows it, from the next frame on)
+     born: u64,
+@@ -2067,11 +2068,11 @@ impl Renderer for GlRenderer {
+             Ok(id)
+         }
+     }
+-    fn shm_target(&mut self, window: u64, width: u32, height: u32, xrgb: bool) -> Result<Option<crate::render::ShmTarget>, String> {
++    fn shm_target(&mut self, window: u64, width: u32, height: u32, xrgb: bool, writeback: bool) -> Result<Option<crate::render::ShmTarget>, String> {
+         if width == 0 || height == 0 {
+             return Ok(None);
+         }
+-        let found = self.uploads.iter_mut().find(|(_, u)| u.window == window && u.width == width && u.height == height && u.xrgb == xrgb);
++        let found = self.uploads.iter_mut().find(|(_, u)| u.window == window && u.width == width && u.height == height && u.xrgb == xrgb && u.writeback == writeback);
+         if let Some((&id, u)) = found {
+             let map = match &mut u.kind {
+                 UploadKind::Gem(b) => b.map,
+@@ -2084,7 +2085,7 @@ impl Renderer for GlRenderer {
+         }
+         let pitch = (width as usize * 4).div_ceil(64) * 64;
+         let id = self.next_external;
+-        let kind = match self.target.create_upload_buffer(&self.libs, &self._context, (width, height), pitch as u32, xrgb)? {
++        let kind = match self.target.create_upload_buffer(&self.libs, &self._context, (width, height), pitch as u32, xrgb, writeback)? {
+             Some(b) => {
+                 self.external.insert(id, (b.image, b.texture));
+                 UploadKind::Gem(b)
+@@ -2113,7 +2114,7 @@ impl Renderer for GlRenderer {
+             None => return Ok(None),
+         };
+         self.next_external += 1;
+-        let mut u = ShmUpload { window, width, height, xrgb, pitch, born: self.frame, kind };
++        let mut u = ShmUpload { window, width, height, xrgb, writeback, pitch, born: self.frame, kind };
+         let map = match &mut u.kind {
+             UploadKind::Gem(b) => b.map,
+             UploadKind::Local { pixels, .. } => pixels.as_mut_ptr(),
+diff --git a/crates/wm-darwin/src/kms.rs b/crates/wm-darwin/src/kms.rs
+index 6e16e0a..df8fa7a 100644
+--- a/crates/wm-darwin/src/kms.rs
++++ b/crates/wm-darwin/src/kms.rs
+@@ -374,9 +374,15 @@ struct GemClose {
+     handle: u32,
+     pad: u32,
+ }
+-/// drm.h DRM_IOW(0x09, struct drm_gem_close)
++/// drm.h DRM_IOW(0x09, struct drm_gem_close), as the system's <sys/ioccom.h> encodes it: on Darwin a write to the
++/// kernel is IOC_IN (0x80000000; deskperf-001 used Linux's 0x40000000, which Darwin reads as IOC_OUT: the handle was
++/// never copied in and the close failed with EINVAL). The asahi ioctls are read-write (0xC0...), the same on both.
++#[cfg(target_os = "macos")]
++const DRM_IOCTL_GEM_CLOSE: libc::c_ulong = 0x8008_6409;
++#[cfg(not(target_os = "macos"))]
+ const DRM_IOCTL_GEM_CLOSE: libc::c_ulong = 0x4008_6409;
+ static GEM_CLOSE_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++static GEM_CLOSE_SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+ 
+ #[repr(C)]
+ #[derive(Default)]
+@@ -1019,12 +1025,13 @@ impl Kms {
+     }
+ 
+     /// DESKPERF: a window's shared-memory picture on the GPU: a linear GEM object on the render node, mapped
+-    /// write-combined (the CPU only writes it, row after row, as it copies a client's buffer), exported as a
++    /// write-combined (the CPU only writes it, row after row, as it copies a client's buffer) or, `writeback`,
++    /// cached (deskperf-002: the copy into write-combined memory took 3-4 ms of a 2556x1437 picture), exported as a
+     /// dma-buf and sampled through an EGL image of `width` x `height` (`XRGB8888` for an opaque window, so its
+     /// fourth byte is never read, else `ARGB8888`, premultiplied as wl_shm's) with `pitch` bytes a row (a
+     /// multiple of 64: the driver takes linear dma-bufs with 16-byte pitches only). Freed with
+     /// `free_upload_buffer`.
+-    pub fn create_upload_buffer(&mut self, libs: &Libraries, context: &Context, (width, height): (u32, u32), pitch: u32, xrgb: bool) -> Result<UploadBuffer, String> {
++    pub fn create_upload_buffer(&mut self, libs: &Libraries, context: &Context, (width, height): (u32, u32), pitch: u32, xrgb: bool, writeback: bool) -> Result<UploadBuffer, String> {
+         let (drm, gl) = (&libs.drm, &libs.gl);
+         let (create_image, image_target) = context.image_functions(libs)?;
+         if pitch % 64 != 0 || pitch < width * 4 || width == 0 || height == 0 {
+@@ -1032,7 +1039,7 @@ impl Kms {
+         }
+         let size = (pitch as usize * height as usize + 0x3fff) & !0x3fff;
+         unsafe {
+-            let mut create = AsahiGemCreate { size: size as u64, flags: 0, ..Default::default() };
++            let mut create = AsahiGemCreate { size: size as u64, flags: u32::from(writeback), ..Default::default() };
+             if (drm.drmIoctl)(self.render, DRM_IOCTL_ASAHI_GEM_CREATE, &mut create as *mut _ as *mut c_void) != 0 {
+                 return Err(os_error("DRM_IOCTL_ASAHI_GEM_CREATE (window upload buffer)"));
+             }
+@@ -1106,8 +1113,12 @@ impl Kms {
+             libc::munmap(b.map as *mut c_void, b.size);
+             libc::close(b.prime_fd);
+             let mut c = GemClose { handle: b.handle, pad: 0 };
+-            if (libs.drm.drmIoctl)(self.render, DRM_IOCTL_GEM_CLOSE, &mut c as *mut _ as *mut c_void) != 0 && !GEM_CLOSE_FAILED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+-                eprintln!("WMSHM {} (a window upload buffer's GPU memory stays until the compositor ends; said once)", os_error("DRM_IOCTL_GEM_CLOSE"));
++            if (libs.drm.drmIoctl)(self.render, DRM_IOCTL_GEM_CLOSE, &mut c as *mut _ as *mut c_void) != 0 {
++                if !GEM_CLOSE_FAILED.swap(true, std::sync::atomic::Ordering::Relaxed) {
++                    eprintln!("WMSHM {} (a window upload buffer's GPU memory stays until the compositor ends; said once)", os_error("DRM_IOCTL_GEM_CLOSE"));
++                }
++            } else if !GEM_CLOSE_SAID.swap(true, std::sync::atomic::Ordering::Relaxed) {
++                eprintln!("WMSHM a window upload buffer of {} bytes given back (GEM handle {} closed; said once)", b.size, b.handle);
+             }
+         }
+     }
+diff --git a/crates/wm-darwin/src/pacing.rs b/crates/wm-darwin/src/pacing.rs
+index 8f4cb8b..de2ac75 100644
+--- a/crates/wm-darwin/src/pacing.rs
++++ b/crates/wm-darwin/src/pacing.rs
+@@ -88,6 +88,8 @@ pub struct PacingTrace {
+     /// `pacing_trace`): its lines' time origin when on
+     upload_us: u64,
+     pub trace: Option<Instant>,
++    /// deskperf-002: loop turns that left client requests for after a commit moment (`commit_guard`)
++    pub dispatch_held: u64,
+ }
+ 
+ impl PacingTrace {
+@@ -322,12 +324,13 @@ impl PacingTrace {
+             let render = self.render.take_sorted();
+             let seconds = (window_ms as f64 / 1000.0).max(0.001);
+             lines.push(format!(
+-                "WMCOST over_ms={window_ms} frames={} ({:.1}/s) {} uploaded_MB_per_s={:.1} upload_ms_per_frame={:.2} repainted={:.0}% of the screen per frame, callback-only releases={}",
++                "WMCOST over_ms={window_ms} frames={} ({:.1}/s) {} uploaded_MB_per_s={:.1} upload_ms_per_frame={:.2} repainted={:.0}% of the screen per frame, callback-only releases={} client_dispatch_held_for_a_commit={}",
+                 self.frames, self.frames as f64 / seconds, text95(&render, "render+finish"), self.uploaded as f64 / 1e6 / seconds,
+                 self.upload_us as f64 / 1000.0 / self.frames.max(1) as f64,
+-                if self.screen_px > 0 { self.repainted_px as f64 * 100.0 / self.screen_px as f64 } else { 0.0 }, self.callback_only_releases
++                if self.screen_px > 0 { self.repainted_px as f64 * 100.0 / self.screen_px as f64 } else { 0.0 }, self.callback_only_releases, self.dispatch_held
+             ));
+             self.upload_us = 0;
++            self.dispatch_held = 0;
+             self.frames = 0;
+             self.uploaded = 0;
+             self.repainted_px = 0;
+diff --git a/crates/wm-darwin/src/policy.rs b/crates/wm-darwin/src/policy.rs
+index 0296448..82a701b 100644
+--- a/crates/wm-darwin/src/policy.rs
++++ b/crates/wm-darwin/src/policy.rs
+@@ -36,6 +36,9 @@
+ //! | `pacing_trace` | off | DESKPERF: one `WMTRACE` line per commit, frame and flip (arrival against the latch, the flip that showed it): a test's switch |
+ //! | `record_flip_times` | on | DESKPERF: a recorded frame's time is its flip's (the refreshes between two flips, exactly), not when the loop took it |
+ //! | `record_background` | off | DESKPERF: the encoder runs in Darwin's background band (efficiency cores, below every application) |
++//! | `shm_gpu_writeback` | on | deskperf-002: the desk's GPU buffers for shm pictures are CPU-mapped cached (the copy into write-combined memory took 3-4 ms of a 2556x1437 picture); off: write-combined |
++//! | `shm_check` | off | deskperf-002: at a window's 30th and 150th commit into the desk's GPU buffer the screen's region of it is compared with the buffer (`WMSHM check`): a test's switch, it reads the frame back |
++//! | `commit_guard` | on | deskperf-002: while a drawn frame waits for its commit moment, client requests wait when the moment is closer than the longest recent commit handler (a client's commit then delayed the frame's commit and the late-latch margin grew) |
+ use std::path::PathBuf;
+ use std::time::{Duration, Instant, SystemTime};
+ 
+@@ -62,6 +65,12 @@ pub struct Switches {
+     pub shm_gpu: bool,
+     /// DESKPERF: `WMTRACE` lines per commit, frame and flip
+     pub pacing_trace: bool,
++    /// deskperf-002: the shm pictures' GPU buffers cached on the CPU side
++    pub shm_gpu_writeback: bool,
++    /// deskperf-002: `WMSHM check` of windows drawn from those buffers
++    pub shm_check: bool,
++    /// deskperf-002: no client dispatch right before a drawn frame's commit moment
++    pub commit_guard: bool,
+     /// percent, 25..400 (not a switch: `scroll_speed=<n>`)
+     pub scroll_speed: u16,
+     /// DESK11: the screen recorder's settings (`record_*`)
+@@ -146,7 +155,7 @@ impl RecordPolicy {
+ }
+ 
+ impl Switches {
+-    const KEYS: [&'static str; 18] = ["fifo", "fifo_shm", "client_wake", "flip_time_callbacks", "flip_stamps", "restore", "skip_unchanged", "partial_repaint", "framehash", "late_latch", "restore_after_reboot", "trackpad_scroll", "natural_scroll", "scroll_trace", "window_position", "motion", "shm_gpu", "pacing_trace"];
++    const KEYS: [&'static str; 21] = ["fifo", "fifo_shm", "client_wake", "flip_time_callbacks", "flip_stamps", "restore", "skip_unchanged", "partial_repaint", "framehash", "late_latch", "restore_after_reboot", "trackpad_scroll", "natural_scroll", "scroll_trace", "window_position", "motion", "shm_gpu", "pacing_trace", "shm_gpu_writeback", "shm_check", "commit_guard"];
+     fn defaults() -> Self {
+         let env = |key: &str| std::env::var(format!("CHONKSTEP_DARWIN_{}", key.to_ascii_uppercase())).ok().and_then(|v| parse_bool(&v));
+         Self {
+@@ -168,6 +177,9 @@ impl Switches {
+             motion: env("motion").unwrap_or(true),
+             shm_gpu: env("shm_gpu").unwrap_or(false),
+             pacing_trace: env("pacing_trace").unwrap_or(false),
++            shm_gpu_writeback: env("shm_gpu_writeback").unwrap_or(true),
++            shm_check: env("shm_check").unwrap_or(false),
++            commit_guard: env("commit_guard").unwrap_or(true),
+             scroll_speed: std::env::var("CHONKSTEP_DARWIN_SCROLL_SPEED").ok().and_then(|v| parse_speed(&v)).unwrap_or(100),
+             record: RecordPolicy::default(),
+         }
+@@ -192,6 +204,9 @@ impl Switches {
+             "motion" => &mut self.motion,
+             "shm_gpu" => &mut self.shm_gpu,
+             "pacing_trace" => &mut self.pacing_trace,
++            "shm_gpu_writeback" => &mut self.shm_gpu_writeback,
++            "shm_check" => &mut self.shm_check,
++            "commit_guard" => &mut self.commit_guard,
+             _ => return None,
+         })
+     }
+@@ -335,14 +350,14 @@ mod tests {
+     use super::*;
+     #[test]
+     fn the_policy_file_changes_switches_without_a_relaunch_and_a_test_pin_wins_until_released() {
+-        let base = Switches { fifo: true, fifo_shm: true, client_wake: true, flip_time_callbacks: true, flip_stamps: true, restore: true, skip_unchanged: true, partial_repaint: true, framehash: false, late_latch: true, restore_after_reboot: false, trackpad_scroll: true, natural_scroll: true, scroll_trace: false, window_position: false, motion: true, shm_gpu: false, pacing_trace: false, scroll_speed: 100, record: RecordPolicy::default() };
++        let base = Switches { fifo: true, fifo_shm: true, client_wake: true, flip_time_callbacks: true, flip_stamps: true, restore: true, skip_unchanged: true, partial_repaint: true, framehash: false, late_latch: true, restore_after_reboot: false, trackpad_scroll: true, natural_scroll: true, scroll_trace: false, window_position: false, motion: true, shm_gpu: false, pacing_trace: false, shm_gpu_writeback: true, shm_check: false, commit_guard: true, scroll_speed: 100, record: RecordPolicy::default() };
+         // DESK10: the trackpad's scrolling speed is a number, the rest switches
+         let (sp, refused) = Switches::parse("scroll_speed=140\nscroll_trace=on\ntrackpad_scroll=off\n", base);
+         assert!(refused.is_empty() && sp.scroll_speed == 140 && sp.scroll_trace && !sp.trackpad_scroll && sp.natural_scroll);
+         let (sp, refused) = Switches::parse("scroll_speed=1000\nscroll_speed=fast\n", base);
+         assert_eq!(sp.scroll_speed, 100);
+         assert_eq!(refused.len(), 2);
+-        assert!(sp.text().contains("scroll_trace=off window_position=off motion=on shm_gpu=off pacing_trace=off scroll_speed=100 record_fps=60 record_scale=full"));
++        assert!(sp.text().contains("scroll_trace=off window_position=off motion=on shm_gpu=off pacing_trace=off shm_gpu_writeback=on shm_check=off commit_guard=on scroll_speed=100 record_fps=60 record_scale=full"));
+         // DESKPERF: the new switches
+         let (d, refused) = Switches::parse("shm_gpu=on\npacing_trace=1\nrecord_flip_times=off\nrecord_background=on\n", base);
+         assert!(refused.is_empty() && d.shm_gpu && d.pacing_trace && !d.record.flip_times && d.record.background, "{refused:?}");
+diff --git a/crates/wm-darwin/src/render.rs b/crates/wm-darwin/src/render.rs
+index 65ae6a0..d977679 100644
+--- a/crates/wm-darwin/src/render.rs
++++ b/crates/wm-darwin/src/render.rs
+@@ -338,12 +338,13 @@ pub trait Renderer {
+         let _ = id;
+     }
+     /// DESKPERF: a buffer of the renderer's own for window `window`'s shared-memory picture of `width` x
+-    /// `height` (`xrgb`: opaque, the fourth byte not read), drawn as `DrawOp::External` with the returned id:
++    /// `height` (`xrgb`: opaque, the fourth byte not read; `writeback`: CPU-mapped cached, else write-combined),
++    /// drawn as `DrawOp::External` with the returned id:
+     /// the caller writes the client's rows into it as they are (B, G, R, A; `pitch` bytes a row) and shows it
+     /// with `set_window_external`. `fresh`: just made (its rows hold nothing yet). It is the renderer's to give
+     /// back once no window shows it. `Ok(None)`: this renderer has none (the picture is copied as before).
+-    fn shm_target(&mut self, window: u64, width: u32, height: u32, xrgb: bool) -> Result<Option<ShmTarget>, String> {
+-        let _ = (window, width, height, xrgb);
++    fn shm_target(&mut self, window: u64, width: u32, height: u32, xrgb: bool, writeback: bool) -> Result<Option<ShmTarget>, String> {
++        let _ = (window, width, height, xrgb, writeback);
+         Ok(None)
+     }
+     /// DESKPERF: the rows of a buffer `shm_target` gave (a minimised window's picture is read from it).
+diff --git a/crates/wm-darwin/src/server.rs b/crates/wm-darwin/src/server.rs
+index b334a6e..3856fcd 100644
+--- a/crates/wm-darwin/src/server.rs
++++ b/crates/wm-darwin/src/server.rs
+@@ -280,6 +280,10 @@ pub struct Server {
+     input_refused: u64,
+     /// DESKPERF: the renderer refused a buffer for a window's shared-memory picture (said once; copied on the CPU)
+     shm_gpu_failed: bool,
++    /// deskperf-002: commits of a window's shared-memory pictures into the desk's GPU buffer (for `shm_check`)
++    shm_gpu_commits: HashMap<u64, u64>,
++    /// deskperf-002: the commit handler's last times (us), for `commit_guard`
++    handler_recent: std::collections::VecDeque<u32>,
+     /// The dma-buf behind each imported id (keeps its fd open: fence polls, checks).
+     external_dmabufs: HashMap<u64, Dmabuf>,
+     /// Committed dma-bufs whose rendering may not be finished: (id, since).
+@@ -512,6 +516,8 @@ impl Server {
+             fifo: HashMap::new(),
+             input_refused: 0,
+             shm_gpu_failed: false,
++            shm_gpu_commits: HashMap::new(),
++            handler_recent: std::collections::VecDeque::new(),
+             external_dmabufs: HashMap::new(),
+             pending_fences: Vec::new(),
+             wait_for_fences: std::env::var("CHONKSTEP_DARWIN_DMABUF_WAIT").map_or(true, |v| v != "off"),
+@@ -1023,6 +1029,21 @@ impl Server {
+         }
+         Ok(())
+     }
++    /// deskperf-002 (policy `commit_guard`): a drawn frame (or the pointer's plane) waits for its commit moment, and
++    /// a client request handled now could make that commit late: the moment is closer than the longest of the last
++    /// 30 commit handlers and a millisecond. The loop then leaves client requests for after the commit.
++    pub fn commit_imminent(&self) -> bool {
++        if !self.policy.now.commit_guard {
++            return false;
++        }
++        let Some((due, _)) = self.commit_due else { return false };
++        let longest = self.handler_recent.iter().copied().max().unwrap_or(0).min(12_000);
++        std::time::Instant::now() + std::time::Duration::from_micros(u64::from(longest) + 1_000) >= due
++    }
++    /// deskperf-002: the loop left client requests for after a commit moment (counted in `WMCOST`).
++    pub fn note_dispatch_held(&mut self) {
++        self.pacing.dispatch_held += 1;
++    }
+     /// A commit's moment has come (or is within 0.1 ms).
+     pub fn commit_due_now(&self) -> bool {
+         self.commit_due.is_some_and(|(due, _)| std::time::Instant::now() + std::time::Duration::from_micros(100) >= due)
+@@ -1377,7 +1398,8 @@ impl Server {
+             if let Some(fd) = self.input_wake {
+                 fds.push(libc::pollfd { fd, events: libc::POLLIN, revents: 0 });
+             }
+-            let client_at = self.client_wake.filter(|_| self.policy.now.client_wake).map(|fd| {
++            // deskperf-002: right before a commit moment client requests wait (`commit_guard`): not woken for them
++            let client_at = self.client_wake.filter(|_| self.policy.now.client_wake && !self.commit_imminent()).map(|fd| {
+                 fds.push(libc::pollfd { fd, events: libc::POLLIN, revents: 0 });
+                 fds.len() - 1
+             });
+@@ -1707,7 +1729,7 @@ impl Server {
+         let Some((content, external)) = self.wm.backend().windows.get(&window).and_then(|w| Some((w.content, w.external?))) else {
+             return;
+         };
+-        let commits = self.external_commits.get(&window).copied().unwrap_or(0);
++        let commits = self.external_commits.get(&window).or(self.shm_gpu_commits.get(&window)).copied().unwrap_or(0);
+         let head = format!("WMDMABUF check window={window} commit={commits} buffer={}x{} at={},{}", external.width, external.height, content.pos.x, content.pos.y);
+         let screen = wm_core::Backend::screen_size(self.wm.backend());
+         let frame = match self.renderer.read_back() {
+@@ -1735,22 +1757,30 @@ impl Server {
+         let flat = region.chunks_exact(3).all(|p| p == &region[..3]);
+         let hash = crate::autopilot::fingerprint(&region);
+         let shape = format!("visible={}x{} frame_region_hash={hash:016x} flat={flat}", visible.width(), visible.height());
+-        let Some(dmabuf) = self.external_dmabufs.get(&external.id) else {
+-            eprintln!("{head} {shape} result=buffer-gone");
+-            return;
++        // deskperf-002: a window drawn on the CPU whose picture is in the desk's own GPU buffer is checked the same way
++        let own = self.renderer.shm_map(external.id);
++        let (map, length, offset, stride, mapped) = if let Some((ptr, pitch)) = own {
++            (ptr as *mut libc::c_void, pitch * external.height as usize, 0u32, pitch as u32, false)
++        } else {
++            let Some(dmabuf) = self.external_dmabufs.get(&external.id) else {
++                eprintln!("{head} {shape} result=buffer-gone");
++                return;
++            };
++            let (Some(fd), Some(offset), Some(stride)) = (dmabuf.handles().next(), dmabuf.offsets().next(), dmabuf.strides().next()) else {
++                return;
++            };
++            let length = offset as usize + stride as usize * external.height as usize;
++            let map = unsafe {
++                libc::mmap(std::ptr::null_mut(), length, libc::PROT_READ, libc::MAP_SHARED, std::os::fd::AsRawFd::as_raw_fd(&fd), 0)
++            };
++            if map == libc::MAP_FAILED {
++                let error = std::io::Error::last_os_error();
++                eprintln!("{head} {shape} result=not-mappable errno={} (frame region reported only)", error.raw_os_error().unwrap_or(0));
++                return;
++            }
++            (map, length, offset, stride, true)
+         };
+-        let (Some(fd), Some(offset), Some(stride)) = (dmabuf.handles().next(), dmabuf.offsets().next(), dmabuf.strides().next()) else {
+-            return;
+-        };
+-        let length = offset as usize + stride as usize * external.height as usize;
+-        let map = unsafe {
+-            libc::mmap(std::ptr::null_mut(), length, libc::PROT_READ, libc::MAP_SHARED, std::os::fd::AsRawFd::as_raw_fd(&fd), 0)
+-        };
+-        if map == libc::MAP_FAILED {
+-            let error = std::io::Error::last_os_error();
+-            eprintln!("{head} {shape} result=not-mappable errno={} (frame region reported only)", error.raw_os_error().unwrap_or(0));
+-            return;
+-        }
++        let head = if own.is_some() { head.replacen("WMDMABUF check", "WMSHM check", 1) } else { head };
+         // XRGB8888/ARGB8888 words, little endian: B, G, R, x. Alpha is not
+         // compared: an ARGB client over other content blends.
+         let client = unsafe { std::slice::from_raw_parts(map as *const u8, length) };
+@@ -1785,7 +1815,9 @@ impl Server {
+                 worst = worst.max(d);
+             }
+         }
+-        unsafe { libc::munmap(map, length) };
++        if mapped {
++            unsafe { libc::munmap(map, length) };
++        }
+         self.last_dmabuf_check = Some((commits, differing, worst));
+         eprintln!(
+             "{head} {shape} zero_copy=1 client_mmap=ok compared_pixels={} covered_by_cursor_or_other_surfaces={covered} differing_pixels={differing} max_channel_diff={worst} result={}",
+@@ -1905,7 +1937,7 @@ impl Server {
+             Ok(f) => f,
+             Err(error) => return Some(Err(error)),
+         };
+-        let target = match self.renderer.shm_target(id, width, height, xrgb) {
++        let target = match self.renderer.shm_target(id, width, height, xrgb, self.policy.now.shm_gpu_writeback) {
+             Ok(Some(t)) => t,
+             Ok(None) => return None,
+             Err(error) => {
+@@ -1922,7 +1954,15 @@ impl Server {
+             Ok(copy) => {
+                 self.pacing.shm_copied(id, true, copy.pixels, copy.copy_us);
+                 if target.fresh {
+-                    eprintln!("WMSHM window={id} picture {width}x{height} {} into the desk's GPU buffer {} (pitch {})", if xrgb { "XRGB" } else { "ARGB" }, target.id, target.pitch);
++                    eprintln!("WMSHM window={id} picture {width}x{height} {} into the desk's GPU buffer {} (pitch {}, {})", if xrgb { "XRGB" } else { "ARGB" }, target.id, target.pitch,
++                        if self.policy.now.shm_gpu_writeback { "cached" } else { "write-combined" });
++                }
++                // deskperf-002 (policy `shm_check`): at the window's 30th and 150th such commit the screen's region of it
++                // is compared with the buffer (`WMSHM check`): a stale or torn picture would show there
++                let count = self.shm_gpu_commits.entry(id).or_insert(0);
++                *count += 1;
++                if self.policy.now.shm_check && CHECK_AT_COMMITS.contains(count) {
++                    self.checks_due.push(id);
+                 }
+                 self.drop_held(id, None, false);
+                 let shown: &[DRect] = if partial { &copy.rects } else { &[] };
+@@ -1945,6 +1985,7 @@ impl Server {
+             }
+             self.drop_held(id, None, true);
+             self.external_commits.remove(&id);
++            self.shm_gpu_commits.remove(&id);
+             if let Some(hold) = self.fifo.remove(&id) {
+                 hold.barrier.signal();
+             }
+@@ -2567,6 +2608,10 @@ impl CompositorHandler for Server {
+         if attached {
+             let took = handler_started.elapsed();
+             self.pacing.handled(id, took);
++            if self.handler_recent.len() == 30 {
++                self.handler_recent.pop_front();
++            }
++            self.handler_recent.push_back(took.as_micros().min(100_000) as u32);
+             let kind = if attached_external { "dmabuf" } else if self.wm.backend().windows.get(&id).is_some_and(|w| w.external.is_some()) { "shm-gpu" } else { "shm-cpu" };
+             self.pacing.trace_commit(id, handler_started, took, kind);
+         }

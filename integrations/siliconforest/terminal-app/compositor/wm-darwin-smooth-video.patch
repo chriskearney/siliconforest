@@ -1,0 +1,1486 @@
+diff --git a/crates/wm-darwin/src/encoder.rs b/crates/wm-darwin/src/encoder.rs
+index 7df89e4..b59308d 100644
+--- a/crates/wm-darwin/src/encoder.rs
++++ b/crates/wm-darwin/src/encoder.rs
+@@ -57,9 +57,17 @@ pub struct Settings {
+     pub crf: u32,
+     pub threads: u32,
+     pub nice: u32,
++    /// DESKPERF (`record_background`): the encoder in Darwin's background band (efficiency cores, below
++    /// every application and throttled before any of them)
++    pub background: bool,
+     pub path: PathBuf,
+     pub ffmpeg: PathBuf,
+ }
++/// sys/resource.h (Darwin): the background band of a whole process
++#[cfg(target_os = "macos")]
++const PRIO_DARWIN_PROCESS: libc::c_int = 4;
++#[cfg(target_os = "macos")]
++const PRIO_DARWIN_BG: libc::c_int = 0x1000;
+ 
+ /// The back end a recording uses, from `record_encoder`: probed when it starts.
+ pub fn open(choice: crate::policy::RecordEncoder, settings: &Settings) -> Result<Box<dyn Encoder>, String> {
+@@ -248,6 +256,11 @@ impl Software {
+         if s.nice > 0 {
+             unsafe { libc::setpriority(libc::PRIO_PROCESS, child.id() as _, s.nice as libc::c_int) };
+         }
++        #[cfg(target_os = "macos")]
++        if s.background {
++            let rc = unsafe { libc::setpriority(PRIO_DARWIN_PROCESS, child.id() as _, PRIO_DARWIN_BG) };
++            eprintln!("WMRECORD encoder pid={} in the background band: {}", child.id(), if rc == 0 { "yes".to_string() } else { format!("refused ({})", std::io::Error::last_os_error()) });
++        }
+         let mut sink = std::fs::File::from(ours);
+         sink.write_all(&mkv_head(s.width, s.height)).map_err(|e| format!("ffmpeg: {e}"))?;
+         eprintln!("WMRECORD encoder software pid={} {} {}", child.id(), s.ffmpeg.display(), ffmpeg_args(s).join(" "));
+@@ -344,7 +357,7 @@ mod tests {
+         std::fs::create_dir_all(&dir).unwrap();
+         let path = dir.join("Screen Recording test.mov");
+         let (w, h) = (320u32, 192u32);
+-        let settings = Settings { width: w, height: h, fps: 60, preset: "ultrafast", crf: 20, threads: 0, nice: 0, path: path.clone(), ffmpeg: ffmpeg.clone() };
++        let settings = Settings { width: w, height: h, fps: 60, preset: "ultrafast", crf: 20, threads: 0, nice: 0, background: false, path: path.clone(), ffmpeg: ffmpeg.clone() };
+         let mut enc: Box<dyn Encoder> = Box::new(Software::spawn(&settings).unwrap());
+         let mut frame = vec![0u8; (w * h * 3 / 2) as usize];
+         for n in 0..60u64 {
+diff --git a/crates/wm-darwin/src/glrender.rs b/crates/wm-darwin/src/glrender.rs
+index 057b832..c2876f4 100644
+--- a/crates/wm-darwin/src/glrender.rs
++++ b/crates/wm-darwin/src/glrender.rs
+@@ -118,6 +118,12 @@ pub trait GlTarget {
+     fn create_record_buffer(&mut self, _: &Libraries, _: &Context, _: (u32, u32), _: bool) -> Result<Option<crate::kms::RecordBuffer>, String> {
+         Ok(None)
+     }
++    /// DESKPERF: a GPU buffer for a window's shared-memory picture (`Kms::create_upload_buffer`); `Ok(None)`:
++    /// this target makes none (off screen: the renderer keeps the rows itself and uploads them).
++    fn create_upload_buffer(&mut self, _: &Libraries, _: &Context, _: (u32, u32), _: u32, _: bool) -> Result<Option<crate::kms::UploadBuffer>, String> {
++        Ok(None)
++    }
++    fn free_upload_buffer(&mut self, _: &Libraries, _: &Context, _: &crate::kms::UploadBuffer) {}
+ }
+ 
+ /// An external display's CRTC with its buffers and its own flips (DESK5).
+@@ -854,6 +860,12 @@ impl GlTarget for KmsTarget {
+     fn create_record_buffer(&mut self, libs: &Libraries, context: &Context, size: (u32, u32), writeback: bool) -> Result<Option<crate::kms::RecordBuffer>, String> {
+         self.core().kms.create_record_buffer(libs, context, size, writeback).map(Some)
+     }
++    fn create_upload_buffer(&mut self, libs: &Libraries, context: &Context, size: (u32, u32), pitch: u32, xrgb: bool) -> Result<Option<crate::kms::UploadBuffer>, String> {
++        self.core().kms.create_upload_buffer(libs, context, size, pitch, xrgb).map(Some)
++    }
++    fn free_upload_buffer(&mut self, libs: &Libraries, context: &Context, buffer: &crate::kms::UploadBuffer) {
++        self.core().kms.free_upload_buffer(libs, context, buffer)
++    }
+     fn set_power(&mut self, libs: &Libraries, on: bool) -> Result<bool, String> {
+         // the cursor thread leaves the display alone until the loop wants the plane again
+         self.core().plane.wanted.enabled = false;
+@@ -1211,8 +1223,34 @@ pub struct GlRenderer {
+     cursor_texture: Option<(GLuint, u64, u32, u32)>,
+     /// DESK11: the recorder's NV12 conversion and its buffers.
+     record: Option<RecordGpu>,
++    /// DESKPERF: windows' shared-memory pictures in buffers of the renderer's own, by their id in `external`.
++    uploads: HashMap<u64, ShmUpload>,
++    /// time spent uploading CPU pictures to textures since `take_upload_us` (us)
++    upload_us: u64,
++    /// GL_EXT_texture_format_BGRA8888 (an off-screen target's window pictures are uploaded as B, G, R, A)
++    bgra_ext: bool,
+ }
+ 
++/// DESKPERF: one window's shared-memory picture kept for the GPU (`Renderer::shm_target`).
++struct ShmUpload {
++    window: u64,
++    width: u32,
++    height: u32,
++    xrgb: bool,
++    pitch: usize,
++    /// the frame number when it was made (it is given back once no window shows it, from the next frame on)
++    born: u64,
++    kind: UploadKind,
++}
++enum UploadKind {
++    /// a linear GEM buffer, CPU-mapped write-combined; the GPU samples it through its EGL image
++    Gem(crate::kms::UploadBuffer),
++    /// off screen (host tests): the rows in memory, uploaded to the texture before a frame is drawn
++    Local { pixels: Vec<u8>, texture: GLuint, dirty: bool },
++}
++const GL_BGRA_EXT: GLenum = 0x80E1;
++const GL_TEXTURE_SWIZZLE_A: GLenum = 0x8E45;
++
+ unsafe fn compile(gl: &Gl, kind: GLenum, source: &str) -> Result<GLuint, String> {
+     unsafe {
+         let shader = (gl.glCreateShader)(kind);
+@@ -1286,6 +1324,7 @@ impl GlRenderer {
+             if error != GL_NO_ERROR {
+                 return Err(format!("GL renderer set-up: GL error {error:#x}"));
+             }
++            let bgra_ext = context.has_gl_extension("GL_EXT_texture_format_BGRA8888");
+             Ok(Self {
+                 u_rect: uniform(c"u_rect"),
+                 u_screen: uniform(c"u_screen"),
+@@ -1317,6 +1356,9 @@ impl GlRenderer {
+                 scaled: None,
+                 cursor_texture: None,
+                 record: None,
++                uploads: HashMap::new(),
++                upload_us: 0,
++                bgra_ext,
+             })
+         }
+     }
+@@ -1376,6 +1418,49 @@ impl GlRenderer {
+         Ok(Some(r.slots.len() - 1))
+     }
+ 
++    /// DESKPERF: give back every window picture buffer no window of the scene refers to (a window that went,
++    /// changed size, or shows a dma-buf or a CPU picture now), except those made since the last frame.
++    fn uploads_gc(&mut self, scene: &CpuBackend) {
++        if self.uploads.is_empty() {
++            return;
++        }
++        let live: std::collections::HashSet<u64> = scene.external_ids().into_iter().map(|(_, id)| id).collect();
++        let frame = self.frame;
++        let dead: Vec<u64> = self.uploads.iter().filter(|(id, u)| !live.contains(id) && u.born < frame).map(|(id, _)| *id).collect();
++        for id in dead {
++            self.upload_free(id);
++        }
++    }
++    fn upload_free(&mut self, id: u64) {
++        let Some(u) = self.uploads.remove(&id) else { return };
++        self.external.remove(&id);
++        match u.kind {
++            UploadKind::Gem(b) => self.target.free_upload_buffer(&self.libs, &self._context, &b),
++            UploadKind::Local { texture, .. } => unsafe { (self.libs.gl.glDeleteTextures)(1, &texture) },
++        }
++    }
++    /// Off screen: the rows of every window picture written since the last frame to its texture (B, G, R, A).
++    fn uploads_local(&mut self) {
++        let gl = &self.libs.gl;
++        for u in self.uploads.values_mut() {
++            if let UploadKind::Local { pixels, texture, dirty } = &mut u.kind {
++                if !*dirty {
++                    continue;
++                }
++                let started = Instant::now();
++                unsafe {
++                    (gl.glBindTexture)(GL_TEXTURE_2D, *texture);
++                    (gl.glPixelStorei)(GL_UNPACK_ROW_LENGTH, (u.pitch / 4) as GLint);
++                    (gl.glTexSubImage2D)(GL_TEXTURE_2D, 0, 0, 0, u.width as GLsizei, u.height as GLsizei, GL_BGRA_EXT, GL_UNSIGNED_BYTE, pixels.as_ptr() as *const c_void);
++                    (gl.glPixelStorei)(GL_UNPACK_ROW_LENGTH, 0);
++                }
++                self.uploaded += u64::from(u.width) * u64::from(u.height) * 4;
++                self.upload_us += started.elapsed().as_micros() as u64;
++                *dirty = false;
++            }
++        }
++    }
++
+     /// Bring the texture for `image` up to date and bind it. `partial` holds
+     /// image-space rectangles when only those changed since the last upload.
+     fn texture(&mut self, key: TextureKey, image: &DecorationBuffer, generation: u64, partial: Option<&[DRect]>) -> bool {
+@@ -1392,6 +1477,7 @@ impl GlRenderer {
+                     (gl.glBindTexture)(GL_TEXTURE_2D, t.id);
+                     t.seen = frame;
+                     if t.generation != generation {
++                        let started = Instant::now();
+                         let whole = [DRect::from_xywh(0, 0, width, height)];
+                         let rects = partial.unwrap_or(&whole);
+                         (gl.glPixelStorei)(GL_UNPACK_ROW_LENGTH, width as GLint);
+@@ -1409,6 +1495,7 @@ impl GlRenderer {
+                         (gl.glPixelStorei)(GL_UNPACK_SKIP_PIXELS, 0);
+                         (gl.glPixelStorei)(GL_UNPACK_SKIP_ROWS, 0);
+                         t.generation = generation;
++                        self.upload_us += started.elapsed().as_micros() as u64;
+                     }
+                 }
+                 _ => {
+@@ -1422,7 +1509,9 @@ impl GlRenderer {
+                     (gl.glTexParameteri)(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                     (gl.glTexParameteri)(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                     (gl.glTexParameteri)(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++                    let started = Instant::now();
+                     (gl.glTexImage2D)(GL_TEXTURE_2D, 0, GL_RGBA8 as GLint, width as GLsizei, height as GLsizei, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.pixels.as_ptr() as *const c_void);
++                    self.upload_us += started.elapsed().as_micros() as u64;
+                     self.uploaded += u64::from(width) * u64::from(height) * 4;
+                     self.textures.insert(key, Texture { id, width, height, generation, seen: frame });
+                 }
+@@ -1445,6 +1534,10 @@ impl GlRenderer {
+         let fbo = self.target.begin()?;
+         self.frame += 1;
+         self.uploaded = 0;
++        // DESKPERF: window pictures no window shows any more are given back; off screen, the rows written since
++        // the last frame go to their textures
++        self.uploads_gc(scene);
++        self.uploads_local();
+         unsafe {
+             let gl = &self.libs.gl;
+             (gl.glBindFramebuffer)(GL_FRAMEBUFFER, fbo);
+@@ -1974,7 +2067,74 @@ impl Renderer for GlRenderer {
+             Ok(id)
+         }
+     }
++    fn shm_target(&mut self, window: u64, width: u32, height: u32, xrgb: bool) -> Result<Option<crate::render::ShmTarget>, String> {
++        if width == 0 || height == 0 {
++            return Ok(None);
++        }
++        let found = self.uploads.iter_mut().find(|(_, u)| u.window == window && u.width == width && u.height == height && u.xrgb == xrgb);
++        if let Some((&id, u)) = found {
++            let map = match &mut u.kind {
++                UploadKind::Gem(b) => b.map,
++                UploadKind::Local { pixels, dirty, .. } => {
++                    *dirty = true;
++                    pixels.as_mut_ptr()
++                }
++            };
++            return Ok(Some(crate::render::ShmTarget { id, map, pitch: u.pitch, fresh: false }));
++        }
++        let pitch = (width as usize * 4).div_ceil(64) * 64;
++        let id = self.next_external;
++        let kind = match self.target.create_upload_buffer(&self.libs, &self._context, (width, height), pitch as u32, xrgb)? {
++            Some(b) => {
++                self.external.insert(id, (b.image, b.texture));
++                UploadKind::Gem(b)
++            }
++            None if self.bgra_ext => {
++                let gl = &self.libs.gl;
++                let mut texture = 0;
++                unsafe {
++                    (gl.glGenTextures)(1, &mut texture);
++                    (gl.glBindTexture)(GL_TEXTURE_2D, texture);
++                    (gl.glTexParameteri)(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++                    (gl.glTexParameteri)(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++                    if xrgb {
++                        (gl.glTexParameteri)(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, GL_ONE as GLint);
++                    }
++                    (gl.glTexImage2D)(GL_TEXTURE_2D, 0, GL_BGRA_EXT as GLint, width as GLsizei, height as GLsizei, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, std::ptr::null());
++                    let error = (gl.glGetError)();
++                    if error != GL_NO_ERROR {
++                        (gl.glDeleteTextures)(1, &texture);
++                        return Err(format!("window picture texture (BGRA): GL error {error:#x}"));
++                    }
++                }
++                self.external.insert(id, (std::ptr::null_mut(), texture));
++                UploadKind::Local { pixels: vec![0; pitch * height as usize], texture, dirty: true }
++            }
++            None => return Ok(None),
++        };
++        self.next_external += 1;
++        let mut u = ShmUpload { window, width, height, xrgb, pitch, born: self.frame, kind };
++        let map = match &mut u.kind {
++            UploadKind::Gem(b) => b.map,
++            UploadKind::Local { pixels, .. } => pixels.as_mut_ptr(),
++        };
++        self.uploads.insert(id, u);
++        Ok(Some(crate::render::ShmTarget { id, map, pitch, fresh: true }))
++    }
++    fn shm_map(&self, id: u64) -> Option<(*const u8, usize)> {
++        let u = self.uploads.get(&id)?;
++        Some(match &u.kind {
++            UploadKind::Gem(b) => (b.map as *const u8, u.pitch),
++            UploadKind::Local { pixels, .. } => (pixels.as_ptr(), u.pitch),
++        })
++    }
++    fn take_upload_us(&mut self) -> u64 {
++        std::mem::take(&mut self.upload_us)
++    }
+     fn release_dmabuf(&mut self, id: u64) {
++        if self.uploads.contains_key(&id) {
++            return; // the renderer's own (DESKPERF): given back by `uploads_gc`
++        }
+         if let Some((image, texture)) = self.external.remove(&id) {
+             unsafe {
+                 (self.libs.gl.glDeleteTextures)(1, &texture);
+diff --git a/crates/wm-darwin/src/input.rs b/crates/wm-darwin/src/input.rs
+index a8f3b87..fe5cd61 100644
+--- a/crates/wm-darwin/src/input.rs
++++ b/crates/wm-darwin/src/input.rs
+@@ -911,6 +911,13 @@ impl Server {
+                 // DESK8: never to whatever window has the focus (TERM8, 23:56Z: its target window had gone and its
+                 // keys went into the desk's terminal): without a live target the instrument's keys are dropped
+                 if target.is_none() {
++                    // DESKPERF: a release of a key the instrument holds (Command after its Command-Q closed the window)
++                    // still lets go of the key in the seat, delivered to no window; before, the seat kept the modifier
++                    // held and the instrument's next key became a chord (QTP's Space became Command-Space, 14:1xZ)
++                    if !down && self.input.as_ref().unwrap().virt_keys.contains(&evdev) {
++                        self.release_virtual_key_unseen(evdev);
++                        return Ok(());
++                    }
+                     return Err(format!("the synthetic keys have no target window (press in it first, or `target <id>`; the last one is gone or none was pressed in this request{}): key not delivered", if active { "; the owner is active" } else { "" }));
+                 }
+                 if let Some(target)=target {
+@@ -942,6 +949,30 @@ impl Server {
+             }
+         }
+     }
++    /// DESKPERF: a key the instrument holds is let go in the seat's keyboard state (its modifiers) without a
++    /// window to tell: the press went to a window that is gone. The window that has the keyboard now, if its
++    /// modifiers changed, gets them again (leave and enter: smithay has no modifiers-only send).
++    fn release_virtual_key_unseen(&mut self,evdev:u32){
++        let Some(input)=self.input.as_mut() else{return;};
++        input.virt_keys.remove(&evdev);
++        input.suppressed_keys.remove(&evdev);
++        let keyboard=input.keyboard.clone();
++        let code=(evdev+8).into();
++        let before=keyboard.modifier_state();
++        let _=keyboard.input_intercept::<(),_>(self,code,KeyState::Released,|s,m,_|{s.input.as_mut().unwrap().modifiers=modifiers(m);});
++        keyboard.retire_forwarded_key(code);
++        let after=keyboard.modifier_state();
++        let mut told="";
++        if before!=after {
++            if let Some(focus)=keyboard.current_focus().filter(|f|smithay::reexports::wayland_server::Resource::is_alive(f)) {
++                keyboard.set_focus(self,None,SERIAL_COUNTER.next_serial());
++                keyboard.set_focus(self,Some(focus),SERIAL_COUNTER.next_serial());
++                told=" (the focused window was given the modifiers again)";
++            }
++        }
++        eprintln!("WMINJECT synthetic key {evdev} released with its window gone: let go in the seat, sent to no window{told}; modifiers {} -> {}",
++            if before==after {"unchanged"} else {"changed"}, if after.ctrl||after.alt||after.shift||after.logo {"some held"} else {"none held"});
++    }
+     /// The end of an instrument's request: the keyboard focus goes back to the owner's window (unless
+     /// the instrument still holds a key).
+     pub fn end_virtual_request(&mut self,time:u32){
+diff --git a/crates/wm-darwin/src/kms.rs b/crates/wm-darwin/src/kms.rs
+index 922daba..6e16e0a 100644
+--- a/crates/wm-darwin/src/kms.rs
++++ b/crates/wm-darwin/src/kms.rs
+@@ -359,6 +359,25 @@ pub struct RecordBuffer {
+     pub bgra: bool,
+ }
+ 
++/// DESKPERF: a window's shared-memory picture's GPU buffer (`Kms::create_upload_buffer`): the CPU writes the
++/// client's rows into `map`, the renderer samples `texture`.
++pub struct UploadBuffer {
++    pub texture: GLuint,
++    pub image: EGLImage,
++    pub map: *mut u8,
++    pub size: usize,
++    pub prime_fd: c_int,
++    pub handle: u32,
++}
++#[repr(C)]
++struct GemClose {
++    handle: u32,
++    pad: u32,
++}
++/// drm.h DRM_IOW(0x09, struct drm_gem_close)
++const DRM_IOCTL_GEM_CLOSE: libc::c_ulong = 0x4008_6409;
++static GEM_CLOSE_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++
+ #[repr(C)]
+ #[derive(Default)]
+ struct AsahiGemCreate {
+@@ -999,6 +1018,100 @@ impl Kms {
+         }
+     }
+ 
++    /// DESKPERF: a window's shared-memory picture on the GPU: a linear GEM object on the render node, mapped
++    /// write-combined (the CPU only writes it, row after row, as it copies a client's buffer), exported as a
++    /// dma-buf and sampled through an EGL image of `width` x `height` (`XRGB8888` for an opaque window, so its
++    /// fourth byte is never read, else `ARGB8888`, premultiplied as wl_shm's) with `pitch` bytes a row (a
++    /// multiple of 64: the driver takes linear dma-bufs with 16-byte pitches only). Freed with
++    /// `free_upload_buffer`.
++    pub fn create_upload_buffer(&mut self, libs: &Libraries, context: &Context, (width, height): (u32, u32), pitch: u32, xrgb: bool) -> Result<UploadBuffer, String> {
++        let (drm, gl) = (&libs.drm, &libs.gl);
++        let (create_image, image_target) = context.image_functions(libs)?;
++        if pitch % 64 != 0 || pitch < width * 4 || width == 0 || height == 0 {
++            return Err(format!("upload buffer {width}x{height} pitch {pitch}"));
++        }
++        let size = (pitch as usize * height as usize + 0x3fff) & !0x3fff;
++        unsafe {
++            let mut create = AsahiGemCreate { size: size as u64, flags: 0, ..Default::default() };
++            if (drm.drmIoctl)(self.render, DRM_IOCTL_ASAHI_GEM_CREATE, &mut create as *mut _ as *mut c_void) != 0 {
++                return Err(os_error("DRM_IOCTL_ASAHI_GEM_CREATE (window upload buffer)"));
++            }
++            let render = self.render;
++            let close = |drm: &Drm, handle: u32| {
++                let mut c = GemClose { handle, pad: 0 };
++                (drm.drmIoctl)(render, DRM_IOCTL_GEM_CLOSE, &mut c as *mut _ as *mut c_void);
++            };
++            let mut offset = AsahiGemMmapOffset { handle: create.handle, ..Default::default() };
++            if (drm.drmIoctl)(self.render, DRM_IOCTL_ASAHI_GEM_MMAP_OFFSET, &mut offset as *mut _ as *mut c_void) != 0 {
++                let e = os_error("DRM_IOCTL_ASAHI_GEM_MMAP_OFFSET (window upload buffer)");
++                close(drm, create.handle);
++                return Err(e);
++            }
++            let map = libc::mmap(std::ptr::null_mut(), size, libc::PROT_READ | libc::PROT_WRITE, libc::MAP_SHARED, self.render, offset.offset as libc::off_t);
++            if map == libc::MAP_FAILED {
++                let e = os_error("mmap of a window upload buffer");
++                close(drm, create.handle);
++                return Err(e);
++            }
++            let mut prime_fd = -1;
++            if (drm.drmPrimeHandleToFD)(self.render, create.handle, DRM_CLOEXEC | DRM_RDWR, &mut prime_fd) != 0 {
++                let e = os_error("drmPrimeHandleToFD (window upload buffer)");
++                libc::munmap(map, size);
++                close(drm, create.handle);
++                return Err(e);
++            }
++            let fourcc = if xrgb { DRM_FORMAT_XRGB8888 } else { DRM_FORMAT_ARGB8888 };
++            let attribs = [
++                EGL_WIDTH, width as EGLint, EGL_HEIGHT, height as EGLint,
++                EGL_LINUX_DRM_FOURCC_EXT, fourcc as EGLint,
++                EGL_DMA_BUF_PLANE0_FD_EXT, prime_fd,
++                EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
++                EGL_DMA_BUF_PLANE0_PITCH_EXT, pitch as EGLint,
++                EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, 0,
++                EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, 0,
++                EGL_NONE,
++            ];
++            let image = create_image(context.display, std::ptr::null_mut(), EGL_LINUX_DMA_BUF_EXT, std::ptr::null_mut(), attribs.as_ptr());
++            if image.is_null() {
++                let e = format!("eglCreateImageKHR refused a window upload buffer {width}x{height} pitch {pitch}: EGL error {:#x}", (libs.egl.eglGetError)());
++                libc::close(prime_fd);
++                libc::munmap(map, size);
++                close(drm, create.handle);
++                return Err(e);
++            }
++            let mut texture = 0;
++            (gl.glGenTextures)(1, &mut texture);
++            (gl.glBindTexture)(GL_TEXTURE_2D, texture);
++            image_target(GL_TEXTURE_2D, image);
++            (gl.glTexParameteri)(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++            (gl.glTexParameteri)(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++            let error = (gl.glGetError)();
++            let buffer = UploadBuffer { texture, image, map: map as *mut u8, size, prime_fd, handle: create.handle };
++            if error != GL_NO_ERROR {
++                self.free_upload_buffer(libs, context, &buffer);
++                return Err(format!("window upload buffer as texture: GL error {error:#x}"));
++            }
++            Ok(buffer)
++        }
++    }
++    /// DESKPERF: everything `create_upload_buffer` made, given back (texture, EGL image, mapping, dma-buf, GEM).
++    pub fn free_upload_buffer(&mut self, libs: &Libraries, context: &Context, b: &UploadBuffer) {
++        unsafe {
++            (libs.gl.glDeleteTextures)(1, &b.texture);
++            if !b.image.is_null() {
++                if let Ok(destroy) = context.destroy_image_function(libs) {
++                    destroy(context.display, b.image);
++                }
++            }
++            libc::munmap(b.map as *mut c_void, b.size);
++            libc::close(b.prime_fd);
++            let mut c = GemClose { handle: b.handle, pad: 0 };
++            if (libs.drm.drmIoctl)(self.render, DRM_IOCTL_GEM_CLOSE, &mut c as *mut _ as *mut c_void) != 0 && !GEM_CLOSE_FAILED.swap(true, std::sync::atomic::Ordering::Relaxed) {
++                eprintln!("WMSHM {} (a window upload buffer's GPU memory stays until the compositor ends; said once)", os_error("DRM_IOCTL_GEM_CLOSE"));
++            }
++        }
++    }
++
+     /// Show `buffer`. The first commit sets the mode (blocking); later ones
+     /// are non-blocking flips of `FB_ID` only. Either way exactly one
+     /// flip-complete event follows a queued commit; do not commit again
+diff --git a/crates/wm-darwin/src/pacing.rs b/crates/wm-darwin/src/pacing.rs
+index d3ce451..8f4cb8b 100644
+--- a/crates/wm-darwin/src/pacing.rs
++++ b/crates/wm-darwin/src/pacing.rs
+@@ -58,6 +58,14 @@ struct Window {
+     last_shown: Option<Instant>,
+     shown_interval: Series,
+     shown_distinct: u64,
++    /// DESKPERF: shared-memory commits copied into the desk's GPU buffer / into a CPU picture, the pixels
++    /// copied, and the copy's time (inside the client's mapping)
++    shm_gpu: u64,
++    shm_cpu: u64,
++    shm_px: u64,
++    shm_copy: Series,
++    /// the newest commit replaced one no frame had drawn (for `WMTRACE`)
++    last_replaced: bool,
+ }
+ 
+ #[derive(Default)]
+@@ -76,6 +84,10 @@ pub struct PacingTrace {
+     repainted_px: u64,
+     screen_px: u64,
+     callback_only_releases: u64,
++    /// DESKPERF: time the frames spent uploading CPU pictures to textures (us), and `WMTRACE` (policy
++    /// `pacing_trace`): its lines' time origin when on
++    upload_us: u64,
++    pub trace: Option<Instant>,
+ }
+ 
+ impl PacingTrace {
+@@ -93,6 +105,7 @@ impl PacingTrace {
+         if let Some(sent) = w.callback_sent.take() {
+             w.callback_to_commit.sample(now.saturating_duration_since(sent));
+         }
++        w.last_replaced = w.pending.is_some();
+         if w.pending.replace(now).is_some() {
+             w.replaced += 1;
+             if w.pending_distinct == Some(true) {
+@@ -158,6 +171,46 @@ impl PacingTrace {
+         self.repainted_px += repainted_px;
+         self.screen_px += screen_px;
+     }
++    /// DESKPERF: a shared-memory commit was copied (into the desk's GPU buffer: `gpu`), `pixels` of it, in `us`.
++    pub fn shm_copied(&mut self, id: u64, gpu: bool, pixels: u64, us: u64) {
++        let w = self.windows.entry(id).or_default();
++        if gpu { w.shm_gpu += 1 } else { w.shm_cpu += 1 }
++        w.shm_px += pixels;
++        w.shm_copy.sample(Duration::from_micros(us));
++    }
++    /// DESKPERF: a frame's texture uploads took `us`.
++    pub fn uploads(&mut self, us: u64) {
++        self.upload_us += us;
++    }
++    fn ms(&self, t: Instant) -> f64 {
++        self.trace.map_or(0.0, |base| t.saturating_duration_since(base).as_secs_f64() * 1000.0 - base.saturating_duration_since(t).as_secs_f64() * 1000.0)
++    }
++    /// DESKPERF `WMTRACE c`: a buffer commit of window `id` arrived at `arrived` (the handler's start), took the
++    /// handler `handler`, came as `kind`; whether it replaced a commit no frame had drawn.
++    pub fn trace_commit(&self, id: u64, arrived: Instant, handler: Duration, kind: &str) {
++        if self.trace.is_none() {
++            return;
++        }
++        let replaced = self.windows.get(&id).is_some_and(|w| w.last_replaced);
++        let since_flip = self.last_flip.map_or(-1.0, |f| arrived.saturating_duration_since(f).as_secs_f64() * 1000.0);
++        eprintln!("WMTRACE c t={:.2} w={id} kind={kind} handler_ms={:.2} after_flip_ms={since_flip:.2} replaced_unshown={}", self.ms(arrived), handler.as_secs_f64() * 1000.0, u8::from(replaced));
++    }
++    /// DESKPERF `WMTRACE f`: frame `seq` drawn from `started` (`late` after its planned moment), aimed at `blank`,
++    /// with the pacer's budget then.
++    pub fn trace_frame(&self, started: Instant, took: Duration, late: Duration, blank: Option<Instant>, budget: Duration) {
++        if self.trace.is_none() {
++            return;
++        }
++        let windows: Vec<String> = self.windows.iter().filter(|(_, w)| w.drawn.is_some_and(|(_, s)| s == self.seq)).map(|(id, _)| id.to_string()).collect();
++        eprintln!("WMTRACE f t={:.2} seq={} render_ms={:.2} late_ms={:.2} blank_t={} budget_ms={:.2} windows=[{}]", self.ms(started), self.seq, took.as_secs_f64() * 1000.0, late.as_secs_f64() * 1000.0,
++            blank.map_or("-".into(), |b| format!("{:.2}", self.ms(b))), budget.as_secs_f64() * 1000.0, windows.join(","));
++    }
++    /// DESKPERF `WMTRACE p`: a flip completed at `at` (the panel's stamp) showing frame `seq` (`None`: the pointer's plane).
++    pub fn trace_flip(&self, at: Instant, seq: Option<u64>, vblank: u32) {
++        if self.trace.is_some() {
++            eprintln!("WMTRACE p t={:.2} seq={} vblank={vblank}", self.ms(at), seq.map_or("-".into(), |s| s.to_string()));
++        }
++    }
+     pub fn callback_only_release(&mut self) {
+         self.callback_only_releases += 1;
+     }
+@@ -240,11 +293,16 @@ impl PacingTrace {
+             let cb = w.callback_to_commit.take_sorted();
+             let handler = w.handler.take_sorted();
+             let shown_iv = w.shown_interval.take_sorted();
++            let shm_copy = w.shm_copy.take_sorted();
++            let shm = if w.shm_gpu + w.shm_cpu > 0 { format!(" | shm: into_gpu={} into_cpu={} copied_MB={:.1} {}", w.shm_gpu, w.shm_cpu, w.shm_px as f64 * 4.0 / 1e6, text95(&shm_copy, "copy")) } else { String::new() };
+             let hashes = if w.distinct + w.same + w.unhashed > 0 { format!(" | content: distinct={} same_as_before={} unread={} replaced_distinct={} revisits={} shown_distinct={}", w.distinct, w.same, w.unhashed, w.replaced_distinct, w.revisits, w.shown_distinct) } else { String::new() };
+             lines.push(format!(
+-                "WMPACING over_ms={window_ms} window={id} app={:?} commits={} shown={} replaced_before_shown={} fifo_held={} fifo_timeouts={} unchanged_commits={} | {} | {} | {} | {} | {} | commits by ms after the last flip {:?} | frames held for a fence={fence}{hashes}",
++                "WMPACING over_ms={window_ms} window={id} app={:?} commits={} shown={} replaced_before_shown={} fifo_held={} fifo_timeouts={} unchanged_commits={} | {} | {} | {} | {} | {} | commits by ms after the last flip {:?} | frames held for a fence={fence}{hashes}{shm}",
+                 w.app_id, w.commits, w.shown, w.replaced, w.fifo_held, w.fifo_timeouts, w.unchanged, text95(&ctf, "commit->flip"), text95(&shown_iv, "shown->shown"), window_text(&iv, "commit interval"), text95(&cb, "callback->commit"), text95(&handler, "commit handler"), w.phase
+             ));
++            w.shm_gpu = 0;
++            w.shm_cpu = 0;
++            w.shm_px = 0;
+             w.shown_distinct = 0;
+             w.commits = 0;
+             w.shown = 0;
+@@ -264,10 +322,12 @@ impl PacingTrace {
+             let render = self.render.take_sorted();
+             let seconds = (window_ms as f64 / 1000.0).max(0.001);
+             lines.push(format!(
+-                "WMCOST over_ms={window_ms} frames={} ({:.1}/s) {} uploaded_MB_per_s={:.1} repainted={:.0}% of the screen per frame, callback-only releases={}",
++                "WMCOST over_ms={window_ms} frames={} ({:.1}/s) {} uploaded_MB_per_s={:.1} upload_ms_per_frame={:.2} repainted={:.0}% of the screen per frame, callback-only releases={}",
+                 self.frames, self.frames as f64 / seconds, text95(&render, "render+finish"), self.uploaded as f64 / 1e6 / seconds,
++                self.upload_us as f64 / 1000.0 / self.frames.max(1) as f64,
+                 if self.screen_px > 0 { self.repainted_px as f64 * 100.0 / self.screen_px as f64 } else { 0.0 }, self.callback_only_releases
+             ));
++            self.upload_us = 0;
+             self.frames = 0;
+             self.uploaded = 0;
+             self.repainted_px = 0;
+diff --git a/crates/wm-darwin/src/pixels.rs b/crates/wm-darwin/src/pixels.rs
+index 2724b50..2e6b15e 100644
+--- a/crates/wm-darwin/src/pixels.rs
++++ b/crates/wm-darwin/src/pixels.rs
+@@ -145,6 +145,83 @@ pub unsafe fn copy_shm_rows(
+     copied
+ }
+ 
++/// DESKPERF: the rows of `rects` (image coordinates, clipped here) from a client pool into a buffer of `pitch`
++/// bytes a row, byte for byte (B, G, R, A or X: what the GPU samples as ARGB8888 / XRGB8888). No conversion and
++/// no clamp: nothing on the CPU reads these pixels, and the GPU blends whatever a client sends without harm.
++/// Returns the pixels copied.
++///
++/// # Safety
++/// `ptr` must be readable for the pool length `layout` was checked against; `dst` writable for
++/// `pitch * layout.height` bytes, with `pitch >= layout.width * 4`.
++pub unsafe fn copy_shm_rows_raw(ptr: *const u8, layout: ShmLayout, dst: *mut u8, pitch: usize, rects: &[DRect]) -> u64 {
++    assert!(pitch >= layout.width as usize * 4, "pitch too small");
++    let mut copied = 0;
++    for rect in rects {
++        let r = rect.intersect(layout.bounds());
++        if r.is_empty() {
++            continue;
++        }
++        let (x0, x1) = (r.x0 as usize, r.x1 as usize);
++        let bytes = (x1 - x0) * 4;
++        // whole rows: one block, the client's padding not copied
++        if x0 == 0 && x1 == layout.width as usize && layout.stride == pitch {
++            let source = layout.offset + r.y0 as usize * layout.stride;
++            unsafe { std::ptr::copy_nonoverlapping(ptr.add(source), dst.add(r.y0 as usize * pitch), (r.y1 - r.y0) as usize * pitch - (pitch - bytes)) };
++        } else {
++            for y in r.y0 as usize..r.y1 as usize {
++                let source = layout.offset + y * layout.stride + x0 * 4;
++                // No Rust reference to client memory is formed; Smithay contains SIGBUS.
++                unsafe { std::ptr::copy_nonoverlapping(ptr.add(source), dst.add(y * pitch + x0 * 4), bytes) };
++            }
++        }
++        copied += r.area();
++    }
++    copied
++}
++
++/// DESKPERF: what `copy_shm_to_gpu` did.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub struct GpuCopy {
++    /// image-space rectangles written (clipped and merged), or the whole picture
++    pub rects: Vec<DRect>,
++    pub pixels: u64,
++    /// the copy itself (inside the client's mapping)
++    pub copy_us: u64,
++}
++
++/// DESKPERF: a client buffer's rows into `dst` (`pitch` bytes a row, `layout`'s size) as they are: the
++/// rectangles of `damage` when given (the rest of `dst` holds the picture before), else all of it. `accept`
++/// runs first, as for `copy_shm_damaged`.
++pub fn copy_shm_to_gpu(
++    buffer: &WlBuffer,
++    dst: *mut u8,
++    pitch: usize,
++    damage: Option<&[DRect]>,
++    accept: impl FnOnce(u32, u32) -> Result<(), String>,
++) -> Result<GpuCopy, String> {
++    with_layout(buffer, |ptr, layout| {
++        accept(layout.width, layout.height)?;
++        let rects = match damage.filter(|d| !d.is_empty()) {
++            Some(damage) => {
++                let mut region = crate::damage::Region::new(layout.width, layout.height);
++                for r in damage {
++                    region.add(*r);
++                }
++                region.rects().to_vec()
++            }
++            None => vec![layout.bounds()],
++        };
++        let started = std::time::Instant::now();
++        let pixels = unsafe { copy_shm_rows_raw(ptr, layout, dst, pitch, &rects) };
++        Ok(GpuCopy { rects, pixels, copy_us: started.elapsed().as_micros() as u64 })
++    })
++}
++
++/// DESKPERF: a buffer's size and whether it is XRGB8888 (opaque), validated like every import.
++pub fn shm_format(buffer: &WlBuffer) -> Result<(u32, u32, bool), String> {
++    with_layout(buffer, |_, layout| Ok((layout.width, layout.height, layout.xrgb)))
++}
++
+ /// Result of importing a client buffer with damage.
+ pub enum ShmCopy {
+     /// The existing image was updated in place; these image-space rectangles
+@@ -454,6 +531,39 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn a_raw_copy_for_the_gpu_takes_the_clients_bytes_as_they_are_into_its_pitch() {
++        // DESKPERF: rows of a client pool (stride with padding, an offset) into a GPU buffer of another pitch:
++        // the damaged rectangles byte for byte, nothing else touched; whole rows as one block when the pitches agree
++        let (w, h) = (37usize, 21usize);
++        let (stride, offset) = (w * 4 + 12, 8usize);
++        let pool = noise(offset + stride * h, 3);
++        let l = shm(w as i32, h as i32, stride as i32, offset as i32, false, pool.len());
++        let pitch = (w * 4).div_ceil(64) * 64;
++        let mut dst = vec![0xa5u8; pitch * h];
++        let rects = [DRect::new(3, 4, 17, 9), DRect::new(-5, 18, 8, 400), DRect::new(100, 100, 200, 200)];
++        let n = unsafe { copy_shm_rows_raw(pool.as_ptr(), l, dst.as_mut_ptr(), pitch, &rects) };
++        assert_eq!(n, 14 * 5 + 8 * 3);
++        for y in 0..h {
++            for x in 0..pitch / 4 {
++                let got = &dst[y * pitch + x * 4..][..4];
++                let inside = x < w && rects.iter().any(|r| r.contains_point(x as i32, y as i32));
++                if inside {
++                    assert_eq!(got, &pool[offset + y * stride + x * 4..][..4], "pixel {x},{y} is the client's");
++                } else {
++                    assert_eq!(got, &[0xa5; 4], "pixel {x},{y} untouched");
++                }
++            }
++        }
++        // the whole picture, the pitches equal: one block, the same bytes
++        let same = shm(w as i32, h as i32, pitch as i32, 0, true, pitch * h);
++        let pool = noise(pitch * h, 4);
++        let mut dst = vec![0u8; pitch * h];
++        unsafe { copy_shm_rows_raw(pool.as_ptr(), same, dst.as_mut_ptr(), pitch, &[same.bounds()]) };
++        for y in 0..h {
++            assert_eq!(&dst[y * pitch..][..w * 4], &pool[y * pitch..][..w * 4], "row {y}");
++        }
++    }
+     #[test]
+     fn damaged_copy_updates_only_reported_rectangles() {
+         let (w, h) = (40usize, 30usize);
+diff --git a/crates/wm-darwin/src/policy.rs b/crates/wm-darwin/src/policy.rs
+index 59ade74..0296448 100644
+--- a/crates/wm-darwin/src/policy.rs
++++ b/crates/wm-darwin/src/policy.rs
+@@ -32,6 +32,10 @@
+ //! | `record_nice` | 0 | DESK11: the encoder's nice value (0..19: a higher number leaves the CPU to everything else first) |
+ //! | `motion` | on | THEME: a window fades in while rising when it appears and a theme change cross-fades, each as the theme in use says (`motion.rs`); off: at once |
+ //! | `record_writeback` | on | DESK11: the recorder's GPU buffers are CPU-mapped cached (fast to read); off: write-combined (for a comparison) |
++//! | `shm_gpu` | off | DESKPERF: a window drawn on the CPU (wl_shm) is copied as it is into a GPU buffer of the desk's own and drawn from there like a dma-buf: no colour conversion, no texture upload a frame (before: 12.6 ms a full-window commit of QuickTime's, then its upload) |
++//! | `pacing_trace` | off | DESKPERF: one `WMTRACE` line per commit, frame and flip (arrival against the latch, the flip that showed it): a test's switch |
++//! | `record_flip_times` | on | DESKPERF: a recorded frame's time is its flip's (the refreshes between two flips, exactly), not when the loop took it |
++//! | `record_background` | off | DESKPERF: the encoder runs in Darwin's background band (efficiency cores, below every application) |
+ use std::path::PathBuf;
+ use std::time::{Duration, Instant, SystemTime};
+ 
+@@ -54,6 +58,10 @@ pub struct Switches {
+     pub window_position: bool,
+     /// THEME: windows fade in and theme changes cross-fade as the theme says
+     pub motion: bool,
++    /// DESKPERF: shared-memory pictures go to GPU buffers of the desk's own (`server.rs shm_to_gpu`)
++    pub shm_gpu: bool,
++    /// DESKPERF: `WMTRACE` lines per commit, frame and flip
++    pub pacing_trace: bool,
+     /// percent, 25..400 (not a switch: `scroll_speed=<n>`)
+     pub scroll_speed: u16,
+     /// DESK11: the screen recorder's settings (`record_*`)
+@@ -82,10 +90,14 @@ pub struct RecordPolicy {
+     pub threads: u8,
+     pub nice: u8,
+     pub writeback: bool,
++    /// DESKPERF: frames timed by their flips
++    pub flip_times: bool,
++    /// DESKPERF: the encoder in Darwin's background band
++    pub background: bool,
+ }
+ impl Default for RecordPolicy {
+     fn default() -> Self {
+-        Self { fps: 60, half: false, mjpeg: false, encoder: RecordEncoder::Auto, preset: 0, crf: 20, threads: 0, nice: 0, writeback: true }
++        Self { fps: 60, half: false, mjpeg: false, encoder: RecordEncoder::Auto, preset: 0, crf: 20, threads: 0, nice: 0, writeback: true, flip_times: true, background: false }
+     }
+ }
+ impl RecordPolicy {
+@@ -119,19 +131,22 @@ impl RecordPolicy {
+             "record_threads" => number(0, 16).map(|n| self.threads = n).is_some(),
+             "record_nice" => number(0, 19).map(|n| self.nice = n).is_some(),
+             "record_writeback" => parse_bool(&v).map(|b| self.writeback = b).is_some(),
++            "record_flip_times" => parse_bool(&v).map(|b| self.flip_times = b).is_some(),
++            "record_background" => parse_bool(&v).map(|b| self.background = b).is_some(),
+             _ => return None,
+         };
+         Some(ok)
+     }
+     fn text(&self) -> String {
+         let encoder = match self.encoder { RecordEncoder::Auto => "auto", RecordEncoder::Software => "software", RecordEncoder::Hardware => "hardware" };
+-        format!("record_fps={} record_scale={} record_codec={} record_encoder={encoder} record_preset={} record_crf={} record_threads={} record_nice={} record_writeback={}",
+-            self.fps, if self.half { "half" } else { "full" }, if self.mjpeg { "mjpeg" } else { "h264" }, self.preset_name(), self.crf, self.threads, self.nice, if self.writeback { "on" } else { "off" })
++        let on = |b: bool| if b { "on" } else { "off" };
++        format!("record_fps={} record_scale={} record_codec={} record_encoder={encoder} record_preset={} record_crf={} record_threads={} record_nice={} record_writeback={} record_flip_times={} record_background={}",
++            self.fps, if self.half { "half" } else { "full" }, if self.mjpeg { "mjpeg" } else { "h264" }, self.preset_name(), self.crf, self.threads, self.nice, on(self.writeback), on(self.flip_times), on(self.background))
+     }
+ }
+ 
+ impl Switches {
+-    const KEYS: [&'static str; 16] = ["fifo", "fifo_shm", "client_wake", "flip_time_callbacks", "flip_stamps", "restore", "skip_unchanged", "partial_repaint", "framehash", "late_latch", "restore_after_reboot", "trackpad_scroll", "natural_scroll", "scroll_trace", "window_position", "motion"];
++    const KEYS: [&'static str; 18] = ["fifo", "fifo_shm", "client_wake", "flip_time_callbacks", "flip_stamps", "restore", "skip_unchanged", "partial_repaint", "framehash", "late_latch", "restore_after_reboot", "trackpad_scroll", "natural_scroll", "scroll_trace", "window_position", "motion", "shm_gpu", "pacing_trace"];
+     fn defaults() -> Self {
+         let env = |key: &str| std::env::var(format!("CHONKSTEP_DARWIN_{}", key.to_ascii_uppercase())).ok().and_then(|v| parse_bool(&v));
+         Self {
+@@ -151,6 +166,8 @@ impl Switches {
+             scroll_trace: env("scroll_trace").unwrap_or(false),
+             window_position: env("window_position").unwrap_or(false),
+             motion: env("motion").unwrap_or(true),
++            shm_gpu: env("shm_gpu").unwrap_or(false),
++            pacing_trace: env("pacing_trace").unwrap_or(false),
+             scroll_speed: std::env::var("CHONKSTEP_DARWIN_SCROLL_SPEED").ok().and_then(|v| parse_speed(&v)).unwrap_or(100),
+             record: RecordPolicy::default(),
+         }
+@@ -173,6 +190,8 @@ impl Switches {
+             "scroll_trace" => &mut self.scroll_trace,
+             "window_position" => &mut self.window_position,
+             "motion" => &mut self.motion,
++            "shm_gpu" => &mut self.shm_gpu,
++            "pacing_trace" => &mut self.pacing_trace,
+             _ => return None,
+         })
+     }
+@@ -316,14 +335,18 @@ mod tests {
+     use super::*;
+     #[test]
+     fn the_policy_file_changes_switches_without_a_relaunch_and_a_test_pin_wins_until_released() {
+-        let base = Switches { fifo: true, fifo_shm: true, client_wake: true, flip_time_callbacks: true, flip_stamps: true, restore: true, skip_unchanged: true, partial_repaint: true, framehash: false, late_latch: true, restore_after_reboot: false, trackpad_scroll: true, natural_scroll: true, scroll_trace: false, window_position: false, motion: true, scroll_speed: 100, record: RecordPolicy::default() };
++        let base = Switches { fifo: true, fifo_shm: true, client_wake: true, flip_time_callbacks: true, flip_stamps: true, restore: true, skip_unchanged: true, partial_repaint: true, framehash: false, late_latch: true, restore_after_reboot: false, trackpad_scroll: true, natural_scroll: true, scroll_trace: false, window_position: false, motion: true, shm_gpu: false, pacing_trace: false, scroll_speed: 100, record: RecordPolicy::default() };
+         // DESK10: the trackpad's scrolling speed is a number, the rest switches
+         let (sp, refused) = Switches::parse("scroll_speed=140\nscroll_trace=on\ntrackpad_scroll=off\n", base);
+         assert!(refused.is_empty() && sp.scroll_speed == 140 && sp.scroll_trace && !sp.trackpad_scroll && sp.natural_scroll);
+         let (sp, refused) = Switches::parse("scroll_speed=1000\nscroll_speed=fast\n", base);
+         assert_eq!(sp.scroll_speed, 100);
+         assert_eq!(refused.len(), 2);
+-        assert!(sp.text().contains("scroll_trace=off window_position=off motion=on scroll_speed=100 record_fps=60 record_scale=full"));
++        assert!(sp.text().contains("scroll_trace=off window_position=off motion=on shm_gpu=off pacing_trace=off scroll_speed=100 record_fps=60 record_scale=full"));
++        // DESKPERF: the new switches
++        let (d, refused) = Switches::parse("shm_gpu=on\npacing_trace=1\nrecord_flip_times=off\nrecord_background=on\n", base);
++        assert!(refused.is_empty() && d.shm_gpu && d.pacing_trace && !d.record.flip_times && d.record.background, "{refused:?}");
++        assert!(d.text().ends_with("record_writeback=on record_flip_times=off record_background=on"), "{}", d.text());
+         // DESK11: the recorder's keys
+         let (r, refused) = Switches::parse("record_fps=30\nrecord_scale=half\nrecord_preset=superfast\nrecord_crf=99\nrecord_encoder=hardware\nrecord_codec=mjpeg\n", base);
+         assert_eq!(refused, vec!["record_crf=99".to_string()]);
+diff --git a/crates/wm-darwin/src/record.rs b/crates/wm-darwin/src/record.rs
+index 51a0f2a..a4443b3 100644
+--- a/crates/wm-darwin/src/record.rs
++++ b/crates/wm-darwin/src/record.rs
+@@ -78,10 +78,35 @@ enum ToWriter {
+ }
+ 
+ /// DESK11: the H.264 pipeline of a recording, on the compositor's side.
++/// DESKPERF: a frame converting on the GPU: its ticket, its time as taken (the 60 Hz slot of the loop's turn), the
++/// number of the desk's frame it shows (`None`: not known), when it was taken.
++#[derive(Clone, Copy, Debug)]
++struct GpuFrame {
++    ticket: u64,
++    at_us: u64,
++    seq: Option<u64>,
++    taken: Instant,
++}
++/// DESKPERF: a converted frame waits at most this long for its flip's time, then goes with the time it was taken.
++const FLIP_WAIT: Duration = Duration::from_millis(100);
++
+ struct H264 {
+     tx: Option<mpsc::Sender<ToWriter>>,
+-    /// tickets of the frames converting on the GPU, with their times
+-    gpu: std::collections::VecDeque<(u64, u64)>,
++    /// the frames converting on the GPU, in the order taken
++    gpu: std::collections::VecDeque<GpuFrame>,
++    /// DESKPERF (`record_flip_times`): converted frames waiting for the time of the flip that showed them, in order
++    held: std::collections::VecDeque<(crate::render::RecordFrame, GpuFrame)>,
++    flip_times: bool,
++    /// the movie's time origin: a flip (or a turn) and the movie time it is
++    base: Option<(Instant, u64)>,
++    /// the last frame sent: its movie time, the desk frame it showed
++    sent_at_us: Option<u64>,
++    sent_seq: u64,
++    /// frames timed by their flips, by the turn they were taken in (no flip known in time, or no new frame)
++    by_flip: u64,
++    by_turn: u64,
++    /// the spacing of the frames sent, in 60 Hz slots (1..8, the last: 8 or more)
++    gaps: [u64; 8],
+     /// set by the writer when the encoder failed
+     failed: Arc<std::sync::atomic::AtomicBool>,
+     fps: u32,
+@@ -134,6 +159,8 @@ struct Pending {
+ 
+ #[derive(Default)]
+ pub struct Recorder {
++    /// DESKPERF: the last flips (desk frame number, the panel's time of it), for the recording's frame times
++    flips: std::collections::VecDeque<(u64, Instant)>,
+     active: Option<Recording>,
+     pending: Option<Pending>,
+     finishing: Vec<(std::thread::JoinHandle<Result<Summary, String>>, Option<UnixStream>, u64, f64, (f64, f64), Instant)>,
+@@ -146,6 +173,23 @@ impl Recorder {
+     pub fn recording(&self) -> bool {
+         self.active.is_some() || self.pending.is_some()
+     }
++    /// DESKPERF: the desk's frame `seq` reached the screen at `at` (kept while an H.264 recording runs).
++    pub fn flipped(&mut self, seq: u64, at: Instant, _vblank: u32) {
++        if self.active.as_ref().is_some_and(|r| r.h264.is_some()) {
++            if self.flips.len() == 32 {
++                self.flips.pop_front();
++            }
++            self.flips.push_back((seq, at));
++        }
++    }
++}
++
++/// DESKPERF: `t` on the movie's clock: whole refreshes (`interval`) from the origin, as 60 Hz slots.
++fn movie_us(base: (Instant, u64), t: Instant, interval: Duration) -> u64 {
++    let i = interval.as_secs_f64().max(0.001);
++    let d = t.saturating_duration_since(base.0).as_secs_f64() - base.0.saturating_duration_since(t).as_secs_f64();
++    let slots = (d / i).round() as i64;
++    (base.1 as i64 + slots * H264_SLOT_US as i64).max(0) as u64
+ }
+ 
+ fn cpu_seconds() -> (f64, f64) {
+@@ -556,7 +600,7 @@ impl Server {
+             let fps = u32::from(options.record_fps.unwrap_or(policy.fps)).clamp(1, 60);
+             let settings = crate::encoder::Settings {
+                 width: out.w, height: out.h, fps, preset: policy.preset_name(), crf: u32::from(policy.crf), threads: u32::from(policy.threads), nice: u32::from(policy.nice),
+-                path: path.clone(), ffmpeg,
++                background: policy.background, path: path.clone(), ffmpeg,
+             };
+             let encoder = match crate::encoder::open(policy.encoder, &settings) {
+                 Ok(e) => e,
+@@ -578,7 +622,8 @@ impl Server {
+                 }
+             };
+             h264_state = Some(H264 {
+-                tx: Some(wtx), gpu: Default::default(), failed, fps, writeback: policy.writeback, last_take: None, last_at_us: 0, no_slot: 0,
++                tx: Some(wtx), gpu: Default::default(), held: Default::default(), flip_times: policy.flip_times, base: None, sent_at_us: None, sent_seq: 0, by_flip: 0, by_turn: 0, gaps: [0; 8],
++                failed, fps, writeback: policy.writeback, last_take: None, last_at_us: 0, no_slot: 0,
+                 submit_us: 0, submit_max_us: 0, harvest_us: 0, taken: 0, sent: 0, encoder: name,
+             });
+             (None, handle)
+@@ -596,7 +641,8 @@ impl Server {
+             let _ = r.set_nonblocking(true);
+         }
+         eprintln!("WMRECORD start target={},{} {}x{} out={}x{} file={} codec={} {}", target.pos.x, target.pos.y, target.size.w, target.size.h, out.w, out.h, path.display(),
+-            if h264 { "h264" } else { "mjpeg" }, h264_state.as_ref().map_or(String::new(), |h| format!("encoder={} fps={} preset={} crf={} threads={} nice={} writeback={}", h.encoder, h.fps, policy.preset_name(), policy.crf, policy.threads, policy.nice, h.writeback)));
++            if h264 { "h264" } else { "mjpeg" }, h264_state.as_ref().map_or(String::new(), |h| format!("encoder={} fps={} preset={} crf={} threads={} nice={} writeback={} flip_times={} background={}", h.encoder, h.fps, policy.preset_name(), policy.crf, policy.threads, policy.nice, h.writeback, h.flip_times, policy.background)));
++        self.recorder.flips.clear();
+         let now = Instant::now();
+         self.recorder.active = Some(Recording {
+             target, out, path, started: now, next_due: now, seq: 0, dropped: 0, grab_us: 0, last_frame_count: None,
+@@ -679,23 +725,27 @@ impl Server {
+             let elapsed = rec.started.elapsed().as_micros() as u64;
+             let end_us = ((elapsed + H264_SLOT_US / 2) / H264_SLOT_US * H264_SLOT_US).max(h.last_at_us + H264_SLOT_US);
+             if let Ok(Some(ticket)) = self.renderer.record_capture((rec.target.pos.x, rec.target.pos.y, rec.target.size.w, rec.target.size.h), (rec.out.w, rec.out.h), h.writeback, H264_SLOTS) {
+-                h.gpu.push_back((ticket, end_us));
++                h.gpu.push_back(GpuFrame { ticket, at_us: end_us, seq: None, taken: Instant::now() });
+                 h.last_at_us = end_us;
+             }
++            let interval = self.pacer.interval();
+             for _ in 0..20 {
+                 if h.gpu.is_empty() {
+                     break;
+                 }
+-                for f in self.renderer.record_ready(Duration::from_millis(50)) {
+-                    Self::h264_send(h, f, &mut *self.renderer);
+-                }
++                let ready = self.renderer.record_ready(Duration::from_millis(50));
++                Self::h264_collect(h, ready, &mut *self.renderer);
+             }
++            Self::h264_drain(h, &self.recorder.flips, &mut *self.renderer, interval, true);
++            // the movie ends a refresh after its last frame at the earliest
++            let end_us = h.base.map_or(end_us, |b| movie_us(b, Instant::now(), interval)).max(h.sent_at_us.map_or(0, |s| s + H264_SLOT_US));
+             if let Some(tx) = h.tx.take() {
+-                let _ = tx.send(ToWriter::End(h.last_at_us.max(end_us)));
++                let _ = tx.send(ToWriter::End(end_us));
+             }
+-            eprintln!("WMRECORD h264 taken={} sent={} no_buffer={} lost_on_gpu={} submit_ms_avg={:.3} submit_ms_max={:.2} harvest_ms_avg={:.3} encoder={}",
++            let gaps: Vec<String> = h.gaps.iter().enumerate().filter(|(_, n)| **n > 0).map(|(i, n)| format!("{}{}:{n}", i + 1, if i == 7 { "+" } else { "" })).collect();
++            eprintln!("WMRECORD h264 taken={} sent={} no_buffer={} lost_on_gpu={} submit_ms_avg={:.3} submit_ms_max={:.2} harvest_ms_avg={:.3} encoder={} timed_by_flip={} timed_by_turn={} spacing_in_refreshes(n:count)=[{}]",
+                 h.taken, h.sent, h.no_slot, h.gpu.len(), if h.taken > 0 { h.submit_us as f64 / h.taken as f64 / 1000.0 } else { 0.0 }, h.submit_max_us as f64 / 1000.0,
+-                if h.sent > 0 { h.harvest_us as f64 / h.sent as f64 / 1000.0 } else { 0.0 }, h.encoder);
++                if h.sent > 0 { h.harvest_us as f64 / h.sent as f64 / 1000.0 } else { 0.0 }, h.encoder, h.by_flip, h.by_turn, gaps.join(","));
+             rec.dropped += h.no_slot;
+             rec.seq = h.taken;
+         }
+@@ -711,38 +761,81 @@ impl Server {
+         }
+         self.wm.backend_mut().dirty = true;
+     }
+-    /// DESK11: a converted frame to the writer with its time (frames come in the order they were taken).
+-    fn h264_send(h: &mut H264, f: crate::render::RecordFrame, renderer: &mut dyn crate::render::Renderer) {
+-        while let Some(&(ticket, at_us)) = h.gpu.front() {
+-            if ticket < f.ticket {
+-                h.gpu.pop_front();
+-                continue;
++    /// DESK11: converted frames, matched to the frames taken (in order); DESKPERF: they wait in `held` for their
++    /// times. A frame no longer expected is given back.
++    fn h264_collect(h: &mut H264, ready: Vec<crate::render::RecordFrame>, renderer: &mut dyn crate::render::Renderer) {
++        'frames: for f in ready {
++            while let Some(&g) = h.gpu.front() {
++                if g.ticket < f.ticket {
++                    h.gpu.pop_front();
++                    continue;
++                }
++                if g.ticket == f.ticket {
++                    h.gpu.pop_front();
++                    h.held.push_back((f, g));
++                    continue 'frames;
++                }
++                break;
+             }
+-            if ticket == f.ticket {
+-                h.gpu.pop_front();
+-                if let Some(tx) = h.tx.as_ref() {
+-                    if tx.send(ToWriter::Frame(f, at_us)).is_ok() {
+-                        h.sent += 1;
+-                        return;
+-                    }
++            renderer.record_release(f.slot);
++        }
++    }
++    /// DESKPERF: the held frames to the writer in order, each with its time: the flip that showed its desk frame
++    /// (`record_flip_times`; waited for up to `FLIP_WAIT`), else the turn it was taken in (a frame taken again
++    /// with nothing new, or the switch off) - both on the movie's 60 Hz grid, a refresh apart at least. `all`:
++    /// none waits (the recording's end).
++    fn h264_drain(h: &mut H264, flips: &std::collections::VecDeque<(u64, Instant)>, renderer: &mut dyn crate::render::Renderer, interval: Duration, all: bool) {
++        while let Some(&(f, g)) = h.held.front() {
++            let fresh = g.seq.is_some_and(|s| s > h.sent_seq);
++            let flip = g.seq.filter(|_| fresh).and_then(|s| flips.iter().find(|(seq, _)| *seq >= s).map(|(_, at)| *at));
++            if h.flip_times && fresh && flip.is_none() && !all && g.taken.elapsed() < FLIP_WAIT {
++                break; // its flip comes later
++            }
++            h.held.pop_front();
++            let at_us = if h.flip_times {
++                let t = flip.unwrap_or(g.taken);
++                if flip.is_some() { h.by_flip += 1 } else { h.by_turn += 1 }
++                let base = *h.base.get_or_insert((t, g.at_us));
++                movie_us(base, t, interval)
++            } else {
++                h.by_turn += 1;
++                g.at_us
++            };
++            let at_us = match h.sent_at_us {
++                Some(last) if at_us <= last => last + H264_SLOT_US,
++                _ => at_us,
++            };
++            if let Some(last) = h.sent_at_us {
++                let gap = ((at_us - last) / H264_SLOT_US).clamp(1, 8) as usize;
++                h.gaps[gap - 1] += 1;
++            }
++            if let Some(s) = g.seq.filter(|_| fresh) {
++                h.sent_seq = s;
++            }
++            if let Some(tx) = h.tx.as_ref() {
++                if tx.send(ToWriter::Frame(f, at_us)).is_ok() {
++                    h.sent += 1;
++                    h.sent_at_us = Some(at_us);
++                    continue;
+                 }
+             }
+-            break;
++            renderer.record_release(f.slot);
+         }
+-        renderer.record_release(f.slot);
+     }
+     /// DESK11: each turn of the loop while recording H.264: the frames the GPU finished go to the writer; a new
+     /// frame is taken when the screen changed and one is due (at most `record_fps` a second), or after
+     /// `H264_IDLE_MS` without a change.
+     fn record_h264_tick(&mut self, frames_now: u64) {
++        let interval = self.pacer.interval();
++        let seq = self.pacing.seq();
+         let Some(rec) = self.recorder.active.as_mut() else { return };
+         let Some(h) = rec.h264.as_mut() else { return };
+         let t = Instant::now();
+         let ready = self.renderer.record_ready(Duration::ZERO);
+-        if !ready.is_empty() {
+-            for f in ready {
+-                Self::h264_send(h, f, &mut *self.renderer);
+-            }
++        let any = !ready.is_empty() || !h.held.is_empty();
++        Self::h264_collect(h, ready, &mut *self.renderer);
++        Self::h264_drain(h, &self.recorder.flips, &mut *self.renderer, interval, false);
++        if any {
+             h.harvest_us += t.elapsed().as_micros() as u64;
+         }
+         let now = Instant::now();
+@@ -769,7 +862,8 @@ impl Server {
+         rec.last_frame_count = Some(frames_now);
+         match result {
+             Ok(Some(ticket)) => {
+-                h.gpu.push_back((ticket, at_us));
++                // the desk frame on the screen now (taken after it was drawn: the last one) when it is new
++                h.gpu.push_back(GpuFrame { ticket, at_us, seq: fresh.then_some(seq), taken: now });
+                 h.taken += 1;
+                 h.last_at_us = at_us;
+             }
+diff --git a/crates/wm-darwin/src/render.rs b/crates/wm-darwin/src/render.rs
+index 38b2208..65ae6a0 100644
+--- a/crates/wm-darwin/src/render.rs
++++ b/crates/wm-darwin/src/render.rs
+@@ -337,6 +337,33 @@ pub trait Renderer {
+     fn release_dmabuf(&mut self, id: u64) {
+         let _ = id;
+     }
++    /// DESKPERF: a buffer of the renderer's own for window `window`'s shared-memory picture of `width` x
++    /// `height` (`xrgb`: opaque, the fourth byte not read), drawn as `DrawOp::External` with the returned id:
++    /// the caller writes the client's rows into it as they are (B, G, R, A; `pitch` bytes a row) and shows it
++    /// with `set_window_external`. `fresh`: just made (its rows hold nothing yet). It is the renderer's to give
++    /// back once no window shows it. `Ok(None)`: this renderer has none (the picture is copied as before).
++    fn shm_target(&mut self, window: u64, width: u32, height: u32, xrgb: bool) -> Result<Option<ShmTarget>, String> {
++        let _ = (window, width, height, xrgb);
++        Ok(None)
++    }
++    /// DESKPERF: the rows of a buffer `shm_target` gave (a minimised window's picture is read from it).
++    fn shm_map(&self, id: u64) -> Option<(*const u8, usize)> {
++        let _ = id;
++        None
++    }
++    /// DESKPERF: time spent uploading CPU pictures to textures since the last call (us).
++    fn take_upload_us(&mut self) -> u64 {
++        0
++    }
++}
++
++/// DESKPERF: where a window's shared-memory picture goes (`Renderer::shm_target`).
++#[derive(Clone, Copy, Debug)]
++pub struct ShmTarget {
++    pub id: u64,
++    pub map: *mut u8,
++    pub pitch: usize,
++    pub fresh: bool,
+ }
+ 
+ /// One single-plane client dma-buf.
+diff --git a/crates/wm-darwin/src/server.rs b/crates/wm-darwin/src/server.rs
+index fce9154..b334a6e 100644
+--- a/crates/wm-darwin/src/server.rs
++++ b/crates/wm-darwin/src/server.rs
+@@ -91,13 +91,20 @@ pub(crate) fn dmabuf_preview(dmabuf: &Dmabuf, width: u32, height: u32, edge: u32
+     if map == libc::MAP_FAILED {
+         return None;
+     }
+-    let source = unsafe { std::slice::from_raw_parts(map as *const u8, length) };
+-    let fit = (f64::from(edge) / f64::from(width.max(height))).min(1.0);
++    let preview = map_preview(map as *const u8, offset as usize, stride as usize, width, height, edge);
++    unsafe { libc::munmap(map, length) };
++    Some(preview)
++}
++/// A picture of B, G, R, x rows at `source` (+`offset`, `stride` bytes a row) sampled down to fit `edge` pixels
++/// (DESKPERF: also a window's picture in the desk's own GPU buffer).
++pub(crate) fn map_preview(source: *const u8, offset: usize, stride: usize, width: u32, height: u32, edge: u32) -> wm_theme_api::DecorationBuffer {
++    let source = unsafe { std::slice::from_raw_parts(source, offset + stride * height as usize) };
++    let fit = (f64::from(edge) / f64::from(width.max(height).max(1))).min(1.0);
+     let (w, h) = (((f64::from(width) * fit).round() as u32).max(1), ((f64::from(height) * fit).round() as u32).max(1));
+     let mut pixels = Vec::with_capacity(w as usize * h as usize * 4);
+     for y in 0..h {
+         let sy = (u64::from(y) * u64::from(height) / u64::from(h)) as usize;
+-        let row = offset as usize + sy * stride as usize;
++        let row = offset + sy * stride;
+         for x in 0..w {
+             let sx = (u64::from(x) * u64::from(width) / u64::from(w)) as usize;
+             let p = &source[row + sx * 4..row + sx * 4 + 4];
+@@ -105,8 +112,7 @@ pub(crate) fn dmabuf_preview(dmabuf: &Dmabuf, width: u32, height: u32, edge: u32
+             pixels.extend_from_slice(&[p[2], p[1], p[0], 255]);
+         }
+     }
+-    unsafe { libc::munmap(map, length) };
+-    Some(wm_theme_api::DecorationBuffer { width: w, height: h, pixels })
++    wm_theme_api::DecorationBuffer { width: w, height: h, pixels }
+ }
+ 
+ /// DESK10 (FX-022): a whole dma-buf picture through a CPU mapping, for the surfaces the desk shows from
+@@ -272,6 +278,8 @@ pub struct Server {
+     fifo: HashMap<u64, FifoHold>,
+     /// Events the desktop could not use (said in the log, never fatal).
+     input_refused: u64,
++    /// DESKPERF: the renderer refused a buffer for a window's shared-memory picture (said once; copied on the CPU)
++    shm_gpu_failed: bool,
+     /// The dma-buf behind each imported id (keeps its fd open: fence polls, checks).
+     external_dmabufs: HashMap<u64, Dmabuf>,
+     /// Committed dma-bufs whose rendering may not be finished: (id, since).
+@@ -503,6 +511,7 @@ impl Server {
+             policy: Default::default(),
+             fifo: HashMap::new(),
+             input_refused: 0,
++            shm_gpu_failed: false,
+             external_dmabufs: HashMap::new(),
+             pending_fences: Vec::new(),
+             wait_for_fences: std::env::var("CHONKSTEP_DARWIN_DMABUF_WAIT").map_or(true, |v| v != "off"),
+@@ -798,6 +807,11 @@ impl Server {
+     /// Native SFGOP acceptance is a memory-store fence, not vblank or panel proof.
+     pub fn repaint(&mut self, presenter: &mut impl Presenter, time_ms: u32) -> Result<(), String> {
+         self.policy.tick();
++        // DESKPERF: `WMTRACE` on or off with the policy (a test's switch)
++        if self.policy.now.pacing_trace != self.pacing.trace.is_some() {
++            self.pacing.trace = self.policy.now.pacing_trace.then(std::time::Instant::now);
++            eprintln!("WMTRACE {} (times in ms from here)", if self.policy.now.pacing_trace { "on" } else { "off" });
++        }
+         self.fifo_tick();
+         self.clipboard_tick();
+         #[cfg(feature = "desktop-shell")]
+@@ -928,6 +942,9 @@ impl Server {
+         self.pacing.drawn();
+         let screen = wm_core::Backend::screen_size(self.wm.backend());
+         self.pacing.rendered(started.elapsed(), stats.bytes_written, stats.damage_px, u64::from(screen.w) * u64::from(screen.h));
++        let upload_us = self.renderer.take_upload_us();
++        self.pacing.uploads(upload_us);
++        self.pacing.trace_frame(started, started.elapsed(), late, blank, self.pacer.budget());
+         let seq = self.pacing.seq();
+         for (_, callbacks) in self.feedback_pending.drain() {
+             self.feedback_drawn.extend(callbacks.into_iter().map(|c| (seq, c)));
+@@ -1180,7 +1197,13 @@ impl Server {
+         // DESK8: frame callbacks carry the flip's time (ms of the same clock), not the loop's
+         let time_ms = if self.policy.now.flip_time_callbacks { at.as_millis() as u32 } else { time_ms };
+         self.flip_seen = true;
+-        if let Some(seq) = self.pacing.flipped(presented.at) {
++        let flipped = self.pacing.flipped(presented.at);
++        self.pacing.trace_flip(presented.at, flipped, presented.sequence);
++        // DESKPERF: the recorder times its frames by their flips
++        if let Some(seq) = flipped {
++            self.recorder.flipped(seq, presented.at, presented.sequence);
++        }
++        if let Some(seq) = flipped {
+             let refresh = smithay::wayland::presentation::Refresh::fixed(self.pacer.interval());
+             let (shown, waiting): (Vec<_>, Vec<_>) = self.feedback_drawn.drain(..).partition(|(s, _)| *s <= seq);
+             self.feedback_drawn = waiting;
+@@ -1656,7 +1679,9 @@ impl Server {
+         }
+         for (id, external) in take {
+             let started = std::time::Instant::now();
+-            let preview = self.external_dmabufs.get(&external.id).and_then(|d| dmabuf_preview(d, external.width, external.height, 320));
++            // DESKPERF: a window drawn on the CPU whose picture is in the desk's own GPU buffer: read from there
++            let preview = self.external_dmabufs.get(&external.id).and_then(|d| dmabuf_preview(d, external.width, external.height, 320))
++                .or_else(|| self.renderer.shm_map(external.id).map(|(map, pitch)| map_preview(map, 0, pitch, external.width, external.height, 320)));
+             let ok = preview.is_some();
+             if let Some(w) = self.wm.backend_mut().windows.get_mut(&id) {
+                 // an empty picture stands for "tried": not read again on every turn
+@@ -1871,6 +1896,42 @@ impl Server {
+         }
+         Ok(picture)
+     }
++    /// DESKPERF (policy `shm_gpu`): a window's shared-memory buffer into the renderer's own GPU buffer for it,
++    /// byte for byte (no colour conversion, no clamp, no texture upload later: the GPU samples it as a dma-buf);
++    /// only the damaged rectangles when the window shows that buffer already. `None`: the renderer has none for
++    /// it (the CPU copy as before); `Some(Err)`: the buffer is refused.
++    fn shm_to_gpu(&mut self, id: u64, buffer: &wl_buffer::WlBuffer, damage: &[DRect], accept: impl FnOnce(u32, u32) -> Result<(), String>) -> Option<Result<Size, String>> {
++        let (width, height, xrgb) = match crate::pixels::shm_format(buffer) {
++            Ok(f) => f,
++            Err(error) => return Some(Err(error)),
++        };
++        let target = match self.renderer.shm_target(id, width, height, xrgb) {
++            Ok(Some(t)) => t,
++            Ok(None) => return None,
++            Err(error) => {
++                if !self.shm_gpu_failed {
++                    self.shm_gpu_failed = true;
++                    eprintln!("WMSHM window={id} {width}x{height}: {error}: copied on the CPU as before (said once)");
++                }
++                return None;
++            }
++        };
++        let showing = self.wm.backend().windows.get(&id).and_then(|w| w.external).is_some_and(|e| e.id == target.id);
++        let partial = showing && !target.fresh;
++        match crate::pixels::copy_shm_to_gpu(buffer, target.map, target.pitch, partial.then_some(damage), accept) {
++            Ok(copy) => {
++                self.pacing.shm_copied(id, true, copy.pixels, copy.copy_us);
++                if target.fresh {
++                    eprintln!("WMSHM window={id} picture {width}x{height} {} into the desk's GPU buffer {} (pitch {})", if xrgb { "XRGB" } else { "ARGB" }, target.id, target.pitch);
++                }
++                self.drop_held(id, None, false);
++                let shown: &[DRect] = if partial { &copy.rects } else { &[] };
++                self.wm.backend_mut().set_window_external(id, ExternalBuffer { id: target.id, width, height }, shown);
++                Some(Ok(Size::new(width, height)))
++            }
++            Err(error) => Some(Err(error)),
++        }
++    }
+     pub(crate) fn import_shm(&self, buffer: &wl_buffer::WlBuffer) -> Result<wm_theme_api::DecorationBuffer, String> {
+         match self.renderer.kind() {
+             RendererKind::Legacy => crate::pixels::copy_shm(buffer),
+@@ -2148,6 +2209,7 @@ impl CompositorHandler for Server {
+         let destination = viewport.dst.map(|d| Size::new(d.w.max(1) as u32, d.h.max(1) as u32));
+         let display_scale = self.scale;
+         let attached = matches!(buffer, Some(BufferAssignment::NewBuffer(_)));
++        let attached_external = matches!(&buffer, Some(BufferAssignment::NewBuffer(b)) if self.external_by_buffer.contains_key(&b.id()));
+         let removed = matches!(buffer, Some(BufferAssignment::Removed));
+         match buffer {
+             Some(BufferAssignment::NewBuffer(buffer)) => {
+@@ -2287,6 +2349,17 @@ impl CompositorHandler for Server {
+                             return;
+                         }
+                     }
++                } else if let Some(gpu) = self.policy.now.shm_gpu.then(|| self.shm_to_gpu(id, &buffer, &damage, cropped)).flatten() {
++                    // DESKPERF: the client's rows as they are into the desk's own GPU buffer for the window
++                    self.scale_stats.exact_commits += 1;
++                    buffer.release(); // all CPU reads finished
++                    match gpu {
++                        Ok(size) => size,
++                        Err(error) => {
++                            Self::refuse(surface, &error);
++                            return;
++                        }
++                    }
+                 } else {
+                     self.scale_stats.exact_commits += 1;
+                     // Legacy: a fresh per-pixel copy of the whole buffer every
+@@ -2294,6 +2367,7 @@ impl CompositorHandler for Server {
+                     // into the image already held (whole buffer when the client
+                     // reported none or the size changed). Either way a refused
+                     // buffer leaves the previous image untouched.
++                    let copy_started = std::time::Instant::now();
+                     let copied = match self.renderer.kind() {
+                         RendererKind::Legacy => crate::pixels::copy_shm(&buffer)
+                             .and_then(|image| cropped(image.width, image.height).map(|()| ShmCopy::New(image))),
+@@ -2305,6 +2379,12 @@ impl CompositorHandler for Server {
+                         ),
+                     };
+                     buffer.release(); // all CPU reads finished; retain only the copy
++                    let copy_us = copy_started.elapsed().as_micros() as u64;
++                    match &copied {
++                        Ok(ShmCopy::New(image)) => self.pacing.shm_copied(id, false, u64::from(image.width) * u64::from(image.height), copy_us),
++                        Ok(ShmCopy::Updated(rects)) => self.pacing.shm_copied(id, false, rects.iter().map(|r| r.area()).sum(), copy_us),
++                        Err(_) => {}
++                    }
+                     match copied {
+                         Ok(ShmCopy::New(image)) => {
+                             let size = Size::new(image.width, image.height);
+@@ -2485,7 +2565,10 @@ impl CompositorHandler for Server {
+             self.feedback_pending.entry(id).or_default().extend(feedback);
+         }
+         if attached {
+-            self.pacing.handled(id, handler_started.elapsed());
++            let took = handler_started.elapsed();
++            self.pacing.handled(id, took);
++            let kind = if attached_external { "dmabuf" } else if self.wm.backend().windows.get(&id).is_some_and(|w| w.external.is_some()) { "shm-gpu" } else { "shm-cpu" };
++            self.pacing.trace_commit(id, handler_started, took, kind);
+         }
+         self.callbacks.entry(id).or_default().extend(callbacks);
+         if !unchanged {
+diff --git a/crates/wm-darwin/tests/wayland_shm.rs b/crates/wm-darwin/tests/wayland_shm.rs
+index 6bacf7e..75fc197 100644
+--- a/crates/wm-darwin/tests/wayland_shm.rs
++++ b/crates/wm-darwin/tests/wayland_shm.rs
+@@ -342,6 +342,9 @@ enum Request {
+     /// The oldest window activated, as the dock's tile asks for it through its foreign-toplevel handle
+     /// and Command-Tab does (wm-core `ActivateRequested`).
+     ActivateOldest,
++    /// DESKPERF: a policy pinned as the test instrument pins it (`key=value` lines); with `true` the snapshot no
++    /// longer holds the screen to the CPU render (which has no pixels of a window drawn from a GPU buffer).
++    Policy(String,bool,mpsc::Sender<Result<String,String>>),
+     Stop,
+ }
+ struct Harness {
+@@ -358,6 +361,14 @@ impl Harness {
+     }
+     /// A server with an output of this size that lives this many seconds.
+     fn sized(input:bool, width:u32, height:u32, seconds:u64)->(Self,Connection){
++        Self::made(input, width, height, seconds, false)
++    }
++    /// DESKPERF: on the GL renderer off screen (None: this host has no GLES 3).
++    fn gl(input:bool, width:u32, height:u32)->Option<(Self,Connection)>{
++        if let Err(error)=wm_darwin::glrender::GlRenderer::offscreen(width,height){eprintln!("no GL here ({error})");return None;}
++        Some(Self::made(input, width, height, 15, true))
++    }
++    fn made(input:bool, width:u32, height:u32, seconds:u64, gl:bool)->(Self,Connection){
+         let (server, client) = UnixStream::pair().unwrap();
+         let (tx, rx) = mpsc::channel();
+         let stopped = Arc::new(AtomicBool::new(false));
+@@ -368,7 +379,7 @@ impl Harness {
+             // CHONKSTEP_DARWIN_TEST_GL=1 runs every wire test on the GL renderer
+             // (off-screen) when this machine has GLES 3; snapshots then come
+             // from GL readback and are held to the same CPU reference.
+-            if std::env::var_os("CHONKSTEP_DARWIN_TEST_GL").is_some() {
++            if gl || std::env::var_os("CHONKSTEP_DARWIN_TEST_GL").is_some() {
+                 match wm_darwin::glrender::GlRenderer::offscreen(width, height) {
+                     Ok(renderer) => state.set_renderer_boxed(Box::new(renderer)),
+                     Err(error) => eprintln!("GL unavailable ({error}); wire test runs on the CPU renderer"),
+@@ -382,6 +393,7 @@ impl Harness {
+                 reject: false,
+             };
+             let started = Instant::now();
++            let mut unreferenced = false;
+             let mut autopilot: Option<(wm_darwin::autopilot::Autopilot, mpsc::Sender<Vec<String>>, Vec<String>)> = None;
+             while started.elapsed() < Duration::from_secs(seconds) {
+                 display.dispatch_clients(&mut state).unwrap();
+@@ -423,6 +435,7 @@ impl Harness {
+                     Ok(Request::Mouse(bytes))=>{state.deliver_hid(decoder.mouse(&bytes).unwrap(),started.elapsed().as_millis() as u32).unwrap();},
+                     Ok(Request::Hid(event))=>{state.deliver_hid(event,started.elapsed().as_millis() as u32).unwrap();},
+                     Ok(Request::Virtual(event,reply))=>{let _=reply.send(state.virtual_event(event,started.elapsed().as_millis() as u32));},
++                    Ok(Request::Policy(text,skip,reply))=>{unreferenced=skip;let _=reply.send(state.policy.pin(&text));},
+                     Ok(Request::ActivateOldest)=>{if let Some(id)=state.wm.backend().windows.keys().min().copied(){state.wm.dispatch(wm_core::BackendEvent::ActivateRequested(id));}},
+                     Ok(Request::Owner(event))=>{let ms=started.elapsed().as_millis() as u32;state.owner_input(&event,ms);state.deliver_hid(event,ms).unwrap();},
+                     Ok(Request::Snapshot(reply)) => {
+@@ -439,7 +452,7 @@ impl Harness {
+                         };
+                         // Whatever renderer is selected, the screen must hold
+                         // exactly the original full-frame render of the scene.
+-                        if !out.reject && !state.wm.backend().dirty {
++                        if !out.reject && !state.wm.backend().dirty && !unreferenced {
+                             let reference = state.wm.backend().render().unwrap();
+                             assert!(pixels == reference.data(), "screen differs from full render");
+                         }
+@@ -1933,6 +1946,109 @@ fn synthetic_keys_whose_window_went_reach_no_other_window(){
+     assert_eq!(refused,6,"every remaining key is refused (reported to the instrument)");
+ }
+ 
++/// DESKPERF (policy `shm_gpu`): a window drawn on the CPU, its rows copied as they are into the renderer's own
++/// buffer for it and drawn from there, gives the screen the CPU copy gives: the whole picture, then a damaged
++/// rectangle only (the rest is the picture before), on the GL renderer; back on the CPU copy, the same again.
++#[test]
++fn a_shm_window_drawn_from_the_desks_gpu_buffer_looks_as_the_cpu_copy(){
++    let Some((h,connection))=Harness::gl(false,320,240) else { eprintln!("SKIPPED a_shm_window_drawn_from_the_desks_gpu_buffer_looks_as_the_cpu_copy: no GLES 3"); return; };
++    let pin=|text:&str,skip:bool|{let(tx,rx)=mpsc::channel();h.tx.send(Request::Policy(text.into(),skip,tx)).unwrap();rx.recv_timeout(Duration::from_secs(3)).unwrap().unwrap()};
++    let mut queue=connection.new_event_queue();let qh=queue.handle();let mut c=Client::default();
++    connection.display().get_registry(&qh,());for _ in 0..3{queue.roundtrip(&mut c).unwrap();}
++    let surface=c.compositor.as_ref().unwrap().create_surface(&qh,());let xdg=c.shell.as_ref().unwrap().get_xdg_surface(&surface,&qh,());let top=xdg.get_toplevel(&qh,());
++    let decor=c.decoration.as_ref().unwrap().get_toplevel_decoration(&top,&qh,());decor.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
++    top.set_title("video".into());surface.commit();queue.roundtrip(&mut c).unwrap();
++    // 101 x 61 (a row of 404 bytes: not the GPU buffer's pitch), a stride with padding, a pattern
++    let (w,hh,stride)=(101usize,61usize,101usize*4+20);
++    let picture=|seed:u8,rect:Option<(usize,usize,usize,usize)>,base:&[u8]|{let mut b=base.to_vec();for y in 0..hh{for x in 0..w{
++        let inside=rect.is_none_or(|(x0,y0,x1,y1)|x>=x0&&x<x1&&y>=y0&&y<y1);
++        if inside{let v=(x as u8).wrapping_mul(3).wrapping_add((y as u8).wrapping_mul(7)).wrapping_add(seed);b[y*stride+x*4..][..4].copy_from_slice(&[v,v.wrapping_add(80),255-v,0x5a]);}}}b};
++    let commit=|bytes:&[u8],damage:Option<(i32,i32,i32,i32)>,queue:&mut wayland_client::EventQueue<Client>,c:&mut Client|{
++        let mut file=tempfile::tempfile().unwrap();file.write_all(bytes).unwrap();
++        let pool=c.shm.as_ref().unwrap().create_pool(file.as_fd(),bytes.len() as i32,&qh,());
++        let buffer=pool.create_buffer(0,w as i32,hh as i32,stride as i32,wl_shm::Format::Xrgb8888,&qh,());
++        surface.attach(Some(&buffer),0,0);
++        match damage{Some((x,y,dw,dh))=>surface.damage_buffer(x,y,dw,dh),None=>surface.damage_buffer(0,0,i32::MAX,i32::MAX)}
++        surface.commit();for _ in 0..3{queue.roundtrip(c).unwrap();}
++        buffer.destroy();pool.destroy();
++    };
++    let first=picture(1,None,&vec![0u8;stride*hh]);
++    commit(&first,None,&mut queue,&mut c);
++    let cpu=h.snapshot();
++    let content=cpu.content.unwrap();
++    assert_eq!((content.size.w,content.size.h),(w as u32,hh as u32));
++    pin("shm_gpu=on",true);
++    commit(&first,None,&mut queue,&mut c);
++    let gpu=h.snapshot();
++    let diff=gpu.pixels.iter().zip(&cpu.pixels).filter(|(a,b)|a!=b).count();
++    assert_eq!(diff,0,"the whole picture from the GPU buffer equals the CPU copy's screen");
++    // a rectangle changed, only it damaged (the bytes outside it are other in this buffer: they must not show)
++    let damaged=picture(77,Some((10,5,40,30)),&first);
++    // the buffer sent: the change inside the rectangle, rubbish outside it
++    let mut sent=picture(200,None,&first);
++    for y in 5..30{sent[y*stride+40..y*stride+160].copy_from_slice(&damaged[y*stride+40..y*stride+160]);}
++    commit(&sent,Some((10,5,30,25)),&mut queue,&mut c);
++    let partial=h.snapshot();
++    // the CPU copy of the expected picture (whole), for the reference
++    pin("shm_gpu=off",false);
++    commit(&damaged,None,&mut queue,&mut c);
++    let reference=h.snapshot();
++    let diff=partial.pixels.iter().zip(&reference.pixels).filter(|(a,b)|a!=b).count();
++    assert_eq!(diff,0,"a damaged rectangle only: the screen is the picture before with that rectangle new");
++    assert_ne!(partial.pixels,gpu.pixels,"the rectangle did change the screen");
++}
++
++/// DESKPERF (QTP, 14:1xZ on 18 November): Command held by the instrument, its window closed (Command-Q), the
++/// release of Command found no window. Before, the seat kept Command held and the instrument's next key, in
++/// another window, came as Command-Space. The release still lets go of the key in the seat (sent to no window),
++/// and the next window's key comes without a modifier.
++#[test]
++#[cfg(feature = "desktop-shell")]
++fn a_synthetic_modifier_released_after_its_window_went_is_not_held_for_the_next_key(){
++    use wm_darwin::hid::{Event,Motion};
++    let(h,connection)=Harness::with_input(true);
++    let (server_end,client_end)=UnixStream::pair().unwrap();
++    h.tx.send(Request::AddClient(server_end)).unwrap();
++    let other=Connection::from_socket(client_end).unwrap();
++    let(mut qb,mut cb,_sb,_tb)=map_with_seat(&other);
++    let virt=|e:Event|{let(tx,rx)=mpsc::channel();h.tx.send(Request::Virtual(e,tx)).unwrap();rx.recv_timeout(Duration::from_secs(3)).unwrap()};
++    let press_in=|r:wm_core::Rect|{
++        let p=wm_core::Point::new(r.pos.x+r.size.w as i32/2,r.pos.y+r.size.h as i32/2);
++        let abs=Motion::Absolute(((f64::from(p.x)+0.25)/319.*65535.).round() as u16,((f64::from(p.y)+0.25)/239.*65535.).round() as u16);
++        virt(Event::Pointer{motion:abs,buttons:0,wheel:0}).unwrap();
++        virt(Event::Pointer{motion:Motion::Relative(0,0),buttons:1,wheel:0}).unwrap();
++        virt(Event::Pointer{motion:Motion::Relative(0,0),buttons:0,wheel:0}).unwrap();
++    };
++    {
++        let(mut qa,mut ca,_sa,_ta)=map_with_seat(&connection);
++        for _ in 0..3{h.snapshot();qa.roundtrip(&mut ca).unwrap();qb.roundtrip(&mut cb).unwrap();}
++        let shot=h.snapshot();
++        assert_eq!(shot.windows.len(),2,"{:?}",shot.windows);
++        press_in(shot.windows[1].0);
++        // Command (KEY_LEFTMETA) held in A
++        virt(Event::Key{evdev:125,down:true}).unwrap();
++        for _ in 0..3{h.snapshot();qa.roundtrip(&mut ca).unwrap();qb.roundtrip(&mut cb).unwrap();}
++        assert!(ca.keys.iter().any(|(k,_)|*k==125),"A got Command: {:?}",ca.keys);
++    }
++    // A's client goes (as after its Command-Q)
++    drop(connection);
++    for _ in 0..5{h.snapshot();qb.roundtrip(&mut cb).unwrap();std::thread::sleep(Duration::from_millis(5));}
++    let shot=h.snapshot();
++    assert_eq!(shot.windows.len(),1,"A is gone");
++    let kb=cb.keys.len();
++    assert_eq!(virt(Event::Key{evdev:125,down:false}),Ok(()),"the release lets go of Command in the seat");
++    for _ in 0..3{h.snapshot();qb.roundtrip(&mut cb).unwrap();}
++    assert_eq!(cb.keys.len(),kb,"the release went to no window");
++    // the next request: a press in B, then Space
++    press_in(shot.windows[0].0);
++    virt(Event::Key{evdev:57,down:true}).unwrap();
++    virt(Event::Key{evdev:57,down:false}).unwrap();
++    for _ in 0..3{h.snapshot();qb.roundtrip(&mut cb).unwrap();}
++    assert!(cb.keys[kb..].iter().any(|(k,_)|*k==57),"B got Space: {:?}",&cb.keys[kb..]);
++    assert_eq!(cb.modifier_masks.last().copied().unwrap_or(0),0,"no modifier held when B gets Space: {:?}",cb.modifier_masks);
++    assert!(cb.held_on_enter.last().is_none_or(|held|!held.contains(&125)),"Command is not among the keys held when B is entered: {:?}",cb.held_on_enter);
++}
++
+ /// DESK10 (the owner: "I have to scroll a lot just to make the page move"): the built-in trackpad's
+ /// two-finger scrolling reaches the window under the pointer as finger scrolling - axis source finger,
+ /// travel in logical units, no wheel notch and no value120 - and ends with one axis_stop after a
