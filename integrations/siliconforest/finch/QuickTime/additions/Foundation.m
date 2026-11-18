@@ -6,12 +6,6 @@
 #import <objc/runtime.h>
 #include "absent.h"
 
-static NSError *SFUnavailable(NSString *what) {
-    return [NSError errorWithDomain:NSCocoaErrorDomain code:3328 /* NSFeatureUnsupportedError */
-                           userInfo:[NSDictionary dictionaryWithObject:[what stringByAppendingString:@" is not available on SiliconForest"]
-                                                                forKey:NSLocalizedDescriptionKey]];
-}
-
 /* Documented values. */
 SF_EXPORT NSString *const NSKeyedArchiveRootObjectKey = @"root";
 SF_EXPORT NSString *const NSAppleScriptErrorBriefMessage = @"NSAppleScriptErrorBriefMessage";
@@ -110,23 +104,9 @@ SF_EXPORT
 - (NSArray *)attributes { return [NSArray array]; }
 @end
 
-/* File wrappers are not implemented: creation fails with an error where there is one. */
-SF_EXPORT
-@interface NSFileWrapper : NSObject
-@end
-@implementation NSFileWrapper
-static id SFNoWrapper(id self, NSError **error) {
-    SF_ABSENT("NSFileWrapper is not implemented; documents saved as packages cannot be read or written");
-    if (error) *error = SFUnavailable(@"NSFileWrapper");
-    [self release];
-    return nil;
-}
-- (id)init { return SFNoWrapper(self, NULL); }
-- (id)initWithURL:(NSURL *)url options:(NSUInteger)options error:(NSError **)error { (void)url; (void)options; return SFNoWrapper(self, error); }
-- (id)initDirectoryWithFileWrappers:(NSDictionary *)children { (void)children; return SFNoWrapper(self, NULL); }
-- (id)initRegularFileWithContents:(NSData *)contents { (void)contents; return SFNoWrapper(self, NULL); }
-- (id)initWithCoder:(NSCoder *)coder { (void)coder; return SFNoWrapper(self, NULL); }
-@end
+/* NSFileWrapper is not defined here: this system's class is AppKit's, and this library
+ * re-exports AppKit's class symbols (additions/foundation-reexports.txt), so that one class of
+ * that name exists in the process. */
 
 /* File coordination. With no other process presenting files and no coordination service,
  * coordinating an access is running it: the accessor is called at once with the same URL.

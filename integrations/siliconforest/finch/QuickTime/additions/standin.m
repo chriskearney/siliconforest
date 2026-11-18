@@ -2,7 +2,7 @@
 /* Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
  *
  * Link-time stand-ins only. An additions library re-exports the system's own image of the
- * same framework, which the launcher's preparation step copies beside it as
+ * same framework, which the launcher's preparation step links beside it as
  * "<Name>.sf-under". When the additions subclass a class of that image, the linker needs a
  * library with that install name that exports the class: this file, compiled with SF_STANDIN
  * naming the framework. It is never shipped and never loaded. */
@@ -28,6 +28,9 @@ SF_EXPORT @interface AVAssetReaderOutput : NSObject @end
 #elif SF_STANDIN == 4 /* Foundation */
 SF_EXPORT @interface NSScriptObjectSpecifier : NSObject @end
 @implementation NSScriptObjectSpecifier @end
+#elif SF_STANDIN == 5 /* AppKit by its public path, for symbols re-exported from it */
+SF_EXPORT @interface NSFileWrapper : NSObject @end
+@implementation NSFileWrapper @end
 #else
 const char SFStandInHasNoSymbols = 0;
 #endif

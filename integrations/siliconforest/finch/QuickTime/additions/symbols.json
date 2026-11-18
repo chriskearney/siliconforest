@@ -256,8 +256,8 @@
   {
    "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
    "symbol": "_OBJC_CLASS_$_NSFileWrapper",
-   "kind": "absence",
-   "note": "creation fails with an error"
+   "kind": "real",
+   "note": "this system's own class, from AppKit (Cocotron), re-exported: one class in the process; it lacks initWithURL:options:error:"
   },
   {
    "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",

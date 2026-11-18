@@ -4,6 +4,7 @@
 synthetic images: no Mach-O file and no application bundle is read."""
 import importlib.util
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -63,6 +64,12 @@ class LoaderCheckTests(unittest.TestCase):
         problems, _ = check_exports.check({'/L/A': ['_a']}, lambda install: install, lambda path: other)
         self.assertEqual(problems, ['/L/A: the file there has install name /L/Other', '/L/A: not an arm64 image'])
 
+    def test_additions_install_name_is_accepted_and_nothing_else(self):
+        ours = Image('/L/A.sf-additions', ['_a'])
+        self.assertEqual(check_exports.check({'/L/A': ['_a']}, lambda install: install, lambda path: ours)[0], [])
+        other = Image('/L/A.sf-something', ['_a'])
+        self.assertEqual(len(check_exports.check({'/L/A': ['_a']}, lambda install: install, lambda path: other)[0]), 1)
+
     def test_import_list_rules(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / 'i.json'
@@ -94,7 +101,7 @@ class SymbolTableTests(unittest.TestCase):
         kinds = {}
         for row in table:
             kinds[row['kind']] = kinds.get(row['kind'], 0) + 1
-        self.assertEqual(kinds, {'absence': 50, 'constant': 37, 'real': 16, 'model': 9})
+        self.assertEqual(kinds, {'absence': 49, 'constant': 37, 'real': 17, 'model': 9})
         by_library = check_exports.load_imports(QT / 'additions/symbols.json')
         self.assertEqual(len(by_library), 18)
         self.assertEqual(sum(map(len, by_library.values())), 112)
@@ -180,6 +187,63 @@ class PrefixTests(unittest.TestCase):
             self.assertIn('CoreText', report['problems'][0])
             with self.assertRaises(SystemExit):
                 qt_prefix.assemble(d / 'prefix', d / 'root', d / 'add')
+
+
+class FakeImage:
+    def __init__(self, install, reexports=(), own=()):
+        self.id = {'name': install}
+        self.dylibs = [{'kind': 'reexport', 'name': n} for n in reexports]
+        self._own = set(own)
+
+    def exported(self):
+        return self._own, {}
+
+
+class FakeMacho:
+    """Stands for hb_macho over a made-up set of files: path -> FakeImage."""
+    def __init__(self, images):
+        self.images = images
+
+    def load(self, path, prefer=None):
+        return self.images[os.path.realpath(path)]
+
+
+class InstallNameChainTests(unittest.TestCase):
+    """The defect found on the M1 on 18 November 2026: dyld folds a library onto a loaded image
+    with the same install name, so equal names down a re-export chain break the load."""
+
+    def chain(self, images, start):
+        with tempfile.TemporaryDirectory() as d:
+            real = {}
+            for name in images:
+                p = Path(d) / name.strip('/').replace('/', '_')
+                p.write_text('x')
+                real[name] = str(p)
+            fake = FakeMacho({os.path.realpath(real[n]): FakeImage(*images[n]) for n in images})
+            find = lambda install: real.get(install)
+            return [n for n, _p in qt_prefix.install_name_chain(real[start], find, fake)]
+
+    def test_distinct_names_down_two_levels(self):
+        names = self.chain({'ours': ('/F.sf-additions', ['/F.sfcompat-file']),
+                            '/F.sfcompat-file': ('/F.sfcompat', ['/F.pd']),
+                            '/F.pd': ('/F', [])}, 'ours')
+        self.assertEqual(names, ['/F.sf-additions', '/F.sfcompat', '/F'])
+        self.assertEqual(len(names), len(set(names)))
+
+    def test_the_old_design_repeats_a_name(self):
+        names = self.chain({'ours': ('/F', ['/F.sfcompat-file']),
+                            '/F.sfcompat-file': ('/F.sfcompat', ['/F.pd']),
+                            '/F.pd': ('/F', [])}, 'ours')
+        self.assertEqual(names.count('/F'), 2)
+
+    def test_a_cycle_ends(self):
+        names = self.chain({'a': ('/A', ['b']), 'b': ('/B', ['a'])}, 'a')
+        self.assertEqual(names, ['/A', '/B'])
+
+    def test_committed_additions_never_carry_a_framework_path(self):
+        text = (QT / 'additions.nix').read_text()
+        self.assertIn('-Wl,-install_name,${builtins.elemAt l 1}.sf-additions', text)
+        self.assertIn('VideoToolbox.sf-additions', text)
 
 
 if __name__ == '__main__':

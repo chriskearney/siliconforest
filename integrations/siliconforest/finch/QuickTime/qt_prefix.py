@@ -18,9 +18,15 @@ DYLD_FRAMEWORK_PATH and DYLD_LIBRARY_PATH by one process. Nothing outside PREFIX
                  - otherwise the system's own image under ROOT is linked (ROOT "/" on the
                    machine: a symbolic link, so the process still loads the system's file
                    and only once) or, with --copy-under, copied (for a scan of a root copy).
-  --macho      directory of hb_macho.py; with it, names that an additions library and the
-               image under it both export are reported (the system gained them: rebuild
-               additions.nix with those names in `omit`). A class defined twice is an error.
+  --macho      directory of hb_macho.py. With it, three checks against the root:
+                 - names an additions library and the image under it both export are
+                   reported (the system gained them: rebuild additions.nix with them in `omit`);
+                 - a class our libraries define that ANY system framework or /usr/lib library
+                   already defines is an error (two classes of one name in one process);
+                 - an install name that appears twice on the way from an additions library
+                   down its re-exports is an error: dyld folds a library onto a loaded image
+                   with the same install name, which makes a library its own re-export (load
+                   fails) or a re-export cycle (unbounded recursion in symbol lookup).
 Prints a JSON report; exit status 1 if a framework to stand in front of is missing or a
 class is defined twice.
 """
@@ -69,6 +75,17 @@ def mirror_links(root_framework, prefix_framework):
         dirs[:] = [d for d in dirs if not (Path(directory) / d).is_symlink()]
 
 
+def link_version_contents(system_version_dir, prefix_version_dir, binary_names):
+    """Make the prefix's version directory show the system's Resources, Headers and the rest,
+    so that a bundle found from the binary's path in the prefix has its resources. Binaries
+    named in binary_names (ours and the image under it) are left alone."""
+    for entry in system_version_dir.iterdir():
+        target = prefix_version_dir / entry.name
+        if entry.name in binary_names or target.exists() or target.is_symlink():
+            continue
+        os.symlink(entry, target)
+
+
 def exports(path, find, hb_macho, seen=None):
     seen = set() if seen is None else seen
     real = os.path.realpath(path)
@@ -84,6 +101,49 @@ def exports(path, find, hb_macho, seen=None):
             target = os.path.join(os.path.dirname(real), name[len('@loader_path/'):]) if name.startswith('@loader_path/') else find(name)
             if target:
                 out |= exports(target, find, hb_macho, seen)
+    return out
+
+
+def install_name_chain(path, find, hb_macho, seen=None):
+    """[(install name, real path)] from an image down its re-exported libraries, depth first."""
+    seen = set() if seen is None else seen
+    real = os.path.realpath(path)
+    if real in seen or not os.path.isfile(real):
+        return []
+    seen.add(real)
+    image = hb_macho.load(real, prefer='arm64')
+    out = [(image.id['name'] if image.id else None, real)]
+    for lib in image.dylibs:
+        if lib['kind'] == 'reexport':
+            name = lib['name']
+            target = os.path.join(os.path.dirname(real), name[len('@loader_path/'):]) if name.startswith('@loader_path/') else find(name)
+            if target:
+                out += install_name_chain(target, find, hb_macho, seen)
+    return out
+
+
+def system_classes(root, hb_macho):
+    """{class symbol: [image]} for every Objective-C class the root's frameworks and /usr/lib
+    libraries export."""
+    import glob
+    files = set()
+    for pattern in ('System/Library/Frameworks/*.framework/Versions/*/*', 'System/Library/Frameworks/*.framework/Frameworks/*.framework/Versions/*/*',
+                    'System/Library/PrivateFrameworks/*.framework/Versions/*/*', 'usr/lib/*.dylib', 'usr/lib/swift/*.dylib'):
+        for p in glob.glob(os.path.join(str(root), pattern)):
+            if not os.path.islink(p) and os.path.isfile(p):
+                files.add(os.path.realpath(p))
+    out = {}
+    for f in sorted(files):
+        try:
+            with open(f, 'rb') as h:
+                if not hb_macho.is_macho(h.read(8)):
+                    continue
+            own, _ = hb_macho.load(f, prefer='arm64').exported()
+        except Exception:
+            continue
+        for s in own:
+            if s.startswith('_OBJC_CLASS_$_'):
+                out.setdefault(s, []).append(f)
     return out
 
 
@@ -139,6 +199,8 @@ def assemble(out, root, additions, stages=(), frameworks=(), copy_under=False, h
             continue
         shutil.copyfile(additions / name, place)
         place.chmod(0o755)
+        if row['under'] != 'staged provider':
+            link_version_contents(real.parent, place.parent, {name, under.name})
         # where the framework is also reachable through a link in another directory
         # (Versions/C/AppKit -> ../A/AppKit), "@loader_path" may be taken from that directory
         framework_dir = next(p for p in [place, *place.parents] if p.name.endswith('.framework'))
@@ -156,7 +218,47 @@ def assemble(out, root, additions, stages=(), frameworks=(), copy_under=False, h
             row['adds'] = len(mine)
             row['already_in_system'] = shadowed
             report['problems'] += [f'{name}: class defined twice: {s}' for s in shadowed if s.startswith('_OBJC_CLASS_$_')]
+            chain = install_name_chain(str(place), find, hb_macho)
+            row['install_names'] = [n for n, _p in chain]
+            names = [n for n, _p in chain if n and n.startswith('/')]
+            for n in sorted(set(x for x in names if names.count(x) > 1)):
+                report['problems'].append(f'{name}: install name {n} occurs twice on the re-export chain; dyld would fold one image onto the other')
         report['libraries'].append(row)
+    if hb_macho is not None:
+        classes = system_classes(root, hb_macho)
+        # a framework the prefix carries in place of the system's (a staged provider) keeps the
+        # system's image out of the process: its classes cannot clash
+        fronted = {row['name'] for row in report['libraries'] if row.get('under', '').startswith('/')}
+        replaced = set()
+        for d in FRAMEWORK_DIRS:
+            for fw in (out / d).glob('*.framework'):
+                if fw.stem not in fronted:
+                    replaced.add(fw.name)
+        def loadable(image):
+            parts = Path(image).parts
+            return not any(part in replaced for part in parts)
+        classes = {sym: [i for i in images if loadable(i)] for sym, images in classes.items()}
+        classes = {sym: images for sym, images in classes.items() if images}
+        ours = {}
+        for row in report['libraries']:
+            if row.get('placed'):
+                own, _ = hb_macho.load(str(out / row['placed']), prefer='arm64').exported()
+                for sym in own:
+                    if sym.startswith('_OBJC_CLASS_$_'):
+                        ours.setdefault(sym, []).append(row['name'])
+        for stage in stages:
+            for p in Path(stage).rglob('*'):
+                if p.is_file() and not p.is_symlink() and p.suffix == '' and p.parent.name == 'A' and p.name == p.parent.parent.parent.stem:
+                    try:
+                        own, _ = hb_macho.load(str(p), prefer='arm64').exported()
+                    except Exception:
+                        continue
+                    for sym in own:
+                        if sym.startswith('_OBJC_CLASS_$_'):
+                            ours.setdefault(sym, []).append('staged ' + p.name)
+        clashes = {sym: classes[sym] for sym in ours if sym in classes and not all(os.path.realpath(c).startswith(str(out)) for c in classes[sym])}
+        report['class_clashes'] = {sym: {'ours': ours[sym], 'system': clashes[sym]} for sym in sorted(clashes)}
+        report['problems'] += [f'class {sym[14:]} is defined by {ours[sym]} and by the system ({", ".join(clashes[sym])})' for sym in sorted(clashes)]
     report['environment'] = {
         'DYLD_FRAMEWORK_PATH': f'{out}/System/Library/PrivateFrameworks:{out}/System/Library/Frameworks',
         'DYLD_LIBRARY_PATH': f'{out}/usr/lib/swift',

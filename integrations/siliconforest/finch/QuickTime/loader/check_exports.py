@@ -8,14 +8,17 @@
 imports.json maps an install name to the symbol names bound from it (or is a per-symbol
 table: {"symbols": [{"library", "symbol", "kind", "note"}, ...]}). Each library is read
 at ROOT + install name; an umbrella's re-exported libraries are followed through ROOT and
-the --under trees. Exit status 1 if a library is absent, has another install name, is not
-arm64, or lacks a symbol. This predicts dyld's verdict for these libraries; it runs nothing.
+the --under trees. Exit status 1 if a library is absent, has an install name other than
+its path or "<path>.sf-additions", is not arm64, or lacks a symbol. This predicts dyld's verdict for these libraries; it runs nothing.
 --macho is the directory holding hb_macho.py (integrations/siliconforest/homebrew).
 """
 import argparse
 import json
 import sys
 from pathlib import Path
+
+
+ADDITIONS_SUFFIX = '.sf-additions'
 
 
 def load_imports(path):
@@ -76,7 +79,10 @@ def check(imports, find, load):
             counts[install] = (len(needed), 0)
             continue
         image = load(path)
-        if not image.id or image.id['name'] != install:
+        # A library is found by path; its install name is the path (a framework the system does not
+        # have) or "<path>.sf-additions" (an additions library: it must not repeat the install name of
+        # the system image it re-exports, which dyld would fold onto it).
+        if not image.id or image.id['name'] not in (install, install + ADDITIONS_SUFFIX):
             problems.append(f'{install}: the file there has install name {image.id and image.id["name"]}')
         if not getattr(image, 'arm64', True):
             problems.append(f'{install}: not an arm64 image')
