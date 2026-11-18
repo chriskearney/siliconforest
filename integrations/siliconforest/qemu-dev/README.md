@@ -134,6 +134,23 @@ QEMU machine: `virt,gic-version=3`, `-cpu neoverse-n2` (`max` hangs in the firmw
 1 GiB (kernel start-up time grows with memory under TCG), virtio-blk disk, ramfb, virtio-net with
 QEMU's user network, xHCI with a USB keyboard and a USB mouse (headless) or tablet (window).
 
+## Same checks on the M6
+
+`m6-hvf-check.py` copies a prepared disposable disk to the authorized Mac and boots it under HVF. It does not write the local disk. The Mac copy is `~/sf/runs/<name>/`.
+
+```sh
+python3 integrations/siliconforest/qemu-dev/m6-hvf-check.py \
+  --disk "$SF_QEMU_RUN/disk.img" --run probeN --out "$SF_QEMU_RUN/m6"
+```
+
+`--disk` is a disposable image already prepared the way the public QEMU receipt prepares one (`prepare-run.sh <reference> <run> 1500 none` on that receipt's tree). SSH is `chrisk@10.1.1.92` with `~/.ssh/known_hosts_m6`, `HostKeyAlias=m6`, and strict host-key checking. `--self-test` checks the patcher without a disk or a host. The VNC helper shipped beside this script is the receipt's `vnc-shot.py`.
+
+HVF's ID_AA64PFR0_EL1.GIC field reads 0, so an unpatched guest takes the GICv2 CPU-interface path while this `virt` machine is GICv3. On the disposable copy only, both detection sites replace the opening `mrs` with `movz x8, #0x100, lsl #16`. The scan is the 64 MiB window at offset 1 MiB, and each site must occur once. The guest line is `virt,gic-version=3`, `-accel hvf,kernel-irqchip=off`, `-cpu host`, 4 vCPUs, 1 GiB, ramfb, a USB keyboard and mouse, and a VNC unix socket. Homebrew QEMU on the Mac supplies the firmware.
+
+The checker stamps `QDDESK_BEGIN` and `WMSCALE initial`, saves a frame 15 seconds later, types `uname -m; echo typed-in-qemu` through `vnc-shot.py` 150 seconds after the first frame, and saves a second frame. The terminal PTY is not the serial console. Read `after.ppm` for `arm64`, `typed-in-qemu`, and the returned prompt. A fetched serial excerpt drops lines that mention a host key; do not commit the guest's serial log.
+
+On 18 November 2026, QEMU 11.1.3 on that Mac reached `QDDESK_BEGIN` at 46.3 s and `WMSCALE initial` at 46.5 s. The isolated-004 TCG receipt (QEMU 10.2.4, the same 4 vCPU, 1 GiB, and 1024×768 session shape) records 64.7 s and 81.3 s. The second frame showed the typed command, `arm64`, `typed-in-qemu`, and a prompt. The prepared hash differs from that receipt's prepared hash: debugfs rewrites the ext4 copy, and the GIC patch changes two instructions. The reference image was not modified. That run stopped after the typing frame, so it has no `QDDESK_PASS`.
+
 ## What this covers, and what it does not
 
 | Area | In QEMU | Notes |
