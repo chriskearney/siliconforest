@@ -195,7 +195,11 @@ OpenSSH, which macOS and Linux both have. No key exists yet: making it is the ow
 |---|---|
 | `boot.tar.zst`: `kernel.kc` | an APSL-2.0 kernel linked with GPL-2.0 kernel extensions (the PCIe host bridge and DART ported from Linux, the Asahi-derived display and GPU pieces) in one collection; corecrypto is the MPL-2.0 open reimplementation (Vali0004/corecrypto), not Apple's, but its "experimental, unaudited" status should be stated |
 | `boot.tar.zst`: `sf-stage1.bin`, `boot.bin` | m1n1 (MIT) and our stage-2 code (MIT): no question known |
-| `root.ext4` | the Homebrew bottles (63 formulae, licences above; GPL-2.0 and GPL-3.0 ones need a source offer: bash, coreutils, gawk, grep, gnu-sed, gnu-tar, findutils, make, nano, wget, gettext, readline, gmp, mpfr, libunistring, libidn2, git, ...); DejaVu fonts (Bitstream Vera licence, its text installed beside them); Noto Thai (OFL-1.1, beside them); the same GPL-2.0 kexts as on-disk bundles in `/System/Library/Extensions`; GPL binaries needing a source offer (the Chonkstep desktop GPL-3.0-only, FFmpeg with x264, Perl under Artistic or GPL, the Darling-derived Metal pieces); fonts (each needs its licence text beside it); whatever upstream PureDarwin ships under Apple's binary driver licence (not established) |
+| `root.ext4`: kernel extensions | the same GPL-2.0 kexts as `kernel.kc`, as on-disk bundles in `/System/Library/Extensions` |
+| `root.ext4`: our desktop and media | the Chonkstep desktop, dock and terminal (GPL-3.0-only: source offer); FFmpeg with x264 (GPL-2.0-or-later: source offer); the Darling-derived Metal pieces (GPL-3.0: source offer); Perl (Artistic or GPL) |
+| `root.ext4`: Homebrew (`/opt/homebrew`, 63 formulae poured plus portable Ruby; each keg's licence in `release/image/homebrew.lock.json` and `/opt/homebrew/.sf-licences.tsv`) | copyleft, a source offer each: bash, coreutils, findutils, gawk, gnu-sed, gnu-tar, grep, less, nano, readline, wget (GPL-3.0-or-later); make (GPL-3.0-only); htop, tree (GPL-2.0-or-later); git (GPL-2.0-only with LGPL-2.1 and permissive parts); libgit2 (GPL-2.0-only with the GCC linking exception); gettext (GPL-3.0-or-later and LGPL-2.1-or-later); libidn2 (GPL-2.0-or-later or LGPL-3.0-or-later, with Unicode terms); libunistring and gmp (LGPL-3.0-or-later or GPL-2.0-or-later); mpfr (LGPL-3.0-or-later); xz (0BSD with some GPL-2.0-or-later files). File-level copyleft: ca-certificates (MPL-2.0, data). Ruby licence: portable-ruby. Permissive (notice only): the other 40, among them python@3.14 (Python-2.0), node, openssl@4 (Apache-2.0), sqlite (public-domain blessing), zstd (BSD-3-Clause chosen of BSD or GPL-2.0), icu4c (Unicode-3.0), ncurses (X11 variant), tmux (ISC), ripgrep (Unlicense), and the brew client itself (BSD-2-Clause) |
+| `root.ext4`: fonts | DejaVu (Bitstream Vera terms; text beside them); Noto Thai, Noto Emoji, Noto Sans Mono CJK (OFL-1.1; text beside them); Inter (its LICENSE.txt beside it); URW base 35 (AGPL-3.0 with a font exception, from the upstream base; COPYING and LICENSE beside them); Source Code Pro (OFL-1.1, from the upstream base: **no licence text beside it**, to add) |
+| `root.ext4`: upstream PureDarwin base | APSL-2.0 and BSD for the most part; whatever upstream ships under Apple's binary driver licence (not established) |
 | `root.manifest.tsv`, `MANIFEST.tsv`, `SHA256SUMS` | none: paths, sizes and hashes |
 
 Firmware, Apple's applications and Mozilla's bundle are in no artifact.
@@ -239,7 +243,8 @@ build of `release/packages.nix` was not finished when this was written.
   forest wallpaper, the dock (launcher strip and instrument column) and the terminal; a
   command typed on the emulated USB keyboard (through QEMU's VNC server) runs in the terminal
   and its output is on screen (`uname -m` printed `arm64`), and the desktop and dock stay up
-  afterwards: the session ran its full 1,500 s and the compositor exited 0 (`QDDESK_PASS`). Pictures: `runs/image/qemu/run20/shots/latest.png` (dock and terminal) and
+  afterwards: the session ran its full 1,500 s and the compositor exited 0 (`QDDESK_PASS`).
+  How to repeat it from a clone: `docs/release/QEMU.md`. Pictures: `runs/image/qemu/run20/shots/latest.png` (dock and terminal) and
   `typed.png` (after typing), taken over VNC, not inside the guest. Three compositor/dock
   patches made this work (`integrations/siliconforest/terminal-app/compositor/`):
   - `wm-darwin-app-ready-deadline-env.patch`: the 25 s READY deadline and the autopilot's 15 s
