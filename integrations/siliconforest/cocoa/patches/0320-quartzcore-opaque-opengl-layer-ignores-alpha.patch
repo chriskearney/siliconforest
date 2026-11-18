@@ -1,0 +1,13 @@
+--- a/src/Frameworks/QuartzCore/CAOpenGLLayer.m
++++ b/src/Frameworks/QuartzCore/CAOpenGLLayer.m
+@@ -181,7 +181,9 @@
+ 
+             CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, flipped, row * height, releasePixels);
+             CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+-            CGImageRef image = CGImageCreate(width, height, 8, 32, row, space, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little,
++            // (VLC) an opaque layer's alpha is not looked at, as on macOS: a player draws its picture with alpha 0
++            // (VLC's video layer is opaque and its frames came out transparent: a black window)
++            CGImageRef image = CGImageCreate(width, height, 8, 32, row, space, ([self isOpaque] ? kCGImageAlphaNoneSkipFirst : kCGImageAlphaPremultipliedFirst) | kCGBitmapByteOrder32Little,
+                                              provider, NULL, NO, kCGRenderingIntentDefault);
+ 
+             CGColorSpaceRelease(space);

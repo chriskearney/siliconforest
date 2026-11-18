@@ -528,6 +528,11 @@
 #   0306  QuartzCore (FXPERF2, adopted by TERM11 unchanged): NV12/x420 video planes go up as R8/RG8 (R16/RG16), Mesa's copy
 #         path, not LUMINANCE/LUMINANCE_ALPHA, which Mesa converted pixel by pixel (44 % of Firefox's parent main thread on
 #         cnn.com; 1080p60 parent 78.4 -> 29.4 % of a core); luminance stays the fallback if the driver refuses
+#   0320  QuartzCore (VLC, docs/roadmap/issues/SF-AH-vlc.md): an opaque CAOpenGLLayer's read-back picture is an image
+#         without alpha (VLC draws its video with alpha 0 into an opaque layer: the window was black)
+#   0321  QuartzCore (VLC): -[CALayerContext setLayer:] with the root it already has gives that root its pointer to
+#         the context back when it lost it (AppKit detaches a view's layer when the view moves under a superview
+#         without a layer): new contents asked for no frame, a player's picture stayed at its first frame
 #   0304, 0305w (FXPERF2's FX-029 follow-ups, adopted by TERM11 unchanged; opt-in SFFX_GPU_DAMAGE=1): a layer-only
 #         flush with nothing drawn into the window's own backing store tells the window server so, which then skips its
 #         whole-backing-store compare (11 MB a present; ~10 % of Firefox's parent main thread on cnn.com)
@@ -801,6 +806,8 @@ let
     ./patches/0300-quartzcore-damage-only-frames.patch
     ./patches/0306-quartzcore-video-planes-uploaded-as-red-green.patch
     ./patches/0178-quartzcore-layer-tree-rendered-on-a-render-thread.patch
+    ./patches/0320-quartzcore-opaque-opengl-layer-ignores-alpha.patch
+    ./patches/0321-quartzcore-layer-context-reclaims-its-root.patch
   ];
   quartzcore = pd."quartzcore-msm-arm64".override { src = quartzcoreSrc; };
   wp = "${pd."wayland-protocols"}/share/wayland-protocols";

@@ -9,7 +9,9 @@ launcher therefore
      root's alone) and hands the connected descriptor on as WAYLAND_SOCKET;
   2. gives up root for the account `sf` (uid 501, group staff, home /Users/sf);
   3. points dyld at this release's private libraries (SFVLC_PREFIX) where the system does not
-     have them yet;
+     have them yet: a libSystem with seven more exports, framework wrappers with additions,
+     providers for frameworks this system lacks, and one that stands in for VLC's own Sparkle
+     updater and reports that updates are unavailable (the copy in the bundle is not loaded);
   4. executes the vendor's Contents/MacOS/VLC with the arguments it was given.
 Nothing in the bundle is changed, re-signed or replaced on disk.
 """
@@ -59,6 +61,16 @@ def main():
         except OSError as error:
             sys.stderr.write('vlc-sf: no compositor connection (%s): VLC will have no window\n' % error)
         name, uid, gid, home = ACCOUNT
+        # Interim, until the decoder driver gives its node an owner and mode of its own: the M1's
+        # hardware video decoder (/dev/sfavd) is root's alone, so a player that is not root decodes
+        # in software. When the release asks for it ("hardware_decode": true, or SFVLC_HARDWARE=1),
+        # the node is given to group staff, mode 0660, here while still root. It lasts until reboot.
+        if manifest.get('hardware_decode') or env.get('SFVLC_HARDWARE') == '1':
+            try:
+                os.chown('/dev/sfavd', 0, gid)
+                os.chmod('/dev/sfavd', 0o660)
+            except OSError as error:
+                sys.stderr.write('vlc-sf: hardware decoder not opened to the account (%s)\n' % error)
         env.update(HOME=home, USER=name, LOGNAME=name)
         os.setgroups([gid])
         os.setgid(gid)
