@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+# Exceptions to the default owner and mode (root:wheel; directories 0755; files 0755 when
+# any execute bit is set, else 0644). Later lines win. Shell patterns on the installed path.
+# pattern                                   mode  uid:gid
+/private/tmp                                1777  0:0
+/private/var/tmp                            1777  0:0
+/var/root                                   0700  0:0
+/private/var/root                           0700  0:0
+/var/empty                                  0755  0:0
+/etc/master.passwd                          0600  0:0
+# the account the desktop's user programs and Homebrew run as (uid 501, group staff)
+/Users/sf                                   0755  501:20
+/Users/sf/*                                 -     501:20
+/opt/homebrew                               0755  501:20
+/opt/homebrew/*                             -     501:20
+# Firefox's runtime keeps its selection records private to root
+/usr/local/lib/siliconforest/firefox/160-system1/release.json  0600  0:0

@@ -1,0 +1,179 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 Chris Kearney and the SiliconForest contributors -->
+
+# The SiliconForest release image: what it is, how it is built, how it is checked
+
+Status, 18 November 2026: the recipe exists and builds a root image locally; the boot files
+and the release packaging are written but not yet built from this tree's own outputs; nothing
+has been published or installed. Read "What is proven" before relying on any of it.
+
+The owner's M1 (13-inch MacBook Pro, J293) runs SiliconForest from its own disk since
+13 November 2026. Its root filesystem was assembled by hand: an upstream PureDarwin image
+copied once, then several hundred installs by different work streams. Nothing could build
+that root again. `release/image.nix` is the recipe that does: from this repository and the
+source lock it builds the root filesystem, the boot files and the release files that an
+installer writes to another machine.
+
+## What the recipe builds
+
+`release/image.nix` is a function of the pinned package set, the upstream base image, the
+kernel collection, the two boot stages and the named build outputs of `release/packages.nix`.
+It returns four things:
+
+| Output | Contents |
+|---|---|
+| `rootfs` | `siliconforest-root.ext4` (the root, its contents plus 25 % and 64 MiB of room; the installer grows it to the partition), `root.manifest.tsv` (every entry: path, type, mode, owner, size, sha256 or link target), `image.json` (layers and their store paths, ext4 parameters), `layers.log` |
+| `bootfiles` | `sf-stage1.bin`, `boot.bin` (stage 2 for this release's root), `kernel.kc` (the collection), `bootargs.template`, `pdsf_pack.py`, `sf_personalize.py`, `boot.json` (sizes, sha256, the release root UUID, the packing options) |
+| `release` | `siliconforest-<version>-root.ext4.zst.NN` (zstd, parts below 1.9 GiB for GitHub's 2 GiB asset limit), `siliconforest-<version>-boot.tar.zst`, `siliconforest-<version>-root.manifest.tsv`, `MANIFEST.tsv`, `SHA256SUMS` |
+| `qemu` | a GPT disk for QEMU's arm64 `virt` machine: the QEMU base's EFI partition and collection with this root, for the comparison run |
+
+How the root is made (all inside the Nix sandbox, no root privileges):
+
+1. The ext4 root of upstream's arm64 `virt` minimal image (the renamed tip, see
+   `integrations/siliconforest/rebase/pd.nix`) is unpacked with `debugfs rdump`.
+2. The build outputs are laid over it in the order of `release/image/layers.nix`, each at its
+   prefix, with its exclusions and, where needed, only the files it names
+   (`release/image/assemble.py stage`). A later layer replaces an earlier one's file.
+3. The tree's own files that are installed as they are (wallpapers, `LICENSE`, `NOTICE`,
+   `LICENSING.md`, `LICENSES/` under `/usr/share/doc/siliconforest`) are added;
+   `release/image/remove.txt` removes the base's QEMU kernel collections.
+4. The two installers of the tree that made the M1's root run against the staged root, as they
+   ran on the M1: `m1-storage/system/sf-install.sh` (session, halt, clock, boot tools, dock
+   items) and `m1-storage/userland/sf-userland-install.sh` (SSH, the account `sf`, the
+   environment file, Homebrew's links).
+5. Owners, modes and time stamps are set (`assemble.py owners`: root:wheel, 0755/0644 by the
+   execute bit, the exceptions of `release/image/permissions.tsv`, every time stamp 1) and the
+   manifest is written; in the same fakeroot session `mke2fs -d` makes the filesystem with a
+   fixed UUID and hash seed and `E2FSPROGS_FAKE_TIME=1`.
+6. The build fails unless the filesystem's feature line is exactly the M1 root's
+   (`has_journal ext_attr resize_inode dir_index filetype extent 64bit flex_bg
+   metadata_csum_seed sparse_super large_file huge_file dir_nlink extra_isize metadata_csum`,
+   the set SiliconForest's ext4 driver has been reading since 13 November) and `e2fsck -fn`
+   finds nothing.
+
+### Where the layers come from
+
+The order, prefixes and exclusions were read off the installed M1: a read-only listing of its
+root (232,754 entries) was hashed and every file matched against the build outputs on the
+workstation (`release/image/tools/classify.py`, below). Where the hand install took only part
+of an output (the CGL build: one library to `/System/Library`, its dispatch libraries to the
+canonical GL prefix), the layer says so with `only`.
+
+## The installed root, classified
+
+Every entry of the M1's root, by class (18 November 2026, kernel 50, renamed user space):
+
+| Class | Entries | Of them files | Bytes in files |
+|---|---:|---:|---:|
+| built from this tree (a lab recipe's output, a tree file, or a directory or link an install made) | 12,320 | 11,019 | 549 MiB |
+| upstream base (same bytes as the base image, or an upstream PureDarwin package) | 10,488 | 9,674 | 220 MiB |
+| third-party, fetched (Homebrew bottles and Homebrew's own tree, Mozilla's Firefox, fonts) | 55,807 | 24,382 | 1,204 MiB |
+| must not ship | 153,927 | 129,391 | 15,502 MiB |
+| unknown | 212 | 212 | 16 MiB |
+
+"Must not ship" is: the owner's data and his coding agent (`/var/root`, `/Users/sf`,
+`/usr/local/lib/claude-code`), test stages, packets and backups under `/private/var/db/sf*`
+(15 GB of the total), logs and run-time state, host keys, the remembered-network file,
+firmware from his machine (`/Library/Firmware`), Apple's Terminal and Activity Monitor,
+every previous copy kept beside a replacement (`*.before-*`, `*.old*`, `*.pre-*`, `*.next`),
+crash reports and caches.
+
+"Unknown" (212 files): install receipts and logs inside Firefox's runtime tree (130), files of
+the earlier desktop and test programs whose build outputs are gone (about 20: `chonkstep-darwin`,
+`darwin-wayland-client*`, `rust-hello`, `sample`), Activity Monitor's support libraries and
+framework stubs (about 15), `/usr/lib/dyld` (its bytes match no build: an open question since
+17 November), `/etc/passwd`, `master.passwd`, `profile`, `zshenv`, `resolv.conf` as edited by the
+installers and at run time, the cursor theme (`/usr/share/icons/default`, 85 files), `lsof`,
+`neofetch`, `sf-gtar`.
+
+## What a release does not contain, and how each piece arrives
+
+| Piece | Why it is not in the release | How it arrives |
+|---|---|---|
+| Wi-Fi firmware, NVRAM, CLM, txcap (`/Library/Firmware/brcm`), the Touch Bar and video decoder firmware (`/Library/Firmware/apple`) | Apple's firmware, no redistribution right | the installer copies them from the target's own Asahi Linux firmware into the two (empty) directories the root ships with, before the root is written |
+| Mozilla's Firefox bundle | redistribution under Mozilla's terms is not settled (the trademark policy restricts a patched build under the Firefox name) | downloaded at first run from Mozilla; the runtime around it (`/usr/local/lib/siliconforest/firefox/160-system1`, without `original/`) is ours |
+| Terminal.app, Activity Monitor.app and anything taken from them | Apple's applications | the user copies them from their own macOS with a helper (INSTALL) |
+| Homebrew (`/opt/homebrew`: 73 kegs on the M1, plus the lab's overlay files inside some kegs) | each bottle's own licence; source offers for the GPL ones | poured at install time with `integrations/siliconforest/homebrew/hb_fetch.py` and `hb_pour.py` from a pinned formula list, owned by the account `sf` |
+| host keys | per machine | made at the first start of the SSH server (`sf-sshd`) |
+
+## First start on another machine
+
+- Host name `siliconforest` (upstream's `sf-set-hostname` job).
+- Accounts: `root`, whose shell is zsh, and `sf` (uid 501, group staff), the account the
+  desktop's user programs and Homebrew run as, without a password (as on the M1). Setting a
+  password or adding a person's own account is the installer's question to ask.
+- No remembered networks: `/Library/Preferences/SystemConfiguration` exists and is empty, so
+  `sf-netd` joins nothing until a network is joined once (`wifiutil`).
+- Firmware is looked up at `/Library/Firmware/brcm` and `/Library/Firmware/apple`.
+- The desktop session (`org.siliconforest.desktop`), the dock with its default pins and the
+  forest wallpaper, as `sf-install.sh` sets them.
+
+## The boot files and the target's identifiers
+
+The boot partition (FAT, label `SFBOOT`) holds `sf/boot.bin` (stage 2) and `sf/kernel.bin`
+(the configuration record and the collection). They are a pair and are installed together.
+
+- Every release has one root filesystem UUID, derived from its version
+  (`release/identity.nix`). The root image carries it; stage 2 is built for it
+  (`release/boot-stages.nix { rootUUID = identity.rootUUID; }`) and keeps its exact-root rule:
+  it boots that UUID and no other. The installer does not change the root's UUID.
+- The kernel arguments name the target's own partition (`sfnvme_part`, its first block and
+  length). `bootargs.template` is install/build.sh's command line with four fields;
+  `sf_personalize.py` fills them in (the release root UUID and the three partition values the
+  installer reads from the target's partition table) and packs `sf/kernel.bin` with the
+  release's own `pdsf_pack.py`, then checks both records and that each identifier occurs once.
+  No identifier of any machine is in a release file.
+
+## Rules for writing the root
+
+The ext4 driver of kernels before 50 left metadata that Linux's `e2fsck` rejects (issue #61).
+So: Linux writes a SiliconForest root only as a whole new image (the installer's `dd` of a
+verified image, then `resize2fs` and `e2fsck -fn` on it, before SiliconForest ever starts on
+it), and never mounts an existing SiliconForest root read-write unless `e2fsck -fn` has just
+found it clean. The release's own image is made by `mke2fs` and checked by `e2fsck -fn` in the
+build.
+
+## Packaging, checksums and signing
+
+`MANIFEST.tsv` lists every release file with its size and sha256, plus the size and sha256 of
+the uncompressed root. `SHA256SUMS` lists every file including the manifest. The recipe does
+not sign: the owner signs `SHA256SUMS` with his release key,
+
+    ssh-keygen -Y sign -f <release key> -n siliconforest-release SHA256SUMS
+
+and the installer, which carries the public key in an allowed-signers file
+(`release@siliconforest namespaces="siliconforest-release" ssh-ed25519 ...`), checks it with
+`release/image/sf_verify_release.py`: the signature, every file's sha256, then the parts
+decompressed and hashed against the uncompressed line. SSH signatures need nothing beyond
+OpenSSH, which macOS and Linux both have. No key exists yet: making it is the owner's step.
+
+## Licence questions, by artifact (the owner decides; nothing is published until then)
+
+| Artifact | What in it carries a question |
+|---|---|
+| `boot.tar.zst`: `kernel.kc` | an APSL-2.0 kernel linked with GPL-2.0 kernel extensions (the PCIe host bridge and DART ported from Linux, the Asahi-derived display and GPU pieces) in one collection; corecrypto is the MPL-2.0 open reimplementation (Vali0004/corecrypto), not Apple's, but its "experimental, unaudited" status should be stated |
+| `boot.tar.zst`: `sf-stage1.bin`, `boot.bin` | m1n1 (MIT) and our stage-2 code (MIT): no question known |
+| `root.ext4` | the same GPL-2.0 kexts as on-disk bundles in `/System/Library/Extensions`; GPL binaries needing a source offer (the Chonkstep desktop GPL-3.0-only, FFmpeg with x264, Perl under Artistic or GPL, the Darling-derived Metal pieces); fonts (each needs its licence text beside it); whatever upstream PureDarwin ships under Apple's binary driver licence (not established) |
+| `root.manifest.tsv`, `MANIFEST.tsv`, `SHA256SUMS` | none: paths, sizes and hashes |
+
+Firmware, Apple's applications, Mozilla's bundle and Homebrew bottles are in no artifact.
+
+## What is proven, and how to check it
+
+- Built: `rootfs` from the M1's own build outputs (the store paths the classification found,
+  `runs/image/local.nix`, not committed). The build passes its own checks: the feature line,
+  `e2fsck -fn`, the installers' rc 0.
+- Compared with the M1 (`release/image/compare.py root.manifest.tsv classified.tsv`): see the
+  status file of the IMAGE stream for the current numbers and every difference.
+- Not yet: the build from `release/packages.nix` (CODEX-BUILD's from-clone outputs), the boot
+  files from those stages, the release files, a QEMU start of the image, a second build for
+  reproducibility from the from-clone outputs, and any install.
+
+## Tools
+
+- `release/image/tools/list-meta.pl`: the read-only listing of a root (lstat only; runs on the
+  M1's Perl, nothing else needed). Hashes are taken in a second pass over a file list.
+- `release/image/tools/classify.py`: the classification above, from the listing, the hashes,
+  the base image's listing and hash indexes of build outputs and of the tree.
+- `release/image/compare.py`: built root against a classified listing.
+- `release/image/sf_personalize.py`, `release/image/sf_verify_release.py`: for the installer.

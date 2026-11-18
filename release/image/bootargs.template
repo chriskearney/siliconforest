@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+# The kernel command line of an installed SiliconForest (install/build.sh, ARGS). Lines that start
+# with # are comments; the other lines, joined by spaces, are the command line. sf_personalize.py
+# fills in the four @...@ fields at install time: the release's root UUID and the target partition.
+-v debug=0x14e keepsyms=1 serial=0x13 serial-device-name=uart0 disable-uart-irq=1 serial_video_mirror=0 sftextboot=0 -noprogress sfm1kbd=1 sfm1trackpadenum=1 sfm1trackpadchild=1 cpus=8 sfgpudt=2 sfgpudt_stringprops=1 sfagx=1 sfdispdt=2 sfdcp=2 rd=uuid boot-uuid=@SF_FSUUID@ wdt=-1 sfnvme=3 sfnvme_ttl=0 sfnvme_part=@SF_PARTUUID@ sfnvme_part_lba=@SF_PART_LBA@ sfnvme_part_blocks=@SF_PART_BLOCKS@ sfnvme_write=1 sfnvme_readfence=1 sf_quiet_wait=0 sf_rtc_wait=0 sfthermal_delay=4 sfcpuheld=1 sfapciebridge=1 sfavd=1 if_attach_nx=46
