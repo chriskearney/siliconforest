@@ -40,19 +40,19 @@ int main(void)
     say(1, "WebKit", load(F "WebKit.framework/WebKit") != NULL);
     say(1, "MediaPlayer", load(F "MediaPlayer.framework/MediaPlayer") != NULL);
     // step 2: additions in the CoreFoundation and Foundation wrappers and in CoreServices.pd
-    load(F "CoreFoundation.framework/CoreFoundation");
-    load(F "Foundation.framework/Foundation");
-    void *cs = load(F "CoreServices.framework/CoreServices");
+    load(F "CoreFoundation.framework/Versions/A/CoreFoundation");
+    load(F "Foundation.framework/Versions/C/Foundation");
+    void *cs = load(F "CoreServices.framework/Versions/A/CoreServices");
     say(2, "CoreFoundation.NSGregorianCalendar", dlsym(RTLD_DEFAULT, "NSGregorianCalendar") != NULL);
     say(2, "Foundation.NSAppleScript", objc_getClass("NSAppleScript") != Nil);
     say(2, "CoreServices.FSGetCatalogInfo", cs && dlsym(cs, "FSGetCatalogInfo") != NULL);
     say(2, "CoreServices.FSGetVolumeParms", cs && dlsym(cs, "FSGetVolumeParms") != NULL);
     say(2, "CoreServices.LSCopyAllHandlersForURLScheme", cs && dlsym(cs, "LSCopyAllHandlersForURLScheme") != NULL);
     // step 3: QuartzCore loads (its changes are behaviour only)
-    if (load(F "QuartzCore.framework/QuartzCore") != NULL) say(3, "QuartzCore.loads", 1);
+    if (load(F "QuartzCore.framework/Versions/A/QuartzCore") != NULL) say(3, "QuartzCore.loads", 1);
     else unloadable(3, "QuartzCore.loads");
     // step 4: AppKit 0322 adds -[NSMenuItem parentItem] (0323-0328 change behaviour)
-    if (load(F "AppKit.framework/AppKit") != NULL) {
+    if (load(F "AppKit.framework/Versions/C/AppKit") != NULL) {
         Class item = objc_getClass("NSMenuItem");
         say(4, "AppKit.NSMenuItem.parentItem", item && class_getInstanceMethod(item, sel_registerName("parentItem")) != NULL);
     } else unloadable(4, "AppKit.NSMenuItem.parentItem");
