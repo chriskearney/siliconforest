@@ -237,8 +237,9 @@ let
     dd if="$img" of=$out bs=512 skip=$espStart seek=$espStart count=$espSize conv=notrunc status=none
     dd if=$root of=$out bs=512 seek=$(( espStart + espSize )) conv=notrunc,sparse status=none
     # the QEMU loop's boot arguments for an emulated guest (qemu-dev/qd_image.py, debug kernel):
-    # no_lock_timeouts=1, or a descheduled vCPU on a busy host reads as a spinlock deadlock
-    printf '%s' 'debug=0x218 -nogzalloc_mode keepsyms=1 serial=3 gopconsole=1 serial_video_mirror=0 -noprogress no_interrupt_masked_debug=1 no_lock_timeouts=1' > boot-args.txt
+    # no_lock_timeouts=1, or a descheduled vCPU on a busy host reads as a spinlock deadlock;
+    # a 1024x768 screen (the loader's sfgopmode), so the terminal and the dock both fit
+    printf '%s' 'debug=0x218 -nogzalloc_mode keepsyms=1 serial=3 gopconsole=1 serial_video_mirror=0 -noprogress no_interrupt_masked_debug=1 no_lock_timeouts=1 sfgopmode=1024x768' > boot-args.txt
     mcopy -o -i "$out@@$(( espStart * 512 ))" boot-args.txt ::/EFI/BOOT/boot-args.txt
   '';
 in { inherit rootfs rootTree bootfiles release qemu layers lateLayers absent; }
