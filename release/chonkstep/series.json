@@ -148,6 +148,10 @@
     "strip": 1
   },
   {
+    "path": "wm-darwin-gop-aligned-word-stores.patch",
+    "strip": 1
+  },
+  {
     "path": "dock-dead-tile-font-loan.patch",
     "strip": 1
   }
