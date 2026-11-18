@@ -43,6 +43,8 @@ in pd.packages.x86_64-linux."foundation-arm64".overrideAttrs (old: {
     # -performSelectorOnMainThread:withObject:waitUntilDone:NO is queued on the main thread too
     # (VLC media player: docs/roadmap/issues/SF-AH-vlc.md)
     ./patches/foundation-main-thread-perform-is-queued.patch
+    # NSURL bookmark data (QuickTime Player's Open Recent; QTP2, branch media-quicktime: cocoa 0365)
+    ../cocoa/patches/0365-foundation-url-bookmarks.patch
   ];
   patchFlags = [ "-p4" ];
   buildPhase = let

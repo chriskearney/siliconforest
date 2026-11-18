@@ -1,0 +1,160 @@
+diff --git a/src/Frameworks/AppKit/AppKit.h b/src/Frameworks/AppKit/AppKit.h
+index d14657f..7b48a70 100755
+--- a/src/Frameworks/AppKit/AppKit.h
++++ b/src/Frameworks/AppKit/AppKit.h
+@@ -178,6 +178,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+ #import <AppKit/NSStackView.h>
+ #import <AppKit/NSAccessibilityElement.h>
+ #import <AppKit/NSMacOS26Additions.h>
++#import <AppKit/NSFontTextStyles.h>
+ #import <AppKit/NSLayoutAnchor.h>
+ #import <AppKit/NSGlassEffectView.h>
+ #import <AppKit/NSMenuItemBadge.h>
+diff --git a/src/Frameworks/AppKit/NSFontTextStyles.h b/src/Frameworks/AppKit/NSFontTextStyles.h
+new file mode 100644
+index 0000000..7bb3336
+--- /dev/null
++++ b/src/Frameworks/AppKit/NSFontTextStyles.h
+@@ -0,0 +1,25 @@
++// NSFontTextStyles.h - text styles and the fonts they stand for. SPDX-License-Identifier: MIT
++// Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
++#import <AppKit/NSFont.h>
++#import <AppKit/AppKitExport.h>
++
++typedef NSString *NSFontTextStyle;
++typedef NSString *NSFontTextStyleOptionKey;
++
++APPKIT_EXPORT NSFontTextStyle const NSFontTextStyleLargeTitle;
++APPKIT_EXPORT NSFontTextStyle const NSFontTextStyleTitle1;
++APPKIT_EXPORT NSFontTextStyle const NSFontTextStyleTitle2;
++APPKIT_EXPORT NSFontTextStyle const NSFontTextStyleTitle3;
++APPKIT_EXPORT NSFontTextStyle const NSFontTextStyleHeadline;
++APPKIT_EXPORT NSFontTextStyle const NSFontTextStyleSubheadline;
++APPKIT_EXPORT NSFontTextStyle const NSFontTextStyleBody;
++APPKIT_EXPORT NSFontTextStyle const NSFontTextStyleCallout;
++APPKIT_EXPORT NSFontTextStyle const NSFontTextStyleFootnote;
++APPKIT_EXPORT NSFontTextStyle const NSFontTextStyleCaption1;
++APPKIT_EXPORT NSFontTextStyle const NSFontTextStyleCaption2;
++
++@interface NSFont (NSFontTextStyles)
++// The system font at the style's size and weight; options are accepted and not used (macOS has none
++// that change the size on the desktop).
+++ (NSFont *)preferredFontForTextStyle:(NSFontTextStyle)style options:(NSDictionary *)options;
++@end
+diff --git a/src/Frameworks/AppKit/NSFontTextStyles.m b/src/Frameworks/AppKit/NSFontTextStyles.m
+new file mode 100644
+index 0000000..218402a
+--- /dev/null
++++ b/src/Frameworks/AppKit/NSFontTextStyles.m
+@@ -0,0 +1,48 @@
++// NSFontTextStyles.m - see the header. SPDX-License-Identifier: MIT
++// Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
++//
++// Sizes and weights are those Apple's Human Interface Guidelines give for the macOS text styles
++// (Typography, "macOS built-in text styles"); macOS does not scale them with a user setting.
++// The style names are opaque keys; their values are those UIKit and CoreText share, believed to be
++// macOS's and checked by ../../integrations/siliconforest/cocoa/conformance/qtp-names.m against it.
++#import <AppKit/NSFontTextStyles.h>
++#import <AppKit/NSFontDescriptor.h>
++
++NSFontTextStyle const NSFontTextStyleLargeTitle = @"UICTFontTextStyleTitle0";
++NSFontTextStyle const NSFontTextStyleTitle1 = @"UICTFontTextStyleTitle1";
++NSFontTextStyle const NSFontTextStyleTitle2 = @"UICTFontTextStyleTitle2";
++NSFontTextStyle const NSFontTextStyleTitle3 = @"UICTFontTextStyleTitle3";
++NSFontTextStyle const NSFontTextStyleHeadline = @"UICTFontTextStyleHeadline";
++NSFontTextStyle const NSFontTextStyleSubheadline = @"UICTFontTextStyleSubhead";
++NSFontTextStyle const NSFontTextStyleBody = @"UICTFontTextStyleBody";
++NSFontTextStyle const NSFontTextStyleCallout = @"UICTFontTextStyleCallout";
++NSFontTextStyle const NSFontTextStyleFootnote = @"UICTFontTextStyleFootnote";
++NSFontTextStyle const NSFontTextStyleCaption1 = @"UICTFontTextStyleCaption1";
++NSFontTextStyle const NSFontTextStyleCaption2 = @"UICTFontTextStyleCaption2";
++
++@implementation NSFont (NSFontTextStyles)
++
+++ (NSFont *)preferredFontForTextStyle:(NSFontTextStyle)style options:(NSDictionary *)options
++{
++    static const struct { NSString *const *style; CGFloat size; const CGFloat *weight; } table[] = {
++        { &NSFontTextStyleLargeTitle, 26, &NSFontWeightRegular },
++        { &NSFontTextStyleTitle1, 22, &NSFontWeightRegular },
++        { &NSFontTextStyleTitle2, 17, &NSFontWeightRegular },
++        { &NSFontTextStyleTitle3, 15, &NSFontWeightRegular },
++        { &NSFontTextStyleHeadline, 13, &NSFontWeightBold },
++        { &NSFontTextStyleSubheadline, 11, &NSFontWeightRegular },
++        { &NSFontTextStyleBody, 13, &NSFontWeightRegular },
++        { &NSFontTextStyleCallout, 12, &NSFontWeightRegular },
++        { &NSFontTextStyleFootnote, 10, &NSFontWeightRegular },
++        { &NSFontTextStyleCaption1, 10, &NSFontWeightRegular },
++        { &NSFontTextStyleCaption2, 10, &NSFontWeightMedium },
++    };
++    (void)options;
++    for (size_t i = 0; i < sizeof table / sizeof table[0]; i++)
++        if ([style isEqualToString:*table[i].style])
++            return [self systemFontOfSize:table[i].size weight:*table[i].weight];
++    // an unknown style is the body style, as on macOS
++    return [self systemFontOfSize:13 weight:NSFontWeightRegular];
++}
++
++@end
+diff --git a/src/Frameworks/AppKit/NSMacOS26Additions.h b/src/Frameworks/AppKit/NSMacOS26Additions.h
+index b5b6758..27441bc 100644
+--- a/src/Frameworks/AppKit/NSMacOS26Additions.h
++++ b/src/Frameworks/AppKit/NSMacOS26Additions.h
+@@ -18,6 +18,11 @@ APPKIT_EXPORT NSString *const NSPrintScalingFactor;
+ APPKIT_EXPORT NSString *const NSScrollViewDidEndLiveScrollNotification;
+ APPKIT_EXPORT NSString *const NSTouchBarItemIdentifierCharacterPicker;
+ APPKIT_EXPORT NSString *const NSValueBinding;
++// (QTP) more binding names, as Cocoa Bindings names them (first user: Apple's QuickTime Player)
++APPKIT_EXPORT NSString *const NSEnabledBinding;
++APPKIT_EXPORT NSString *const NSHiddenBinding;
++APPKIT_EXPORT NSString *const NSTitleBinding;
++APPKIT_EXPORT NSString *const NSToolTipBinding;
+ APPKIT_EXPORT NSString *const NSWindowDidOrderOffScreenNotification;
+ APPKIT_EXPORT NSString *const NSWindowDidOrderOnScreenNotification;
+ APPKIT_EXPORT NSString *const NSWorkspaceSessionDidBecomeActiveNotification;
+@@ -67,6 +72,15 @@ typedef NS_ENUM(NSInteger, NSGestureRecognizerState) {
+ @property CGFloat allowableMovement;
+ @end
+ 
++// (QTP) like the others here it keeps its configuration and recognises nothing
++@interface NSClickGestureRecognizer : NSGestureRecognizer {
++    NSUInteger _buttonMask; NSInteger _numberOfClicksRequired, _numberOfTouchesRequired;
++}
++@property NSUInteger buttonMask;
++@property NSInteger numberOfClicksRequired;
++@property NSInteger numberOfTouchesRequired;
++@end
++
+ @interface NSImmediateActionGestureRecognizer : NSGestureRecognizer {
+     id _animationController;
+ }
+diff --git a/src/Frameworks/AppKit/NSMacOS26Additions.m b/src/Frameworks/AppKit/NSMacOS26Additions.m
+index 46175f0..b67bbec 100644
+--- a/src/Frameworks/AppKit/NSMacOS26Additions.m
++++ b/src/Frameworks/AppKit/NSMacOS26Additions.m
+@@ -18,6 +18,10 @@ NSString *const NSPrintScalingFactor = @"NSScalingFactor";
+ NSString *const NSScrollViewDidEndLiveScrollNotification = @"NSScrollViewDidEndLiveScrollNotification";
+ NSString *const NSTouchBarItemIdentifierCharacterPicker = @"NSTouchBarItemIdentifierCharacterPicker";
+ NSString *const NSValueBinding = @"value";
++NSString *const NSEnabledBinding = @"enabled";
++NSString *const NSHiddenBinding = @"hidden";
++NSString *const NSTitleBinding = @"title";
++NSString *const NSToolTipBinding = @"toolTip";
+ NSString *const NSWindowDidOrderOffScreenNotification = @"NSWindowDidOrderOffScreenNotification";
+ NSString *const NSWindowDidOrderOnScreenNotification = @"NSWindowDidOrderOnScreenNotification";
+ NSString *const NSWorkspaceSessionDidBecomeActiveNotification = @"NSWorkspaceSessionDidBecomeActiveNotification";
+@@ -131,6 +135,15 @@ SF_TOLERANT
+ }
+ @end
+ 
++@implementation NSClickGestureRecognizer
++@synthesize buttonMask = _buttonMask, numberOfClicksRequired = _numberOfClicksRequired, numberOfTouchesRequired = _numberOfTouchesRequired;
++- (instancetype)initWithTarget:(id)target action:(SEL)action
++{
++    if ((self = [super initWithTarget:target action:action])) { _buttonMask = 1; _numberOfClicksRequired = 1; _numberOfTouchesRequired = 1; }
++    return self;
++}
++@end
++
+ @implementation NSImmediateActionGestureRecognizer
+ @synthesize animationController = _animationController;
+ - (void)dealloc { [_animationController release]; [super dealloc]; }

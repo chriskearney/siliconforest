@@ -1,0 +1,93 @@
+diff --git a/src/Frameworks/AppKit/NSModernAppKit.m b/src/Frameworks/AppKit/NSModernAppKit.m
+index 0d7d37a..62b8e90 100644
+--- a/src/Frameworks/AppKit/NSModernAppKit.m
++++ b/src/Frameworks/AppKit/NSModernAppKit.m
+@@ -987,3 +987,88 @@ static char SFHideAnchorKey;
+ }
+ 
+ @end
++
++/* (QTP) Names Apple's QuickTime Player's player view, controls and Open Recent menu use. */
++#import <AppKit/NSParagraphStyle.h>
++#import <AppKit/NSMutableParagraphStyle.h>
++#import <AppKit/NSAttributedString.h>
++#import <AppKit/NSText.h>
++
++@implementation NSWindow (SFTitlebarHeight)
++
++// (private on macOS) the height of the frame above the content: here the compositor draws the title bar outside
++// the window, so it is the menu strip's row (NSWindowMenuStrip.m), or 0
++- (CGFloat)titlebarHeight
++{
++    NSRect frame = [self frame];
++    NSRect content = [self contentRectForFrameRect:frame];
++    CGFloat height = NSMaxY(frame) - NSMaxY(content);
++
++    return height > 0 ? height : 0;
++}
++
++@end
++
++@implementation NSImage (SFPrivateSymbols)
++
++// (private on macOS) Apple's own symbol set: the same few drawings this AppKit has for symbols, nil for others
+++ (NSImage *)imageWithPrivateSystemSymbolName:(NSString *)name accessibilityDescription:(NSString *)description
++{
++    return [self imageWithSystemSymbolName:name accessibilityDescription:description];
++}
++
++// (macOS 11) a symbol image at a configuration: the drawings here have one size and weight, so an equal copy
++- (NSImage *)imageWithSymbolConfiguration:(id)configuration
++{
++    (void)configuration;
++    return [[self copy] autorelease];
++}
++
++@end
++
++@implementation NSParagraphStyle (SFWritingDirection)
++
++// the direction text of a language runs in; nil asks for the user's first language
+++ (NSWritingDirection)defaultWritingDirectionForLanguage:(NSString *)language
++{
++    if (language == nil)
++        language = [[NSLocale preferredLanguages] firstObject];
++    if (language != nil && [NSLocale characterDirectionForLanguage:language] == NSLocaleLanguageDirectionRightToLeft)
++        return NSWritingDirectionRightToLeft;
++    return NSWritingDirectionLeftToRight;
++}
++
++@end
++
++@implementation NSMutableAttributedString (SFWritingDirection)
++
++// every paragraph style in the range gets that base writing direction (text without one gets the default style's)
++- (void)setBaseWritingDirection:(NSWritingDirection)direction range:(NSRange)range
++{
++    NSUInteger at = range.location, end = NSMaxRange(range);
++
++    while (at < end) {
++        NSRange run;
++        NSParagraphStyle *style = [self attribute:NSParagraphStyleAttributeName atIndex:at longestEffectiveRange:&run inRange:NSMakeRange(at, end - at)];
++        NSMutableParagraphStyle *changed = [[(style ? style : [NSParagraphStyle defaultParagraphStyle]) mutableCopy] autorelease];
++
++        [changed setBaseWritingDirection:direction];
++        [self addAttribute:NSParagraphStyleAttributeName value:changed range:run];
++        at = NSMaxRange(run);
++    }
++}
++
++@end
++
++@implementation NSView (SFLayerCoordinates)
++
++// (macOS 10.7) a layer-backed view's layer has its bounds in points with the view's orientation, so these are
++// the identity here
++- (NSPoint)convertPointToLayer:(NSPoint)point { return point; }
++- (NSPoint)convertPointFromLayer:(NSPoint)point { return point; }
++- (NSRect)convertRectToLayer:(NSRect)rect { return rect; }
++- (NSRect)convertRectFromLayer:(NSRect)rect { return rect; }
++- (NSSize)convertSizeToLayer:(NSSize)size { return size; }
++- (NSSize)convertSizeFromLayer:(NSSize)size { return size; }
++
++@end

@@ -1,0 +1,215 @@
+diff --git a/src/Frameworks/AppKit/NSDocumentController.h b/src/Frameworks/AppKit/NSDocumentController.h
+index 2aba6b7..a41b3b9 100755
+--- a/src/Frameworks/AppKit/NSDocumentController.h
++++ b/src/Frameworks/AppKit/NSDocumentController.h
+@@ -53,6 +53,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+ - openUntitledDocumentAndDisplay:(BOOL)display error:(NSError **)error;
+ - openDocumentWithContentsOfFile:(NSString *)path display:(BOOL)display;
+ - openDocumentWithContentsOfURL:(NSURL *)url display:(BOOL)display error:(NSError **)error;
++- (void)openDocumentWithContentsOfURL:(NSURL *)url display:(BOOL)display completionHandler:(void (^)(NSDocument *document, BOOL documentWasAlreadyOpen, NSError *error))completionHandler;
+ 
+ - (BOOL)reopenDocumentForURL:(NSURL *)url withContentsOfURL:(NSURL *)contentsUL error:(NSError **)error;
+ 
+diff --git a/src/Frameworks/AppKit/NSDocumentController.m b/src/Frameworks/AppKit/NSDocumentController.m
+index dc90556..fb2b0dc 100755
+--- a/src/Frameworks/AppKit/NSDocumentController.m
++++ b/src/Frameworks/AppKit/NSDocumentController.m
+@@ -15,6 +15,54 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+ #import <AppKit/NSApplication.h>
+ #import <AppKit/NSWindowController.h>
+ #import <AppKit/NSRaise.h>
++#import <AppKit/NSWorkspace.h>
++#include <CoreServices/UTType.h>
++
++/* (QTP) Document types named by uniform type identifier, as on macOS since 10.5: an entry of
++ * CFBundleDocumentTypes that lists LSItemContentTypes and no CFBundleTypeName is named by its first
++ * identifier, and a file's type is the declared type its identifier is or conforms to (CoreServices'
++ * table, the application's own declarations first through NSWorkspace). Apple's QuickTime Player
++ * declares its types this way only; extensions alone found none of them. */
++static NSString *sfTypeName(NSDictionary *info) {
++   NSString *name=[info objectForKey:@"CFBundleTypeName"];
++   NSArray  *types=[info objectForKey:@"LSItemContentTypes"];
++
++   if([name isKindOfClass:[NSString class]] && [name length]>0)
++    return name;
++   if([types isKindOfClass:[NSArray class]] && [types count]>0 && [[types objectAtIndex:0] isKindOfClass:[NSString class]])
++    return [types objectAtIndex:0];
++   return nil;
++}
++
++static NSArray *sfContentTypes(NSDictionary *info) {
++   NSArray *types=[info objectForKey:@"LSItemContentTypes"];
++
++   return [types isKindOfClass:[NSArray class]]?types:nil;
++}
++
++static BOOL sfConforms(NSString *type,NSString *to) {
++   if(type==nil || to==nil)
++    return NO;
++   if([type caseInsensitiveCompare:to]==NSOrderedSame)
++    return YES;
++   return UTTypeConformsTo((CFStringRef)type,(CFStringRef)to)?YES:NO;
++}
++
++// the uniform type identifier of a file from its extension: the application's own declarations, then the system's table
++static NSString *sfTypeOfPath(NSString *path) {
++   NSString *extension=[path pathExtension];
++   NSString *type=[[NSWorkspace sharedWorkspace] typeOfFile:path error:NULL];
++
++   if(type!=nil && [type rangeOfString:@"."].location!=NSNotFound)
++    return type;
++   if([extension length]>0){
++    CFStringRef identifier=UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension,(CFStringRef)extension,NULL);
++
++    if(identifier!=NULL)
++     return [(NSString *)identifier autorelease];
++   }
++   return nil;
++}
+ 
+ @interface NSDocument(private)
+ -(void)_setUntitledNumber:(int)number;
+@@ -73,15 +121,23 @@ static NSDocumentController *shared=nil;
+    if([_fileTypes count]==0)
+     return nil;
+ 
+-   return [(NSDictionary *)[_fileTypes objectAtIndex:0] objectForKey:@"CFBundleTypeName"];
++   // (QTP) as on macOS: the first type the application edits, else the first
++   for(NSDictionary *info in _fileTypes)
++    if([[info objectForKey:@"CFBundleTypeRole"] isEqual:@"Editor"] && sfTypeName(info)!=nil)
++     return sfTypeName(info);
++   return sfTypeName([_fileTypes objectAtIndex:0]);
+ }
+ 
+ -(NSArray *)documentClassNames {
+    NSMutableSet *result=[NSMutableSet set];
+    int           i,count=[_fileTypes count];
+    
+-   for(i=0;i<count;i++)
+-    [result addObject:[(NSDictionary *)[_fileTypes objectAtIndex:i] objectForKey:@"NSDocumentClass"]];
++   for(i=0;i<count;i++){
++    id name=[(NSDictionary *)[_fileTypes objectAtIndex:i] objectForKey:@"NSDocumentClass"];
++
++    if(name!=nil)   // (QTP) an entry without a class (a type the application only knows) added nil and raised
++     [result addObject:name];
++   }
+    
+    return [result allObjects];
+ }
+@@ -93,6 +149,8 @@ static NSDocumentController *shared=nil;
+ -(NSDictionary *)_infoForType:(NSString *)type {
+    int i,count=[_fileTypes count];
+    
++   if(type==nil)
++    return nil;
+    for(i=0;i<count;i++){
+     NSDictionary *check=[_fileTypes objectAtIndex:i];
+     NSString     *name=[check objectForKey:@"CFBundleTypeName"];
+@@ -100,6 +158,21 @@ static NSDocumentController *shared=nil;
+     if([name isEqualToString:type])
+      return check;
+    }
++   // (QTP) by identifier: one an entry lists, then one an entry's identifier contains
++   for(i=0;i<count;i++){
++    NSDictionary *check=[_fileTypes objectAtIndex:i];
++
++    for(NSString *identifier in sfContentTypes(check))
++     if([identifier isKindOfClass:[NSString class]] && [identifier caseInsensitiveCompare:type]==NSOrderedSame)
++      return check;
++   }
++   for(i=0;i<count;i++){
++    NSDictionary *check=[_fileTypes objectAtIndex:i];
++
++    for(NSString *identifier in sfContentTypes(check))
++     if([identifier isKindOfClass:[NSString class]] && sfConforms(type,identifier))
++      return check;
++   }
+    return nil;
+ }
+ 
+@@ -228,7 +301,28 @@ static NSDocumentController *shared=nil;
+    if(extension==nil)
+     return nil;
+        
+-   return [self typeFromFileExtension:extension];
++   NSString *byExtension=[self typeFromFileExtension:extension];
++   if(byExtension!=nil)
++    return byExtension;
++
++   // (QTP) the declared type the file's identifier is, or conforms to (the first in the application's order)
++   NSString *identifier=sfTypeOfPath([url path]);
++   NSDictionary *info=[self _infoForType:identifier];
++   if(info!=nil){
++    for(NSString *declared in sfContentTypes(info))
++     if([declared isKindOfClass:[NSString class]] && [declared caseInsensitiveCompare:identifier]==NSOrderedSame)
++      return declared;
++    for(NSString *declared in sfContentTypes(info))
++     if([declared isKindOfClass:[NSString class]] && sfConforms(identifier,declared))
++      return declared;
++    return sfTypeName(info);
++   }
++   if(error!=NULL)
++    *error=[NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadUnknownError
++                           userInfo:[NSDictionary dictionaryWithObjectsAndKeys:url,NSURLErrorKey,
++                             [NSString stringWithFormat:@"The document \"%@\" could not be opened: %@ cannot open files of this type.",
++                               [[url path] lastPathComponent],[[NSProcessInfo processInfo] processName]],NSLocalizedDescriptionKey,nil]];
++   return nil;
+ }
+ 
+ -makeDocumentWithContentsOfFile:(NSString *)path ofType:(NSString *)type {
+@@ -244,7 +338,8 @@ static NSDocumentController *shared=nil;
+    id    result;
+    Class class=[self documentClassForType:type];
+ 
+-   result=[[[class alloc] initWithContentsOfURL:url ofType:type] autorelease];
++   // (QTP) the initialiser that reports errors, as on macOS (Apple's QuickTime Player implements only that one)
++   result=[[[class alloc] initWithContentsOfURL:url ofType:type error:error] autorelease];
+ 
+    return result;
+ }
+@@ -370,10 +465,10 @@ static NSDocumentController *shared=nil;
+     NSDocument *result=[self documentForURL:url];
+ 
+     if(result==nil){
+-     NSString   *extension=[[url path] pathExtension];
+-     NSString   *type=[self typeFromFileExtension:extension];
++     // (QTP) the type through -typeForContentsOfURL:error:, which an application may override, as on macOS
++     NSString   *type=[self typeForContentsOfURL:url error:error];
+      
+-     result=[self makeDocumentWithContentsOfURL:url ofType:type error:error];
++     result=(type==nil)?nil:[self makeDocumentWithContentsOfURL:url ofType:type error:error];
+ 
+      if(result!=nil){
+       [self addDocument:result];
+@@ -388,6 +483,31 @@ static NSDocumentController *shared=nil;
+    }
+ } 
+ 
++// (QTP) where autosaved untitled documents are kept, as on macOS: ~/Library/Autosave Information, made when asked
++// (private on macOS; Apple's QuickTime Player asks for it to tell a file of its own from a document it opens)
++-(NSURL *)_autosaveDirectoryURLCreateIfNecessary:(BOOL)create {
++   NSString *path=[[NSHomeDirectory() stringByAppendingPathComponent:@"Library"] stringByAppendingPathComponent:@"Autosave Information"];
++   BOOL      isDirectory=NO;
++
++   if(![[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDirectory] || !isDirectory){
++    if(!create || ![[NSFileManager defaultManager] createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:NULL])
++     return create?nil:[NSURL fileURLWithPath:path isDirectory:YES];
++   }
++   return [NSURL fileURLWithPath:path isDirectory:YES];
++}
++
++// (QTP) the block form macOS 10.7 added: opens at once, then calls the handler
++-(void)openDocumentWithContentsOfURL:(NSURL *)url display:(BOOL)display completionHandler:(void (^)(NSDocument *document,BOOL documentWasAlreadyOpen,NSError *error))completionHandler {
++   NSError    *error=nil;
++   NSDocument *already=[self documentForURL:url];
++   NSDocument *document=[self openDocumentWithContentsOfURL:url display:display error:&error];
++
++   if(completionHandler!=nil)
++    completionHandler(document,already!=nil,document==nil?error:nil);
++   else if(document==nil && error!=nil)
++    [self presentError:error];
++}
++
+ -(BOOL)reopenDocumentForURL:(NSURL *)url withContentsOfURL:(NSURL *)contentsUL error:(NSError **)error {
+    NSUnimplementedMethod();
+    return 0;

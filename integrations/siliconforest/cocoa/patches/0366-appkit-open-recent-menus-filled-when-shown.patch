@@ -1,0 +1,176 @@
+diff --git a/src/Frameworks/AppKit/NSApplication.m b/src/Frameworks/AppKit/NSApplication.m
+index 09c3a9a..b6bbe74 100644
+--- a/src/Frameworks/AppKit/NSApplication.m
++++ b/src/Frameworks/AppKit/NSApplication.m
+@@ -1747,6 +1747,10 @@ static BOOL sfIsMenuAgent(void)
+         objectForKey:@"CFBundleDocumentTypes"];
+    if([types count] > 0)
+        controller = [NSDocumentController sharedDocumentController];
++   // (0366) its Open Recent menus, now that the main menu is loaded and the application's own controller (a subclass
++   // made in -applicationWillFinishLaunching:) is the shared one
++   if([controller respondsToSelector:@selector(_installOpenRecentMenus)])
++       [controller performSelector:@selector(_installOpenRecentMenus)];
+ 
+    if ([self openFiles]) {
+       needsUntitled = NO;
+diff --git a/src/Frameworks/AppKit/NSDocumentController.m b/src/Frameworks/AppKit/NSDocumentController.m
+index fb2b0dc..10641f8 100755
+--- a/src/Frameworks/AppKit/NSDocumentController.m
++++ b/src/Frameworks/AppKit/NSDocumentController.m
+@@ -74,6 +74,15 @@ static NSString *sfTypeOfPath(NSString *path) {
+ 
+ @interface NSMenu(private)
+ -(NSMenu *)_menuWithName:(NSString *)name;
++-(NSArray *)_menusWithName:(NSString *)name;
+++(NSArray *)_menusWithName:(NSString *)name;
++-(NSString *)_name;
++@end
++
++@interface NSDocumentController(openRecentMenus)
++-(void)_installOpenRecentMenus;
++-(void)_populateOpenRecentMenu:(NSMenu *)menu includingIcons:(BOOL)icons;
++-(void)_depopulateOpenRecentMenu:(NSMenu *)menu;
+ @end
+ 
+ @implementation NSDocumentController
+@@ -620,6 +629,11 @@ static NSDocumentController *shared=nil;
+    NSMenuItem *item=sender;
+    int         tag=[item tag];
+ 
++   // (0366) the item's URL where it carries one (the menu is filled from -recentDocumentURLs)
++   if([[item representedObject] isKindOfClass:[NSURL class]]){
++    paths=[NSArray arrayWithObject:[[item representedObject] path]];
++    tag=0;
++   }
+    if(tag>=0 && tag<[paths count]){
+     NSError *error=nil;
+     NSURL   *url=[NSURL fileURLWithPath:[paths objectAtIndex:tag]];
+@@ -649,48 +663,61 @@ static NSDocumentController *shared=nil;
+    }
+ }
+ 
+--(void)_updateRecentDocumentsMenu {
+-   NSMenu         *menu=[[NSApp mainMenu] _menuWithName:@"_NSRecentDocumentsMenu"];
+-   NSArray        *array=[self _recentDocumentPaths];
+-   int             i,j,count=[array count];
+-   NSMutableArray *lastPathArray=[[NSMutableArray alloc] init];
+- 
++/* (0366) The Open Recent menus as macOS's document controller keeps them: each time a menu named
++ * _NSRecentDocumentsMenu is about to show (-[NSMenu update]) the shared controller empties it
++ * (-_depopulateOpenRecentMenu:) and fills it (-_populateOpenRecentMenu:includingIcons:) from -recentDocumentURLs;
++ * -_installOpenRecentMenus is sent when the application has finished launching (NSApplication -finishLaunching).
++ * Private on macOS, and the way a subclass gives the menu its own entries: Apple's QuickTime Player overrides all
++ * three, and is the delegate of its own menus only (its Open Recent menu showed only "Clear Menu"). */
+++(NSDocumentController *)_sfSharedDocumentControllerIfMade {
++   return shared;
++}
++
++-(void)_installOpenRecentMenus {
++}
++
++-(void)_depopulateOpenRecentMenu:(NSMenu *)menu {
+    [self _removeAllRecentDocumentsFromMenu:menu];
+-   
+-   if([[menu itemArray] count]>0){
+-    if([array count]==0){
+-     if([[[menu itemArray] objectAtIndex:0] isSeparatorItem])
+-      [menu removeItemAtIndex:0];
+-    }
+-    else {
+-     if(![[[menu itemArray] objectAtIndex:0] isSeparatorItem])
+-      [menu insertItem:[NSMenuItem separatorItem] atIndex:0];
+-    }
+-   }
++   // (and the separator put before "Clear Menu" when there were entries)
++   if([menu numberOfItems]>1 && [[menu itemAtIndex:0] isSeparatorItem])
++    [menu removeItemAtIndex:0];
++}
++
++-(void)_populateOpenRecentMenu:(NSMenu *)menu includingIcons:(BOOL)icons {
++   NSArray        *array=[self recentDocumentURLs];
++   int             i,j,count=[array count];
++   NSMutableArray *titles=[NSMutableArray arrayWithCapacity:count];
++
++   (void)icons;
++   [self _depopulateOpenRecentMenu:menu];
++   if(count>0 && [menu numberOfItems]>0)
++    [menu insertItem:[NSMenuItem separatorItem] atIndex:0];
+ 
+    // Shorten entries to the last path component, but not for then-duplicates.
+    for(i=0;i<count;i++){
+-    NSString *lastPath=[(NSString *)[array objectAtIndex:i] lastPathComponent];
++    NSString *path=[[array objectAtIndex:i] path];
++    NSString *lastPath=[path lastPathComponent];
+     NSInteger occurences=0;
+ 
+     for(j=0;j<count;j++){
+-     if([[(NSString *)[array objectAtIndex:j] lastPathComponent] isEqualToString:lastPath])
++     if([[[[array objectAtIndex:j] path] lastPathComponent] isEqualToString:lastPath])
+       occurences++;
+     }
+-    if(occurences>1)
+-     [lastPathArray addObject:[array objectAtIndex:i]];
+-    else
+-     [lastPathArray addObject:lastPath];
++    [titles addObject:(occurences>1) ? path : lastPath];
+    }
+ 
+    while(--count>=0){
+-    NSString   *path=[lastPathArray objectAtIndex:count];
+-    NSMenuItem *item=[[[NSMenuItem alloc] initWithTitle:path action:@selector(_openRecentDocument:) keyEquivalent:nil] autorelease];
+-    
++    NSMenuItem *item=[[[NSMenuItem alloc] initWithTitle:[titles objectAtIndex:count] action:@selector(_openRecentDocument:) keyEquivalent:@""] autorelease];
++
++    [item setTarget:self];
+     [item setTag:count];
++    [item setRepresentedObject:[array objectAtIndex:count]];
+     [menu insertItem:item atIndex:0];
+    }
+-   [lastPathArray release];
++}
++
++// (0366: the menus are filled when they are shown, -[NSMenu update])
++-(void)_updateRecentDocumentsMenu {
+ }
+ 
+ -(NSArray *)recentDocumentURLs {
+diff --git a/src/Frameworks/AppKit/NSMenu.subproj/NSMenu.m b/src/Frameworks/AppKit/NSMenu.subproj/NSMenu.m
+index a953298..ddc9991 100755
+--- a/src/Frameworks/AppKit/NSMenu.subproj/NSMenu.m
++++ b/src/Frameworks/AppKit/NSMenu.subproj/NSMenu.m
+@@ -15,6 +15,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+ #import <AppKit/NSWindow.h>
+ #import <AppKit/NSMenuItem.h>
+ #import <AppKit/NSApplication.h>
++#import <objc/message.h>
+ #import <AppKit/NSWindow.h>
+ #import <AppKit/NSEvent.h>
+ #import <AppKit/NSRaise.h>
+@@ -477,6 +478,13 @@ BOOL itemIsEnabled(NSMenuItem *item) {
+ }
+ 
+ -(void)update {
++    // (0366) the Open Recent menu is filled by the document controller each time it shows, as on macOS
++    if ([_name isEqual:@"_NSRecentDocumentsMenu"]) {
++        id controller = [NSClassFromString(@"NSDocumentController") performSelector:@selector(_sfSharedDocumentControllerIfMade)];
++
++        if ([controller respondsToSelector:@selector(_populateOpenRecentMenu:includingIcons:)])
++            ((void (*)(id, SEL, id, BOOL))objc_msgSend)(controller, @selector(_populateOpenRecentMenu:includingIcons:), self, YES);
++    }
+     if ([_delegate respondsToSelector:@selector(menuNeedsUpdate:)]) {
+         [_delegate menuNeedsUpdate:self];
+     }
+@@ -613,6 +621,13 @@ static NSUInteger SFItemModifiers(NSMenuItem *item) {
+    _name=[name copy];
+ }
+ 
++// (0366) every menu of a name in the application's menus: a class method on macOS (QuickTime Player sends it so)
+++(NSArray *)_menusWithName:(NSString *)name {
++   NSMenu *main=[NSApp mainMenu];
++
++   return main!=nil ? [main _menusWithName:name] : [NSArray array];
++}
++
+ -(NSArray *)_menusWithName:(NSString *)name {
+    NSMutableArray *result=[NSMutableArray array];
+ 

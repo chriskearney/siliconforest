@@ -1,0 +1,194 @@
+diff --git a/src/Frameworks/Onyx2D/O2Context_builtin.m b/src/Frameworks/Onyx2D/O2Context_builtin.m
+index 67bd11c..3a09519 100644
+--- a/src/Frameworks/Onyx2D/O2Context_builtin.m
++++ b/src/Frameworks/Onyx2D/O2Context_builtin.m
+@@ -1086,12 +1086,156 @@ static inline O2AffineTransform createImageToSurfaceTransform(O2ImageRef image,O
+    return result;
+ }
+ 
++/* (QTP2, 0363) An opaque image drawn at its own size on whole device pixels -- a movie's picture made at the size it
++ * is shown -- is copied into the surface a row at a time. The general path reads every destination pixel through
++ * the bilinear resampler and blends it, which cost a picture of 2444x1375 about 150 ms on the M1 (QuickTime Player
++ * showed two pictures a second). At one to one on whole pixels the result is the same (the resampler returns each
++ * source pixel unchanged, an opaque pixel over anything is itself); within two pixels of one to one each device pixel
++ * takes the source pixel at its centre, and an edge off whole pixels covers the pixels whose centres it covers
++ * (the general path blends a partly covered edge pixel).
++ * Taken only for: no clip mask and no transparency layer, the normal or copy blend mode, a global alpha of one, an
++ * 8-bit RGB image of 32 bits a pixel in the surface's own byte order (B, G, R first in memory) with its alpha
++ * skipped (or premultiplied when the mode is copy), no mask or decode array, and a transform along the axes that keeps
++ * it within two pixels of its own size (rows either way up). O2_NO_IMAGE_FAST_PATH=1 turns it off (A/B). */
++static const char *sfDrawImageAtDevicePixels(O2Context_builtin *self,O2Image *image,O2AffineTransform t){
++   static int disabled=-1;
++
++   if(disabled<0)
++    disabled=getenv("O2_NO_IMAGE_FAST_PATH")!=NULL;
++   if(disabled)
++    return "off";
++
++   O2GState  *gState=O2ContextCurrentGState(self);
++   O2Surface *surface=self->_surface;
++
++   if(self->_clipContext!=nil || [self->_layerStack count]>0 || surface==nil)
++    return "mask, layer or no surface";
++   if(gState->_blendMode!=kO2BlendModeNormal && gState->_blendMode!=kO2BlendModeCopy)
++    return "blend mode";
++   if(!(gState->_alpha>=1))
++    return "alpha";
++   if(O2ImageGetMask(image)!=NULL || O2ImageIsMask(image) || O2ImageGetDecode(image)!=NULL)
++    return "image mask or decode";
++   if(O2ImageGetBitsPerComponent(image)!=8 || O2ImageGetBitsPerPixel(image)!=32 || O2ColorSpaceGetModel(O2ImageGetColorSpace(image))!=kO2ColorSpaceModelRGB)
++    return "image depth or colour model";
++
++   O2BitmapInfo info=O2ImageGetBitmapInfo(image),alpha=info&kO2BitmapAlphaInfoMask;
++   BOOL         opaque=(alpha==kO2ImageAlphaNoneSkipFirst);
++
++   if((info&kO2BitmapByteOrderMask)!=kO2BitmapByteOrder32Little || (!opaque && !(alpha==kO2ImageAlphaPremultipliedFirst && gState->_blendMode==kO2BlendModeCopy)))
++    return "image layout";
++
++   O2BitmapInfo sinfo=O2ImageGetBitmapInfo((O2ImageRef)surface),salpha=sinfo&kO2BitmapAlphaInfoMask;
++
++   if(O2ImageGetBitsPerPixel((O2ImageRef)surface)!=32 || (sinfo&kO2BitmapByteOrderMask)!=kO2BitmapByteOrder32Little ||
++      (salpha!=kO2ImageAlphaPremultipliedFirst && salpha!=kO2ImageAlphaNoneSkipFirst) ||
++      O2ColorSpaceGetModel(O2ImageGetColorSpace((O2ImageRef)surface))!=kO2ColorSpaceModelRGB)
++    return "surface layout";
++
++   /* along the axes, not mirrored left to right, and within two pixels of the image's own size across it: a window's
++      pixels per point are its whole pixels over its points (1.5005 down, not 1.5, for QuickTime Player's window at
++      150 %), so a picture made for its place is a hair off one to one there */
++   if(fabs(t.b)>1e-9 || fabs(t.c)>1e-9 || !(t.a>0) || !(fabs(t.d)>0))
++    return "rotated, mirrored or empty";
++
++   long   width=(long)O2ImageGetWidth(image),height=(long)O2ImageGetHeight(image);
++   size_t length=0,srcRow=O2ImageGetBytesPerRow(image);
++
++   if(width<=0 || height<=0)
++    return NULL;
++   if(fabs(t.a-1)*width>2.0 || fabs(fabs(t.d)-1)*height>2.0)
++    return "not at its own size";
++   if(!isfinite(t.tx) || !isfinite(t.ty) || fabs(t.tx)>1e7 || fabs(t.ty)>1e7)
++    return "far off";
++
++   const uint8_t *src=O2ImageGetDirectBytes(image,&length);
++
++   if(src==NULL || srcRow<(size_t)width*4 || length<srcRow*(size_t)(height-1)+(size_t)width*4)
++    return "pixels";
++
++   uint8_t *dst=O2SurfaceGetPixelBytes(surface);
++   size_t   dstRow=O2SurfaceGetBytesPerRow(surface);
++   long     sw=(long)O2ImageGetWidth((O2ImageRef)surface),sh=(long)O2ImageGetHeight((O2ImageRef)surface);
++
++   if(dst==NULL)
++    return "no surface pixels";
++
++   /* the device pixels whose centres the image's rectangle covers (each takes the source pixel at its centre: the
++      nearest, which at one to one is the pixel itself), clipped to the viewport (where every clip of this context
++      ends up) and to the surface */
++   O2AffineTransform inverse=O2AffineTransformInvert(t);
++   double ya=t.ty,yb=t.ty+t.d*height;
++   long   x0=(long)ceil(t.tx-0.5),x1=(long)ceil(t.tx+t.a*width-0.5);
++   long   y0=(long)ceil(MIN(ya,yb)-0.5),y1=(long)ceil(MAX(ya,yb)-0.5);
++
++   x0=MAX(x0,MAX(0,(long)self->_vpx)); x1=MIN(x1,MIN(sw,(long)self->_vpx+self->_vpwidth));
++   y0=MAX(y0,MAX(0,(long)self->_vpy)); y1=MIN(y1,MIN(sh,(long)self->_vpy+self->_vpheight));
++   if(x1<=x0 || y1<=y0)
++    return NULL;
++
++   long count=x1-x0;
++   long column=(long)floor(inverse.a*(x0+0.5)+inverse.tx);
++   /* across, where the source drifts less than half a pixel from the destination over the row one offset serves it;
++      else each destination column takes its own source column (a window's full-screen frame of 1707 points over
++      2560 pixels is a pixel off one to one) */
++   BOOL  straight=(fabs(t.a-1)*width<=0.5 && column>=0 && column+count<=width);
++   long *columns=NULL;
++
++   if(!straight){
++    if((columns=malloc((size_t)count*sizeof(long)))==NULL)
++     return "memory";
++    for(long i=0;i<count;i++)
++     columns[i]=MAX(0,MIN(width-1,(long)floor(inverse.a*(x0+i+0.5)+inverse.tx)));
++   }
++
++   for(long y=y0;y<y1;y++){
++    long            row=MAX(0,MIN(height-1,(long)floor(inverse.d*(y+0.5)+inverse.ty)));
++    const uint32_t *line=(const uint32_t *)(src+(size_t)row*srcRow);
++    uint32_t       *out=(uint32_t *)(dst+(size_t)y*dstRow)+x0;
++    // (the skipped byte is the alpha's place: it reads as opaque)
++    uint32_t        opaqueBits=opaque ? 0xFF000000u : 0;
++
++    if(straight){
++     const uint32_t *in=line+column;
++
++     if(opaque){
++      for(long i=0;i<count;i++)
++       out[i]=in[i]|0xFF000000u;
++     }
++     else
++      memcpy(out,in,(size_t)count*4);
++    }
++    else {
++     for(long i=0;i<count;i++)
++      out[i]=line[columns[i]]|opaqueBits;
++    }
++   }
++   free(columns);
++   return NULL;
++}
++
+ -(void)drawImage:(O2Image *)image inRect:(O2Rect)rect {
+    O2GState  *gState=O2ContextCurrentGState(self);
+    O2ImageRef softMask=O2ImageGetMask(image);
+         
+    O2AffineTransform imageToSurface=createImageToSurfaceTransform(image,rect,gState->_deviceSpaceTransform);
+    O2AffineTransform maskToSurface;
++
++   {
++    const char *why=(softMask==NULL) ? sfDrawImageAtDevicePixels(self,image,imageToSurface) : "soft mask";
++    static int trace=-1,traced;
++
++    if(why==NULL)
++     return;
++    if(trace<0)
++     trace=getenv("O2_IMAGE_TRACE")!=NULL;
++    if(trace && traced<60){
++     traced++;
++     fprintf(stderr,"O2_IMAGE_TRACE %zux%zu info=0x%x bpp=%zu in rect %.3f,%.3f %.3fx%.3f: [%.6f %.6f %.6f %.6f %.3f %.3f]: resampled (%s)\n",
++       O2ImageGetWidth(image),O2ImageGetHeight(image),(unsigned)O2ImageGetBitmapInfo(image),O2ImageGetBitsPerPixel(image),rect.origin.x,rect.origin.y,rect.size.width,rect.size.height,
++       imageToSurface.a,imageToSurface.b,imageToSurface.c,imageToSurface.d,imageToSurface.tx,imageToSurface.ty,why);
++    }
++   }
+    
+    if(softMask==NULL)
+     maskToSurface=O2AffineTransformIdentity;
+diff --git a/src/Frameworks/Onyx2D/O2Image.h b/src/Frameworks/Onyx2D/O2Image.h
+index 09d2085..2d9b50d 100644
+--- a/src/Frameworks/Onyx2D/O2Image.h
++++ b/src/Frameworks/Onyx2D/O2Image.h
+@@ -185,6 +185,9 @@ O2BitmapInfo O2ImageGetBitmapInfo(O2ImageRef self);
+ 
+ O2ImageRef O2ImageGetMask(O2ImageRef self);
+ 
++// (0363) the image's pixels as they are in memory (made available as for drawing), and how many bytes there are
++const void *O2ImageGetDirectBytes(O2ImageRef self,size_t *length);
++
+ O2ImageDecoderRef O2ImageGetImageDecoder(O2ImageRef self);
+ 
+ - (NSData *)directData;
+diff --git a/src/Frameworks/Onyx2D/O2Image.m b/src/Frameworks/Onyx2D/O2Image.m
+index 3b406fc..4780e56 100644
+--- a/src/Frameworks/Onyx2D/O2Image.m
++++ b/src/Frameworks/Onyx2D/O2Image.m
+@@ -607,6 +607,14 @@ O2BitmapInfo O2ImageGetBitmapInfo(O2ImageRef self) {
+    return self->_bitmapInfo;
+ }
+ 
++const void *O2ImageGetDirectBytes(O2ImageRef self,size_t *length) {
++   const void *bytes=(self!=NULL) ? directBytes(self) : NULL;
++
++   if(length!=NULL)
++    *length=(bytes!=NULL) ? self->_directLength : 0;
++   return bytes;
++}
++
+ O2ImageRef O2ImageGetMask(O2ImageRef self) {
+    if(self==NULL)
+     return 0;

@@ -1,0 +1,38 @@
+diff --git a/src/Frameworks/AppKit/NSModernAppKit.m b/src/Frameworks/AppKit/NSModernAppKit.m
+index 575caea..667c26a 100644
+--- a/src/Frameworks/AppKit/NSModernAppKit.m
++++ b/src/Frameworks/AppKit/NSModernAppKit.m
+@@ -994,6 +994,18 @@ static char SFHideAnchorKey;
+ #import <AppKit/NSAttributedString.h>
+ #import <AppKit/NSText.h>
+ 
++@implementation NSScreen (SFDevicePixels)
++
++// (private on macOS) the screen's size in device pixels: its size in points at its backing scale
++- (NSSize)devicePixelCounts
++{
++    NSSize size = [self frame].size;
++    CGFloat scale = [self backingScaleFactor];
++    return NSMakeSize(round(size.width * scale), round(size.height * scale));
++}
++
++@end
++
+ @implementation NSWindow (SFTitlebarHeight)
+ 
+ // (private on macOS) the height of the frame above the content: here the compositor draws the title bar outside
+diff --git a/src/Frameworks/AppKit/NSWindowController.m b/src/Frameworks/AppKit/NSWindowController.m
+index dd12b59..0ed186a 100755
+--- a/src/Frameworks/AppKit/NSWindowController.m
++++ b/src/Frameworks/AppKit/NSWindowController.m
+@@ -170,6 +170,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+ 
+ -(void)setDocument:(NSDocument *)document {
+    _document=document;
++   // (QTP) as on macOS, the window's title follows the document it now shows (a window made in code, not loaded
++   // from a nib, kept an empty title: Apple's QuickTime Player's document windows)
++   if(_window!=nil)
++    [self synchronizeWindowTitleWithDocumentName];
+ }
+ 
+ -(id)document {

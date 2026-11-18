@@ -41,6 +41,7 @@ stage)
       $F/CoreFoundation.framework/*|$F/Foundation.framework/*|$F/CoreServices.framework/*) echo 2;;
       $F/QuartzCore.framework/*) echo 3;;
       $F/AppKit.framework/*) echo 4;;
+      $F/Onyx2D.framework/*) echo 7a;;     # step 7 (QuickTime set; installed from runs/sysinstall/stage7, not rehearsed)
       usr/lib/libFoundation.dylib) echo 5;;
       usr/share/sf-test/*) echo probe;;
       *) echo none;; esac; }

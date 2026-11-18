@@ -1,0 +1,50 @@
+diff --git a/src/Frameworks/AppKit/NSModernAppKit.m b/src/Frameworks/AppKit/NSModernAppKit.m
+index 667c26a..ed310ec 100644
+--- a/src/Frameworks/AppKit/NSModernAppKit.m
++++ b/src/Frameworks/AppKit/NSModernAppKit.m
+@@ -1,6 +1,8 @@
+ // NSModernAppKit.m - newer API on existing AppKit classes that current applications use
+ // Copyright (c) 2026 The PureDarwin Project, SPDX-License-Identifier: MPL-2.0 OR BSD-2-Clause
+ 
++#include <string.h>
++#include <stdlib.h>
+ #import <AppKit/NSModernAppKit.h>
+ #import <AppKit/NSBitmapImageRep.h>
+ #import <AppKit/NSMenuItem.h>
+@@ -1052,6 +1054,36 @@ static char SFHideAnchorKey;
+ 
+ @end
+ 
++/* (0367) Attributed strings made by Foundation are CoreFoundation's, bridged to NSAttributedString: a mutable one is an
++ * NSAttributedString object that answers the mutating messages itself (Foundation's NSAttributedString implements them
++ * for the bridged mutable string). AppKit's own methods for mutable attributed strings are categories of
++ * NSMutableAttributedString, which such a string never reaches: -setBaseWritingDirection:range: sent to a string built
++ * with -appendAttributedString: raised "unrecognized selector" (QuickTime Player's Open Recent menu titles). Each
++ * method AppKit adds to NSMutableAttributedString is also given to NSAttributedString where that class has none of
++ * its own, so the bridged strings answer it as macOS's do. */
++@interface SFBridgedAttributedStringMethods : NSObject
++@end
++
++@implementation SFBridgedAttributedStringMethods
+++ (void)load
++{
++    Class mutableClass = objc_getClass("NSMutableAttributedString"), bridged = objc_getClass("NSAttributedString");
++    unsigned count = 0;
++    Method *methods = mutableClass ? class_copyMethodList(mutableClass, &count) : NULL;
++
++    for (unsigned i = 0; i < count; i++) {
++        SEL selector = method_getName(methods[i]);
++        const char *name = sel_getName(selector);
++
++        // (not Foundation's own initializers of the mutable class: the bridged class has its own)
++        if (strncmp(name, "init", 4) == 0 || class_getInstanceMethod(bridged, selector) != NULL)
++            continue;
++        class_addMethod(bridged, selector, method_getImplementation(methods[i]), method_getTypeEncoding(methods[i]));
++    }
++    free(methods);
++}
++@end
++
+ @implementation NSMutableAttributedString (SFWritingDirection)
+ 
+ // every paragraph style in the range gets that base writing direction (text without one gets the default style's)

@@ -1,0 +1,20 @@
+diff --git a/src/Frameworks/AppKit/NSWindowController.m b/src/Frameworks/AppKit/NSWindowController.m
+index 0ed186a..fcf3b14 100755
+--- a/src/Frameworks/AppKit/NSWindowController.m
++++ b/src/Frameworks/AppKit/NSWindowController.m
+@@ -247,12 +247,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+    }
+ }
+ 
++// (QTP) as on macOS the title is the document's display name; the application's name is not added (that was the
++// Windows convention: "movie.mov - QuickTime Player")
+ -(NSString *)windowTitleForDocumentDisplayName:(NSString *)displayName {
+-  NSString *appName = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleName"]; 
+-  if (appName)
+-    return [NSString stringWithFormat:@"%@ - %@", displayName, appName];
+-  else
+-    return displayName;
++   return displayName;
+ }
+ 
+ @end
