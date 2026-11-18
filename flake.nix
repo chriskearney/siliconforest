@@ -12,6 +12,14 @@
         type = "app";
         program = "${release.packages.qemu-runner}/bin/siliconforest-qemu";
       };
+      apps.x86_64-linux.qemu-vnc = {
+        type = "app";
+        program = "${release.packages.qemu-runner}/bin/siliconforest-qemu-vnc";
+      };
+      apps.x86_64-linux.qemu-records = {
+        type = "app";
+        program = "${release.packages.qemu-runner}/bin/siliconforest-qemu-records";
+      };
       checks.x86_64-linux.source-manifest = self.packages.x86_64-linux.source-manifest;
     };
 }

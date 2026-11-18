@@ -15,8 +15,6 @@ let
       ( n=0; while [ ! -S "$runtime/wayland-0" ] && [ $n -lt 900 ]; do sleep 1; n=$((n+1)); done; sleep 1
         XDG_STATE_HOME=$state HOME=/var/root LANG=en_US.UTF-8 exec /usr/bin/chonkstep-dock > /var/log/chonkstep-dock.log 2>&1 ) &
     '' + pkgs.lib.optionalString proof ''
-      ( mkdir -p /private/var/tmp/sfshots; i=0; while [ $i -lt 60 ]; do sleep 30; i=$((i+1))
-        /usr/bin/chonkstep-darwin-desktop --screencapture /private/var/tmp/sfshots/s$(printf %03d $i).png > /dev/null 2>&1; done ) &
       ( sleep 240; sh /usr/libexec/sf-image-check ) &
     '';
   };

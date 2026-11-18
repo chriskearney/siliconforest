@@ -17,7 +17,8 @@ import subprocess
 import sys
 import time
 
-AAVMF = Path(os.environ.get('QD_AAVMF', '/nix/store/kkg3rig7vsynfa3gmafm0dj63inm5jh6-OVMF-aarch64-unknown-linux-gnu-202602-fd/FV'))
+# The flake runner sets the locked firmware; standalone calls use the distro path.
+AAVMF = Path(os.environ.get('QD_AAVMF', '/usr/share/AAVMF'))
 PROMPT = re.compile(rb'root@[^\r\n]*\r?\n?[^\r\n]*# ?(\x1b\[[0-9;?]*[a-zA-Z])*\s*$')
 
 

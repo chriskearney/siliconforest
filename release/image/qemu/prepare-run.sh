@@ -7,11 +7,11 @@
 # sf-image-check started beside the desktop. Written with debugfs into the copy; nothing is mounted,
 # the Nix output is not touched.
 #   prepare-run.sh <qemu disk from release/image.nix> <run directory> [desktop seconds, default 900]
-#                  [autopilot phases, default settle,type]
-# Then: QD_NO_SHOTS=1 python3 integrations/siliconforest/qemu-dev/qd_run.py --image <run>/disk.img \
-#         --out <run>/out --timeout 7200 --smp 4 --input-seen QDDESK_INPUT --shot-every 0
-#       (QMP screen dumps hung QEMU on this host while the compositor drew), and afterwards
-#       extract-shots.sh <run>: the desktop's own captures out of the disk copy
+#                  [autopilot phases, default settle,type; none: no autopilot, the desktop stays up
+#                   for its seconds and run-vnc.sh types on the guest's keyboard]
+#   DOCK=0 in the environment: no dock
+# Then: run-vnc.sh <run> (pictures of the guest screen through QEMU's VNC server every 30 s),
+#       and extract-shots.sh <run> for the session's records and logs out of the disk copy
 set -eu
 src=$1; run=$2; seconds=${3:-900}; only=${4:-settle,type}
 here=$(cd "$(dirname "$0")" && pwd)
@@ -21,18 +21,20 @@ cp --reflink=auto "$src" "$run/disk.img"; chmod 644 "$run/disk.img"
 # the session: the QEMU loop's template with this run's values; @ENV@ (shell run before the compositor
 # starts) gives the managed application and the autopilot longer to start under emulation (the
 # compositor's defaults, 25 s and 15 s, are for real hardware), starts the dock as sf-session does on
-# the M1, takes a picture of the composed screen every 30 s with the desktop's own screencapture
-# (into /private/var/tmp/sfshots, read out of the disk afterwards), and runs sf-image-check beside it all
+# the M1, and runs sf-image-check beside it all. Pictures come from the host (run-vnc.sh): the
+# desktop's own screencapture ended the compositor with SIGBUS on QEMU's framebuffer once (run 7),
+# and QMP screen dumps hang QEMU on this host while the compositor draws.
 python3 - "$guest/qemu-desktop-session.in" "$run/qemu-desktop-session" "$seconds" "$only" <<'PY'
-import sys
+import os, sys
 src, dst, seconds, only = sys.argv[1:5]
 env = """export CHONKSTEP_DARWIN_APP_READY_SECONDS=180 CHONKSTEP_DARWIN_AUTOPILOT_ARM_SECONDS=240
-( n=0; while [ ! -S "$runtime/wayland-0" ] && [ $n -lt 900 ]; do sleep 1; n=$((n+1)); done; sleep 1
-  XDG_STATE_HOME=$state HOME=/var/root LANG=en_US.UTF-8 exec /usr/bin/chonkstep-dock > /var/log/chonkstep-dock.log 2>&1 ) &
-( mkdir -p /private/var/tmp/sfshots; i=0; while [ $i -lt 60 ]; do sleep 30; i=$((i+1))
-  /usr/bin/chonkstep-darwin-desktop --screencapture /private/var/tmp/sfshots/s$(printf %03d $i).png > /dev/null 2>&1; done ) &
+DOCK
 ( sleep 240; sh /usr/libexec/sf-image-check ) &"""
-tok = dict(SECONDS=seconds, AUTOPILOT='1', STATS='1', SOUND='0', RENDERER='cpu', TERMINALS='1', FETCH='0',
+auto = '0' if only == 'none' else '1'
+dock = """( n=0; while [ ! -S "$runtime/wayland-0" ] && [ $n -lt 900 ]; do sleep 1; n=$((n+1)); done; sleep 1
+  XDG_STATE_HOME=$state HOME=/var/root LANG=en_US.UTF-8 exec /usr/bin/chonkstep-dock > /var/log/chonkstep-dock.log 2>&1 ) &""" if os.environ.get('DOCK', '1') == '1' else ''
+env = env.replace('DOCK', dock)
+tok = dict(SECONDS=seconds, AUTOPILOT=auto, STATS='1', SOUND='0', RENDERER='cpu', TERMINALS='1', FETCH='0',
            PERSIST='0', SCALE='1', THEME='sf-canopy', ONLY=only, ENV=env)
 s = open(src).read()
 for k, v in tok.items():
