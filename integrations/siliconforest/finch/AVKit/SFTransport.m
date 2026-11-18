@@ -9,6 +9,7 @@
 #import <AVKit/AVKit.h>
 #import "SFTransport.h"
 #include <math.h>
+#include <objc/message.h>
 @interface AVPlayerView(SFTransportActions)
 - (void)_togglePlayback:(id)sender;
 @end
@@ -190,7 +191,14 @@ void SFUpdatePicturePixelSize(AVPlayerView *view,AVPlayerLayer *layer){
  if(![layer respondsToSelector:@selector(sfSetDisplayPixelSize:)])return;
  CGSize p=view.player.currentItem.presentationSize;NSRect b=view.bounds;CGFloat scale=view.window?[view.window backingScaleFactor]:0;
  if(scale<=0||p.width<=0||p.height<=0||NSWidth(b)<=0||NSHeight(b)<=0){[layer sfSetDisplayPixelSize:CGSizeZero];return;}
- double bw=round(NSWidth(b)*scale),bh=round(NSHeight(b)*scale),w=bw,h=bh;
+ /* (the window's own pixels per point along each axis where AppKit says them: its backing store is whole pixels over
+    whole points, 1.5003 or 1.5005 rather than 1.5 at 150 %) */
+ CGFloat sx=scale,sy=scale;
+ if([view.window respondsToSelector:@selector(_backingPixelsPerPoint)]){
+  NSSize f=((NSSize (*)(id,SEL))objc_msgSend)(view.window,@selector(_backingPixelsPerPoint));
+  if(f.width>0&&f.height>0){sx=f.width;sy=f.height;}
+ }
+ double bw=round(NSWidth(b)*sx),bh=round(NSHeight(b)*sy),w=bw,h=bh;
  NSString *gravity=view.videoGravity;
  if(![gravity isEqualToString:AVLayerVideoGravityResize]){
   BOOL fill=[gravity isEqualToString:AVLayerVideoGravityResizeAspectFill];

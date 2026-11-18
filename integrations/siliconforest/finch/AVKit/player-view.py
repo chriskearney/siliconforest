@@ -45,7 +45,13 @@ change('''    [_fplayer release]; _fplayer = [player retain];
     }
     [self _updatePlayerLayer]; [self _updateControls];''')
 change('''    [[NSColor blackColor] set]; NSRectFill(dirtyRect);
-}''','''    SFFillOutsidePicture(self, _fplayerLayer, dirtyRect);
+}''','''    /* (QTP2) the window's first drawing has the first picture: the layer is asked for it now, not at its next tick
+       (a window showed black for 0.03-0.3 s when it opened) */
+    if(![_fplayerLayer contents] && _fplayer.currentItem.status == AVPlayerItemStatusReadyToPlay && [_fplayerLayer respondsToSelector:@selector(_finchShowFrame)]){
+        SFUpdatePicturePixelSize(self, _fplayerLayer);
+        [_fplayerLayer performSelector:@selector(_finchShowFrame)];
+    }
+    SFFillOutsidePicture(self, _fplayerLayer, dirtyRect);
     /* (QTP2) the picture itself is the hosted player layer's contents, drawn by AppKit over this (once: it was drawn
        here as well, a second full-size resampling per picture) */
     if([_fplayerLayer contents]) _sfVideoDraws++;

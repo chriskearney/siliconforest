@@ -1,4 +1,4 @@
-// qtp-names.m - the names Cocoa patches 0340-0349 and the framework wrappers add (first user: Apple's
+// qtp-names.m - the names Cocoa patches 0340-0362 and the framework wrappers add (first user: Apple's
 // QuickTime Player, docs/roadmap/issues/SF-AI-quicktime.md), checked without a window.
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
@@ -273,6 +273,20 @@ static void bundles(void)
     check([NSBundle bundleWithPath:@""] == nil, @"+[NSBundle bundleWithPath:@\"\"] is nil");
 }
 
+static void fullScreenStrip(void)
+{
+    /* SiliconForest's menu strip in full screen (AppKit 0362); macOS has no such method: reported, not failed */
+    SEL selector = sel_registerName("_sfMenuStripFullScreenModeForOptions:");
+    if (![NSWindow respondsToSelector:selector]) {
+        printf("QTPNAMES value full-screen-strip (no strip here)\n");
+        return;
+    }
+    int (*mode)(id, SEL, NSUInteger) = (int (*)(id, SEL, NSUInteger))objc_msgSend;
+    check(mode([NSWindow class], selector, (1 << 10) | (1 << 2) | (1 << 0)) == 1, @"full screen with macOS's default options: the strip auto-hides");
+    check(mode([NSWindow class], selector, (1 << 10) | (1 << 3)) == 2, @"NSApplicationPresentationHideMenuBar: the strip is hidden");
+    check(mode([NSWindow class], selector, (1 << 10)) == 0, @"options without a menu-bar bit keep the strip");
+}
+
 int main(void)
 {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
@@ -290,6 +304,7 @@ int main(void)
     fileCoordinator(dir);
     paths();
     bundles();
+    fullScreenStrip();
     [[NSFileManager defaultManager] removeItemAtPath:dir error:NULL];
     printf("QTPNAMES result failed=%d\n", failed);
     [pool release];

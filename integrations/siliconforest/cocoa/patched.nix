@@ -640,8 +640,11 @@
 #         made in code kept an empty title); -[NSScreen devicePixelCounts]
 #   0360  AppKit (QTP): a document window's title is the document's display name, as on macOS (the application's
 #         name was appended: "movie.mov - QuickTime Player")
+#   0362  AppKit (QTP; for every application, through the guarded install only): in full screen the menu strip
+#         auto-hides as macOS's menu bar does - it lies over the content and slides in while the pointer is at the
+#         top edge or over it; NSApplicationPresentationHideMenuBar hides it, options without a menu-bar bit keep it
 #   0363  Onyx2D (QTP2; every application, through the guarded install only): an opaque image drawn on the device at
-#         its own size (within a pixel) is copied a row at a time instead of resampled and blended pixel by pixel
+#         its own size (within two pixels) is copied a row at a time instead of resampled and blended pixel by pixel
 #         (QuickTime Player's picture cost 150 ms a draw: two pictures a second); O2_NO_IMAGE_FAST_PATH=1 turns it off,
 #         O2_IMAGE_TRACE=1 says why an image was resampled
 #   0009  Security: SecItemCopyMatching writes its result on every path and answers
@@ -771,6 +774,7 @@ let
     ./patches/0357-appkit-movie-window-names.patch
     ./patches/0358-appkit-window-title-and-device-pixels.patch
     ./patches/0360-appkit-document-window-title-is-the-name.patch
+    ./patches/0362-appkit-full-screen-menu-strip-auto-hides.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
     ./patches/0004-windowserver-server-decorations-and-scale.patch

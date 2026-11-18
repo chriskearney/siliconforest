@@ -1,8 +1,8 @@
 diff --git a/src/Frameworks/Onyx2D/O2Context_builtin.m b/src/Frameworks/Onyx2D/O2Context_builtin.m
-index 67bd11c..30ba6e4 100644
+index 67bd11c..3a09519 100644
 --- a/src/Frameworks/Onyx2D/O2Context_builtin.m
 +++ b/src/Frameworks/Onyx2D/O2Context_builtin.m
-@@ -1086,12 +1086,138 @@ static inline O2AffineTransform createImageToSurfaceTransform(O2ImageRef image,O
+@@ -1086,12 +1086,156 @@ static inline O2AffineTransform createImageToSurfaceTransform(O2ImageRef image,O
     return result;
  }
  
@@ -10,13 +10,13 @@ index 67bd11c..30ba6e4 100644
 + * is shown -- is copied into the surface a row at a time. The general path reads every destination pixel through
 + * the bilinear resampler and blends it, which cost a picture of 2444x1375 about 150 ms on the M1 (QuickTime Player
 + * showed two pictures a second). At one to one on whole pixels the result is the same (the resampler returns each
-+ * source pixel unchanged, an opaque pixel over anything is itself); within a pixel of one to one each device pixel
++ * source pixel unchanged, an opaque pixel over anything is itself); within two pixels of one to one each device pixel
 + * takes the source pixel at its centre, and an edge off whole pixels covers the pixels whose centres it covers
 + * (the general path blends a partly covered edge pixel).
 + * Taken only for: no clip mask and no transparency layer, the normal or copy blend mode, a global alpha of one, an
 + * 8-bit RGB image of 32 bits a pixel in the surface's own byte order (B, G, R first in memory) with its alpha
 + * skipped (or premultiplied when the mode is copy), no mask or decode array, and a transform along the axes that keeps
-+ * it within a pixel of its own size (rows either way up). O2_NO_IMAGE_FAST_PATH=1 turns it off (A/B). */
++ * it within two pixels of its own size (rows either way up). O2_NO_IMAGE_FAST_PATH=1 turns it off (A/B). */
 +static const char *sfDrawImageAtDevicePixels(O2Context_builtin *self,O2Image *image,O2AffineTransform t){
 +   static int disabled=-1;
 +
@@ -52,7 +52,7 @@ index 67bd11c..30ba6e4 100644
 +      O2ColorSpaceGetModel(O2ImageGetColorSpace((O2ImageRef)surface))!=kO2ColorSpaceModelRGB)
 +    return "surface layout";
 +
-+   /* along the axes, not mirrored left to right, and within a pixel of the image's own size across it: a window's
++   /* along the axes, not mirrored left to right, and within two pixels of the image's own size across it: a window's
 +      pixels per point are its whole pixels over its points (1.5005 down, not 1.5, for QuickTime Player's window at
 +      150 %), so a picture made for its place is a hair off one to one there */
 +   if(fabs(t.b)>1e-9 || fabs(t.c)>1e-9 || !(t.a>0) || !(fabs(t.d)>0))
@@ -63,7 +63,7 @@ index 67bd11c..30ba6e4 100644
 +
 +   if(width<=0 || height<=0)
 +    return NULL;
-+   if(fabs(t.a-1)*width>0.5 || fabs(fabs(t.d)-1)*height>1.0)
++   if(fabs(t.a-1)*width>2.0 || fabs(fabs(t.d)-1)*height>2.0)
 +    return "not at its own size";
 +   if(!isfinite(t.tx) || !isfinite(t.ty) || fabs(t.tx)>1e7 || fabs(t.ty)>1e7)
 +    return "far off";
@@ -93,26 +93,44 @@ index 67bd11c..30ba6e4 100644
 +   if(x1<=x0 || y1<=y0)
 +    return NULL;
 +
-+   // (across, the source drifts less than half a pixel from the destination: one offset serves the whole row)
++   long count=x1-x0;
 +   long column=(long)floor(inverse.a*(x0+0.5)+inverse.tx);
++   /* across, where the source drifts less than half a pixel from the destination over the row one offset serves it;
++      else each destination column takes its own source column (a window's full-screen frame of 1707 points over
++      2560 pixels is a pixel off one to one) */
++   BOOL  straight=(fabs(t.a-1)*width<=0.5 && column>=0 && column+count<=width);
++   long *columns=NULL;
 +
-+   column=MAX(0,MIN(width-1,column));
-+
-+   long count=MIN(x1-x0,width-column);
++   if(!straight){
++    if((columns=malloc((size_t)count*sizeof(long)))==NULL)
++     return "memory";
++    for(long i=0;i<count;i++)
++     columns[i]=MAX(0,MIN(width-1,(long)floor(inverse.a*(x0+i+0.5)+inverse.tx)));
++   }
 +
 +   for(long y=y0;y<y1;y++){
 +    long            row=MAX(0,MIN(height-1,(long)floor(inverse.d*(y+0.5)+inverse.ty)));
-+    const uint32_t *in=(const uint32_t *)(src+(size_t)row*srcRow)+column;
++    const uint32_t *line=(const uint32_t *)(src+(size_t)row*srcRow);
 +    uint32_t       *out=(uint32_t *)(dst+(size_t)y*dstRow)+x0;
++    // (the skipped byte is the alpha's place: it reads as opaque)
++    uint32_t        opaqueBits=opaque ? 0xFF000000u : 0;
 +
-+    if(opaque){
-+     // (the skipped byte is the alpha's place: it reads as opaque)
-+     for(long i=0;i<count;i++)
-+      out[i]=in[i]|0xFF000000u;
++    if(straight){
++     const uint32_t *in=line+column;
++
++     if(opaque){
++      for(long i=0;i<count;i++)
++       out[i]=in[i]|0xFF000000u;
++     }
++     else
++      memcpy(out,in,(size_t)count*4);
 +    }
-+    else
-+     memcpy(out,in,(size_t)count*4);
++    else {
++     for(long i=0;i<count;i++)
++      out[i]=line[columns[i]]|opaqueBits;
++    }
 +   }
++   free(columns);
 +   return NULL;
 +}
 +

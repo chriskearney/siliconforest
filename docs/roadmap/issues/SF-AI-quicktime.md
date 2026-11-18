@@ -336,6 +336,31 @@ the exit reason, refuses to start the application while the owner is at the mach
   The decoder was never the limit (900 hardware jobs per pass, 0 errors).
 - **Colours.** HD pictures (720 lines and more) are now converted from YUV with BT.709's matrix, as players do when
   the stream does not say; smaller ones with BT.601's. Before, every picture used swscale's default, BT.601.
+- **The black flashes (QTP2).** DEMO's take had the picture area black for 0.3 s when the window opened, for 0.25 s
+  (its lower part) when space started playback, and for 0.1 s at a click on the strip's File. Cause: each redraw
+  filled the whole view black and then drew the picture through the resampler for 150-300 ms; a frame presented in
+  between showed the black (the lower part: rows not yet drawn). Now the black is only where the picture is not, the
+  picture is copied in a few milliseconds, and the window's first drawing asks the player layer for the first picture
+  instead of waiting for its next tick. Recordings with the desk's recorder (`runs/qtp/tools/black_frames.py`, the
+  picture area): DEMO's take 13 frames with 30 % or more black; pass c1 (open, space, panel clicks, File menu) 2
+  frames at the window's opening; pass c3 (with the first-picture change; open, play, full screen in and out) none,
+  not even 5 % black.
+- **Panel clicks (QTP2).** Play/pause by a click works (pass c1: a click paused at 0:05, the next resumed; skip and
+  the File menu by clicks in the same pass). A tracer of `-[NSWindow sendEvent:]` (`runs/qtp/m1/hittrace`) shows each
+  press on the panel landing on the panel itself: no view of QuickTime's lies over it, and no reordering of the
+  views is needed (QTP's per-picture reordering broke every panel click in pass m2 and is not used). The panel's
+  full-screen button takes the window to full screen and back (passes c3, c5, c8); DEMO's failed return click came
+  while a redraw took 300 ms.
+- **Full screen (AppKit 0362).** The strip is hidden in full screen, slides in over the picture while the pointer is
+  at the top edge and goes when it leaves (pass c3: captures with the pointer in the middle, at the top, away);
+  `+[NSWindow _sfMenuStripFullScreenModeForOptions:]` gives auto-hide for macOS's default full-screen options, hidden
+  for `NSApplicationPresentationHideMenuBar`, kept for options without a menu-bar bit (the conformance program on the
+  M1, private prefix). In full screen the picture is shown 17-20 times a second (passes c8, c9), against 28-29 in a
+  window: QuickTime's main thread is three quarters idle there, its commits come every ~49 ms and the desk shows one
+  in four refreshes; the window's buffer is 2561x1601 pixels for a 2560x1600 output (AppKit's full-screen frame is
+  1707.33 points, its backing store whole pixels of whole points). Inferred, not measured: the desk's path for that
+  buffer is the limit. Not chased yet: after leaving full screen the window's content is 2556x1550 pixels instead of
+  2556x1475 and covers the desk's bottom bar; the same happens without 0362 (pass c5).
 - **For the compositor's owner (desk side, not changed here).** Each full-window commit of QuickTime's window
   costs the desk's commit handler 12.6 ms (`WMPACING ... commit handler`, 2556x1437 px of shared memory per
   picture, about 30 a second: ~380 ms of the desk's time each second). Between 7 and 104 of ~300 commits per 10 s
@@ -348,7 +373,8 @@ the exit reason, refuses to start the application while the owner is at the mach
 ## General pieces for the system install
 These are corrections or additions any application can meet; they live in the private prefix until the
 guarded install: libFoundation 0347, 0348, 0349, 0352, 0354, 0355, 0359, 0361; AppKit 0340, 0341, 0350,
-0351, 0353, 0356, 0357, 0358, 0360; Onyx2D 0363 (an opaque image drawn within a pixel of its own size on whole
+0351, 0353, 0356, 0357, 0358, 0360, 0362 (in full screen the menu strip auto-hides as macOS's menu bar does: a
+change every application on the desk sees, to be checked with Firefox, Terminal and Activity Monitor first); Onyx2D 0363 (an opaque image drawn within two pixels of its own size on
 device pixels is copied, not resampled: every application that draws such an image, through the guarded install
 only, to be checked with Firefox, Terminal and Activity Monitor; `O2_NO_IMAGE_FAST_PATH=1` turns it off and
 `O2_IMAGE_TRACE=1` says why an image was resampled); CoreGraphics 0342; QuartzCore 0343-0345; CoreAudio 0346; the URL key
