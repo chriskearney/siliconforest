@@ -14,9 +14,16 @@ def deps(path):
     try: d = open(path, 'rb').read()
     except Exception: return []
     if len(d) < 32: return []
-    magic = struct.unpack_from('<I', d, 0)[0]
+    base = 0
+    if struct.unpack_from('>I', d, 0)[0] == 0xcafebabe:            # universal: the arm64 slice
+        n = struct.unpack_from('>I', d, 4)[0]
+        for i in range(n):
+            cpu, sub, offset, size, align = struct.unpack_from('>iiIII', d, 8 + 20 * i)
+            if cpu == 0x0100000c: base = offset
+        if base == 0: return []
+    magic = struct.unpack_from('<I', d, base)[0]
     if magic != 0xfeedfacf: return []
-    ncmds = struct.unpack_from('<I', d, 16)[0]; off = 32; names = []; rpaths = []
+    ncmds = struct.unpack_from('<I', d, base + 16)[0]; off = base + 32; names = []; rpaths = []
     for _ in range(ncmds):
         cmd, cs = struct.unpack_from('<II', d, off)
         if cmd in (0xc, 0x8000001f, 0x80000023, 0x8000001c):   # load, reexport, load upward, rpath
@@ -33,7 +40,7 @@ def deps(path):
             for r in rpaths:
                 if r.startswith('@loader_path') and root_dir: r = os.path.normpath(root_dir + r[len('@loader_path'):])
                 if r.startswith('/'): cands.append(os.path.join(r, leaf))
-            cands += ['/lib/' + leaf, '/usr/lib/' + leaf, '/usr/local/lib/' + leaf]
+            cands += ['/usr/lib/' + leaf, '/usr/local/lib/' + leaf, '/lib/' + leaf]   # dyld's fallback order here
             hit = next((c for c in cands if present(c) or find(c)[1]), None)
             out.append(hit or cands[0])
         else:
@@ -48,7 +55,8 @@ def find(p):
             return s, q
     return None, None
 seen = set(); todo = []
-for start in [vlcapp + '/Contents/MacOS/VLC'] + [s + '/System/Library/Frameworks/AppKit.framework/Versions/A/AppKit' for s in SOURCES[:1]] + [s + '/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore.pd' for s in SOURCES[:1]]:
+BUNDLE = [os.path.join(r, f) for r, _, fs in os.walk(vlcapp + '/Contents') for f in fs if (f.endswith('.dylib') or os.path.basename(r) in ('MacOS',) or '.framework/Versions/A' in r) and not os.path.islink(os.path.join(r, f))]
+for start in BUNDLE + [vlcapp + '/Contents/MacOS/VLC'] + [s + '/System/Library/Frameworks/AppKit.framework/Versions/A/AppKit' for s in SOURCES[:1]] + [s + '/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore.pd' for s in SOURCES[:1]]:
     todo += deps(start)
 files = {}; links = {}; missing = []
 while todo:
