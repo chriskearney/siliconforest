@@ -22,7 +22,7 @@ let
   renameTools = builtins.path {
     path = ../tools;
     name = "siliconforest-rename-tools";
-    filter = path: type: type == "directory" ||
+    filter = path: type: (type == "directory" && path == toString ../tools) ||
       builtins.elem (builtins.baseNameOf path) [ "sf_rename.py" "sf_rename_data.json" ];
   };
   renamed = pkgs.runCommand "siliconforest-${sourceName}-source" {

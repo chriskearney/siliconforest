@@ -15,6 +15,8 @@ in pkgs.stdenv.mkDerivation {
   pname = "siliconforest-rust";
   version = "1.98.1";
   dontUnpack = true;
+  # GNU strip cannot rewrite the Darwin standard-library rlib archives.
+  dontStrip = true;
   nativeBuildInputs = [ pkgs.autoPatchelfHook pkgs.xz ];
   buildInputs = [ pkgs.stdenv.cc.cc.lib pkgs.zlib ];
   installPhase = ''
