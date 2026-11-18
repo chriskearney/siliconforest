@@ -53,16 +53,13 @@ class Qmp:
         # QD_NO_SHOTS=1: no QMP screendump (on a host where it hangs QEMU: seen on 17 November 2026 with QEMU 11.1.0)
         if os.environ.get('QD_NO_SHOTS'):
             return False
-        # ramfb capture can stall while its live surface is being updated.
-        # Preserve the VM's run state and capture a stationary framebuffer.
-        running = self.cmd('query-status').get('return', {}).get('running', False)
-        if running:
-            self.cmd('stop')
+        # Pause before any live-state query: even query-status can stall while
+        # ramfb is being updated. This runner captures its running guest only.
+        self.cmd('stop')
         try:
             r = self.cmd('screendump', filename=str(path), format='png')
         finally:
-            if running:
-                self.cmd('cont')
+            self.cmd('cont')
         return 'return' in r and Path(path).exists()
 
     def keys(self, *names, hold=0.08):

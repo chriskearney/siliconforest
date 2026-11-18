@@ -4,6 +4,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest import mock
+import tempfile
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'integrations/siliconforest/qemu-dev/qd_run.py'
 spec = importlib.util.spec_from_file_location('qemu_desktop_run', SCRIPT)
@@ -12,6 +14,20 @@ spec.loader.exec_module(runner)
 
 
 class DesktopEvidence(unittest.TestCase):
+    def test_capture_pauses_before_querying_the_framebuffer(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict('os.environ', {'QD_NO_SHOTS': ''}):
+            path = Path(directory) / 'desktop.png'
+            calls = []
+            qmp = runner.Qmp.__new__(runner.Qmp)
+            def command(name, **kwargs):
+                calls.append(name)
+                if name == 'screendump':
+                    Path(kwargs['filename']).write_bytes(b'capture fixture')
+                return {'return': {}}
+            qmp.cmd = command
+            self.assertTrue(qmp.shot(path))
+            self.assertEqual(calls, ['stop', 'screendump', 'cont'])
+
     def test_observed_deadline_failure_overrides_guest_pass_marker(self):
         result = {'status': 'PASS', 'desktop_up': True}
         runner.record_evidence(result, b'WMAUTO done result=INCOMPLETE stopped_in_phase=arm\n'
