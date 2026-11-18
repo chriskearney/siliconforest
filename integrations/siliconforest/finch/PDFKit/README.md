@@ -34,6 +34,15 @@ to the private staged dylib path.
 
 Both probes build as arm64 Mach-O executables with Nix. Native builds of those
 probe sources passed against the macOS 27.2.1 PDFKit on the M6. Independent
-Poppler output agrees on the three page labels and color patches. A SiliconForest
-PDFKit runtime pass, on-screen view behavior, printing, editing, and Preview app
-integration are still pending.
+Poppler output agrees on the three page labels and color patches.
+
+The retained M1 CoreGraphics opens the three-page fixture and draws its text.
+It leaves the expected rectangle pixels white because the Onyx2D PDF scanner
+writes float operands through pointers to double geometry members. The
+`onyx-render.nix` candidate converts the operands after reading them. With that
+Onyx2D loaded from a private prefix, a direct CoreGraphics probe on the M1
+produced the expected red, green, and blue center pixels. The system Onyx2D
+framework was untouched.
+
+A SiliconForest PDFKit runtime pass, on-screen view behavior, printing,
+editing, and Preview app integration are still pending.
