@@ -39,6 +39,7 @@ let
   });
 in pkgs.runCommand "siliconforest-qemu-smoke-image" {
   nativeBuildInputs = [ pkgs.python3 pkgs.e2fsprogs pkgs.mtools ];
+  E2FSPROGS_FAKE_TIME = "1";
 } ''
   python3 ${./qemu-smoke.py} ${config} "$out"
 ''

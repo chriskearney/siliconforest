@@ -22,7 +22,7 @@ in [
       "usr/share/xkeyboard-config-2/*" "System/Library/Desktop Pictures/*" "usr/share/vulkan/*"
       # its own libbsm: the system keeps the base's, a link to libSystem
       "usr/lib/libbsm.dylib" "usr/lib/libbsm.0.dylib" ]; }
-  { name = "macos-apps-root"; exclude = common; }
+  { name = "macos-apps-root"; exclude = common ++ [ "usr/share/sf-test/*" ]; }  # (its test fixtures)
   { name = "system-perl"; exclude = common; optional = true; }
   # FoundationNetworking's CA bundle and licences (its libraries are in macos-apps-root)
   { name = "foundation-networking"; optional = true;

@@ -107,7 +107,9 @@ in {
     root-image = image.rootfs;
     bootfiles = image.bootfiles;
     release = image.release;
-    qemu-image = image.qemu;
+    qemu-reference-image = image.qemu;
+    qemu-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; };
+    qemu-proof-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; proof = true; };
     default = image.release;
     qemu-base = recipe "qemu-dev/build-image.nix" { };
     qemu-runner = import ./qemu-runner.nix { inherit pkgs; };

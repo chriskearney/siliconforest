@@ -1,0 +1,21 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+# IMAGE's QEMU check of the release root: what is there and what starts (prints SFIMG lines).
+printf '\nSFIMG_CHECK_BEGIN\n'
+uname -a | sed 's/^/SFIMG uname /'
+sw_vers 2>&1 | tr '\n' ' ' | sed 's/^/SFIMG sw_vers /'; echo
+for b in /usr/bin/chonkstep-darwin-desktop /usr/bin/chonk-terminal-darwin /usr/bin/chonkstep-dock /usr/bin/perl /bin/zsh /bin/ssh /sbin/sshd /usr/sbin/coreaudiod /usr/bin/sfplay /sbin/sf-halt /usr/libexec/sf-session /usr/local/bin/brew; do
+    [ -x "$b" ] && echo "SFIMG exists $b" || echo "SFIMG MISSING $b"
+done
+perl -MPOSIX -e 'print "SFIMG perl runs ", $], " ", (POSIX::uname())[0], "\n"' 2>&1
+ssh -V 2>&1 | sed 's/^/SFIMG ssh /'
+zsh -c 'echo "SFIMG zsh runs $ZSH_VERSION"' 2>&1
+[ -x /usr/bin/plutil ] && plutil -p /System/Library/CoreServices/SystemVersion.plist 2>&1 | head -3 | tr '\n' ' ' | sed 's/^/SFIMG plutil /' && echo
+id sf 2>&1 | sed 's/^/SFIMG account /'
+grep '^root:' /etc/passwd | sed 's/^/SFIMG passwd /'
+launchctl list 2>/dev/null | awk '/siliconforest/ {print "SFIMG job", $0}' | head -30
+ls /Library/Firmware/brcm /Library/Firmware/apple 2>&1 | tr '\n' ' ' | sed 's/^/SFIMG firmware dirs /'; echo
+ls /Library/Preferences/SystemConfiguration 2>&1 | tr '\n' ' ' | sed 's/^/SFIMG remembered networks: /'; echo
+df -k / | tail -1 | sed 's/^/SFIMG df /'
+printf 'SFIMG_CHECK_END\n'

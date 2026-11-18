@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 SiliconForest contributors
-# Public-input QEMU smoke image. Helpers retain the qemu-dev image editor's
+# Public-input QEMU image preparation. Helpers retain the qemu-dev image editor's
 # GPT/debugfs behavior; no bench mapping, cache or source discovery is used.
 import json
 import os
@@ -92,8 +92,9 @@ def main():
     config = json.loads(Path(sys.argv[1]).read_text())
     out = Path(sys.argv[2])
     out.mkdir(parents=True, exist_ok=True)
-    base = next(Path(config["base"]).glob("*.img"))
-    image = out / "siliconforest-qemu-smoke.img"
+    source = Path(config["base"])
+    base = source if source.is_file() else next(source.glob("*.img"))
+    image = out / config.get("name", "siliconforest-qemu-smoke.img")
     shutil.copyfile(base, image)
     image.chmod(0o644)
     files, links = {}, []
@@ -105,14 +106,16 @@ def main():
         files[destination] = (Path(entry["source"]), entry["executable"])
     directories = [("/private/tmp", 0, 0), ("/private/var/run", 0, 0),
                    ("/private/var/db", 0, 0), ("/var/log", 0, 0)]
-    write_root(image, files, dirs=directories, links=links)
-    esp = "%s@@%d" % (image, partitions(image)[0][0])
-    args = out / "boot-args.txt"
-    args.write_text("serial=3 gopconsole=1 serial_video_mirror=0 -noprogress keepsyms=1 no_lock_timeouts=1 sfgopmode=1280x800")
-    subprocess.run(["mcopy", "-o", "-i", esp, str(args), "::/EFI/BOOT/boot-args.txt"], check=True)
+    write_root(image, files, dirs=directories, links=links, remove=config.get("remove", []))
+    boot_args = config.get("bootArgs", "serial=3 gopconsole=1 serial_video_mirror=0 -noprogress keepsyms=1 no_lock_timeouts=1 sfgopmode=1280x800")
+    if boot_args is not None:
+        esp = "%s@@%d" % (image, partitions(image)[0][0])
+        args = out / "boot-args.txt"
+        args.write_text(boot_args)
+        subprocess.run(["mcopy", "-o", "-i", esp, str(args), "::/EFI/BOOT/boot-args.txt"], check=True)
     offset, _ = partitions(image)[1]
     subprocess.run(["e2fsck", "-fn", "%s?offset=%d" % (image, offset)], check=True)
-    (out / "scope.txt").write_text("QEMU smoke root: public minimal image, desktop and terminal; not the complete release image.\n")
+    (out / "scope.txt").write_text(config.get("scope", "QEMU smoke root: public minimal image, desktop and terminal; not the complete release image.") + "\n")
 
 
 if __name__ == "__main__":
