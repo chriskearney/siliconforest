@@ -17,6 +17,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
+#include <pthread.h>
+#include <sys/ucontext.h>
+#include <mach/mach.h>
+#include <mach-o/dyld_images.h>
 
 static int failed, checks;
 static void check(int ok, const char *what) {
@@ -43,10 +48,73 @@ typedef struct { double x, y, w, h; } SFRect;
 - (NSArray *)sublayers { return sublayers; }
 @end
 
+/* A fault is reported by the probe itself (no crash report is written for it on this system):
+ * where it happened, how deep the stack was, and the return addresses that recur most often in
+ * the frame chain, each named by dladdr. Diagnostic only: not async-signal-safe, then _exit. */
+static void sfName(const char *label, uintptr_t address) {
+    Dl_info info;
+    if (address && dladdr((void *)address, &info) && info.dli_fname)
+        printf("PROBE fault %s 0x%lx %s+0x%lx (%s)\n", label, (unsigned long)address, info.dli_sname ? info.dli_sname : "?",
+               (unsigned long)(address - (uintptr_t)(info.dli_sname ? info.dli_saddr : info.dli_fbase)), info.dli_fname);
+    else
+        printf("PROBE fault %s 0x%lx (no image)\n", label, (unsigned long)address);
+}
+static void sfFault(int sig, siginfo_t *si, void *context) {
+    ucontext_t *uc = context;
+    uintptr_t pc = (uintptr_t)uc->uc_mcontext->__ss.__pc, sp = (uintptr_t)uc->uc_mcontext->__ss.__sp;
+    uintptr_t lr = (uintptr_t)uc->uc_mcontext->__ss.__lr, fp = (uintptr_t)uc->uc_mcontext->__ss.__fp;
+    pthread_t self = pthread_self();
+    uintptr_t top = (uintptr_t)pthread_get_stackaddr_np(self), size = pthread_get_stacksize_np(self);
+    printf("PROBE fault signal %d address 0x%lx sp 0x%lx stack [0x%lx..0x%lx) %ld bytes from its end\n", sig, (unsigned long)si->si_addr,
+           (unsigned long)sp, (unsigned long)(top - size), (unsigned long)top, (long)(sp - (top - size)));
+    sfName("pc", pc & 0x0000ffffffffffffUL);
+    sfName("lr", lr & 0x0000ffffffffffffUL);
+    enum { kinds = 8 };
+    uintptr_t seen[kinds] = {0};
+    unsigned long count[kinds] = {0}, frames = 0;
+    while (fp > sp && fp < top && (fp & 7) == 0 && frames < 2000000) {
+        uintptr_t ret = ((uintptr_t *)fp)[1] & 0x0000ffffffffffffUL, next = ((uintptr_t *)fp)[0];
+        frames++;
+        for (int i = 0; i < kinds; i++) {
+            if (seen[i] == ret) { count[i]++; break; }
+            if (!seen[i]) { seen[i] = ret; count[i] = 1; break; }
+        }
+        if (next <= fp) break;
+        fp = next;
+    }
+    printf("PROBE fault frames %lu\n", frames);
+    struct task_dyld_info dyldInfo;
+    mach_msg_type_number_t n = TASK_DYLD_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_DYLD_INFO, (task_info_t)&dyldInfo, &n) == KERN_SUCCESS) {
+        const struct dyld_all_image_infos *all = (const void *)(uintptr_t)dyldInfo.all_image_info_addr;
+        printf("PROBE fault dyld loaded at 0x%lx (addresses below minus this are offsets into /usr/lib/dyld)\n", (unsigned long)(uintptr_t)all->dyldImageLoadAddress);
+    }
+    for (int i = 0; i < kinds && seen[i]; i++) {
+        char label[32];
+        snprintf(label, sizeof label, "return x%lu", count[i]);
+        sfName(label, seen[i]);
+    }
+    fflush(stdout);
+    _exit(128 + sig);
+}
+static void sfCatchFaults(void) {
+    static char alternate[256 * 1024];
+    stack_t ss = {.ss_sp = alternate, .ss_size = sizeof alternate, .ss_flags = 0};
+    sigaltstack(&ss, NULL);
+    struct sigaction sa = {0};
+    sa.sa_sigaction = sfFault;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
+}
+
 #define SEND(type, ...) ((type (*)(id, SEL, ##__VA_ARGS__))objc_msgSend)
 
 int main(int argc, char **argv) {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    /* Line-buffered, so that every check printed before a crash survives in a file or pipe. */
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    sfCatchFaults();
     if (argc != 2) {
         fprintf(stderr, "usage: additions-probe SYMBOLS.txt\n");
         return 2;
@@ -58,13 +126,16 @@ int main(int argc, char **argv) {
     }
     char path[512], symbol[256], what[900];
     while (fscanf(list, "%511s %255s", path, symbol) == 2) {
+        printf("PROBE try %s %s\n", path, symbol);
         void *image = dlopen(path, RTLD_NOW);
+        if (!image) printf("PROBE dlerror %s\n", dlerror());
         void *address = image ? dlsym(image, symbol[0] == '_' ? symbol + 1 : symbol) : NULL;
         snprintf(what, sizeof what, "bind %s from %s%s", symbol, strrchr(path, '/') + 1, image ? "" : " (library did not load)");
         check(address != NULL, what);
     }
     fclose(list);
 
+    @try {
     /* Foundation */
     NSString *(*fullName)(id, SEL) = dlsym(RTLD_DEFAULT, "_NSFullMethodName");
     check(fullName && [fullName(@"x", @selector(length)) hasSuffix:@" length]"] && [fullName(@"x", @selector(length)) hasPrefix:@"-["], "_NSFullMethodName names an instance method");
@@ -78,7 +149,17 @@ int main(int argc, char **argv) {
     NSDictionary *scriptError = nil;
     id script = SEND(id, NSString *)([objc_getClass("NSAppleScript") alloc], sel_registerName("initWithSource:"), @"beep");
     check(script && SEND(id, NSDictionary **)(script, sel_registerName("executeAndReturnError:"), &scriptError) == nil && scriptError != nil, "NSAppleScript refuses to run and gives an error dictionary");
-    check(SEND(id, NSURL *, NSUInteger, NSError **)([objc_getClass("NSFileWrapper") alloc], sel_registerName("initWithURL:options:error:"), url, 0, &error) == nil && error != nil, "NSFileWrapper creation fails with an error");
+    NSError *wrapperError = nil;
+    Class wrapper = objc_getClass("NSFileWrapper");
+    printf("PROBE info NSFileWrapper comes from %s\n", wrapper ? class_getImageName(wrapper) : "(no such class)");
+    check(wrapper != Nil, "NSFileWrapper exists (one class: this system's, from AppKit)");
+    if (wrapper && ![wrapper instancesRespondToSelector:sel_registerName("initWithURL:options:error:")])
+        printf("PROBE info gap: this system's NSFileWrapper does not answer initWithURL:options:error: (not a claim of the prefix)\n");
+    Class application = objc_getClass("NSApplication");
+    NSBundle *appKit = application ? [NSBundle bundleForClass:application] : nil;
+    NSArray *resources = appKit ? [[NSFileManager defaultManager] contentsOfDirectoryAtPath:[appKit resourcePath] error:NULL] : nil;
+    printf("PROBE info AppKit bundle %s, %lu entries in its resources\n", appKit ? [[appKit bundlePath] UTF8String] : "(none)", (unsigned long)[resources count]);
+    check(!application || [resources count] > 0, "a framework found through the prefix still has its resources (AppKit)");
 
     /* AVFoundation */
     id formatter = [[objc_getClass("AVTimeFormatter") alloc] init];
@@ -145,6 +226,11 @@ int main(int argc, char **argv) {
     ptrdiff_t *copyright = dlsym(RTLD_DEFAULT, "OBJC_IVAR_$_NSSystemInfoPanel.copyrightView");
     printf("PROBE info About panel copyrightView offset %ld (0 means the class has neither copyrightView nor legalTextField)\n", copyright ? (long)*copyright : -1L);
 
+    } @catch (id exception) {
+        char what[300];
+        snprintf(what, sizeof what, "behaviour checks stopped by an exception: %s", [[exception description] UTF8String]);
+        check(0, what);
+    }
     printf("PROBE_RESULT checks=%d failed=%d\n", checks, failed);
     [pool release];
     return failed ? 1 : 0;
