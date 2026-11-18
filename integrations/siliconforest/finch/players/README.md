@@ -1,5 +1,10 @@
 # Third-party media target
 
+**Resumed 17 November 2026 for VLC:** the unmodified vendor binary now starts through
+`vlc/vlc-sf`; state, gap table and what is still open are in
+[SF-AH](../../../../docs/roadmap/issues/SF-AH-vlc.md). The text below is the earlier record, which
+used a rebuilt entry program; that approach is retired.
+
 **Parked 2026-11-15 by owner direction:** work is reassigned to Firefox media.
 Keep existing installs and evidence. Fresh VLC headless v7 and GUI v22 remain
 host-prepared, unexecuted, with no queued M1 launch. No input injection.

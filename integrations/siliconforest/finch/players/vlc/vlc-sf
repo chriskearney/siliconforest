@@ -1,0 +1,89 @@
+#!/opt/homebrew/bin/python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+"""Start the unmodified VLC media player bundle on SiliconForest.
+
+VLC refuses to run as root, and root is who owns this system's desktop session. This
+launcher therefore
+  1. connects to the compositor's Wayland socket while it is still root (the socket is
+     root's alone) and hands the connected descriptor on as WAYLAND_SOCKET;
+  2. gives up root for the account `sf` (uid 501, group staff, home /Users/sf);
+  3. points dyld at this release's private libraries (SFVLC_PREFIX) where the system does not
+     have them yet;
+  4. executes the vendor's Contents/MacOS/VLC with the arguments it was given.
+Nothing in the bundle is changed, re-signed or replaced on disk.
+"""
+import json
+import os
+import socket
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+PREFIX = os.environ.get('SFVLC_PREFIX') or '/private/var/db/sfvlc'
+ACCOUNT = ('sf', 501, 20, '/Users/sf')
+
+
+def release():
+    path = os.path.join(HERE, 'vlc-sf.json')
+    if os.path.exists(path):
+        with open(path) as s:
+            return json.load(s)
+    return {}
+
+
+def wayland_descriptor(env):
+    """A connected descriptor for the compositor, made while we may still open its socket."""
+    runtime = env.get('XDG_RUNTIME_DIR') or '/private/var/run/gpu-desktop'
+    name = env.get('WAYLAND_DISPLAY') or 'wayland-0'
+    path = name if name.startswith('/') else os.path.join(runtime, name)
+    if not os.path.exists(path):
+        path = '/private/var/run/gpu-desktop/wayland-0'
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.connect(path)
+    fd = os.dup(s.fileno())
+    s.close()
+    os.set_inheritable(fd, True)
+    return fd
+
+
+def main():
+    manifest = release()
+    prefix = manifest.get('prefix', PREFIX)
+    bundle = manifest.get('bundle', os.path.join(prefix, 'vendor/VLC.app'))
+    program = os.path.join(bundle, 'Contents/MacOS/VLC')
+    env = dict(os.environ)
+    if os.geteuid() == 0:
+        try:
+            env['WAYLAND_SOCKET'] = str(wayland_descriptor(env))
+            env.pop('WAYLAND_DISPLAY', None)
+        except OSError as error:
+            sys.stderr.write('vlc-sf: no compositor connection (%s): VLC will have no window\n' % error)
+        name, uid, gid, home = ACCOUNT
+        env.update(HOME=home, USER=name, LOGNAME=name)
+        os.setgroups([gid])
+        os.setgid(gid)
+        os.setuid(uid)
+    def prepend(key, value):
+        if os.path.isdir(value):
+            env[key] = value + (':' + env[key] if env.get(key) else '')
+    # One OpenGL in the process: the system's CGL (OpenGL.framework) drives the GPU through the
+    # Mesa in /usr/local/lib/mesa-asahi, while AppKit, QuartzCore and CoreVideo still name the
+    # older /usr/lib/libGL.1.dylib. With these two directories first, every libGL.1.dylib and
+    # libEGL.1.dylib asked for by name is the GPU one (as the Firefox launcher does).
+    for directory in manifest.get('gl_libraries', ['/usr/local/lib/mesa-asahi', '/usr/local/lib/siliconforest/opengl/v1/lib']):
+        prepend('DYLD_LIBRARY_PATH', directory)
+    prepend('DYLD_LIBRARY_PATH', os.path.join(prefix, 'core'))
+    prepend('DYLD_FRAMEWORK_PATH', os.path.join(prefix, 'Frameworks'))
+    try:
+        os.chdir(env.get('HOME', '/'))
+    except OSError:
+        os.chdir('/')
+    argv = [program] + manifest.get('arguments', []) + sys.argv[1:]
+    wrapper = env.pop('SFVLC_WRAP', None)      # a diagnostic wrapper (a crash catcher), for tests
+    if wrapper:
+        argv = [wrapper] + argv
+    os.execve(argv[0], argv, env)
+
+
+if __name__ == '__main__':
+    main()
