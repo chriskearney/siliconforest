@@ -597,6 +597,18 @@
 #         Monitor send neither)
 #   The five frameworks below are compiled with -O2 (upstream's recipes compile without -O: every
 #   drawing, text and event path ran unoptimised); -fno-strict-aliasing for old code that casts.
+#   0340-0347 (QTP, names macOS applications import that are not QuickTime Player's alone; first user: Apple's
+#         QuickTime Player, docs/roadmap/issues/SF-AI-quicktime.md). 0340 AppKit: the enabled, hidden, title and tool
+#         tip binding names, the text styles and +[NSFont preferredFontForTextStyle:options:] (sizes from Apple's
+#         macOS text-style table), NSClickGestureRecognizer (configuration only, as the other recognisers); 0341 AppKit:
+#         NSFileWrapper's URL interface over its path one, and a recycled child wrapper is no longer over-released;
+#         0342 CoreGraphics: CGGetDisplaysWithPoint, CGGetDisplaysWithRect; 0343 QuartzCore: CATextLayer (CoreText,
+#         wrapping, truncation, alignment); 0344 QuartzCore: CAKeyframeAnimation and its interpolation in the
+#         renderer, and an animation the renderer cannot interpolate leaves the model value (it drew 0); 0345
+#         QuartzCore: CAConstraint, CAConstraintLayoutManager, CALayer's layoutManager (autoresizing only without one).
+#         0346 (CoreAudio, applied by ../m1-sound/sysaudio/build-sysaudio.nix) block-based property listeners; 0347
+#         (libFoundation, applied by ../terminal-app/build-foundation.nix) more URL resource values. The URL key names
+#         and NSFileCoordinator are in the framework wrappers (../terminal-app/compat).
 #   0009  Security: SecItemCopyMatching writes its result on every path and answers
 #         errSecItemNotFound when nothing was found (Firefox crashed on the unwritten result)
 #   (0007 and 0008 are libSystem's sandbox profile compiler: ./build-libsystem-cocoa.nix)
@@ -715,6 +727,8 @@ let
     ./patches/0176-appkit-clipboard-offered-data-follows-writes.patch
     ./patches/0177-appkit-clipboard-write-not-replaced-before-its-offer.patch
     ./patches/0178a-appkit-gpu-layers-presented-from-the-render-thread.patch
+    ./patches/0340-appkit-binding-and-text-style-names.patch
+    ./patches/0341-appkit-file-wrapper-url-interface.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
@@ -782,6 +796,7 @@ let
     ./patches/0109-coregraphics-imageio-thumbnail-metadata.patch
     ./patches/0118-coregraphics-icc-and-indexed-color-spaces.patch
     ./patches/0135-coregraphics-display-fade-opengl-acceleration.patch
+    ./patches/0342-coregraphics-displays-with-point-and-rect.patch
   ];
   coregraphics = optimised (pd."coregraphics-arm64".override { src = coregraphicsSrc; });
   # QuartzCore: upstream's recipe (not optimised, as installed; its library is the root's QuartzCore.pd, beside the
@@ -801,6 +816,9 @@ let
     ./patches/0300-quartzcore-damage-only-frames.patch
     ./patches/0306-quartzcore-video-planes-uploaded-as-red-green.patch
     ./patches/0178-quartzcore-layer-tree-rendered-on-a-render-thread.patch
+    ./patches/0343-quartzcore-text-layer.patch
+    ./patches/0344-quartzcore-keyframe-animation.patch
+    ./patches/0345-quartzcore-constraint-layout-manager.patch
   ];
   quartzcore = pd."quartzcore-msm-arm64".override { src = quartzcoreSrc; };
   wp = "${pd."wayland-protocols"}/share/wayland-protocols";

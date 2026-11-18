@@ -1,0 +1,149 @@
+diff --git a/src/Frameworks/CoreAudio/AudioHardware.c b/src/Frameworks/CoreAudio/AudioHardware.c
+index 4be4952..4fadef9 100644
+--- a/src/Frameworks/CoreAudio/AudioHardware.c
++++ b/src/Frameworks/CoreAudio/AudioHardware.c
+@@ -797,6 +797,122 @@ OSStatus AudioObjectRemovePropertyListener(AudioObjectID object, const AudioObje
+     return result;
+ }
+ 
++// (QTP) the block-based listeners, written from their public documentation over the function-pointer ones above:
++// each block is kept (copied) with its queue in a record that is the client data of one internal listener, and each
++// change runs the block on that queue with its own copy of the addresses. Written against the published blocks ABI
++// (_Block_copy, _Block_release, the invoke function of the block's layout) so that this file needs no compiler
++// support for blocks.
++#include <dispatch/dispatch.h>
++
++extern void *_Block_copy(const void *block);
++extern void _Block_release(const void *block);
++
++struct blockLayout {
++    void *isa;
++    int flags;
++    int reserved;
++    void (*invoke)(void *block, UInt32 count, const AudioObjectPropertyAddress *addresses);
++};
++
++struct blockListener {
++    AudioObjectID object;
++    AudioObjectPropertyAddress address;
++    dispatch_queue_t queue;
++    void *block;
++    volatile int removed;
++    struct blockListener *next;
++};
++static struct blockListener *sBlockListeners;
++
++struct blockCall {
++    void *block;
++    UInt32 count;
++    AudioObjectPropertyAddress addresses[];
++};
++
++static void runBlockCall(void *context)
++{
++    struct blockCall *call = context;
++    ((struct blockLayout *)call->block)->invoke(call->block, call->count, call->addresses);
++    _Block_release(call->block);
++    free(call);
++}
++
++static OSStatus blockListenerProc(AudioObjectID object, UInt32 count, const AudioObjectPropertyAddress *addresses, void *data)
++{
++    struct blockListener *record = data;
++    struct blockCall *call = malloc(sizeof(*call) + sizeof(addresses[0]) * (count ? count : 1));
++
++    (void)object;
++    if (record->removed) {
++        free(call);
++        return noErr;
++    }
++    if (call == NULL)
++        return kAudioHardwareUnspecifiedError;
++    call->block = _Block_copy(record->block);
++    call->count = count;
++    memcpy(call->addresses, addresses, sizeof(addresses[0]) * count);
++    dispatch_async_f(record->queue ? record->queue : dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), call, runBlockCall);
++    return noErr;
++}
++
++OSStatus AudioObjectAddPropertyListenerBlock(AudioObjectID object, const AudioObjectPropertyAddress *address,
++                                             AudioObjectDispatchQueue queue, AudioObjectPropertyListenerBlock listener)
++{
++    if (address == NULL || listener == NULL)
++        return kAudioHardwareIllegalOperationError;
++    struct blockListener *record = calloc(1, sizeof(*record));
++    if (record == NULL)
++        return kAudioHardwareUnspecifiedError;
++    record->object = object;
++    record->address = *address;
++    record->queue = (dispatch_queue_t)queue;
++    if (record->queue != NULL)
++        dispatch_retain(record->queue);
++    record->block = _Block_copy((const void *)listener);
++    OSStatus status = AudioObjectAddPropertyListener(object, address, blockListenerProc, record);
++    if (status != noErr) {
++        _Block_release(record->block);
++        if (record->queue != NULL)
++            dispatch_release(record->queue);
++        free(record);
++        return status;
++    }
++    pthread_mutex_lock(&sLock);
++    record->next = sBlockListeners;
++    sBlockListeners = record;
++    pthread_mutex_unlock(&sLock);
++    return noErr;
++}
++
++// the same block and queue for the same object and address, as documented; calls already queued still run
++OSStatus AudioObjectRemovePropertyListenerBlock(AudioObjectID object, const AudioObjectPropertyAddress *address,
++                                                AudioObjectDispatchQueue queue, AudioObjectPropertyListenerBlock listener)
++{
++    struct blockListener *found = NULL;
++
++    if (address == NULL || listener == NULL)
++        return kAudioHardwareIllegalOperationError;
++    pthread_mutex_lock(&sLock);
++    for (struct blockListener **p = &sBlockListeners; *p; p = &(*p)->next) {
++        struct blockListener *r = *p;
++        if (r->object == object && r->address.mSelector == address->mSelector && r->address.mScope == address->mScope &&
++            r->address.mElement == address->mElement && r->queue == (dispatch_queue_t)queue && r->block == (const void *)listener) {
++            *p = r->next;
++            found = r;
++            break;
++        }
++    }
++    pthread_mutex_unlock(&sLock);
++    if (found == NULL)
++        return kAudioHardwareUnknownPropertyError;
++    // the HAL calls listeners from a copy of its list taken under its lock: a delivery already under way may still
++    // read this record, so it is marked and kept (with its block and queue) for the process, not freed
++    found->removed = 1;
++    return AudioObjectRemovePropertyListener(object, address, blockListenerProc, found);
++}
++
+ // coreaudiod mixes every client at full level and has no ducking yet
+ OSStatus AudioDeviceDuck(AudioDeviceID device, Float32 duckedLevel, const AudioTimeStamp *startTime, Float32 rampDuration)
+ {
+diff --git a/src/Frameworks/CoreAudio/AudioHardware.h b/src/Frameworks/CoreAudio/AudioHardware.h
+index 04d15dc..3b53e56 100644
+--- a/src/Frameworks/CoreAudio/AudioHardware.h
++++ b/src/Frameworks/CoreAudio/AudioHardware.h
+@@ -125,6 +125,17 @@ OSStatus AudioObjectAddPropertyListener(AudioObjectID inObjectID, const AudioObj
+                                         AudioObjectPropertyListenerProc inListener, void *inClientData);
+ OSStatus AudioObjectRemovePropertyListener(AudioObjectID inObjectID, const AudioObjectPropertyAddress *inAddress,
+                                            AudioObjectPropertyListenerProc inListener, void *inClientData);
++// (QTP) the block-based listeners: the block runs on inDispatchQueue (a queue of the system's when NULL)
++#ifdef __BLOCKS__
++typedef void (^AudioObjectPropertyListenerBlock)(UInt32 inNumberAddresses, const AudioObjectPropertyAddress *inAddresses);
++#else
++typedef void *AudioObjectPropertyListenerBlock;
++#endif
++typedef struct dispatch_queue_s *AudioObjectDispatchQueue;
++OSStatus AudioObjectAddPropertyListenerBlock(AudioObjectID inObjectID, const AudioObjectPropertyAddress *inAddress,
++                                             AudioObjectDispatchQueue inDispatchQueue, AudioObjectPropertyListenerBlock inListener);
++OSStatus AudioObjectRemovePropertyListenerBlock(AudioObjectID inObjectID, const AudioObjectPropertyAddress *inAddress,
++                                                AudioObjectDispatchQueue inDispatchQueue, AudioObjectPropertyListenerBlock inListener);
+ OSStatus AudioDeviceDuck(AudioDeviceID inDevice, Float32 inDuckedLevel, const AudioTimeStamp *inStartTime, Float32 inRampDuration);
+ 
+ UInt64 AudioGetCurrentHostTime(void);

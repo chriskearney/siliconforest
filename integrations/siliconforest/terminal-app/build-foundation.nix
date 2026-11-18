@@ -30,6 +30,8 @@
 #     autoreleased (+0, as Cocoa; each leaked at every call); -[NSURL initWithScheme:host:path:];
 #     NSDateInterval's secure coding (Finch's, NSFoundationExtras.m) and -[NSUserActivity targetContentIdentifier]
 #     (Codex's Intents requests)
+#   (18 November; QTP) ../cocoa/patches/0347: -[NSURL getResourceValue:forKey:error:] answers the parent directory,
+#     volume, read-only, hidden-extension and file-identity keys (first user: Apple's QuickTime Player)
 # A file every Objective-C program loads: QEMU pass and the guarded procedure before it replaces
 # the disk root's; until then it is tried from a scratch prefix (DYLD_LIBRARY_PATH).
 #
@@ -38,7 +40,7 @@ let
   pd = (import ../rebase/pd.nix).pd;
 in pd.packages.x86_64-linux."foundation-arm64".overrideAttrs (old: {
   pname = "siliconforest-foundation-macos-apps";
-  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ];
+  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ../cocoa/patches/0347-foundation-url-resource-values.patch ];
   patchFlags = [ "-p4" ];
   buildPhase = let
     r = builtins.replaceStrings

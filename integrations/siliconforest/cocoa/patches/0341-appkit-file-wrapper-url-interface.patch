@@ -1,0 +1,178 @@
+diff --git a/src/Frameworks/AppKit/NSFileWrapper.h b/src/Frameworks/AppKit/NSFileWrapper.h
+index d02b62d..6004767 100755
+--- a/src/Frameworks/AppKit/NSFileWrapper.h
++++ b/src/Frameworks/AppKit/NSFileWrapper.h
+@@ -10,6 +10,16 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+ 
+ @class NSImage;
+ 
++typedef NS_OPTIONS(NSUInteger, NSFileWrapperReadingOptions) {
++    NSFileWrapperReadingImmediate = 1 << 0,
++    NSFileWrapperReadingWithoutMapping = 1 << 1,
++};
++
++typedef NS_OPTIONS(NSUInteger, NSFileWrapperWritingOptions) {
++    NSFileWrapperWritingAtomic = 1 << 0,
++    NSFileWrapperWritingWithNameUpdating = 1 << 1,
++};
++
+ @interface NSFileWrapper : NSObject {
+   @protected
+     NSString *_path;
+@@ -63,3 +73,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+ - (BOOL)updateFromPath:(NSString *)path;
+ 
+ @end
++
++// (QTP) the URL interface, over the path-based one above (NSFileWrapperURL.m)
++@interface NSFileWrapper (NSFileWrapperURL)
++- (instancetype)initWithURL:(NSURL *)url options:(NSFileWrapperReadingOptions)options error:(NSError **)outError;
++- (instancetype)initSymbolicLinkWithDestinationURL:(NSURL *)url;
++- (BOOL)readFromURL:(NSURL *)url options:(NSFileWrapperReadingOptions)options error:(NSError **)outError;
++- (BOOL)writeToURL:(NSURL *)url options:(NSFileWrapperWritingOptions)options originalContentsURL:(NSURL *)originalContentsURL error:(NSError **)outError;
++- (BOOL)matchesContentsOfURL:(NSURL *)url;
++- (NSURL *)symbolicLinkDestinationURL;
++@end
+diff --git a/src/Frameworks/AppKit/NSFileWrapper.m b/src/Frameworks/AppKit/NSFileWrapper.m
+index 081f5d0..8b91d42 100755
+--- a/src/Frameworks/AppKit/NSFileWrapper.m
++++ b/src/Frameworks/AppKit/NSFileWrapper.m
+@@ -406,7 +406,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+ 			// Try to recycle an old wrapper (and data!)
+ 			NSFileWrapper* wrapper = [contentDictionary objectForKey: filename];
+ 			if (wrapper) {
+-				// Update recycled wrapper:
++				// Update recycled wrapper (retained here: it is released below like a new one; it was over-released)
++				[wrapper retain];
+ 				[wrapper updateFromPath: absolutePath];
+ 			} else {
+ 				// Create new one:
+diff --git a/src/Frameworks/AppKit/NSFileWrapperURL.m b/src/Frameworks/AppKit/NSFileWrapperURL.m
+new file mode 100644
+index 0000000..4e9d2c1
+--- /dev/null
++++ b/src/Frameworks/AppKit/NSFileWrapperURL.m
+@@ -0,0 +1,123 @@
++// NSFileWrapperURL.m - NSFileWrapper's URL interface. SPDX-License-Identifier: MIT
++// Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
++//
++// Written from the public NSFileWrapper documentation over this AppKit's path-based wrapper
++// (NSFileWrapper.m). File URLs only; errors are Cocoa's file-reading and file-writing errors.
++#import <AppKit/NSFileWrapper.h>
++
++enum {
++    SFFileReadUnknownError = 256,
++    SFFileReadNoSuchFileError = 260,
++    SFFileReadUnsupportedSchemeError = 262,
++    SFFileWriteUnknownError = 512,
++    SFFileWriteUnsupportedSchemeError = 518,
++};
++
++static NSError *SFFileWrapperError(NSInteger code, NSURL *url, NSString *why)
++{
++    NSMutableDictionary *info = [NSMutableDictionary dictionaryWithObject:why forKey:NSLocalizedDescriptionKey];
++    if (url != nil)
++        [info setObject:url forKey:NSURLErrorKey];
++    return [NSError errorWithDomain:NSCocoaErrorDomain code:code userInfo:info];
++}
++
++// regular files are read when first asked for: read them all now, through any directories
++static void SFReadContentsNow(NSFileWrapper *wrapper)
++{
++    if ([wrapper isRegularFile])
++        [wrapper regularFileContents];
++    else if ([wrapper isDirectory])
++        for (NSFileWrapper *child in [[wrapper fileWrappers] allValues])
++            SFReadContentsNow(child);
++}
++
++@implementation NSFileWrapper (NSFileWrapperURL)
++
++// +alloc gives a shared placeholder (NSFileWrapper.m): on failure nothing is released, as -initWithPath: does
++- (instancetype)initWithURL:(NSURL *)url options:(NSFileWrapperReadingOptions)options error:(NSError **)outError
++{
++    if (![url isFileURL]) {
++        if (outError)
++            *outError = SFFileWrapperError(SFFileReadUnsupportedSchemeError, url, @"Only file URLs can be read into a file wrapper.");
++        return nil;
++    }
++    NSString *path = [url path];
++    if ([[NSFileManager defaultManager] fileAttributesAtPath:path traverseLink:NO] == nil) {
++        if (outError)
++            *outError = SFFileWrapperError(SFFileReadNoSuchFileError, url, @"The file does not exist.");
++        return nil;
++    }
++    NSFileWrapper *result = [self initWithPath:path];
++    if (result == nil) {
++        if (outError)
++            *outError = SFFileWrapperError(SFFileReadUnknownError, url, @"The file could not be read into a file wrapper.");
++        return nil;
++    }
++    if (options & NSFileWrapperReadingImmediate)
++        SFReadContentsNow(result);
++    return result;
++}
++
++- (instancetype)initSymbolicLinkWithDestinationURL:(NSURL *)url
++{
++    return [self initSymbolicLinkWithDestination:[url isFileURL] ? [url path] : [url relativeString]];
++}
++
++- (NSURL *)symbolicLinkDestinationURL
++{
++    NSString *destination = [self symbolicLinkDestination];
++    return destination ? [NSURL fileURLWithPath:destination] : nil;
++}
++
++// the receiver takes what is at the URL now; a regular file and a directory do not turn into each other
++- (BOOL)readFromURL:(NSURL *)url options:(NSFileWrapperReadingOptions)options error:(NSError **)outError
++{
++    if (![url isFileURL]) {
++        if (outError)
++            *outError = SFFileWrapperError(SFFileReadUnsupportedSchemeError, url, @"Only file URLs can be read into a file wrapper.");
++        return NO;
++    }
++    NSString *path = [url path];
++    NSDictionary *attributes = [[NSFileManager defaultManager] fileAttributesAtPath:path traverseLink:NO];
++    if (attributes == nil) {
++        if (outError)
++            *outError = SFFileWrapperError(SFFileReadNoSuchFileError, url, @"The file does not exist.");
++        return NO;
++    }
++    NSString *type = [attributes fileType];
++    BOOL same = ([self isDirectory] && [type isEqualToString:NSFileTypeDirectory]) ||
++                ([self isRegularFile] && [type isEqualToString:NSFileTypeRegular]) ||
++                ([self isSymbolicLink] && [type isEqualToString:NSFileTypeSymbolicLink]);
++    if (!same) {
++        if (outError)
++            *outError = SFFileWrapperError(SFFileReadUnknownError, url, @"The item is of another kind than the file wrapper.");
++        return NO;
++    }
++    [self updateFromPath:path];
++    if (options & NSFileWrapperReadingImmediate)
++        SFReadContentsNow(self);
++    return YES;
++}
++
++- (BOOL)writeToURL:(NSURL *)url options:(NSFileWrapperWritingOptions)options originalContentsURL:(NSURL *)originalContentsURL error:(NSError **)outError
++{
++    (void)originalContentsURL; // a hint for copying unchanged files; everything is written
++    if (![url isFileURL]) {
++        if (outError)
++            *outError = SFFileWrapperError(SFFileWriteUnsupportedSchemeError, url, @"A file wrapper can only be written to a file URL.");
++        return NO;
++    }
++    BOOL ok = [self writeToFile:[url path] atomically:(options & NSFileWrapperWritingAtomic) != 0
++                updateFilenames:(options & NSFileWrapperWritingWithNameUpdating) != 0];
++    if (!ok && outError)
++        *outError = SFFileWrapperError(SFFileWriteUnknownError, url, @"The file wrapper could not be written.");
++    return ok;
++}
++
++- (BOOL)matchesContentsOfURL:(NSURL *)url
++{
++    return [url isFileURL] && [[NSFileManager defaultManager] fileAttributesAtPath:[url path] traverseLink:NO] != nil &&
++           ![self needsToBeUpdatedFromPath:[url path]];
++}
++
++@end

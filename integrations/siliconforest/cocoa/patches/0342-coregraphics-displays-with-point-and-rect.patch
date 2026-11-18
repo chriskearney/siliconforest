@@ -1,0 +1,76 @@
+diff --git a/src/Frameworks/CoreGraphics/CGDirectDisplay.h b/src/Frameworks/CoreGraphics/CGDirectDisplay.h
+index 34050c6..bdcb9c0 100644
+--- a/src/Frameworks/CoreGraphics/CGDirectDisplay.h
++++ b/src/Frameworks/CoreGraphics/CGDirectDisplay.h
+@@ -160,6 +160,7 @@ COREGRAPHICS_EXPORT CGError CGGetActiveDisplayList(uint32_t maxDisplays, CGDirec
+ COREGRAPHICS_EXPORT CGError CGGetDisplaysWithOpenGLDisplayMask(CGOpenGLDisplayMask mask, uint32_t maxDisplays, CGDirectDisplayID *displays, uint32_t *matchingDisplayCount);
+ COREGRAPHICS_EXPORT CGError CGGetDisplaysWithPoint(CGPoint point, uint32_t maxDisplays, CGDirectDisplayID *displays, uint32_t *matchingDisplayCount);
+ COREGRAPHICS_EXPORT CGError CGGetDisplaysWithRect(CGRect rect, uint32_t maxDisplays, CGDirectDisplayID *displays, uint32_t *matchingDisplayCount);
++COREGRAPHICS_EXPORT CGError CGGetDisplaysWithRect(CGRect rect, uint32_t maxDisplays, CGDirectDisplayID *displays, uint32_t *matchingDisplayCount);
+ COREGRAPHICS_EXPORT CGDirectDisplayID CGOpenGLDisplayMaskToDisplayID(CGOpenGLDisplayMask mask);
+ COREGRAPHICS_EXPORT CGOpenGLDisplayMask CGDisplayIDToOpenGLDisplayMask(CGDirectDisplayID display);
+ 
+diff --git a/src/Frameworks/CoreGraphics/CGDirectDisplay_siliconforest.m b/src/Frameworks/CoreGraphics/CGDirectDisplay_siliconforest.m
+index 00dcd78..d458ad5 100644
+--- a/src/Frameworks/CoreGraphics/CGDirectDisplay_siliconforest.m
++++ b/src/Frameworks/CoreGraphics/CGDirectDisplay_siliconforest.m
+@@ -9,6 +9,7 @@
+ #import <CoreGraphics/CGDirectDisplay.h>
+ #import <CoreGraphics/CGDirectDisplay_siliconforest.h>
+ #import <CoreGraphics/CGColorSpace.h>
++#include <stdbool.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <string.h>
+@@ -166,6 +167,51 @@ CGRect CGDisplayBounds(CGDirectDisplayID display) {
+     return currentBounds();
+ }
+ 
++// (QTP) the displays a point or a rectangle falls on, from the active list and each display's bounds, as
++// CoreGraphics documents them: with displays NULL the count is of all that match, else at most maxDisplays
++// are written and counted
++static CGError displaysMatching(bool (*match)(CGRect bounds, const void *what), const void *what,
++                                uint32_t maxDisplays, CGDirectDisplayID *displays, uint32_t *matchingDisplayCount) {
++    CGDirectDisplayID active[16];
++    uint32_t count = 0, found = 0;
++
++    if (matchingDisplayCount == NULL)
++        return kCGErrorIllegalArgument;
++    CGError error = CGGetActiveDisplayList(16, active, &count);
++    if (error != kCGErrorSuccess)
++        return error;
++    for (uint32_t i = 0; i < count && i < 16; i++) {
++        if (!match(CGDisplayBounds(active[i]), what))
++            continue;
++        if (displays != NULL) {
++            if (found >= maxDisplays)
++                break;
++            displays[found] = active[i];
++        }
++        found++;
++    }
++    *matchingDisplayCount = found;
++    return kCGErrorSuccess;
++}
++
++static bool boundsContainPoint(CGRect bounds, const void *what) {
++    return CGRectContainsPoint(bounds, *(const CGPoint *)what);
++}
++
++static bool boundsMeetRect(CGRect bounds, const void *what) {
++    return CGRectIntersectsRect(bounds, *(const CGRect *)what);
++}
++
++CGError CGGetDisplaysWithPoint(CGPoint point, uint32_t maxDisplays, CGDirectDisplayID *displays,
++                               uint32_t *matchingDisplayCount) {
++    return displaysMatching(boundsContainPoint, &point, maxDisplays, displays, matchingDisplayCount);
++}
++
++CGError CGGetDisplaysWithRect(CGRect rect, uint32_t maxDisplays, CGDirectDisplayID *displays,
++                              uint32_t *matchingDisplayCount) {
++    return displaysMatching(boundsMeetRect, &rect, maxDisplays, displays, matchingDisplayCount);
++}
++
+ size_t CGDisplayPixelsWide(CGDirectDisplayID display) {
+     return (size_t)currentBounds().size.width;
+ }

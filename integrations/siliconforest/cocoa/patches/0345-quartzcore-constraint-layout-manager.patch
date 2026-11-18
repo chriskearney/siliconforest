@@ -1,0 +1,361 @@
+diff --git a/src/Frameworks/QuartzCore/CAConstraintLayoutManager.h b/src/Frameworks/QuartzCore/CAConstraintLayoutManager.h
+new file mode 100644
+index 0000000..a6c4bcf
+--- /dev/null
++++ b/src/Frameworks/QuartzCore/CAConstraintLayoutManager.h
+@@ -0,0 +1,44 @@
++// CAConstraintLayoutManager.h - sublayers placed by constraints on their geometry. SPDX-License-Identifier: MIT
++// Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
++#import <QuartzCore/CALayer.h>
++
++typedef NS_ENUM(int, CAConstraintAttribute) {
++    kCAConstraintMinX,
++    kCAConstraintMidX,
++    kCAConstraintMaxX,
++    kCAConstraintWidth,
++    kCAConstraintMinY,
++    kCAConstraintMidY,
++    kCAConstraintMaxY,
++    kCAConstraintHeight,
++};
++
++// attribute = sourceAttribute of the layer named sourceName (a sibling, or "superlayer") * scale + offset
++@interface CAConstraint : NSObject <NSCoding> {
++    CAConstraintAttribute _attribute, _sourceAttribute;
++    NSString *_sourceName;
++    CGFloat _scale, _offset;
++}
+++ (instancetype)constraintWithAttribute:(CAConstraintAttribute)attribute relativeTo:(NSString *)sourceName
++                              attribute:(CAConstraintAttribute)sourceAttribute scale:(CGFloat)scale offset:(CGFloat)offset;
+++ (instancetype)constraintWithAttribute:(CAConstraintAttribute)attribute relativeTo:(NSString *)sourceName
++                              attribute:(CAConstraintAttribute)sourceAttribute offset:(CGFloat)offset;
+++ (instancetype)constraintWithAttribute:(CAConstraintAttribute)attribute relativeTo:(NSString *)sourceName
++                              attribute:(CAConstraintAttribute)sourceAttribute;
++- (instancetype)initWithAttribute:(CAConstraintAttribute)attribute relativeTo:(NSString *)sourceName
++                        attribute:(CAConstraintAttribute)sourceAttribute scale:(CGFloat)scale offset:(CGFloat)offset;
++@property(readonly) CAConstraintAttribute attribute;
++@property(readonly) NSString *sourceName;
++@property(readonly) CAConstraintAttribute sourceAttribute;
++@property(readonly) CGFloat scale;
++@property(readonly) CGFloat offset;
++@end
++
++@interface CAConstraintLayoutManager : NSObject <CALayoutManager>
+++ (instancetype)layoutManager;
++@end
++
++@interface CALayer (CAConstraintLayoutManager)
++@property(copy) NSArray *constraints;
++- (void)addConstraint:(CAConstraint *)constraint;
++@end
+diff --git a/src/Frameworks/QuartzCore/CAConstraintLayoutManager.m b/src/Frameworks/QuartzCore/CAConstraintLayoutManager.m
+new file mode 100644
+index 0000000..a9d6135
+--- /dev/null
++++ b/src/Frameworks/QuartzCore/CAConstraintLayoutManager.m
+@@ -0,0 +1,176 @@
++// CAConstraintLayoutManager.m - see the header. SPDX-License-Identifier: MIT
++// Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
++//
++// Written from the public CAConstraint and CAConstraintLayoutManager documentation. Each sublayer's constraints
++// are applied against its superlayer's bounds ("superlayer") or a sibling's frame (by name). On each axis two
++// constrained attributes of min, mid, max and size fix the extent; one moves the layer and keeps its size. Layers
++// are placed in passes until nothing moves (a constraint on a sibling placed later is met in the next pass), at
++// most one pass per sublayer and one more. A source name that matches nothing is ignored, as on macOS.
++#import <QuartzCore/CAConstraintLayoutManager.h>
++#import <Foundation/Foundation.h>
++#import <objc/runtime.h>
++#include <math.h>
++
++@implementation CAConstraint
++
+++ (instancetype)constraintWithAttribute:(CAConstraintAttribute)attribute relativeTo:(NSString *)sourceName
++                              attribute:(CAConstraintAttribute)sourceAttribute scale:(CGFloat)scale offset:(CGFloat)offset {
++   return [[[self alloc] initWithAttribute:attribute relativeTo:sourceName attribute:sourceAttribute scale:scale offset:offset] autorelease];
++}
++
+++ (instancetype)constraintWithAttribute:(CAConstraintAttribute)attribute relativeTo:(NSString *)sourceName
++                              attribute:(CAConstraintAttribute)sourceAttribute offset:(CGFloat)offset {
++   return [self constraintWithAttribute:attribute relativeTo:sourceName attribute:sourceAttribute scale:1 offset:offset];
++}
++
+++ (instancetype)constraintWithAttribute:(CAConstraintAttribute)attribute relativeTo:(NSString *)sourceName
++                              attribute:(CAConstraintAttribute)sourceAttribute {
++   return [self constraintWithAttribute:attribute relativeTo:sourceName attribute:sourceAttribute scale:1 offset:0];
++}
++
++- (instancetype)initWithAttribute:(CAConstraintAttribute)attribute relativeTo:(NSString *)sourceName
++                        attribute:(CAConstraintAttribute)sourceAttribute scale:(CGFloat)scale offset:(CGFloat)offset {
++   if((self=[super init])==nil)
++    return nil;
++   _attribute=attribute;
++   _sourceName=[sourceName copy];
++   _sourceAttribute=sourceAttribute;
++   _scale=scale;
++   _offset=offset;
++   return self;
++}
++
++- (instancetype)initWithCoder:(NSCoder *)coder {
++   return [self initWithAttribute:[coder decodeIntForKey:@"CAConstraintAttribute"] relativeTo:[coder decodeObjectForKey:@"CAConstraintSourceName"]
++                        attribute:[coder decodeIntForKey:@"CAConstraintSourceAttribute"] scale:[coder decodeDoubleForKey:@"CAConstraintScale"]
++                           offset:[coder decodeDoubleForKey:@"CAConstraintOffset"]];
++}
++
++- (void)encodeWithCoder:(NSCoder *)coder {
++   [coder encodeInt:_attribute forKey:@"CAConstraintAttribute"];
++   [coder encodeObject:_sourceName forKey:@"CAConstraintSourceName"];
++   [coder encodeInt:_sourceAttribute forKey:@"CAConstraintSourceAttribute"];
++   [coder encodeDouble:_scale forKey:@"CAConstraintScale"];
++   [coder encodeDouble:_offset forKey:@"CAConstraintOffset"];
++}
++
++- (void)dealloc {
++   [_sourceName release];
++   [super dealloc];
++}
++
++- (CAConstraintAttribute)attribute { return _attribute; }
++- (NSString *)sourceName { return _sourceName; }
++- (CAConstraintAttribute)sourceAttribute { return _sourceAttribute; }
++- (CGFloat)scale { return _scale; }
++- (CGFloat)offset { return _offset; }
++
++@end
++
++static CGFloat attributeOfRect(CGRect r,CAConstraintAttribute attribute){
++   switch(attribute){
++    case kCAConstraintMinX: return CGRectGetMinX(r);
++    case kCAConstraintMidX: return CGRectGetMidX(r);
++    case kCAConstraintMaxX: return CGRectGetMaxX(r);
++    case kCAConstraintWidth: return r.size.width;
++    case kCAConstraintMinY: return CGRectGetMinY(r);
++    case kCAConstraintMidY: return CGRectGetMidY(r);
++    case kCAConstraintMaxY: return CGRectGetMaxY(r);
++    default: return r.size.height;
++   }
++}
++
++// one axis: has/value index 0 min, 1 mid, 2 max, 3 size
++static void solveAxis(const BOOL has[4],const CGFloat value[4],CGFloat *origin,CGFloat *size){
++   if(has[3])
++    *size=value[3];
++   if(has[0] && has[2]){ *origin=value[0]; *size=value[2]-value[0]; }
++   else if(has[0] && has[1]){ *origin=value[0]; *size=2*(value[1]-value[0]); }
++   else if(has[1] && has[2]){ *size=2*(value[2]-value[1]); *origin=value[2]-*size; }
++   else if(has[0]) *origin=value[0];
++   else if(has[1]) *origin=value[1]-*size/2;
++   else if(has[2]) *origin=value[2]-*size;
++}
++
++@implementation CAConstraintLayoutManager
++
+++ (instancetype)layoutManager {
++   return [[[self alloc] init] autorelease];
++}
++
++static BOOL placeSublayer(CALayer *layer,CALayer *sublayer,NSArray *siblings){
++   NSArray *constraints=[sublayer constraints];
++   if([constraints count]==0)
++    return NO;
++   BOOL    hasX[4]={NO,NO,NO,NO},hasY[4]={NO,NO,NO,NO};
++   CGFloat x[4]={0,0,0,0},y[4]={0,0,0,0};
++   for(CAConstraint *constraint in constraints){
++    NSString *name=[constraint sourceName];
++    CGRect    source;
++    BOOL      found=NO;
++    if([name isEqualToString:@"superlayer"]){
++     source=[layer bounds];
++     found=YES;
++    }
++    else for(CALayer *sibling in siblings)
++     if(sibling!=sublayer && [[sibling name] isEqualToString:name]){
++      source=[sibling frame];
++      found=YES;
++      break;
++     }
++    if(!found)
++     continue;
++    CGFloat value=attributeOfRect(source,[constraint sourceAttribute])*[constraint scale]+[constraint offset];
++    int     attribute=[constraint attribute];
++    if(attribute>=kCAConstraintMinX && attribute<=kCAConstraintWidth){ hasX[attribute]=YES; x[attribute]=value; }
++    else if(attribute>=kCAConstraintMinY && attribute<=kCAConstraintHeight){ hasY[attribute-4]=YES; y[attribute-4]=value; }
++   }
++   CGRect old=[sublayer frame],frame=old;
++   solveAxis(hasX,x,&frame.origin.x,&frame.size.width);
++   solveAxis(hasY,y,&frame.origin.y,&frame.size.height);
++   if(CGRectEqualToRect(frame,old))
++    return NO;
++   [sublayer setFrame:frame];
++   return YES;
++}
++
++- (void)layoutSublayersOfLayer:(CALayer *)layer {
++   NSArray *sublayers=[layer sublayers];
++   for(NSUInteger pass=0;pass<=[sublayers count];pass++){
++    BOOL moved=NO;
++    for(CALayer *sublayer in sublayers)
++     moved|=placeSublayer(layer,sublayer,sublayers);
++    if(!moved)
++     break;
++   }
++}
++
++- (CGSize)preferredSizeOfLayer:(CALayer *)layer {
++   return [layer bounds].size;
++}
++
++- (void)invalidateLayoutOfLayer:(CALayer *)layer {
++   [layer setNeedsLayout];
++}
++
++@end
++
++static const char sfcaConstraintsKey=0;
++
++@implementation CALayer (CAConstraintLayoutManager)
++
++- (NSArray *)constraints {
++   return objc_getAssociatedObject(self,&sfcaConstraintsKey);
++}
++
++- (void)setConstraints:(NSArray *)constraints {
++   objc_setAssociatedObject(self,&sfcaConstraintsKey,[[constraints copy] autorelease],OBJC_ASSOCIATION_RETAIN);
++   [[self superlayer] _sfcaLayoutForChangedSublayers];
++}
++
++- (void)addConstraint:(CAConstraint *)constraint {
++   NSArray *constraints=[self constraints];
++   [self setConstraints:constraints ? [constraints arrayByAddingObject:constraint] : [NSArray arrayWithObject:constraint]];
++}
++
++@end
+diff --git a/src/Frameworks/QuartzCore/CALayer.h b/src/Frameworks/QuartzCore/CALayer.h
+index bce7bf9..bb05a17 100644
+--- a/src/Frameworks/QuartzCore/CALayer.h
++++ b/src/Frameworks/QuartzCore/CALayer.h
+@@ -56,6 +56,16 @@ CA_EXPORT NSString *const kCAGravityResize;
+ CA_EXPORT NSString *const kCAGravityResizeAspect;
+ CA_EXPORT NSString *const kCAGravityResizeAspectFill;
+ 
++@class CALayer;
++
++// (QTP) what lays out a layer's sublayers (CAConstraintLayoutManager is one)
++@protocol CALayoutManager <NSObject>
++@optional
++- (CGSize)preferredSizeOfLayer:(CALayer *)layer;
++- (void)invalidateLayoutOfLayer:(CALayer *)layer;
++- (void)layoutSublayersOfLayer:(CALayer *)layer;
++@end
++
+ @interface CALayer : NSObject {
+     CALayerContext *_context;
+     CALayer *_superlayer;
+@@ -170,6 +180,10 @@ CA_EXPORT NSString *const kCAGravityResizeAspectFill;
+ - (BOOL)needsLayout;
+ - (void)layoutIfNeeded;
+ - (void)layoutSublayers;
++// (QTP) asked by -layoutSublayers when the delegate does not lay out; with one, sublayers do not autoresize
++@property(retain) id<CALayoutManager> layoutManager;
++- (CGSize)preferredFrameSize;
++- (void)_sfcaLayoutForChangedSublayers;
+ - (void)resizeSublayersWithOldSize:(CGSize)size;
+ - (void)resizeWithOldSuperlayerSize:(CGSize)size;
+ - (void)removeFromSuperlayer;
+diff --git a/src/Frameworks/QuartzCore/CALayer.m b/src/Frameworks/QuartzCore/CALayer.m
+index 14959bf..e964f08 100644
+--- a/src/Frameworks/QuartzCore/CALayer.m
++++ b/src/Frameworks/QuartzCore/CALayer.m
+@@ -11,6 +11,9 @@
+ #import <objc/runtime.h>
+ #include <stdlib.h>
+ 
++// (QTP) set once any layer has been given a layout manager (CAConstraintLayoutManager.m)
++static BOOL sfcaLayoutManagersInUse=NO;
++
+ // SF_CA_TRACE=1 logs what clients hand the layer tree, for porting apps that draw nothing
+ static int caTrace(void) {
+    static int on=-1;
+@@ -126,6 +129,7 @@ static id lockedRead(id *slot) {
+    [_sublayers makeObjectsPerformSelector:@selector(_setSuperLayer:) withObject:self];
+    [_sublayers makeObjectsPerformSelector:@selector(_setContext:) withObject:_context];
+    [self _setNeedsRender];
++   [self _sfcaLayoutForChangedSublayers];
+ }
+ 
+ -(id)delegate {
+@@ -195,7 +199,9 @@ static id lockedRead(id *slot) {
+    // (TERM8) sublayers follow by their autoresizing masks, as with no layout manager on macOS, and the layer is laid
+    // out again (macOS does it at the commit; here at once, so a subclass's -layoutSublayers sees each new size)
+    if(resized){
+-    [self resizeSublayersWithOldSize:old];
++    // (QTP) with a layout manager the manager places the sublayers, without one they autoresize (as on macOS)
++    if(!sfcaLayoutManagersInUse || [self layoutManager]==nil)
++     [self resizeSublayersWithOldSize:old];
+     [self setNeedsLayout];
+     [self layoutIfNeeded];
+    }
+@@ -217,10 +223,49 @@ static id lockedRead(id *slot) {
+    [self layoutSublayers];
+ }
+ 
+-// what macOS's does without a layout manager: the delegate's layout, if it has one
++// what macOS's does: the delegate's layout, if it has one, else (QTP) the layout manager's
+ -(void)layoutSublayers {
+-   if([_delegate respondsToSelector:@selector(layoutSublayersOfLayer:)])
++   if([_delegate respondsToSelector:@selector(layoutSublayersOfLayer:)]){
+     [_delegate layoutSublayersOfLayer:self];
++    return;
++   }
++   if(sfcaLayoutManagersInUse){
++    id manager=[self layoutManager];
++    if([manager respondsToSelector:@selector(layoutSublayersOfLayer:)])
++     [manager layoutSublayersOfLayer:self];
++   }
++}
++
++// (QTP) the layout manager, kept beside the layer (no instance variable: the layout of the class is unchanged for
++// subclasses built against the earlier header); a flag spares the lookup until some layer has had one
++static const char sfcaLayoutManagerKey=0;
++
++-(id<CALayoutManager>)layoutManager {
++   return sfcaLayoutManagersInUse ? objc_getAssociatedObject(self,&sfcaLayoutManagerKey) : nil;
++}
++
++-(void)setLayoutManager:(id<CALayoutManager>)manager {
++   if(manager!=nil)
++    sfcaLayoutManagersInUse=YES;
++   objc_setAssociatedObject(self,&sfcaLayoutManagerKey,manager,OBJC_ASSOCIATION_RETAIN);
++   [self setNeedsLayout];
++   [self layoutIfNeeded];
++}
++
++-(CGSize)preferredFrameSize {
++   id manager=[self layoutManager];
++   if([manager respondsToSelector:@selector(preferredSizeOfLayer:)])
++    return [manager preferredSizeOfLayer:self];
++   return _bounds.size;
++}
++
++// sublayers or their constraints changed: laid out again at once, as this tree lays out on a resize (macOS does it
++// at the commit)
++-(void)_sfcaLayoutForChangedSublayers {
++   if(!sfcaLayoutManagersInUse || [self layoutManager]==nil)
++    return;
++   [self setNeedsLayout];
++   [self layoutIfNeeded];
+ }
+ 
+ // (TERM8) the part of the bounds no masking superlayer cuts away (layer transforms are not applied: none of this
+diff --git a/src/Frameworks/QuartzCore/CoreAnimation.h b/src/Frameworks/QuartzCore/CoreAnimation.h
+index dcb03e9..f253290 100644
+--- a/src/Frameworks/QuartzCore/CoreAnimation.h
++++ b/src/Frameworks/QuartzCore/CoreAnimation.h
+@@ -3,6 +3,7 @@
+ #import <QuartzCore/CALayer.h>
+ #import <QuartzCore/CAShapeLayer.h>
+ #import <QuartzCore/CATextLayer.h>
++#import <QuartzCore/CAConstraintLayoutManager.h>
+ #import <QuartzCore/CARenderer.h>
+ #import <QuartzCore/CAMediaTimingFunction.h>
+ #import <QuartzCore/CATransaction.h>

@@ -21,6 +21,17 @@ extern int32_t ubrk_preceding(UBreakIterator *bi, int32_t offset);
 NSString *const NSURLLocalizedNameKey = @"NSURLLocalizedNameKey";
 NSString *const NSURLPathKey = @"_NSURLPathKey";
 NSString *const NSURLTypeIdentifierKey = @"NSURLTypeIdentifierKey";
+// (QTP) more of the keys macOS applications import (first: Apple's QuickTime Player); libFoundation answers them
+NSString *const NSURLNameKey = @"NSURLNameKey";
+NSString *const NSURLFileSizeKey = @"NSURLFileSizeKey";
+NSString *const NSURLContentModificationDateKey = @"NSURLContentModificationDateKey";
+NSString *const NSURLParentDirectoryURLKey = @"NSURLParentDirectoryURLKey";
+NSString *const NSURLIsVolumeKey = @"NSURLIsVolumeKey";
+NSString *const NSURLVolumeNameKey = @"NSURLVolumeNameKey";
+NSString *const NSURLVolumeIsReadOnlyKey = @"NSURLVolumeIsReadOnlyKey";
+NSString *const NSURLHasHiddenExtensionKey = @"NSURLHasHiddenExtensionKey";
+NSString *const NSURLEffectiveIconKey = @"NSURLEffectiveIconKey";
+NSString *const NSURLFileResourceIdentifierKey = @"NSURLFileResourceIdentifierKey";
 
 // ---- CFStringTokenizer: word and other boundaries of a string, from ICU's break iterators
 typedef struct __SFStringTokenizer {
