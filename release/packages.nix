@@ -63,6 +63,8 @@ in {
     boot-stage2 = boot.stage2;
     boot-stage2-template = templateBoot.stage2;
     qemu-base = recipe "qemu-dev/build-image.nix" { };
+    qemu-runner = import ./qemu-runner.nix { inherit pkgs; };
+    qemu-smoke-image = import ./qemu-smoke.nix { inherit base; };
     root-base = p.image-arm64-virt-minimal-release;
   };
 }

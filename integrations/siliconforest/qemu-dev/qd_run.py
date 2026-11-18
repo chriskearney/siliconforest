@@ -33,6 +33,8 @@ class Qmp:
                     raise
                 time.sleep(0.05)
         self.f = self.s.makefile('rwb')
+        # A blocked QMP request must not defeat the whole-run deadline.
+        self.s.settimeout(max(1.0, min(30.0, deadline - time.time())))
         self.f.readline()
         self.cmd('qmp_capabilities')
 
@@ -252,6 +254,7 @@ def main():
             proc.wait(10)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait(10)
         for s in ('serial.sock', 'qmp.sock'):
             (out / s).unlink(missing_ok=True)
     result['shots'] = shots
