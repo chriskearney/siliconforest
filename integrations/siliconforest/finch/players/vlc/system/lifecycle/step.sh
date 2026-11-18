@@ -23,7 +23,7 @@ $S/test/sf-vlc-features-probe 2>&1 | grep -E "SFVLCFEATURE|SFVLCLOADERROR" | sed
 [ "${HAVE_CORE:-}" = 1 ] || { exec 8>"$CORE"; flock -w 1800 8 || { echo "core.lock not free within 1800 s"; exit 6; }; }
 case $A in
 forward)
-  note "core.lock${HAVE_CORE:+ (held by the step run)}: step $N forward: $(awk '{print $2}' $H/runs/sf-vlc-system/stage/step$N/list | grep -v Source.m | sed 's|.*/||' | sort -u | tr '\n' ' ')(sf_vlc_restore.sh forward; previous files kept as .pre-vlc; back: sf_vlc_restore.sh back $N)"
+  note "core.lock${HAVE_CORE:+ (held by the step run)}: step $N forward: $(cat $H/runs/sf-vlc-system/stage/step$N/list $H/runs/sysinstall/stage7/step$N/list 2>/dev/null | awk '{print $2}' | grep -v Source.m | sed 's|.*/||' | sort -u | tr '\n' ' ')(sf_vlc_restore.sh forward; previous files kept as .pre-vlc; back: sf_vlc_restore.sh back $N)"
   "${SF[@]}" "sh $S/sf_vlc_restore.sh forward $S $N 2>&1; echo RC=\$?" | tee $OUT; printf '%s\n' "$CHECK" | "${SF[@]}" "sh -s" | tee -a $OUT;;
 back)
   note "core.lock: step $N BACK (sf_vlc_restore.sh back $N)"

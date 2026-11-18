@@ -65,7 +65,8 @@ state_save() { mkdir -p $W/state-owner; ( cd $ST && for f in $STATEF; do [ -e $f
 state_check() { ( cd $ST; for f in $STATEF; do [ -e $W/state-owner/$f ] || continue; cmp -s $W/state-owner/$f $f || { cp -p $W/state-owner/$f $f.sfsys && mv -f $f.sfsys $f; echo "STATE $f put back from the copy"; }; done
   shasum -a 256 $STATEF > $W/state-after.sha 2>/dev/null; cmp -s $W/state-owner.sha $W/state-after.sha && say "PASS owner's desk state identical ($(wc -l < $W/state-owner.sha) files: theme=$(cat theme) scale=$(cat scale))" || { say "FAIL owner's desk state differs"; diff $W/state-owner.sha $W/state-after.sha; } ); }
 # the newest mapped shell surface (a menu) not in the list taken at the start of the pass: x y w h
-newest_shell_rect() { req "list $T-sh\n" 30 > /dev/null; grep '^shell' $D/$T-sh.txt | grep 'mapped=true' | while read -r line; do id=$(echo "$line" | cut -d' ' -f2); grep -q "^shell $id " $D/$T-l0.txt || echo "$line"; done | tail -1 | grep -o 'rect=Rect { pos: Point { x: [-0-9]*, y: [-0-9]* }, size: Size { w: [0-9]*, h: [0-9]* }' | grep -o '[-0-9][0-9]*' | tr '\n' ' '; }
+# (taller than 60 px: the dock's one-line tool tips are not menus)
+newest_shell_rect() { req "list $T-sh\n" 30 > /dev/null; grep '^shell' $D/$T-sh.txt | grep 'mapped=true' | while read -r line; do id=$(echo "$line" | cut -d' ' -f2); grep -q "^shell $id " $D/$T-l0.txt || echo "$line"; done | grep -o 'rect=Rect { pos: Point { x: [-0-9]*, y: [-0-9]* }, size: Size { w: [0-9]*, h: [0-9]* }' | while read -r r; do set -- $(echo "$r" | grep -o '[-0-9][0-9]*'); [ "$4" -gt 60 ] && echo "$1 $2 $3 $4"; done | tail -1; }
 # quit from the app's own menu (its first menu, last row: "Quit <app>", 48 px above the menu surface's bottom), as the
 # owner does; <window> <pid to TERM after 10 s> <processes that must end>
 quit_menu() { w=$1; sig=$2; shift 2; set_=$*; set -- $(wrect $w); [ -n "$4" ] || { quit_set "$sig" 15 $set_; return; }
@@ -89,3 +90,15 @@ vlc_win() { Wn=""; until=$(( $(date +%s) + ${2:-40} )); while [ $(date +%s) -lt 
   Wn=$(grep "^window" $D/$1-vw.txt | grep "app_id=\"$VLCAPP\"" | grep 'mapped=true' | grep -v 'title=""' | grep -v 'Fullscreen Controls' | while read -r line; do
     set -- $(echo "$line" | rect); [ -n "$4" ] && [ "$3" -gt 1000 ] && echo "$(( $3 * $4 )) $(echo "$line" | cut -d' ' -f2)"; done | sort -n | tail -1 | cut -d' ' -f2); done; echo "$Wn"; }
 [ -e $W/keys.sh ] && . $W/keys.sh
+# a menu of <window>'s strip: its title at <x offset> clicked; PASS when a menu surface appears and Esc closes it
+menu_oc() { w=$1; xo=$2; name=$3; set -- $(wrect $w); [ -n "$4" ] || { say "FAIL menu $name: window $w not listed"; return 1; }
+  click $(( $1 + xo )) $(( $2 + 17 )) 900; m=$(newest_shell_rect); cap $T-menu-$name 50
+  req "target $w\nkey 29 down\nkey 29 up\nwait 600\n" 50 > /dev/null; m2=$(newest_shell_rect)
+  ok "menu $name opens ($m) and closes by Esc (${m2:-gone})" '[ -n "$m" ] && [ "$m2" != "$m" ]'; }
+# a row of the menu whose title is at <x offset>: <row 1..> (34 px apart, the first 47 px below the surface's top);
+# (+N: N px below the surface's top, for menus with separators); with <sub> the row is hovered and the first row of its submenu is clicked
+menu_pick() { w=$1; xo=$2; row=$3; sub=${4:-}; srow=${5:-1}; set -- $(wrect $w); click $(( $1 + xo )) $(( $2 + 17 )) 900; m=$(newest_shell_rect)
+  set -- $m; [ -n "$4" ] || { say "no menu at $xo"; return 1; }; mx=$(( $1 + 80 )); case $row in +*) my=$(( $2 ${row} ));; *) my=$(( $2 + 47 + 34 * (row - 1) ));; esac
+  if [ -z "$sub" ]; then click $mx $my 1200; return 0; fi
+  req "abs $(ax $mx) $(ay $my)\nwait 900\n" 50 > /dev/null; s=$(newest_shell_rect); cap $T-sub$(echo $row | tr -d +) 50; set -- $s
+  [ -n "$4" ] || { say "no submenu"; return 1; }; click $(( $1 + 80 )) $(( $2 + 47 + 34 * (srow - 1) )) 1500; }

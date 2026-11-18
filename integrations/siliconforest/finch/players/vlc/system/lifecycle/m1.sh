@@ -25,7 +25,8 @@ fi
 note "gui.lock released ($T, rc $rc)"
 flock -u 9
 for f in "$M"/raw/$T-*.ppm; do [ -e "$f" ] || continue
-  case "$f" in *-ff-a.ppm) magick "$f" -crop 1000x560+240+300 +repage "$M/caps/$(basename "${f%.ppm}")-full.png";; esac   # text at full resolution
+  case "$f" in *-ff-a.ppm) magick "$f" -crop 1000x560+240+300 +repage "$M/caps/$(basename "${f%.ppm}")-full.png";;   # text at full resolution
+    *-term7-a.ppm) magick "$f" -crop 1000x300+124+60 +repage "$M/caps/$(basename "${f%.ppm}")-full.png";; esac
   magick "$f" -resize 50% "$M/caps/$(basename "${f%.ppm}").png" && rm -f "$f"; done
 grep -a '^LIFE' "$M/work/out-$T.txt" | grep -c PASS | sed 's/^/passes: /'; grep -a '^LIFE.*FAIL' "$M/work/out-$T.txt"
 exit $rc

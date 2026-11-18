@@ -184,7 +184,7 @@ compositor 15.6 %, coreaudiod 1.0 %, the decoder 30.0 jobs a second. Most of VLC
 two copies per frame (the decoded picture into textures; the drawn frame read back for the window). Not measured:
 the panel's own frame timing, lip sync.
 
-## Proposal: installing VLC's changes system-wide (not done)
+## Proposal: installing VLC's changes system-wide (steps 1-6 DONE on 18 November; see "System install record" below)
 
 Today everything VLC needs beyond the system lives in `/private/var/db/sfvlc` and reaches VLC through its launcher's
 `DYLD_LIBRARY_PATH` and `DYLD_FRAMEWORK_PATH`. A system install moves each piece into the system in its own step, each
@@ -229,3 +229,41 @@ build takes 0009:
 **Not part of the install.** The decoder device's permission is a kernel item (the driver creating `/dev/sfavd` with an
 owner and mode meant for it, or a broker); the launcher's step stays until then. The `/Applications/VLC.app` wrapper and
 its launcher entry are already installed and are removed by `/private/var/db/sfvlc/app/uninstall.sh`.
+
+## System install record (SYSINSTALL, 18 November 2026)
+
+Steps 1-6 of the proposal are installed on the M1 (owner's approval: "System wide install yes"), each built from this
+branch's recipes, byte-identical to the file VLC ran privately, put in by `system/sf_vlc_restore.sh` (old file kept
+beside the path as `<file>.pre-vlc`, the same inode), steps 5 and 6 through the guarded installer, and followed by
+the lifecycle set (`system/lifecycle/`: synthetic input on the virtual seat, own windows on Space 2, owner idle).
+
+| Step | File (old -> new sha256, first 8) | Installed (UTC) |
+|---|---|---|
+| 1 | AddressBook 6148edaf, ScriptingBridge 28e0eb67, WebKit 0e3c4c22, MediaPlayer b80e206a frameworks (18 new paths) | 16:48 |
+| 2 | CoreFoundation wrapper 6f280f66 -> 8ce243b9; Foundation (Versions/C) a660d750 -> 48d07784; CoreServices.pd 04b372fe -> b0ee9dbe | 16:58 |
+| 3 | QuartzCore.pd af3667bf -> 4500d69f (0320, 0321, 0326, 0329) | 17:04 |
+| 4 | AppKit dde63492 -> e4ca36be (0322-0328) | 17:13 |
+| 5 | /usr/lib/libFoundation.dylib 4d9ee43e -> e71a0cb9 (guarded installer, probe sf-kvo-probe) | 17:35 |
+| 6 | /usr/lib/libSystem.B.dylib f32061c6 -> 8230d18f (guarded installer, probe sf-vlc-libsystem-probe) | 17:43 |
+
+- Before: every replaced library's exports a superset of the installed file's (llvm-objdump exports trie), load
+  commands identical, new imports present in the installed libraries. QEMU rehearsal r6: boot 1 84 ok / 1 FAIL, boot 2
+  (fresh boot with the six) 25 ok / 1 FAIL; forward and back, in one boot and across a boot, every staged path as
+  before; cold compare 25/25 identical. The one FAIL (both boots) is the guest's headless VLC check: first cause found
+  and fixed (no plugins.dat + `--no-plugins-scan`), a second cause inside the rehearsal root not established.
+- Lifecycle set after each step: Firefox (own profile: page, scroll, H.264 video with the decoder's job count, second
+  window, quit from its menu), Terminal (two tabs) with the four themes and the owner's look put back, Activity
+  Monitor's tabs, About panels, VLC through VLC.app (hardware decoding, Half/Normal Size recorded: 0 black frames, 0
+  without the strip, full screen and back; no corner drags: they can leave VLC stuck in exit, item 25), QuickTime
+  Player from QTP2's private set: all PASS after every step; About FAIL throughout, as before the install. One FAIL
+  after step 5 (Firefox exited at start) was the test profile, not the file (same failure with the step put back; a
+  fresh profile passes): SF-AG-firefox-defects.md.
+- The coordinator restarted the M1 after step 6 and installed kernel 51; the post-restart set passed on it (all 14
+  files as staged, features 19/19, lifecycle all PASS but About).
+- Launcher trimmed (18:16Z): VLC.app's manifest prefix is `/private/var/db/sfvlc/after-system` (Sparkle stand-in, CGL
+  0009 OpenGL.framework and libGL/libGLU only; the proposal's CGL step stays deferred); `system/sf_vlc_launcher_trim.sh`
+  (undo: `... undo`). VLC passed once more. The private prefix stays on disk for a later clean-up.
+- Way back for everything: `sh /private/var/db/sfsysinst/stage/sf_vlc_restore.sh back` (one step: `back N`).
+- Step 7 (QuickTime Player's AppKit 0340-0367 + About nib, Onyx2D 0363, libFoundation 0365, recipe commit dc3088981;
+  sub-steps 7a/7b/7c, staged on the M1): NOT installed; the permission for the install was refused in the installing
+  session. Its baseline (menus, full screen, QuickTime private and on the system AppKit) is recorded.
