@@ -23,10 +23,15 @@ What has now run on the M1 is our own probe against the private prefix, without 
   resolver, the class hierarchies the application subclasses, display lookup, the "no Spaces"/"no AirDrop"
   answers). Each system image is loaded exactly once; no class is defined twice.
 - **The first attempt crashed, and why is understood** ("What the first run on the machine found").
+- **28 general names have moved into the frameworks** (Cocoa patches 0340-0347 and the framework wrappers: "Names
+  moved into the frameworks"). They build; static checks find all 28 exported where the application binds them,
+  and against a root with those frameworks the shrunk prefix still leaves none of the 965 imports unbound, with
+  no name defined twice. None of it is installed, and the new code has not run anywhere yet: its conformance
+  program is built and waits for a machine.
 - Offline, against the 15 November copy of the M1's libraries, the static scan still finds all 965 of the
   application's imports bound. That remains a prediction until the application is loaded.
 
-Of the 112 names added last, 17 are real implementations, 37 are constants, 9 are models that hold values
+Of the 112 names added last, 19 are real implementations, 37 are constants, 7 are models that hold values
 nothing acts on, and 49 are absences: they bind, and when used they fail the way their interface documents
 (or do nothing they cannot do properly) and say so once on stderr. The table "The 112 names" lists every one.
 
@@ -213,128 +218,158 @@ property listener. They belong in the frameworks themselves, through the Cocoa p
 application gets them. Each such move removes that name from the additions (`additions.nix { omit = … }`),
 and `qt_prefix.py` reports the names the system has gained so that none is defined twice.
 
+## Names moved into the frameworks
+The additions are a way to give one application names the system lacks without changing a system file. 28 of
+the 112 are not QuickTime Player's alone, and now live where every application finds them:
+
+| Patch or file | Framework | What it adds |
+|---|---|---|
+| Cocoa patch 0340 | AppKit | the enabled, hidden, title and tool-tip binding names; the eleven text-style names and `+[NSFont preferredFontForTextStyle:options:]` (sizes and weights from Apple's macOS text-style table); `NSClickGestureRecognizer`, which keeps its configuration and recognises nothing, as this AppKit's other recognisers do |
+| Cocoa patch 0341 | AppKit | `NSFileWrapper`'s URL interface over its path one (`initWithURL:options:error:`, `readFromURL:`, `writeToURL:`, `matchesContentsOfURL:`); a recycled child wrapper was over-released when a folder was read again |
+| Cocoa patch 0342 | CoreGraphics | `CGGetDisplaysWithRect` and `CGGetDisplaysWithPoint` (declared but missing) over the active display list |
+| Cocoa patch 0343 | QuartzCore | `CATextLayer`: string or attributed string through CoreText, wrapping, truncation with an ellipsis, alignment, the documented defaults |
+| Cocoa patch 0344 | QuartzCore | `CAKeyframeAnimation`, interpolated by the renderer for opacity, position, anchor point and bounds (key times, per-segment timing functions, discrete mode; paced and cubic drawn as linear, paths not followed). Also: an animation the renderer cannot interpolate now leaves the layer at its model value; it drew it at 0 |
+| Cocoa patch 0345 | QuartzCore | `CAConstraint`, `CAConstraintLayoutManager`, `CALayer`'s `layoutManager` and `preferredFrameSize`; autoresizing applies only without a layout manager, as on macOS; layers lay out at once when their constraints or sublayers change |
+| Cocoa patch 0346 | CoreAudio | `AudioObjectAddPropertyListenerBlock` and `…RemovePropertyListenerBlock` over the function-pointer listeners (applied by `m1-sound/sysaudio/build-sysaudio.nix`) |
+| Cocoa patch 0347 | libFoundation | `-[NSURL getResourceValue:forKey:error:]` answers the parent directory, volume, read-only, hidden-extension and file-identity keys (applied by `terminal-app/build-foundation.nix`) |
+| `terminal-app/compat/CoreFoundation.m` | CoreFoundation wrapper | the ten URL resource key names QuickTime Player binds from CoreFoundation |
+| `terminal-app/compat/Foundation.m` | Foundation wrapper | `NSFileCoordinator` (moved from the additions) |
+
+`additions.nix` now leaves these names out by default and then needs no additions for CoreFoundation or
+CoreAudio at all: two fewer frameworks with a library of ours in front of them, one of them a core framework.
+`additions.nix { movedInFrameworks = false; }` builds the full set for a system without the patched frameworks;
+the load test uses it until they are installed. Installing them is the guarded core-library procedure's
+business (libFoundation, CoreFoundation and Foundation are loaded by every program), after the
+Firefox/Terminal/Activity Monitor checks; nothing here installs anything.
+
+The conformance program `cocoa/conformance/qtp-names.m` checks each moved name without a window and builds for
+macOS as well, so the believed constant values (the text-style names above all) can be compared there.
+
 ## The 112 names
 Kinds: **real** (implemented), **constant**, **model** (holds what it is given; nothing in the system acts on
 it yet), **absence** (binds; when used it fails as its interface documents, or does nothing it cannot do
-properly, and says so once on stderr as `SiliconForest: ...` or `AVKit: ...`). Source:
+properly, and says so once on stderr as `SiliconForest: ...` or `AVKit: ...`). **Provided by**: where the name
+lives on a system with the Cocoa patches 0340-0347 and the current framework wrappers. 28 of the 112 have moved
+into the frameworks ("Names moved into the frameworks"); on a system without those frameworks (the M1 as installed
+on 18 November) the full additions still supply them (`additions.nix { movedInFrameworks = false; }`). Source:
 `integrations/siliconforest/finch/QuickTime/additions/` and `finch/AVKit/SFQuickTimeControls.m`; the same
 table as data is `additions/symbols.json`. For every name, whether QuickTime Player binds it as code or as
 data was read from the binary and matches what is supplied.
 
-| Library | Name | Kind | What it is here |
-|---|---|---|---|
-| AppKit | `NSEnabledBinding` | constant | documented value |
-|  | `NSFontTextStyleCaption1` | constant | value believed correct, not verified against macOS |
-|  | `NSFontTextStyleLargeTitle` | constant | value believed correct, not verified against macOS |
-|  | `NSFontTextStyleTitle1` | constant | value believed correct, not verified against macOS |
-|  | `NSFontTextStyleTitle3` | constant | value believed correct, not verified against macOS |
-|  | `NSHiddenBinding` | constant | documented value |
-|  | `NSImageNameToolbarBookmarks` | constant | private name; value inferred; nothing in the system acts on it |
-|  | `NSRecentDocumentsMenuName` | constant | private name; value inferred; nothing in the system acts on it |
-|  | `NSTitleBinding` | constant | documented value |
-|  | `NSToolTipBinding` | constant | documented value |
-|  | `NSWindowWillOrderOnScreenNotification` | constant | private name; value inferred; nothing in the system acts on it |
-|  | `class NSClickGestureRecognizer` | absence | keeps its configuration, recognises no clicks |
-|  | `instance variable NSSystemInfoPanel._optionsDictionary` | absence | our class has no such variable: offset 0, said at load; the About panel will fail until AppKit gains it |
-|  | `instance variable NSSystemInfoPanel.copyrightView` | real | resolved at load to our About panel class's copyright field (legalTextField) |
-| AVFoundation | `class AVAssetCollection` | absence | cannot be created (nil) |
-|  | `class AVAssetExportSession` | absence | every export session fails; no preset is compatible |
-|  | `class AVAssetImageGenerator` | absence | every image request fails with an error |
-|  | `class AVAssetReaderAudioMixOutput` | absence | cannot be created (nil) |
-|  | `class AVCaptureAudioFileOutput` | absence | cannot be created (nil) |
-|  | `class AVCaptureAudioPreviewOutput` | absence | cannot be created (nil) |
-|  | `class AVCaptureConnection` | absence | cannot be created (nil) |
-|  | `class AVCaptureMovieFileOutput` | absence | cannot be created (nil) |
-|  | `class AVComposition` | absence | an empty composition; editing calls fail with an error |
-|  | `class AVMutableAudioMix` | model | kept as given; the staged player does not apply it |
-|  | `class AVMutableAudioMixInputParameters` | model | kept as given; the staged player does not apply it |
-|  | `class AVMutableComposition` | absence | an empty composition; editing calls fail with an error |
-|  | `class AVMutableVideoComposition` | model | kept as given; the staged player does not apply it |
-|  | `class AVMutableVideoCompositionInstruction` | model | kept as given; the staged player does not apply it |
-|  | `class AVMutableVideoCompositionLayerInstruction` | model | kept as given; the staged player does not apply it |
-|  | `class AVTimeFormatter` | real | formats seconds and CMTime as [H:]MM:SS; other styles unknown |
-|  | `metaclass AVCaptureAudioPreviewOutput` | absence | cannot be created (nil) |
-| CoreMedia | `CMVideoFormatDescriptionGetVideoDynamicRange` | absence | dynamic range is not classified (0) |
-|  | `FigAudioFormatDescriptionGetRichestDecodableFormatAndChannelLayout` | absence | arguments not established; returns -12782, writes nothing |
-|  | `FigVideoFormatDescriptionContainsAlphaChannel` | real | reads the description's public alpha-channel extension |
-| CoreAudio | `AudioObjectAddPropertyListenerBlock` | real | over the function-pointer listener; the block runs on the given queue |
-| Foundation | `NSAppleScriptErrorBriefMessage` | constant | documented value |
-|  | `NSKeyedArchiveRootObjectKey` | constant | documented value |
-|  | `NSLocalizedFileSizeDescription` | absence | arguments not established; returns nil |
-|  | `NSMetadataItemPixelHeightKey` | constant | documented value |
-|  | `NSMetadataItemPixelWidthKey` | constant | documented value |
-|  | `class NSAppleScript` | absence | no AppleScript runtime: scripts fail with error -1753 |
-|  | `class NSFileCoordinator` | real | single process: the accessor runs at once; presenters are kept |
-|  | `class NSFileWrapper` | real | this system's own class, from AppKit (Cocotron), re-exported: one class in the process; it lacks initWithURL:options:error: |
-|  | `class NSMetadataItem` | absence | no Spotlight store: no item can be made |
-|  | `class NSNameSpecifier` | model | holds container, key and name; nothing evaluates it |
-|  | `_NSFullMethodName` | real | "-[Class selector]" for a receiver and selector |
-| MediaToolbox | `FigAssetCreateWithURL` | absence | arguments not established; returns -12782, writes nothing |
-| WebKit | `class WKWebsiteDataStore` | absence | no web engine: no data store (nil) |
-| VideoToolbox | `VTCopyVideoDecoderExtensionProperties` | real | truthful capability answers (SF-AB): no extension decoder, no stereo decode |
-|  | `VTIsStereoMVHEVCDecodeSupported` | real | truthful capability answers (SF-AB): no extension decoder, no stereo decode |
-| Security | `SecCodeMapMemory` | absence | errSecUnimplemented |
-|  | `SecKeychainItemFreeContent` | absence | errSecUnimplemented |
-|  | `SecRequirementCreateWithData` | absence | errSecUnimplemented |
-| AVFAudio | `class AVAudioRoutingArbiter` | real | no other devices to arbitrate with: completes at once, device unchanged |
-|  | `class AVAudioSession` | absence | each request is refused with an error |
-| CoreFoundation | `NSURLContentModificationDateKey` | constant | the key is its own name |
-|  | `NSURLEffectiveIconKey` | constant | the key is its own name |
-|  | `NSURLFileResourceIdentifierKey` | constant | the key is its own name |
-|  | `NSURLFileSizeKey` | constant | the key is its own name |
-|  | `NSURLHasHiddenExtensionKey` | constant | the key is its own name |
-|  | `NSURLIsVolumeKey` | constant | the key is its own name |
-|  | `NSURLNameKey` | constant | the key is its own name |
-|  | `NSURLParentDirectoryURLKey` | constant | the key is its own name |
-|  | `NSURLVolumeIsReadOnlyKey` | constant | the key is its own name |
-|  | `NSURLVolumeNameKey` | constant | the key is its own name |
-| CoreGraphics | `CGGetDisplaysWithRect` | real | over the display list |
-|  | `CGSAddWindowsToSpaces` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSCopySpaces` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSHideSpaces` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSIsZoomed` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSRegisterConnectionNotifyProc` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSRemoveConnectionNotifyProc` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSRemoveHotKey` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSRemoveWindowsFromSpaces` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSSetHotKey` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSSetHotKeyEnabled` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSShowSpaces` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSSpaceCreate` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSSpaceDestroy` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-|  | `CGSSpaceSetAbsoluteLevel` | absence | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
-| CoreImage | `class CIRenderDestination` | absence | cannot be created (nil) |
-| CoreServices | `LSSharedFileListCopyProperty` | absence | shared file lists keep no properties; unimpErr or NULL |
-|  | `LSSharedFileListRemoveAllItems` | absence | shared file lists keep no properties; unimpErr or NULL |
-|  | `LSSharedFileListSetProperty` | absence | shared file lists keep no properties; unimpErr or NULL |
-|  | `_CSDeviceSupportsAirDrop` | real | false: this machine has no AirDrop |
-|  | `_MDItemMarkAsUsedWithURL` | absence | no Spotlight store; the use is not recorded |
-|  | `_kLSSharedFileListItemBeforeFirst` | constant | private name; value inferred; nothing in the system acts on it |
-|  | `_kLSSharedFileListRecentDocumentItems` | constant | private name; value inferred; nothing in the system acts on it |
-|  | `_kLSSharedFileListRecentItemsMaxAmount` | constant | private name; value inferred; nothing in the system acts on it |
-|  | `kLSSharedFileListApplicationRecentDocuments` | constant | value believed correct, not verified against macOS |
-|  | `kUTTypeAudiovisualContent` | constant | documented value |
-|  | `kUTTypeQuickTimeMovie` | constant | documented value |
-| CoreText | `CTFontDescriptorGetTextStyleSize` | absence | arguments not established; returns 0 |
-|  | `kCTFontContentSizeCategoryL` | constant | value believed correct, not verified against macOS |
-| ImageIO | `kCGImagePropertyDepth` | constant | documented value |
-|  | `kCGImagePropertyHasAlpha` | constant | documented value |
-| QuartzCore | `class CAConstraint` | real | constraint value object |
-|  | `class CAConstraintLayoutManager` | real | lays sublayers out by their constraints, if our layers carry any |
-|  | `class CAFilter` | model | keeps type and parameters; the compositor applies no filters |
-|  | `class CAKeyframeAnimation` | model | keeps its keyframes; not interpolated by our QuartzCore |
-|  | `class CATextLayer` | model | keeps text and attributes; not drawn by our QuartzCore |
-|  | `class CATiledLayer` | real | an ordinary layer that remembers its tiling parameters; drawn whole |
-|  | `kCAAlignmentCenter` | constant | documented value |
-|  | `kCAFilterDestOut` | constant | documented value |
-|  | `kCATruncationMiddle` | constant | documented value |
-| AVKit | `AVAddAudibleMediaSelectionOptionsToMenu` | absence | menu left unchanged; track selection does not reach the player |
-|  | `AVAddLegibleMediaSelectionOptionsToMenu` | absence | menu left unchanged; track selection does not reach the player |
-|  | `class AVPlayerControllerTimeResolver` | real | holds the values our probes saw it hold and seeks the controller; not notification-exact |
-|  | `class AVPlayerControlsViewController` | absence | base class for the application's edit controller: an empty view and the player controller; no built-in controls |
-|  | `class AVTouchBarRecordingControlsProvider` | absence | no Touch Bar items for recording (nil) |
-|  | `class AVVolumeControlSlider` | real | a working slider with mute, delegate callbacks and key-view loop |
-|  | `metaclass AVPlayerControlsViewController` | absence | base class for the application's edit controller: an empty view and the player controller; no built-in controls |
+| Library | Name | Kind | Provided by | What it is |
+|---|---|---|---|---|
+| AppKit | `NSEnabledBinding` | constant | AppKit 0340 | documented value |
+|  | `NSFontTextStyleCaption1` | constant | AppKit 0340 | value believed correct, to be compared on macOS (conformance/qtp-names.m); +[NSFont preferredFontForTextStyle:options:] gives the font |
+|  | `NSFontTextStyleLargeTitle` | constant | AppKit 0340 | value believed correct, to be compared on macOS (conformance/qtp-names.m); +[NSFont preferredFontForTextStyle:options:] gives the font |
+|  | `NSFontTextStyleTitle1` | constant | AppKit 0340 | value believed correct, to be compared on macOS (conformance/qtp-names.m); +[NSFont preferredFontForTextStyle:options:] gives the font |
+|  | `NSFontTextStyleTitle3` | constant | AppKit 0340 | value believed correct, to be compared on macOS (conformance/qtp-names.m); +[NSFont preferredFontForTextStyle:options:] gives the font |
+|  | `NSHiddenBinding` | constant | AppKit 0340 | documented value |
+|  | `NSImageNameToolbarBookmarks` | constant | QuickTime additions | private name; value inferred; nothing in the system acts on it |
+|  | `NSRecentDocumentsMenuName` | constant | QuickTime additions | private name; value inferred; nothing in the system acts on it |
+|  | `NSTitleBinding` | constant | AppKit 0340 | documented value |
+|  | `NSToolTipBinding` | constant | AppKit 0340 | documented value |
+|  | `NSWindowWillOrderOnScreenNotification` | constant | QuickTime additions | private name; value inferred; nothing in the system acts on it |
+|  | `class NSClickGestureRecognizer` | absence | AppKit 0340 | keeps its configuration, recognises no clicks |
+|  | `instance variable NSSystemInfoPanel._optionsDictionary` | absence | QuickTime additions | our class has no such variable: offset 0, said at load; the About panel will fail until AppKit gains it |
+|  | `instance variable NSSystemInfoPanel.copyrightView` | real | QuickTime additions | resolved at load to our About panel class's copyright field (legalTextField) |
+| AVFoundation | `class AVAssetCollection` | absence | QuickTime additions | cannot be created (nil) |
+|  | `class AVAssetExportSession` | absence | QuickTime additions | every export session fails; no preset is compatible |
+|  | `class AVAssetImageGenerator` | absence | QuickTime additions | every image request fails with an error |
+|  | `class AVAssetReaderAudioMixOutput` | absence | QuickTime additions | cannot be created (nil) |
+|  | `class AVCaptureAudioFileOutput` | absence | QuickTime additions | cannot be created (nil) |
+|  | `class AVCaptureAudioPreviewOutput` | absence | QuickTime additions | cannot be created (nil) |
+|  | `class AVCaptureConnection` | absence | QuickTime additions | cannot be created (nil) |
+|  | `class AVCaptureMovieFileOutput` | absence | QuickTime additions | cannot be created (nil) |
+|  | `class AVComposition` | absence | QuickTime additions | an empty composition; editing calls fail with an error |
+|  | `class AVMutableAudioMix` | model | QuickTime additions | kept as given; the staged player does not apply it |
+|  | `class AVMutableAudioMixInputParameters` | model | QuickTime additions | kept as given; the staged player does not apply it |
+|  | `class AVMutableComposition` | absence | QuickTime additions | an empty composition; editing calls fail with an error |
+|  | `class AVMutableVideoComposition` | model | QuickTime additions | kept as given; the staged player does not apply it |
+|  | `class AVMutableVideoCompositionInstruction` | model | QuickTime additions | kept as given; the staged player does not apply it |
+|  | `class AVMutableVideoCompositionLayerInstruction` | model | QuickTime additions | kept as given; the staged player does not apply it |
+|  | `class AVTimeFormatter` | real | QuickTime additions | formats seconds and CMTime as [H:]MM:SS; other styles unknown |
+|  | `metaclass AVCaptureAudioPreviewOutput` | absence | QuickTime additions | cannot be created (nil) |
+| CoreMedia | `CMVideoFormatDescriptionGetVideoDynamicRange` | absence | QuickTime additions | dynamic range is not classified (0) |
+|  | `FigAudioFormatDescriptionGetRichestDecodableFormatAndChannelLayout` | absence | QuickTime additions | arguments not established; returns -12782, writes nothing |
+|  | `FigVideoFormatDescriptionContainsAlphaChannel` | real | QuickTime additions | reads the description's public alpha-channel extension |
+| CoreAudio | `AudioObjectAddPropertyListenerBlock` | real | CoreAudio 0346 | over the function-pointer listener; the block runs on the given queue |
+| Foundation | `NSAppleScriptErrorBriefMessage` | constant | QuickTime additions | documented value |
+|  | `NSKeyedArchiveRootObjectKey` | constant | QuickTime additions | documented value |
+|  | `NSLocalizedFileSizeDescription` | absence | QuickTime additions | arguments not established; returns nil |
+|  | `NSMetadataItemPixelHeightKey` | constant | QuickTime additions | documented value |
+|  | `NSMetadataItemPixelWidthKey` | constant | QuickTime additions | documented value |
+|  | `class NSAppleScript` | absence | QuickTime additions | no AppleScript runtime: scripts fail with error -1753 |
+|  | `class NSFileCoordinator` | real | Foundation wrapper | single process: the accessor runs at once; presenters are kept |
+|  | `class NSFileWrapper` | real | QuickTime additions | this system's own class, from AppKit, re-exported: one class in the process; its URL interface is cocoa patch 0341 (on a system without it, initWithURL:options:error: is missing) |
+|  | `class NSMetadataItem` | absence | QuickTime additions | no Spotlight store: no item can be made |
+|  | `class NSNameSpecifier` | model | QuickTime additions | holds container, key and name; nothing evaluates it |
+|  | `_NSFullMethodName` | real | QuickTime additions | "-[Class selector]" for a receiver and selector |
+| MediaToolbox | `FigAssetCreateWithURL` | absence | QuickTime additions | arguments not established; returns -12782, writes nothing |
+| WebKit | `class WKWebsiteDataStore` | absence | QuickTime additions | no web engine: no data store (nil) |
+| VideoToolbox | `VTCopyVideoDecoderExtensionProperties` | real | QuickTime additions | truthful capability answers (SF-AB): no extension decoder, no stereo decode |
+|  | `VTIsStereoMVHEVCDecodeSupported` | real | QuickTime additions | truthful capability answers (SF-AB): no extension decoder, no stereo decode |
+| Security | `SecCodeMapMemory` | absence | QuickTime additions | errSecUnimplemented |
+|  | `SecKeychainItemFreeContent` | absence | QuickTime additions | errSecUnimplemented |
+|  | `SecRequirementCreateWithData` | absence | QuickTime additions | errSecUnimplemented |
+| AVFAudio | `class AVAudioRoutingArbiter` | real | QuickTime additions | no other devices to arbitrate with: completes at once, device unchanged |
+|  | `class AVAudioSession` | absence | QuickTime additions | each request is refused with an error |
+| CoreFoundation | `NSURLContentModificationDateKey` | constant | CoreFoundation wrapper 0347 | the key is its own name |
+|  | `NSURLEffectiveIconKey` | constant | CoreFoundation wrapper 0347 | the key is its own name; no icon is given (Foundation has none) |
+|  | `NSURLFileResourceIdentifierKey` | constant | CoreFoundation wrapper 0347 | the key is its own name; libFoundation answers it (cocoa patch 0347) |
+|  | `NSURLFileSizeKey` | constant | CoreFoundation wrapper 0347 | the key is its own name |
+|  | `NSURLHasHiddenExtensionKey` | constant | CoreFoundation wrapper 0347 | the key is its own name; libFoundation answers it (cocoa patch 0347) |
+|  | `NSURLIsVolumeKey` | constant | CoreFoundation wrapper 0347 | the key is its own name; libFoundation answers it (cocoa patch 0347) |
+|  | `NSURLNameKey` | constant | CoreFoundation wrapper 0347 | the key is its own name |
+|  | `NSURLParentDirectoryURLKey` | constant | CoreFoundation wrapper 0347 | the key is its own name; libFoundation answers it (cocoa patch 0347) |
+|  | `NSURLVolumeIsReadOnlyKey` | constant | CoreFoundation wrapper 0347 | the key is its own name; libFoundation answers it (cocoa patch 0347) |
+|  | `NSURLVolumeNameKey` | constant | CoreFoundation wrapper 0347 | the key is its own name; libFoundation answers it (cocoa patch 0347) |
+| CoreGraphics | `CGGetDisplaysWithRect` | real | CoreGraphics 0342 | over the display list |
+|  | `CGSAddWindowsToSpaces` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSCopySpaces` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSHideSpaces` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSIsZoomed` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSRegisterConnectionNotifyProc` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSRemoveConnectionNotifyProc` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSRemoveHotKey` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSRemoveWindowsFromSpaces` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSSetHotKey` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSSetHotKeyEnabled` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSShowSpaces` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSSpaceCreate` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSSpaceDestroy` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+|  | `CGSSpaceSetAbsoluteLevel` | absence | QuickTime additions | no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers |
+| CoreImage | `class CIRenderDestination` | absence | QuickTime additions | cannot be created (nil) |
+| CoreServices | `LSSharedFileListCopyProperty` | absence | QuickTime additions | shared file lists keep no properties; unimpErr or NULL |
+|  | `LSSharedFileListRemoveAllItems` | absence | QuickTime additions | shared file lists keep no properties; unimpErr or NULL |
+|  | `LSSharedFileListSetProperty` | absence | QuickTime additions | shared file lists keep no properties; unimpErr or NULL |
+|  | `_CSDeviceSupportsAirDrop` | real | QuickTime additions | false: this machine has no AirDrop |
+|  | `_MDItemMarkAsUsedWithURL` | absence | QuickTime additions | no Spotlight store; the use is not recorded |
+|  | `_kLSSharedFileListItemBeforeFirst` | constant | QuickTime additions | private name; value inferred; nothing in the system acts on it |
+|  | `_kLSSharedFileListRecentDocumentItems` | constant | QuickTime additions | private name; value inferred; nothing in the system acts on it |
+|  | `_kLSSharedFileListRecentItemsMaxAmount` | constant | QuickTime additions | private name; value inferred; nothing in the system acts on it |
+|  | `kLSSharedFileListApplicationRecentDocuments` | constant | QuickTime additions | value believed correct, not verified against macOS |
+|  | `kUTTypeAudiovisualContent` | constant | QuickTime additions | documented value |
+|  | `kUTTypeQuickTimeMovie` | constant | QuickTime additions | documented value |
+| CoreText | `CTFontDescriptorGetTextStyleSize` | absence | QuickTime additions | arguments not established; returns 0 |
+|  | `kCTFontContentSizeCategoryL` | constant | QuickTime additions | value believed correct, not verified against macOS |
+| ImageIO | `kCGImagePropertyDepth` | constant | QuickTime additions | documented value |
+|  | `kCGImagePropertyHasAlpha` | constant | QuickTime additions | documented value |
+| QuartzCore | `class CAConstraint` | real | QuartzCore 0345 | constraint value object |
+|  | `class CAConstraintLayoutManager` | real | QuartzCore 0345 | lays sublayers out by their constraints; CALayer asks its layout manager |
+|  | `class CAFilter` | model | QuickTime additions | keeps type and parameters; the compositor applies no filters |
+|  | `class CAKeyframeAnimation` | real | QuartzCore 0344 | interpolated by the renderer for opacity, position, anchor point and bounds; paced and cubic drawn as linear, paths not followed |
+|  | `class CATextLayer` | real | QuartzCore 0343 | draws its string with CoreText: wrapping, truncation, alignment |
+|  | `class CATiledLayer` | real | QuickTime additions | an ordinary layer that remembers its tiling parameters; drawn whole |
+|  | `kCAAlignmentCenter` | constant | QuartzCore 0343 | documented value |
+|  | `kCAFilterDestOut` | constant | QuickTime additions | documented value |
+|  | `kCATruncationMiddle` | constant | QuartzCore 0343 | documented value |
+| AVKit | `AVAddAudibleMediaSelectionOptionsToMenu` | absence | staged AVKit | menu left unchanged; track selection does not reach the player |
+|  | `AVAddLegibleMediaSelectionOptionsToMenu` | absence | staged AVKit | menu left unchanged; track selection does not reach the player |
+|  | `class AVPlayerControllerTimeResolver` | real | staged AVKit | holds the values our probes saw it hold and seeks the controller; not notification-exact |
+|  | `class AVPlayerControlsViewController` | absence | staged AVKit | base class for the application's edit controller: an empty view and the player controller; no built-in controls |
+|  | `class AVTouchBarRecordingControlsProvider` | absence | staged AVKit | no Touch Bar items for recording (nil) |
+|  | `class AVVolumeControlSlider` | real | staged AVKit | a working slider with mute, delegate callbacks and key-view loop |
+|  | `metaclass AVPlayerControlsViewController` | absence | staged AVKit | base class for the application's edit controller: an empty view and the player controller; no built-in controls |
 
 Not in any import table but needed by a nib: `AVAudioView` (the audio-only document's view) exists in the
 staged AVKit as a placeholder panel that says so; its real interface is unknown.
@@ -405,9 +440,12 @@ What the offline numbers cannot say, and the test will:
 | `finch/AVKit/SFQuickTimeControls.m` | the rest of AVKit's names: controls view controller, time resolver, volume slider, Touch Bar provider, menu builders, `AVAudioView` |
 | `finch/QuickTime/qt_prefix.py` | assembles the private prefix; reports names the system has gained |
 | `finch/QuickTime/additions-probe.m`, `additions-probe.nix` | our probe program for the prefix, to run on SiliconForest |
-| `finch/QuickTime/loader-check.nix`, `additions-check.nix` | static checks: 42 of 42 and 112 of 112 names exported from the right libraries (pass; nothing is run) |
+| `finch/QuickTime/loader-check.nix`, `additions-check.nix` | static checks: 42 of 42 loader names; the full additions 112 of 112, the shrunk additions 84 of 84 and the frameworks 28 of 28, each from the right library (pass; nothing is run) |
 | `tests/test_quicktime_loader.py` | unit tests of the export check, the symbol table and the prefix assembler, on synthetic input |
 | `terminal-app/build-swift-runtime-cgfloat.nix` | proposal: CGFloat in the Swift CoreFoundation overlay |
+| `cocoa/patches/0340-…0347-…` | the names moved into AppKit, CoreGraphics, QuartzCore, CoreAudio and libFoundation |
+| `terminal-app/compat/CoreFoundation.m`, `Foundation.m` | the URL key names and `NSFileCoordinator`, in the framework wrappers |
+| `cocoa/conformance/qtp-names.m` | no-window conformance program for the moved names (builds here and on macOS; not yet run) |
 | `finch/QuickTime/` (rest), `finch/AVKit/`, `finch/AVFoundation/player/`, `finch/MediaToolbox/` | SF-AB's staged providers this ticket builds on |
 
 Reproduce the scan: build `loader.nix` and SF-AB's stages, then run `sf_gapscan.py --root <copy of the
