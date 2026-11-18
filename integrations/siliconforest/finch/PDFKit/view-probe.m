@@ -29,7 +29,7 @@ static BOOL checkPage(PDFView *view, PDFPage *page, CGContextRef context,
 
 int main(int argc, char **argv) {
     if (argc != 2 && argc != 3) {
-        fprintf(stderr, "usage: pdfkit-view-probe FIXTURE [PDFKIT_DYLIB]\n");
+        fprintf(stderr, "usage: pdfkit-view-probe FIXTURE [path/to/PDFKit]\n");
         return 2;
     }
 
