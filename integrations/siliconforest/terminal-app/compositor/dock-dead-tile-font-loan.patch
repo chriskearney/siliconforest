@@ -1,0 +1,32 @@
+SPDX-License-Identifier: MIT
+Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+
+chonk-dock: draw an evicted widget's dead tile without a second loan of the font system. The
+RefMut loans taken in the scrutinee of `match self.items[index].render(..)` live until the end of
+the match, and the None arm (the widget was evicted) borrows the same RefCells for
+render_dead_tile: the dock panicked with "RefCell already borrowed" (raster.rs:192, from
+Desktop::redraw_dock) the first time a widget was evicted. Under QEMU's emulation widgets block the
+UI thread long enough to be evicted, so the dock died a minute after it started there.
+
+diff -ru a/dock/crates/chonk-dock/src/desktop.rs b/dock/crates/chonk-dock/src/desktop.rs
+--- a/dock/crates/chonk-dock/src/desktop.rs	2026-11-18 04:38:37.913016864 -0800
++++ b/dock/crates/chonk-dock/src/desktop.rs	2026-11-18 04:38:37.958609838 -0800
+@@ -1407,12 +1407,16 @@
+             // as a hole punched in the column. The widget's own name is
+             // the label, so the dock says *which* one went dark without
+             // the user having to find the log.
+-            let buffer = match self.items[index].render(
++            // The font loans end with this statement: in a `match` on the call itself they
++            // would live through the arms, and the dead tile below borrows them again
++            // ("RefCell already borrowed" as soon as a widget is evicted).
++            let rendered = self.items[index].render(
+                 theme,
+                 self.tile,
+                 &mut self.fonts.system(),
+                 &mut self.fonts.swash(),
+-            ) {
++            );
++            let buffer = match rendered {
+                 Some(buffer) => buffer,
+                 None => {
+                     let label = self.items[index].name();

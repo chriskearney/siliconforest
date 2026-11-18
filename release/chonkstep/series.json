@@ -146,5 +146,9 @@
   {
     "path": "wm-darwin-app-ready-deadline-env.patch",
     "strip": 1
+  },
+  {
+    "path": "dock-dead-tile-font-loan.patch",
+    "strip": 1
   }
 ]

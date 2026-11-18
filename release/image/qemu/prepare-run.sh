@@ -32,7 +32,7 @@ DOCK
 ( sleep 240; sh /usr/libexec/sf-image-check ) &"""
 auto = '0' if only == 'none' else '1'
 dock = """( n=0; while [ ! -S "$runtime/wayland-0" ] && [ $n -lt 900 ]; do sleep 1; n=$((n+1)); done; sleep 1
-  XDG_STATE_HOME=$state HOME=/var/root LANG=en_US.UTF-8 exec /usr/bin/chonkstep-dock > /var/log/chonkstep-dock.log 2>&1 ) &""" if os.environ.get('DOCK', '1') == '1' else ''
+  XDG_STATE_HOME=$state HOME=/var/root LANG=en_US.UTF-8 RUST_BACKTRACE=1 exec /usr/bin/chonkstep-dock > /var/log/chonkstep-dock.log 2>&1 ) &""" if os.environ.get('DOCK', '1') == '1' else ''
 env = env.replace('DOCK', dock)
 tok = dict(SECONDS=seconds, AUTOPILOT=auto, STATS='1', SOUND='0', RENDERER='cpu', TERMINALS='1', FETCH='0',
            PERSIST='0', SCALE='1', THEME='sf-canopy', ONLY=only, ENV=env)

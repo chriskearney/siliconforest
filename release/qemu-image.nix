@@ -7,13 +7,15 @@ let
   tokens = {
     SECONDS = if proof then "900" else "3153600000";
     AUTOPILOT = if proof then "1" else "0";
-    STATS = if proof then "1" else "0";
+    STATS = "1";
     SOUND = "0"; RENDERER = "cpu"; TERMINALS = "1"; FETCH = "0";
     PERSIST = "0"; SCALE = "1"; THEME = "sf-canopy"; ONLY = "settle";
-    ENV = ''
+    ENV = pkgs.lib.optionalString (!proof) ''
+      unset CHONKSTEP_DARWIN_FRAME_STATS
+    '' + ''
       export CHONKSTEP_DARWIN_APP_READY_SECONDS=180 CHONKSTEP_DARWIN_AUTOPILOT_ARM_SECONDS=240
       ( n=0; while [ ! -S "$runtime/wayland-0" ] && [ $n -lt 900 ]; do sleep 1; n=$((n+1)); done; sleep 1
-        XDG_STATE_HOME=$state HOME=/var/root LANG=en_US.UTF-8 exec /usr/bin/chonkstep-dock > /var/log/chonkstep-dock.log 2>&1 ) &
+        XDG_STATE_HOME=$state HOME=/var/root LANG=en_US.UTF-8 RUST_BACKTRACE=1 exec /usr/bin/chonkstep-dock > /var/log/chonkstep-dock.log 2>&1 ) &
     '' + pkgs.lib.optionalString proof ''
       ( sleep 240; sh /usr/libexec/sf-image-check ) &
     '';
