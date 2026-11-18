@@ -381,6 +381,17 @@ the exit reason, refuses to start the application while the owner is at the mach
   failed; the load-time warning about the missing variables is gone. Its text is drawn in a serif face (the nib's
   font is not installed: the general font fallback). Apple's Terminal and Activity Monitor have not been tried with
   it (QTP2 launches only its own QuickTime Player): for the guarded install's lifecycle set.
+- **Open Recent (QTP2: libFoundation 0365, AppKit 0366 and 0367).** It showed only "Clear Menu". QuickTime Player keeps
+  its recent documents as URL bookmarks (refused here until 0365, which makes and resolves them as macOS's API does:
+  by the path, stale when another file is there, no lookup by file ID) and fills the menu by overriding
+  NSDocumentController's private `-_populateOpenRecentMenu:includingIcons:`, `-_depopulateOpenRecentMenu:` and
+  `-_installOpenRecentMenus`; it is the delegate of its own Export menu only. 0366 has the shared controller fill
+  every menu named `_NSRecentDocumentsMenu` each time it shows (`-[NSMenu update]`) and gives `+[NSMenu
+  _menusWithName:]`; QuickTime's titles then sent `-setBaseWritingDirection:range:` to a string Foundation made, which
+  is an `NSAttributedString` object even when mutable, so AppKit's categories of `NSMutableAttributedString` never
+  answered: 0367 gives those methods to the bridged strings too. On the M1 (passes t2, t3): the menu lists the two
+  movies opened before, and choosing one opens it in a second window. Bookmarks: the conformance program's nine checks
+  pass on the M1.
 - **Open.** The playback-speed menu: the staged player plays at rate 1 only, on purpose (no time-stretched sound);
   speeds need time-stretched sound in the player, a larger piece of work not started. Sharing and AirPlay buttons
   (absent), subtitles and alternative audio (absent), trimming.
@@ -391,7 +402,9 @@ guarded install: libFoundation 0347, 0348, 0349, 0352, 0354, 0355, 0359, 0361; A
 0351, 0353, 0356, 0357, 0358, 0360, 0362 (in full screen the menu strip auto-hides as macOS's menu bar does: a
 change every application on the desk sees, to be checked with Firefox, Terminal and Activity Monitor first), 0364 with the
 About panel's nib installed among AppKit's resources (`patched.nix`: every application's About panel failed with "Cannot
-load NSSystemInfoPanel.nib", the recipe installed only the string tables); Onyx2D 0363 (an opaque image drawn within two pixels of its own size on
+load NSSystemInfoPanel.nib", the recipe installed only the string tables), 0366 (the Open Recent menu filled by the
+document controller each time it shows), 0367 (AppKit's methods for mutable attributed strings answered by Foundation's
+bridged strings too); libFoundation 0365 (NSURL bookmarks); Onyx2D 0363 (an opaque image drawn within two pixels of its own size on
 device pixels is copied, not resampled: every application that draws such an image, through the guarded install
 only, to be checked with Firefox, Terminal and Activity Monitor; `O2_NO_IMAGE_FAST_PATH=1` turns it off and
 `O2_IMAGE_TRACE=1` says why an image was resampled); CoreGraphics 0342; QuartzCore 0343-0345; CoreAudio 0346; the URL key

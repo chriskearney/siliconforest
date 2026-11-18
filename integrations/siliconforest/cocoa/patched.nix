@@ -647,6 +647,16 @@
 #         framework's own, now installed with the resources) loaded when it is shown and let go when it closes
 #         (-loadNib, -unloadNib:), the options kept and applied each time, the copyrightView and _optionsDictionary
 #         instance variables (QuickTime Player replaces -showInfoPanel: and -windowWillClose: and reads them by offset)
+#   0366  AppKit (QTP2; document applications, through the guarded install only): the Open Recent menus as macOS's
+#         document controller keeps them: a menu named _NSRecentDocumentsMenu is emptied and filled by the shared
+#         controller each time it shows (-[NSMenu update] -> -_depopulateOpenRecentMenu:, -_populateOpenRecentMenu:
+#         includingIcons: from -recentDocumentURLs); -_installOpenRecentMenus at the end of launching; +[NSMenu
+#         _menusWithName:]. QuickTime Player overrides the three (its menu showed only "Clear Menu"); (0365,
+#         libFoundation: NSURL bookmarks, ../terminal-app/build-foundation.nix)
+#   0367  AppKit (QTP2; every application, through the guarded install only): the methods AppKit adds to
+#         NSMutableAttributedString are also answered by Foundation's bridged attributed strings (a mutable one is an
+#         NSAttributedString object): -setBaseWritingDirection:range: on a string built with -appendAttributedString:
+#         raised "unrecognized selector" (QuickTime Player's Open Recent titles)
 #   0363  Onyx2D (QTP2; every application, through the guarded install only): an opaque image drawn on the device at
 #         its own size (within two pixels) is copied a row at a time instead of resampled and blended pixel by pixel
 #         (QuickTime Player's picture cost 150 ms a draw: two pictures a second); O2_NO_IMAGE_FAST_PATH=1 turns it off,
@@ -780,6 +790,8 @@ let
     ./patches/0360-appkit-document-window-title-is-the-name.patch
     ./patches/0362-appkit-full-screen-menu-strip-auto-hides.patch
     ./patches/0364-appkit-about-panel-nib-loaded-when-shown.patch
+    ./patches/0366-appkit-open-recent-menus-filled-when-shown.patch
+    ./patches/0367-appkit-mutable-attributed-string-methods-on-bridged-strings.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
