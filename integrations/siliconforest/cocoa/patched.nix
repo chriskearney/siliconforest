@@ -543,6 +543,9 @@
 #         larger than the screen; it was shown cut off, its controls out of sight)
 #   0325  AppKit (VLC): NSAnimation's current value follows its progress (curve or delegate); -startWhenAnimation:reachesProgress:, -stopWhenAnimation:reachesProgress:,
 #         -clearStartAnimation, -clearStopAnimation (VLC chains its fullscreen transition: it ended at the button)
+#   0326  QuartzCore (VLC): CAOpenGLLayer makes its context current before locking it (VLC's order on its own threads)
+#         and, where the context cannot be made current, draws and reads back nothing, keeping its last picture (black
+#         frames while VLC's window was resized)
 #   0304, 0305w (FXPERF2's FX-029 follow-ups, adopted by TERM11 unchanged; opt-in SFFX_GPU_DAMAGE=1): a layer-only
 #         flush with nothing drawn into the window's own backing store tells the window server so, which then skips its
 #         whole-backing-store compare (11 MB a present; ~10 % of Firefox's parent main thread on cnn.com)
@@ -822,6 +825,7 @@ let
     ./patches/0178-quartzcore-layer-tree-rendered-on-a-render-thread.patch
     ./patches/0320-quartzcore-opaque-opengl-layer-ignores-alpha.patch
     ./patches/0321-quartzcore-layer-context-reclaims-its-root.patch
+    ./patches/0326-quartzcore-opengl-layer-current-before-lock-and-keeps-its-picture.patch
   ];
   quartzcore = pd."quartzcore-msm-arm64".override { src = quartzcoreSrc; };
   wp = "${pd."wayland-protocols"}/share/wayland-protocols";

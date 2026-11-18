@@ -1,0 +1,107 @@
+--- a/src/Frameworks/OpenGL/CGL.c
++++ b/src/Frameworks/OpenGL/CGL.c
+@@ -713,13 +713,70 @@
+ 
+ static CGLError sf_cgl_resize(CGLContextObj ctx, int width, int height);
+ 
+-// the context this thread leaves is no longer drawn into here
++/* (VLC) CGL lets an application make a context current on one thread while another thread still has it current; the
++ * application keeps its own order with CGLLockContext. EGL refuses that (EGL_BAD_ACCESS). VLC makes its context current
++ * on its video thread while the layer draws with it on another: the call failed ("invalid context"), a frame was not
++ * prepared or not drawn, and a black frame was shown. A thread that asks for a context bound elsewhere now waits for
++ * the other thread to let go, at most SF_CGL_HANDOFF_MS (250 ms; 0 turns the wait off). Who holds a context and the
++ * wait are kept under one lock. */
++static pthread_mutex_t sf_cgl_bind_lock = PTHREAD_MUTEX_INITIALIZER;
++static pthread_cond_t sf_cgl_bind_changed = PTHREAD_COND_INITIALIZER;
++
++static int
++sf_cgl_handoff_ms(void)
++{
++	static int ms = -1;
++
++	if (ms < 0) {
++		const char *v = getenv("SF_CGL_HANDOFF_MS");
++		ms = v != NULL ? atoi(v) : 250;
++		if (ms < 0)
++			ms = 0;
++	}
++	return ms;
++}
++
++// waits, bounded, until no other thread has ctx current; the milliseconds waited, or -1 when it is still held elsewhere
++static double
++sf_cgl_wait_for_handoff(CGLContextObj ctx)
++{
++	struct timespec start, deadline;
++	double waited = 0;
++	int ms = sf_cgl_handoff_ms();
++
++	pthread_mutex_lock(&sf_cgl_bind_lock);
++	if (ctx->bound && !pthread_equal(ctx->current_thread, pthread_self())) {
++		clock_gettime(CLOCK_REALTIME, &start);
++		deadline = start;
++		deadline.tv_sec += ms / 1000;
++		deadline.tv_nsec += (long)(ms % 1000) * 1000000L;
++		if (deadline.tv_nsec >= 1000000000L) {
++			deadline.tv_sec++;
++			deadline.tv_nsec -= 1000000000L;
++		}
++		while (ms > 0 && ctx->bound && !pthread_equal(ctx->current_thread, pthread_self()))
++			if (pthread_cond_timedwait(&sf_cgl_bind_changed, &sf_cgl_bind_lock, &deadline) != 0)
++				break;
++		struct timespec now;
++		clock_gettime(CLOCK_REALTIME, &now);
++		waited = (now.tv_sec - start.tv_sec) * 1e3 + (now.tv_nsec - start.tv_nsec) / 1e6;
++		if (ctx->bound && !pthread_equal(ctx->current_thread, pthread_self()))
++			waited = -1;
++	}
++	pthread_mutex_unlock(&sf_cgl_bind_lock);
++	return waited;
++}
++
++// the context this thread leaves is no longer drawn into here; a thread waiting for it may take it
+ static void
+ sf_cgl_unbind_current(void)
+ {
++	pthread_mutex_lock(&sf_cgl_bind_lock);
+ 	if (sf_cgl_current != NULL)
+ 		sf_cgl_current->bound = 0;
+ 	sf_cgl_current = NULL;
++	pthread_cond_broadcast(&sf_cgl_bind_changed);
++	pthread_mutex_unlock(&sf_cgl_bind_lock);
+ }
+ 
+ static void
+@@ -746,12 +803,20 @@
+ 		return kCGLNoError;
+ 	}
+ 
++	double waited = sf_cgl_current != ctx ? sf_cgl_wait_for_handoff(ctx) : 0;
++
+ 	/* The API binding is per-thread, so it has to be re-asserted here and not
+ 	 * only where the context was created. */
+ 	eglBindAPI(EGL_OPENGL_API);
+ 	if (!eglMakeCurrent(dpy, ctx->pbuffer, ctx->pbuffer, ctx->glx)) {
++		// SF_CGL_TRACE=1: why a context could not be made current
++		if (getenv("SF_CGL_TRACE") != NULL)
++			fprintf(stderr, "CGL: make current %p failed: EGL error %x, current on another thread %d, waited %.1f ms\n",
++			    (void *)ctx, eglGetError(), ctx->bound && !pthread_equal(ctx->current_thread, pthread_self()), waited);
+ 		return kCGLBadContext;
+ 	}
++	if (waited > 0 && getenv("SF_CGL_TRACE") != NULL)
++		fprintf(stderr, "CGL: make current %p waited %.1f ms for another thread\n", (void *)ctx, waited);
+ #else
+ 	Display *dpy = sf_cgl_get_display();
+ 	if (dpy == NULL) {
+@@ -772,9 +837,11 @@
+ #endif
+ 
+ 	sf_cgl_unbind_current();
++	pthread_mutex_lock(&sf_cgl_bind_lock);
+ 	sf_cgl_current = ctx;
+ 	ctx->current_thread = pthread_self();
+ 	ctx->bound = 1;
++	pthread_mutex_unlock(&sf_cgl_bind_lock);
+ 	sf_cgl_apply_pending_size(ctx);
+ 	return kCGLNoError;
+ }
