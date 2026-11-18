@@ -7,6 +7,7 @@ Classification describes the current source tree, not an executed build. The
 release derivation closure must additionally be checked with Nix in isolation.
 """
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -44,8 +45,9 @@ def release_candidates(root, files):
             continue
         text = re.sub(r"^\s*#.*$", "", path.read_text(), flags=re.M)
         refs = re.findall(r"(?<![A-Za-z0-9_/])((?:\.\.?/)[A-Za-z0-9_./-]+)", text)
-        refs += [str(root / "integrations/siliconforest" / p)
-                 for p in re.findall(r'recipe\s+"([^"]+)"', text)]
+        for recipe in re.findall(r'recipe\s+"([^"]+)"', text):
+            pattern = "integrations/siliconforest/" + re.sub(r'\$\{[^}]+\}', '*', recipe)
+            refs += [str(root / p) for p in fnmatch.filter(files, pattern)]
         if name.startswith("release/"):
             refs += [str(root / "integrations/siliconforest" / p)
                      for p in re.findall(r'sf\s*\+\s*"/([^"]+)"', text)]
