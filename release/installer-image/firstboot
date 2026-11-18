@@ -1,0 +1,16 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+
+slot=/private/var/db/sf-firmware-slot
+stamp=/private/var/db/sf-firmware-installed
+if [ ! -e "$stamp" ]; then
+    /usr/bin/perl /usr/libexec/sf-unpack-firmware "$slot" /Library/Firmware >> /var/log/sf-firstboot.log 2>&1
+    status=$?
+    if [ "$status" -eq 0 ]; then
+        /bin/touch "$stamp"
+    elif [ "$status" -ne 3 ]; then
+        echo "Firmware installation failed. See /var/log/sf-firstboot.log." >&2
+    fi
+fi
+exec /usr/libexec/sf-firstboot

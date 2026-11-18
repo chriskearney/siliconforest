@@ -213,6 +213,8 @@ def plan_install(f, models, manifest=None, total=None):
         if root < root_min:
             raise Refusal([Finding('refuse', 'size', 'Asked for %s; SiliconForest needs at least %s (%s for its startup volume and boot partition, %s for its root).' % (
                 gb(total), gb(fixed + root_min), gb(fixed), gb(root_min)))])
+    if manifest and manifest['root'].get('sizing') == 'fixed' and root != root_default:
+        raise Refusal([Finding('refuse', 'size', 'This release uses a fixed %s root filesystem. Omit --size.' % gb(root_default))])
     need = fixed + root
     plan = dict(kind='install', layout_digest=lay.digest(), disk=lay.disk, block_size=lay.block_size,
                 stub_bytes=STUB_BYTES, boot_bytes=BOOT_BYTES, root_bytes=root, total_bytes=need,

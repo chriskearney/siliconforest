@@ -86,6 +86,10 @@ def check(data, supported_targets, sums=None):
     _need(isinstance(r.get('image_sha256'), str) and HEX64.match(r['image_sha256']), 'root.image_sha256')
     _need(r['image_bytes'] % 4096 == 0, 'root.image_bytes is not a multiple of 4096')
     _need(r['image_bytes'] <= r['min_bytes'] <= r['default_bytes'], 'root: image <= min <= default')
+    if 'sizing' in r:
+        _need(r['sizing'] == 'fixed', 'root.sizing must be fixed when present')
+        _need(r['image_bytes'] == r['min_bytes'] == r['default_bytes'] and r['image_bytes'] % (1 << 20) == 0,
+              'fixed root: image, minimum and default sizes must match and be MiB-aligned')
     parts = r.get('parts')
     _need(isinstance(parts, list) and parts, 'root.parts')
     for i, p in enumerate(parts):

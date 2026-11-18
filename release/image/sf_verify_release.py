@@ -10,7 +10,7 @@
    and every current Linux have). Without --allowed-signers, or with --unsigned-ok on a
    release that has no signature, this step is skipped and the result says so.
 2. Every file SHA256SUMS names exists and has that sha256; MANIFEST.tsv agrees on sizes.
-3. The root parts, concatenated in name order and decompressed (zstd), have the size and
+3. The root parts, concatenated in name order and decompressed (zstd or xz), have the size and
    sha256 of the line marked `uncompressed` in MANIFEST.tsv.
 Exit status 0 only when every step that ran passed. Prints one JSON object.
 """
@@ -65,9 +65,14 @@ def main():
         res['files'][n] = 'ok' if ok else 'BAD'
         bad |= not ok
     parts = sorted(n for n in want if '-root.ext4.zst.' in n)
+    xz_parts = sorted(n for n in want if '-root.ext4.xz.' in n)
+    command = ['xz', '-d', '-c'] if xz_parts else ['zstd', '-d', '-c', '--long=27']
+    if xz_parts and parts:
+        bad = True
+    parts = parts or xz_parts
     if not bad and parts and uncompressed:
         h, size = hashlib.sha256(), 0
-        z = subprocess.Popen(['zstd', '-d', '-c', '--long=27'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        z = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         import threading
         def feed():
             for n in parts:

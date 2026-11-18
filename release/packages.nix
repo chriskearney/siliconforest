@@ -134,6 +134,10 @@ in {
     root-image = image.rootfs;
     bootfiles = image.bootfiles;
     release = image.release;
+    installer-release = import ./installer-image {
+      inherit pkgs version;
+      inherit (image) rootfs bootfiles;
+    };
     qemu-reference-image = image.qemu;
     qemu-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; };
     qemu-proof-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; proof = true; };

@@ -297,6 +297,8 @@ def write_root(gate, manifest, artifacts, root_dev, root_bytes):
     """Stream the root image from its xz parts onto the new root partition, then read it back."""
     import lzma
     r = manifest['root']
+    if r.get('sizing') == 'fixed' and r['image_bytes'] != root_bytes:
+        raise sf_gate.Refused('the root partition must match the fixed %d-byte image' % r['image_bytes'])
     if r['image_bytes'] > root_bytes:
         raise sf_gate.Refused('the root image (%d bytes) is larger than its partition (%d)' % (r['image_bytes'], root_bytes))
     dec, written, chunk, pending = lzma.LZMADecompressor(format=lzma.FORMAT_XZ), 0, 4 << 20, b''
@@ -307,14 +309,25 @@ def write_root(gate, manifest, artifacts, root_dev, root_bytes):
                     data = src.read(chunk)
                     if not data:
                         break
-                    pending += dec.decompress(data)
-                    cut = len(pending) // 4096 * 4096      # raw devices take whole 4 KiB blocks
-                    if cut:
-                        if written + cut > r['image_bytes']:
-                            raise sf_gate.Refused('the root image is longer than the release says')
-                        dev.write(pending[:cut])
-                        written += cut
-                        pending = pending[cut:]
+                    if dec.eof:
+                        raise sf_gate.Refused('trailing data after the root xz stream')
+                    while True:
+                        pending += dec.decompress(data, max_length=chunk)
+                        cut = len(pending) // 4096 * 4096  # raw devices take whole 4 KiB blocks
+                        if cut:
+                            if written + cut > r['image_bytes']:
+                                raise sf_gate.Refused('the root image is longer than the release says')
+                            if dev.write(pending[:cut]) != cut:
+                                raise sf_gate.Refused('short write to the root partition')
+                            written += cut
+                            pending = pending[cut:]
+                        if dec.eof:
+                            if dec.unused_data:
+                                raise sf_gate.Refused('trailing data after the root xz stream')
+                            break
+                        if dec.needs_input:
+                            break
+                        data = b''
         if not dec.eof or pending or written != r['image_bytes']:
             raise sf_gate.Refused('the root image ended at %d bytes, not %d' % (written + len(pending), r['image_bytes']))
         dev.seek(0)

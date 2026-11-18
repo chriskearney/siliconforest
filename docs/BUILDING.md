@@ -125,8 +125,9 @@ pinned toolchain change its bytes. Preserve the installed-stub guard: the public
 stage1 SHA starts 840fd72f, the historical guard 44c1ef0b. A build is not permission
 to overwrite an existing stub. The installer must use matching release boot files.
 
-The release packaging/installer integration is separate from the public source
-build. The current installer expects xz archives, a firmware slot and verified unpacker,
-a root-growth policy, install.json and an icon in the boot archive. Those
-integration items remain separate work. These zstd build products have not been
-validated with the installer, and a QEMU pass does not establish that compatibility.
+The installer candidate has a separate build, `nix build .#installer-release`.
+It packages a fixed-size 4 GiB ext4 image as an xz stream and supplies the boot
+archive, icon, `install.json`, checksums and a verified firmware handoff slot.
+The `release` output described above retains its zstd format. The installer
+candidate requires release signing and real Mac qualification before distribution.
+See [INSTALL](INSTALL.md) for the installation design and current limits.

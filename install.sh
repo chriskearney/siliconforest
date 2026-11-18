@@ -710,6 +710,8 @@ def plan_install(f, models, manifest=None, total=None):
         if root < root_min:
             raise Refusal([Finding('refuse', 'size', 'Asked for %s; SiliconForest needs at least %s (%s for its startup volume and boot partition, %s for its root).' % (
                 gb(total), gb(fixed + root_min), gb(fixed), gb(root_min)))])
+    if manifest and manifest['root'].get('sizing') == 'fixed' and root != root_default:
+        raise Refusal([Finding('refuse', 'size', 'This release uses a fixed %s root filesystem. Omit --size.' % gb(root_default))])
     need = fixed + root
     plan = dict(kind='install', layout_digest=lay.digest(), disk=lay.disk, block_size=lay.block_size,
                 stub_bytes=STUB_BYTES, boot_bytes=BOOT_BYTES, root_bytes=root, total_bytes=need,
@@ -907,6 +909,10 @@ def check(data, supported_targets, sums=None):
     _need(isinstance(r.get('image_sha256'), str) and HEX64.match(r['image_sha256']), 'root.image_sha256')
     _need(r['image_bytes'] % 4096 == 0, 'root.image_bytes is not a multiple of 4096')
     _need(r['image_bytes'] <= r['min_bytes'] <= r['default_bytes'], 'root: image <= min <= default')
+    if 'sizing' in r:
+        _need(r['sizing'] == 'fixed', 'root.sizing must be fixed when present')
+        _need(r['image_bytes'] == r['min_bytes'] == r['default_bytes'] and r['image_bytes'] % (1 << 20) == 0,
+              'fixed root: image, minimum and default sizes must match and be MiB-aligned')
     parts = r.get('parts')
     _need(isinstance(parts, list) and parts, 'root.parts')
     for i, p in enumerate(parts):
@@ -1712,6 +1718,8 @@ def write_root(gate, manifest, artifacts, root_dev, root_bytes):
     """Stream the root image from its xz parts onto the new root partition, then read it back."""
     import lzma
     r = manifest['root']
+    if r.get('sizing') == 'fixed' and r['image_bytes'] != root_bytes:
+        raise sf_gate.Refused('the root partition must match the fixed %d-byte image' % r['image_bytes'])
     if r['image_bytes'] > root_bytes:
         raise sf_gate.Refused('the root image (%d bytes) is larger than its partition (%d)' % (r['image_bytes'], root_bytes))
     dec, written, chunk, pending = lzma.LZMADecompressor(format=lzma.FORMAT_XZ), 0, 4 << 20, b''
@@ -1722,14 +1730,25 @@ def write_root(gate, manifest, artifacts, root_dev, root_bytes):
                     data = src.read(chunk)
                     if not data:
                         break
-                    pending += dec.decompress(data)
-                    cut = len(pending) // 4096 * 4096      # raw devices take whole 4 KiB blocks
-                    if cut:
-                        if written + cut > r['image_bytes']:
-                            raise sf_gate.Refused('the root image is longer than the release says')
-                        dev.write(pending[:cut])
-                        written += cut
-                        pending = pending[cut:]
+                    if dec.eof:
+                        raise sf_gate.Refused('trailing data after the root xz stream')
+                    while True:
+                        pending += dec.decompress(data, max_length=chunk)
+                        cut = len(pending) // 4096 * 4096  # raw devices take whole 4 KiB blocks
+                        if cut:
+                            if written + cut > r['image_bytes']:
+                                raise sf_gate.Refused('the root image is longer than the release says')
+                            if dev.write(pending[:cut]) != cut:
+                                raise sf_gate.Refused('short write to the root partition')
+                            written += cut
+                            pending = pending[cut:]
+                        if dec.eof:
+                            if dec.unused_data:
+                                raise sf_gate.Refused('trailing data after the root xz stream')
+                            break
+                        if dec.needs_input:
+                            break
+                        data = b''
         if not dec.eof or pending or written != r['image_bytes']:
             raise sf_gate.Refused('the root image ended at %d bytes, not %d' % (written + len(pending), r['image_bytes']))
         dev.seek(0)

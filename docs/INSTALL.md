@@ -23,9 +23,9 @@ section 13.)
 **Which macOS.** macOS 13.5 or newer, up to macOS 26. The installer refuses older and newer
 versions. Update macOS first if it is older (System Settings > General > Software Update).
 
-**Space.** About 55 GB by default, which you can change: a 2.5 GB startup volume, a 0.5 GB boot
-partition, and SiliconForest's own root (the release says its minimum; 48 GB by default). The
-space comes out of macOS's container, and **macOS must keep at least 38 GB free afterwards** (the
+**Space.** The installation candidate allocates about 7.32 GB: a 2.5 GB startup volume,
+a 0.5 GB boot partition and a fixed 4 GiB ext4 root. Its image already fills the root partition,
+so no resize is needed on the Mac or on first boot. The space comes out of macOS's container, and **macOS must keep at least 38 GB free afterwards** (the
 margin the Asahi Linux project found macOS updates need). If it cannot, the installer says how
 much it could offer instead and changes nothing.
 
@@ -85,8 +85,7 @@ To read it first, or to only look, which is a good idea:
     sh install.sh --dry-run      # the full plan with sizes; changes nothing
     sh install.sh                # the install
 
-Options: `--check` (what this Mac is and what is on its disk), `--dry-run`, `--size 80` (GB for
-SiliconForest in all), `--uninstall`, `--update`, `--help`.
+Options: `--check` (what this Mac is and what is on its disk), `--dry-run`, `--uninstall`, `--update`, `--help`. Leave `--size` unset for this fixed-size image.
 
 What you trust when you run it: the script itself, fetched over HTTPS from this repository. It
 then checks everything else before using it: the installer engine against a SHA-256 written in
@@ -107,7 +106,7 @@ stops here with a line beginning `NO` that says what to do, for example:
 
 **Step 2: the plan (nothing changes).** It shows, numbered, exactly what will change: how far
 macOS shrinks and how much free space macOS keeps, the three new partitions with their sizes,
-and that nothing else is written. Choose another size with `--size`. If macOS cannot shrink
+and that nothing else is written. If macOS cannot shrink
 enough, it says why: often Time Machine snapshots or a pending macOS update hold space that macOS
 shows as free (`tmutil listlocalsnapshots /` lists them; `sudo tmutil deletelocalsnapshots /`
 removes local ones; or finish the macOS update).

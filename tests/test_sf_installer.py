@@ -153,6 +153,19 @@ class Plans(unittest.TestCase):
             sf_plan.plan_install(f, MODELS, total=400 * GB)
         self.assertEqual(codes(e.exception.findings), {'space'})
 
+    def test_fixed_root_matches_the_release_without_growing(self):
+        manifest = json.loads((ROOT / 'install' / 'manifest.example.json').read_text())
+        size = 4 << 30
+        manifest['root'].update(sizing='fixed', image_bytes=size, min_bytes=size, default_bytes=size)
+        sf_manifest.check(manifest, ['J293'])
+        f = facts('m1-stock')
+        self.assertEqual(sf_plan.plan_install(f, MODELS, manifest)['root_bytes'], size)
+        with self.assertRaises(sf_plan.Refusal):
+            sf_plan.plan_install(f, MODELS, manifest, total=50 * GB)
+        manifest['root']['default_bytes'] += 1 << 20
+        with self.assertRaises(sf_manifest.ManifestError):
+            sf_manifest.check(manifest, ['J293'])
+
     def test_too_little_space_says_how_much_is_possible(self):
         with self.assertRaises(sf_plan.Refusal) as e:
             sf_plan.plan_install(facts('m1-too-little-space'), MODELS)
