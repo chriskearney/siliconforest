@@ -4,9 +4,10 @@
 # The SiliconForest release image: what it is, how it is built, how it is checked
 
 Status, 18 November 2026: the recipe builds the root, boot and release files and the root
-boots in QEMU to the desktop, from the build outputs the owner's M1 carries; the build from a
-clean clone is in progress; nothing has been published or installed. Read "What is proven"
-before relying on any of it.
+boots in QEMU to the desktop, both from the build outputs the owner's M1 carries and from a
+clone of the public repository built on the workstation (CODEX-BUILD's build; the build in a
+clean container is still to come); nothing has been published or installed. Read "What is
+proven" before relying on any of it.
 
 The owner's M1 (13-inch MacBook Pro, J293) runs SiliconForest from its own disk since
 13 November 2026. Its root filesystem was assembled by hand: an upstream PureDarwin image
@@ -23,12 +24,12 @@ It returns four things:
 
 | Output | Contents |
 |---|---|
-| `rootfs` | `siliconforest-root.ext4` (the root, its contents plus 25 % and 64 MiB of room; the installer grows it to the partition), `root.manifest.tsv` (every entry: path, type, mode, owner, size, sha256 or link target), `image.json` (layers and their store paths, ext4 parameters), `layers.log` |
+| `rootfs` | `siliconforest-root.ext4` (the root, its contents plus 25 % and 64 MiB of room; the filesystem remains fixed-size until installer/first-boot growth is implemented), `root.manifest.tsv` (every entry: path, type, mode, owner, size, sha256 or link target), `image.json` (layers and their store paths, ext4 parameters), `layers.log` |
 | `bootfiles` | `sf-stage1.bin`, `boot.bin` (stage 2 for this release's root), `kernel.kc` (the collection), `bootargs.template`, `pdsf_pack.py`, `sf_personalize.py`, `boot.json` (sizes, sha256, the release root UUID, the packing options) |
 | `release` | `siliconforest-<version>-root.ext4.zst.NN` (zstd, parts below 1.9 GiB for GitHub's 2 GiB asset limit), `siliconforest-<version>-boot.tar.zst`, `siliconforest-<version>-root.manifest.tsv`, `MANIFEST.tsv`, `SHA256SUMS` |
 | `qemu` | a GPT disk for QEMU's arm64 `virt` machine: the QEMU base's EFI partition and collection with this root, for the comparison run |
 
-How the root is made (all inside the Nix sandbox, no root privileges):
+How the root is made (Nix derivations, no root privileges required):
 
 1. The ext4 root of upstream's arm64 `virt` minimal image (the renamed tip, see
    `integrations/siliconforest/rebase/pd.nix`) is unpacked with `debugfs rdump`.
@@ -87,15 +88,14 @@ dyld (36876aa6…) with one executed page rewritten by the kernel in the page ca
 authentication lowering; checked page by page with the rebuild stream's `pac-lower.py`); the
 cursor theme is written by the compositor itself (`--write-cursor-theme`; a release makes it at
 first start, below); Activity Monitor's support libraries and tools come from
-`integrations/siliconforest/activity-monitor/libs/build.sh` and `tools/`, which have no Nix
-recipe yet; netd's launchd job carries `--live-after 0`, added by hand on 17 November and since
+`integrations/siliconforest/activity-monitor/libs/build.sh` and `tools/`, now built by `release/image/activity-monitor.nix`; netd's launchd job carries `--live-after 0`, added by hand on 17 November and since
 `sf-netd.c`'s default.
 
 ## What a release does not contain, and how each piece arrives
 
 | Piece | Why it is not in the release | How it arrives |
 |---|---|---|
-| Wi-Fi firmware, NVRAM, CLM, txcap (`/Library/Firmware/brcm`), the Touch Bar and video decoder firmware (`/Library/Firmware/apple`) | Apple's firmware, no redistribution right | the installer copies them from the target's own Asahi Linux firmware into the two (empty) directories the root ships with, before the root is written |
+| Wi-Fi firmware, NVRAM, CLM, txcap (`/Library/Firmware/brcm`), the Touch Bar and video decoder firmware (`/Library/Firmware/apple`) | Apple's firmware, no redistribution right | outside this source build; the root ships empty directories. The release-side firmware slot/unpacker required by the installer is still pending |
 | Mozilla's Firefox bundle (`/Applications/Firefox.app/Contents/Resources/Mozilla.app`) and the outer bundle's `Info.plist` (it copies keys of Mozilla's) | redistribution under Mozilla's terms is not settled (the trademark policy restricts a patched build under the Firefox name) | fetched at install time from Mozilla (`firefox/acquire.py`: the DMG release.json's `mozilla_sha512` names, Mozilla's SHA512SUMS); the runtime around it is ours and in the root (below) |
 | Terminal.app, Activity Monitor.app and anything taken from them | Apple's applications | the user copies them from their own macOS with a helper (INSTALL) |
 | Homebrew bottles beyond the system's set | each bottle's own licence | the person installs them with `brew` (the client ships) |
@@ -106,7 +106,7 @@ recipe yet; netd's launchd job carries `--live-after 0`, added by hand on 17 Nov
 `/opt/homebrew` ships in the root (`release/image/homebrew.nix`): the system's set of formulae
 (m1-storage/tools/sf_userland_push.sh `SF_FORMULAE`: what the root's own programs call, Firefox's
 launcher on `python@3.14`, `/bin/bash`, `make`, `sqlite3`, the brew client's `git`, and the tools of
-a usable shell) with its dependency closure, 63 bottles pinned by sha256 in
+a usable shell) with its dependency closure, 64 bottles pinned by sha256 in
 `release/image/homebrew.lock.json` and fetched from Homebrew's public registry, the brew client
 (Homebrew/brew at a pinned revision, BSD-2-Clause) and its portable Ruby. `homebrew/hb_pour.py`
 pours and relocates them as on the M1, owner 501:20. Every keg's licence is in the lock and in
@@ -195,7 +195,11 @@ OpenSSH, which macOS and Linux both have. No key exists yet: making it is the ow
 |---|---|
 | `boot.tar.zst`: `kernel.kc` | an APSL-2.0 kernel linked with GPL-2.0 kernel extensions (the PCIe host bridge and DART ported from Linux, the Asahi-derived display and GPU pieces) in one collection; corecrypto is the MPL-2.0 open reimplementation (Vali0004/corecrypto), not Apple's, but its "experimental, unaudited" status should be stated |
 | `boot.tar.zst`: `sf-stage1.bin`, `boot.bin` | m1n1 (MIT) and our stage-2 code (MIT): no question known |
-| `root.ext4` | the Homebrew bottles (63 formulae, licences above; GPL-2.0 and GPL-3.0 ones need a source offer: bash, coreutils, gawk, grep, gnu-sed, gnu-tar, findutils, make, nano, wget, gettext, readline, gmp, mpfr, libunistring, libidn2, git, ...); DejaVu fonts (Bitstream Vera licence, its text installed beside them); Noto Thai (OFL-1.1, beside them); the same GPL-2.0 kexts as on-disk bundles in `/System/Library/Extensions`; GPL binaries needing a source offer (the Chonkstep desktop GPL-3.0-only, FFmpeg with x264, Perl under Artistic or GPL, the Darling-derived Metal pieces); fonts (each needs its licence text beside it); whatever upstream PureDarwin ships under Apple's binary driver licence (not established) |
+| `root.ext4`: kernel extensions | the same GPL-2.0 kexts as `kernel.kc`, as on-disk bundles in `/System/Library/Extensions` |
+| `root.ext4`: our desktop and media | the Chonkstep desktop, dock and terminal (GPL-3.0-only: source offer); FFmpeg with x264 (GPL-2.0-or-later: source offer); the Darling-derived Metal pieces (GPL-3.0: source offer); Perl (Artistic or GPL) |
+| `root.ext4`: Homebrew (`/opt/homebrew`, 63 formulae poured plus portable Ruby; each keg's licence in `release/image/homebrew.lock.json` and `/opt/homebrew/.sf-licences.tsv`) | copyleft, a source offer each: bash, coreutils, findutils, gawk, gnu-sed, gnu-tar, grep, less, nano, readline, wget (GPL-3.0-or-later); make (GPL-3.0-only); htop, tree (GPL-2.0-or-later); git (GPL-2.0-only with LGPL-2.1 and permissive parts); libgit2 (GPL-2.0-only with the GCC linking exception); gettext (GPL-3.0-or-later and LGPL-2.1-or-later); libidn2 (GPL-2.0-or-later or LGPL-3.0-or-later, with Unicode terms); libunistring and gmp (LGPL-3.0-or-later or GPL-2.0-or-later); mpfr (LGPL-3.0-or-later); xz (0BSD with some GPL-2.0-or-later files). File-level copyleft: ca-certificates (MPL-2.0, data). Ruby licence: portable-ruby. Permissive (notice only): the other 40, among them python@3.14 (Python-2.0), node, openssl@4 (Apache-2.0), sqlite (public-domain blessing), zstd (BSD-3-Clause chosen of BSD or GPL-2.0), icu4c (Unicode-3.0), ncurses (X11 variant), tmux (ISC), ripgrep (Unlicense), and the brew client itself (BSD-2-Clause) |
+| `root.ext4`: fonts | DejaVu (Bitstream Vera terms; text beside them); Noto Thai, Noto Emoji, Noto Sans Mono CJK (OFL-1.1; text beside them); Inter (its LICENSE.txt beside it); URW base 35 (AGPL-3.0 with a font exception, from the upstream base; COPYING and LICENSE beside them); Source Code Pro (OFL-1.1, from the upstream base; its LICENSE.md from the release tag's commit, with Adobe's copyright line as the fonts' name tables carry it, is installed beside them). The root build fails if any font lacks a licence text (`release/image/check-font-licences.py`) |
+| `root.ext4`: upstream PureDarwin base | APSL-2.0 and BSD for the most part; whatever upstream ships under Apple's binary driver licence (not established) |
 | `root.manifest.tsv`, `MANIFEST.tsv`, `SHA256SUMS` | none: paths, sizes and hashes |
 
 Firmware, Apple's applications and Mozilla's bundle are in no artifact.
@@ -207,44 +211,91 @@ carries (the local driver `runs/image/local.nix`, not committed: store paths). T
 build of `release/packages.nix` was not finished when this was written.
 
 - **Root image** builds; its own checks pass (the M1 root's exact ext4 feature line,
-  `e2fsck -fn` clean, both installers rc 0). `nix-build --check` rebuilt the root, the boot
-  files and the release files a second time to the same bytes (same machine, same inputs; a
-  build on another machine is CODEX-BUILD's from-clone check).
-- **Compared with the M1** (`compare.py`): 19,617 entries the same. 51 files differ in content,
-  each explained: 20 are files of an older build of the Cocoa root the M1 still carries, 14
-  are other builds of the same Finch, kernel-header or macOS-apps recipes, 3 the rename
-  stage's newer files, `dyld` the image's own with one page lowered by the kernel, 4 the
-  DejaVu fonts (another release of the font), 4 `*.xnu` (the base's halt/reboot of the
-  pre-rename image), one Activity Monitor library, netd's hand-edited job, `release.json`'s
-  records. 12 entries differ in type: framework links on the image where the M1 has flattened
-  copies. Present only on the M1, outside what must not ship: Homebrew and Mozilla's bundle
-  (they arrive at install time), the pointer set (made at first start), Finch frameworks
-  without a piece yet (Accounts, CloudKit, CoreBluetooth, CoreLocation, CoreWLAN,
-  CryptoTokenKit, LocalAuthentication, OpenDirectory, UserNotifications, and the CLI
-  conformance build), Activity Monitor's libraries, the Thai font. Present only in the image:
-  files of whole build outputs the hand install did not copy (headers, man pages, licences).
-  Modes: 6,448 files read-only (0444) on the M1 are 0644 in the image; the M1's copies came
-  from the Nix store by hand.
-- **Boot and release files** build: release 0.1.0 is a 1.2 GB root (169 MB as one zstd part),
+  `e2fsck -fn` clean, both installers rc 0). With Homebrew, the Activity Monitor libraries and
+  the Firefox runtime in it, `nix-build --check` rebuilt the root, the boot files, the release
+  files and the root's own steps (the root tree, the Homebrew prefix, the Activity Monitor
+  libraries, the Firefox runtime, the tree's files) a second time to the same bytes (same
+  machine, same inputs; a build on another machine is CODEX-BUILD's from-clone check).
+- **Compared with the M1** (`compare.py`, the build with Homebrew, the Activity Monitor libraries,
+  the Thai fonts and the Finch frameworks): 71,942 entries the same. 48 files differ in content,
+  each explained: 20 files of an older build of the Cocoa root the M1 still carries, others of
+  other builds of the same Finch, kernel-header, macOS-apps and Activity Monitor recipes (the
+  M1's Activity Monitor libraries are an earlier build of the same sources), the rename
+  stage's newer files, `dyld` the image's own with one page lowered by the kernel, the DejaVu
+  fonts (another release of the font), `*.xnu` (the pre-rename base's halt/reboot), netd's
+  hand-edited job, `release.json`'s records. 12 entries differ in type: framework links in the
+  image where the M1 has flattened copies. Present only on the M1, outside what must not ship:
+  the ten Homebrew kegs the owner added himself, Mozilla's bundle (install time), the pointer
+  set (first start). Homebrew alone: 48,297 of the 48,298 shared files and links are
+  identical; the other is Python's library with three pages lowered by the kernel. Present
+  only in the image: files of whole build outputs the hand install did not copy (headers, man
+  pages, licences). Modes: 6,448 files read-only (0444) on the M1 are 0644 in the image; the
+  M1's copies came from the Nix store by hand.
+- **Boot and release files** build: release 0.1.0 is a 2.2 GB root (292 MB as one zstd part),
   an 8.6 MB boot archive, the manifest, `MANIFEST.tsv`, `SHA256SUMS`. `sf_verify_release.py`
   accepts them unsigned and with an SSH signature by a throwaway key, and refuses a changed
   `SHA256SUMS`. `sf_personalize.py` packs `sf/kernel.bin` from the real boot files with
   invented partition values; both records check; `boot.bin` is copied unchanged.
-- **QEMU** (`release/image/qemu/prepare-run.sh`, then `qemu-dev/qd_run.py`; arm64 `virt`, TCG,
-  on a host at load 40 to 50): the kernel finds the root by the release's UUID and mounts it;
-  launchd from the release root starts its jobs (12 `org.siliconforest.*` listed), the console
-  shell, the SSH server (which makes its host key), `sf-firstboot`; perl, zsh and ssh run; the
-  desktop session starts and the compositor draws the release's wallpaper and pointer
-  (screenshot). The terminal starts and runs its shell (it recorded its screen state with the
-  shell's prompt drawn, bracketed paste on), but at that load it reported ready after 27.2 s
-  (four vCPUs; 2.2 s past the desktop's fixed 25 s), so the session counted it as failed and
-  ended; with two vCPUs it did not get that far. CODEX-BUILD's separate minimal QEMU root
-  met the same deadline. QMP screen captures hung QEMU once while the compositor ran (a known
-  QEMU problem on this host: `QD_NO_SHOTS`). Not observed: a terminal window on screen, typing,
-  the dock.
+- **QEMU** (`release/image/qemu/prepare-run.sh`, then `run-vnc.sh`; arm64 `virt`, TCG, four
+  vCPUs, a 1024x768 screen, host load 20 to 60): the kernel finds the root by the release's
+  UUID and mounts it; launchd starts the root's jobs, the SSH server makes its host key,
+  `sf-firstboot` writes the pointer set; perl, zsh and ssh run. The desktop comes up with the
+  forest wallpaper, the dock (launcher strip and instrument column) and the terminal; a
+  command typed on the emulated USB keyboard (through QEMU's VNC server) runs in the terminal
+  and its output is on screen (`uname -m` printed `arm64`), and the desktop and dock stay up
+  afterwards: the session ran its full 1,500 s and the compositor exited 0 (`QDDESK_PASS`).
+  How to repeat it from a clone: `docs/release/QEMU.md`. Pictures: `runs/image/qemu/run20/shots/latest.png` (dock and terminal) and
+  `typed.png` (after typing), taken over VNC, not inside the guest. Three compositor/dock
+  patches made this work (`integrations/siliconforest/terminal-app/compositor/`):
+  - `wm-darwin-app-ready-deadline-env.patch`: the 25 s READY deadline and the autopilot's 15 s
+    wait can be set from the environment (defaults unchanged); the QEMU run sets them longer,
+    because the terminal takes about 27 s to start under emulation.
+  - `wm-darwin-gop-aligned-word-stores.patch`: the compositor died with SIGBUS in QEMU as soon
+    as a damaged rectangle started at an x not divisible by four pixels (typing does that). A
+    core dump showed memcpy's `stp q0, q1` to an address ending in 0x...b04 inside the IOGOP
+    framebuffer mapping, from `Scanout::write_damage`: 16-byte and unaligned vector stores fault
+    on that device memory. The damage path, `snapshot` and `restore` now use aligned word
+    accesses, as the full-frame path already did.
+  - `dock-dead-tile-font-loan.patch`: under emulation the dock evicts widgets that block its UI
+    thread, and drawing the evicted widget's dead tile borrowed the font system a second time
+    ("RefCell already borrowed"); the dock died. The loans now end before the dead tile is drawn.
 - **Firefox's runtime**: 840 entries byte for byte with the M1's; the launcher's dry plan equals
   the M1's. Firefox itself was not started (no Mozilla bundle, no Homebrew in the image).
-- Not done: an install on any machine; the from-clone build and its reproducibility.
+- **From a clone.** CODEX-BUILD built the public repository at commit 1647a25 on the workstation
+  (its host build 008, `release/packages.nix`, no local store paths). That clone predates the
+  font licence texts above. On its root and QEMU disk:
+  - **QEMU**, `docs/release/QEMU.md`'s path with the clone's own runner (QEMU 10.2.4 from the
+    lock), run 21: the root mounts, the jobs start, the image check passes (perl, zsh, ssh, the
+    account, launchd's jobs); desktop, dock and terminal come up; `uname -m; echo typed-in-qemu`,
+    typed over VNC, printed `arm64` and the text; the session ran 1,500 s, the compositor exited
+    0, `QDDESK_PASS`. Pictures: `runs/image/qemu/run21/shots/typed.png` and `latest.png`.
+  - **A second build** (`nix-store --realise --check`, same machine): the root and its steps (the
+    root tree, the tree's files, the Homebrew prefix, the Activity Monitor libraries, the Firefox
+    runtime), the boot files, the release files and the QEMU disk came out the same bytes. The desktop step (`siliconforest-desktop-0.1`) did not, twice:
+    18 bytes of `chonkstep-darwin-desktop`'s debug map differ, the name of rustc's random
+    temporary link directory (`deps/rustcXXXXXX/`), and the signature over them; the code is the
+    same. Linking with `-Wl,-S` (no debug map) should fix it; that recipe is CODEX-BUILD's (not
+    tried yet).
+  - **Compared with the M1**: 71,779 entries the same, 228 content and 13 type differences.
+    46 of the content differences are the ones the local build has (above). The other 182 are
+    where the local build equals the M1 and the clone does not (`tools/explain-drift.py`):
+    127 build noise (object timestamps in the debug map: 92; build-time store paths: 35);
+    25 the rename (store and source paths named puredarwin in the M1's builds and siliconforest
+    in the clone's; with the longer names everything after them moves, as in the OpenSSH tools
+    and libcurl: the tool counts 22 and calls three of these (`ssh`, `sshd-auth`, `libcurl`)
+    changed source, but the strings only one side has there are random bytes); 30 source the clone has and the M1 does not yet, inferred from the strings only
+    one side has: the Firefox private AppKit (pinch magnification, scroll momentum, newer button
+    and text field constructors), its WindowServer, OpenGL, CoreText, Onyx2D, `fonts.conf` (a
+    Nimbus Roman alias) and `open-url`, the Cocoa root's CoreGraphics and CoreText, CloudKit's
+    declaration aliases, CFNetwork's proxy header, and the compositor, dock and terminal.
+    Present on the M1 and missing from the clone's root, where the local build has them (inferred
+    from the layers' sources, not checked per file): `sfvideo-gl` and the Wayland Mesa libraries
+    of a later sfvideo build than the public recipe makes, AudioToolbox's `.output-sf` copy, an
+    AVFoundation link, and seven headers renamed since (`PD*` to `SF*`). The clone's root has the
+    CFNetwork headers and StoreKit that the local build lacks, the M1's flattened CoreGraphics
+    and CoreText, and flattened AppKit and Onyx2D copies where the M1 has links.
+- Not done: an install on any machine; the build in a clean container; the M1 rebuilt from a
+  clone (it runs builds from before the rename).
 
 ## Tools
 
@@ -253,4 +304,8 @@ build of `release/packages.nix` was not finished when this was written.
 - `release/image/tools/classify.py`: the classification above, from the listing, the hashes,
   the base image's listing and hash indexes of build outputs and of the tree.
 - `release/image/compare.py`: built root against a classified listing.
+- `release/image/tools/explain-builds.py` (with `macho-diff.py`): every difference between two
+  built roots, Mach-O files split into object timestamps, store paths, UUID, signature and the
+  rest. `release/image/tools/explain-drift.py`: why a from-clone root differs from the M1 where
+  another root does not.
 - `release/image/sf_personalize.py`, `release/image/sf_verify_release.py`: for the installer.
