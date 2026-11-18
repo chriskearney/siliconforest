@@ -3,79 +3,88 @@
 
 # Trying SiliconForest in QEMU
 
-SiliconForest is built for the 13-inch M1 MacBook Pro. Without one, the release's root
-filesystem can still be started in QEMU's arm64 `virt` machine: the same root (desktop, dock,
-terminal, Homebrew, shell tools) on QEMU's generic kernel collection instead of the M1's, with a
-plain framebuffer instead of the M1's GPU. This page gives the commands and says exactly what one
-run showed. It is not a substitute for the hardware: no GPU, Wi-Fi, sound, Touch Bar or M1 driver
-is exercised here.
+The public release root (desktop, dock, terminal, Homebrew and shell tools) can run
+on QEMU's arm64 `virt` machine. It uses QEMU's generic kernel collection and firmware
+framebuffer. This exercises the root and desktop; M1 drivers, GPU, Wi-Fi, audio,
+Touch Bar and hardware compatibility remain outside this test.
 
-## What was shown, once
+## Verified public-clone run
 
-Run 20 of 18 November 2026, on an x86_64 Linux workstation (16 cores, other builds running, load
-20 to 30), QEMU 11.1.0, TCG emulation, four virtual CPUs, 1 GiB of guest memory, a 1024x768
-screen:
+On 18 November 2026, commit `99312ab0555ab1e3dcfcf3fa9a6f0c33ef1f6bba` built all six
+outputs in an initially clean container with anonymous public Git, public fetches,
+no host mounts or incoming host artifacts, and no acquired Mac firmware or apps.
+[The measured receipt](../../reports/build-repro/public-build-001.json) records the
+intermediate public-source revisions, final outputs, resource use and complete run.
 
-- QEMU's firmware loads the loader, the kernel finds the release root by its UUID and mounts it;
-  launchd starts the root's services; the SSH server makes its host key; the first-start job
-  writes the pointer set.
-- About 135 s after QEMU started, the desktop draws the forest wallpaper. Then the dock appears:
-  a launcher strip at the top left (Chonkstep Terminal, Firefox) and an instrument column at the
-  top right (the SiliconForest mark, load, network, clock), and a terminal window with a `$`
-  prompt.
-- A command typed on QEMU's emulated USB keyboard runs in the terminal: `uname -m; echo
-  typed-in-qemu` printed `arm64` and `typed-in-qemu`.
-- The session ran its full 1,500 s and the compositor exited 0 (`QDDESK_PASS`).
-- Under emulation the dock's instruments are slow enough that the dock retires them: they turn
-  into labelled dead tiles (LOAD, NET, CLK). That is the dock protecting itself, not a failure.
+The exact helper route below used the flake's pinned QEMU 10.2.4, TCG, four virtual
+CPUs, 1 GiB guest memory and a 1024×768 framebuffer. The session marker appeared
+at 64.7 s and the first desktop frame at 81.3 s. At 18:20:23 UTC, VNC sent real
+emulated USB keyboard input: `uname -m; echo typed-in-qemu`. The terminal printed
+`arm64` and `typed-in-qemu`, then returned to its prompt. The terminal and both dock
+columns remained visible in later captures. The configured 1,500-second lifetime completed with compositor status 0 and complete
+managed-app cleanup. Guest process wall time was 1,504 seconds; the desktop result
+clock, started after initialization, records 1,488.311 seconds. The lifetime begins
+earlier in the terminal launcher; this is not 1,500 seconds after the first frame.
+The terminal wrapper was reaped with status 0; its child shell was killed during
+bounded shutdown (raw wait status 9), retained explicitly in the receipt.
+Both the immutable Nix reference and prepared disk hashes were unchanged.
 
-The disk of that run was built by `release/image.nix` from the build outputs the owner's M1
-carries, with the desktop built from this repository's sources and its patch series. The same
-recipe built from a fresh clone (the commands below) is CODEX-BUILD's work and has not been run
-through this path yet. Firefox was not started: Mozilla's bundle is not in the release (an
-installer fetches it). Pointer input, a QEMU window on a real display, sound and networking were
-not tried.
+![Actual public-clone desktop after typing the command](../images/qemu-public-clone-typed.png)
 
-## What you need
+[The late-session capture](../images/qemu-public-clone-late.png) shows the same
+terminal and dock. These are lossless conversions of VNC PPM captures; decoded RGB
+pixels match. The dock's instruments retire under slow emulation and appear as
+labelled LOAD/NET/CLK tiles. Firefox's launcher is visible, but Firefox was not
+started: Mozilla's bundle is outside the build. Pointer interaction, an interactive
+host display, sound and networking were not tested.
 
-- An x86_64 Linux machine with [Nix](https://nixos.org/download) (flakes enabled), network access
-  for the pinned sources and Homebrew bottles, and room in the Nix store for a full build of the
-  release (tens of GB; the build takes hours the first time).
-- `python3`, `debugfs`, `e2fsck` (e2fsprogs) and `sfdisk` (util-linux) on the host for the two
-  helper scripts. Any image viewer that reads PPM for the pictures.
+Earlier IMAGE runs 20 (installed-M1-derived inputs, host QEMU 11.1.0) and 21
+(public commit1647a25, pinned QEMU10.2.4) also completed this route. Their distinct
+source/input scopes remain in [the image comparison](IMAGE.md#what-is-proven).
+The final isolated run above is the public source-build witness.
 
 ## Commands
 
+Use x86_64 Linux with Nix and flakes enabled, network access for the pinned public
+inputs, and space for the measured build plus compiler scratch files; see
+[BUILDING](../BUILDING.md). The review branch is `build-repro`; the receipt identifies
+the exact tested source revision. These commands use pinned helper packages, so
+Python, debugfs and sfdisk need not already be installed on the host.
+
 ```sh
-git clone https://github.com/chriskearney/siliconforest
+git clone --branch build-repro https://github.com/chriskearney/siliconforest.git
 cd siliconforest
-# the release root on a QEMU disk (QEMU's firmware partition and kernel collection + the root)
 nix build .#qemu-reference-image -o result-qemu
-# QEMU and its arm64 firmware, pinned by the flake, with the run script
 nix build .#qemu-runner -o result-runner
-# a writable copy of the disk with QEMU's own desktop session (software rendering on the
-# firmware framebuffer, USB keyboard and mouse); 1500 s session; no autopilot
-sh release/image/qemu/prepare-run.sh result-qemu run 1500 none
-# start it, save a picture of the screen every 30 s through QEMU's VNC socket, and type one
-# command 150 s after the desktop's first frame
-QD_RUN=result-runner/bin/siliconforest-qemu TYPE_AFTER=150 \
-  sh release/image/qemu/run-vnc.sh run 5400 "uname -m; echo typed-in-qemu"
+export SF_QEMU_REFERENCE="$PWD/result-qemu" SF_QEMU_RUN="$PWD/run"
+export QD_RUN="$PWD/result-runner/bin/siliconforest-qemu" TYPE_AFTER=150
+nix-shell --pure --keep SF_QEMU_REFERENCE --keep SF_QEMU_RUN --keep QD_RUN --keep TYPE_AFTER \
+  -E 'with (import ./release/base.nix).pkgs; mkShell { packages = [ python3 e2fsprogs util-linux coreutils gnugrep ]; }' \
+  --run 'set -eu
+    sh release/image/qemu/prepare-run.sh "$SF_QEMU_REFERENCE" "$SF_QEMU_RUN" 1500 none
+    sh release/image/qemu/run-vnc.sh "$SF_QEMU_RUN" 5400 "uname -m; echo typed-in-qemu"'
+# After the finite run ends, read its records from its disposable overlay:
+result-runner/bin/siliconforest-qemu-records "$SF_QEMU_RUN"
 ```
 
-Run 20 used the host's own QEMU 11.1.0 with `qd_run.py` directly (no `QD_RUN`); the flake's pinned
-QEMU has not been used for this path yet.
+The proof used the same scripts, pinned shell and runner, with the resolved store
+paths returned by the six-output build rather than the two result links above.
+It additionally compared SHA-256 before and after for the Nix reference and the
+prepared disk. Only the per-run overlay is written by the guest; it includes
+generated SSH keys and is not a release artifact.
 
 ## What you get
 
-- `run/shots/NNN.ppm`: a picture of the guest screen every 30 seconds.
-- `run/out/serial.log`: the guest console. `WMSCALE initial` marks the desktop's first frame,
-  `QDDESK_DESKTOP_RC=0` and `QDDESK_PASS` a session that ended normally.
-- `run/out/result.json`: the run's summary (`PASS` when the session ended normally).
-- `run/type.log`: when the command was typed.
-- `sh release/image/qemu/extract-shots.sh run`: the session's records and the dock's log, read out
-  of the disk copy afterwards (read only).
+- `run/shots/NNN.ppm`: the guest screen every 30 seconds through VNC.
+- `run/out/serial.log`: console output. `WMSCALE initial` marks the first desktop
+  frame; `QDDESK_DESKTOP_RC=0` and `QDDESK_PASS` mark normal compositor completion.
+- `run/out/result.json`: harness summary; inspect the desktop and application
+  records as well as this status.
+- `run/type.log`: when the keyboard command was sent.
+- `run/records`: the extracted session/application cleanup records;
+  `run/chonkstep-dock.log`: the dock log.
 
-The disk copy is yours; the Nix output is never written. Delete `run` to start again.
+The writable run belongs to you. Delete it to start again; keep the Nix output immutable.
 
 ## Known limits of the QEMU path
 

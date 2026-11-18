@@ -15,7 +15,8 @@
 ![The SiliconForest desktop in the Canopy theme: Firefox showing a WebGL page, a terminal with system information, and Activity Monitor](docs/images/desktop-canopy.jpg)
 
 > **Early, one machine, not released.** SiliconForest runs on a single 13-inch M1 MacBook Pro.
-> There is no installer or image for anyone else yet. Details under [Status](#status) and
+> Public source images can be built and tried in QEMU; a supported installer and binary release
+> are still pending. Details under [Status](#status) and
 > [Safety](#safety).
 
 ## What is this?
@@ -69,10 +70,11 @@ synthetic test input, not someone at the keyboard.
 
 - It runs on **one machine**: the author's 13-inch M1 MacBook Pro (2020; `MacBookPro17,1`,
   J293, T8103). No other Mac has been tried.
-- There is **no installer, no image and no release** for anyone else yet.
-- The repository is a working tree that was private until now. Much of it is the record of
-  how the system was brought up (reports, earlier attempts, tools tied to one bench). It
-  cannot yet be built end to end by someone outside: see [Building](#building).
+- There is **no published binary release or supported installation route** yet. The
+  [public build entry](docs/BUILDING.md) produces root, boot and QEMU images.
+- The public release entry built in an initially clean container with no workstation inputs,
+  and its QEMU desktop accepted typed commands through a configured 1,500-second session.
+  Historical bench recipes remain outside that entry: see [Building](#building).
 - Things break. The filesystem driver has open defects that matter for your data
   ([Safety](#safety)).
 
@@ -139,30 +141,36 @@ this README, the table says so.
 | Desktop | Chonkstep with its Darwin port. | `chonkstep-darwin/`, `desktop/`, `terminal-app/compositor/` |
 | Boot | m1n1 as first stage, then a small second stage that loads the kernel collection from a boot partition. | `m1-native-boot/` |
 
-Everything is built with Nix on a Linux host; nothing is built on macOS and no Apple SDK is
-used.
+The project components are built with Nix on Linux using open SDK sources. The included
+Homebrew packages are pinned prebuilt bottles; this build fetches them rather than compiling
+them. No Apple SDK is used.
 
 ### Building
 
-Honestly: **you cannot build the system from a clone of this repository today.**
-
-- Many recipes read source trees from local paths on the author's machine instead of
-  fetching them at a pinned revision, and some name build outputs that exist only there.
-- A bootable system also needs things this repository deliberately does not contain: the
-  Wi-Fi and Touch Bar firmware from your own machine, and the Apple applications if you
-  want them.
-- The install procedure was written for one disk layout.
-
-What does work from a clone, with Python 3.10 or later and a C compiler:
+The pinned release entry builds on **x86_64 Linux with Nix**. The complete public-input
+build and a typed QEMU desktop run are recorded in [the build guide](docs/BUILDING.md).
+The tested Nix version is 2.34.9.
 
 ```sh
-python3 tools/check.py --sanitize --cross   # host tests of the early portable components
-python3 tools/sf_rename.py check            # the naming rules hold
+git clone --branch build-repro https://github.com/chriskearney/siliconforest.git
+cd siliconforest
+nix --extra-experimental-features 'nix-command flakes' build --max-jobs 2 --cores 4 --no-link --print-out-paths \
+  .#release .#qemu-image .#qemu-proof-image .#qemu-runner \
+  .#root-image .#qemu-reference-image
 ```
 
-(One test in the first command needs a build artefact that is not in git and fails without
-it.) Making the build reproducible for others is the main item in
-[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
+`build-repro` is the public review branch. The receipt names the exact tested source
+commit and records the initially clean container, public revision updates, time,
+disk and memory use. A full first build takes hours; CI currently checks the source
+manifest rather than compiling the whole release.
+
+The release includes the kernel collection, boot files, open user space and desktop.
+The Homebrew set comes from 64 pinned public bottles; this command does not compile
+those bottles. Apple applications, acquired Mac firmware and Mozilla's application
+bundle are outside the build. The [QEMU guide](docs/release/QEMU.md) runs the desktop
+without acquired Mac firmware. The new M1 kernel/boot files have been built, not
+installed or tested on hardware. See the build guide for the scope of reproducibility
+checks and remaining installer integration.
 
 ## Safety
 
@@ -249,17 +257,16 @@ Plans and state live in the issues: start at the
 [Roadmap index](https://github.com/chriskearney/siliconforest/issues/23) (label `roadmap`),
 which links one ticket per area and explains the shorthand the tickets use. The same material
 is in [`docs/roadmap/`](docs/roadmap/). The nearest goals: a smoother Firefox (a steady 60
-frames a second), the filesystem fixes, and a build other people can reproduce.
+frames a second), the filesystem fixes, and completing the installer integration.
 
 What must happen before this repository is called a release is in
 [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
 
 ## Get involved
 
-First, the honest part: **you cannot yet build SiliconForest end to end from a clone**, and
-there is nothing to install. The first step toward changing that is a pinned source lock and
-recipes that fetch everything by URL and hash, so that a clean machine can build the kernel
-collection and boot it in QEMU. Help with exactly that is welcome.
+You can build the public release entry and try its desktop in QEMU with the commands
+[above](#building). Reports from independent builders and reviews of the remaining installer
+integration are welcome. A supported installation route and binary release are still pending.
 
 Where else help would count:
 

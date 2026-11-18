@@ -309,3 +309,19 @@ build of `release/packages.nix` was not finished when this was written.
   rest. `release/image/tools/explain-drift.py`: why a from-clone root differs from the M1 where
   another root does not.
 - `release/image/sf_personalize.py`, `release/image/sf_verify_release.py`: for the installer.
+
+## Public isolated build follow-up (18 November 2026)
+
+The [build receipt](../../reports/build-repro/public-build-001.json) records the final
+public-source build at `99312ab0555ab1e3dcfcf3fa9a6f0c33ef1f6bba`, unsigned archive
+verification, actual ext4 readback and a complete pinned-runner QEMU.md session.
+The final root contains sfvideo-gl, all six Wayland Mesa libraries, the canonical
+Finch AudioToolbox family and selected-device provider, the AVFoundation Resources
+alias and all 73 fonts with licence texts. Desktop and dock bytes match the package
+that passed the isolated rebuild check. Readback establishes presence and structure,
+not new hardware media execution or equality with every file on the installed M1.
+The earlier comparison tables remain their original snapshots.
+
+The source build does not establish installer compatibility: xz archives, a firmware
+slot and verified unpacker, root growth, install.json and boot icon remain separate
+integration work. Existing zstd outputs are unsigned build products, not a published release.

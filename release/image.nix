@@ -5,7 +5,7 @@
 #
 #   rootfs     siliconforest-root.ext4   the root filesystem, sized to its contents plus slack;
 #                                        the installer writes it into the target's partition and
-#                                        grows it there (resize2fs) before the first start
+#                                        needs an agreed installer/first-boot growth policy
 #              root.manifest.tsv         every entry of that root: path, type, mode, owner, size, sha256
 #              image.json                the layers used, their store paths, sizes, ext4 parameters
 #   bootfiles  the boot files: sf/boot.bin as it is (stage 2 for this release's root UUID), and what
@@ -18,9 +18,9 @@
 #              with this root, for the equivalence run (docs/release/IMAGE.md, "Proof")
 #
 # What a release does not contain, and how it arrives instead (docs/release/IMAGE.md):
-# Wi-Fi firmware (extracted by the installer from the target's own Linux install), Mozilla's
+# Wi-Fi firmware (to be acquired from the user's own Mac by installer integration), Mozilla's
 # Firefox bundle (downloaded at first run), Apple's applications (copied by the user from
-# their own macOS), Homebrew bottles (poured at install time by homebrew/hb_pour.py).
+# their own macOS). The pinned Homebrew bottles are already poured into the built root.
 #
 #   pkgs       nixpkgs of the pinned base
 #   base       upstream's arm64 virt image (the minimal release variant), whose ext4 root is the base

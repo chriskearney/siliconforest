@@ -1,0 +1,528 @@
+{
+  "schema": 1,
+  "date": "2026-11-18",
+  "status": "PASS_PUBLIC_BUILD_AND_QEMU",
+  "source": {
+    "repository": "https://github.com/chriskearney/siliconforest.git",
+    "branch": "build-repro",
+    "revision": "99312ab0555ab1e3dcfcf3fa9a6f0c33ef1f6bba",
+    "sources_lock_sha256": "1ae48ea5bac77200c22b86f68c96bc33cbaebdcd96966870ee42811f209eb951"
+  },
+  "command": "nix build --no-link --print-out-paths .#release .#qemu-image .#qemu-proof-image .#qemu-runner .#root-image .#qemu-reference-image",
+  "isolation": {
+    "container_image": "nixos/nix@sha256:53b5ec518b696373829ea305c3c07a8c870113e44648c88ec484ef078550fd4f",
+    "bootstrap_store_kib": 614460,
+    "nix_version": "2.34.9",
+    "git_version": "2.51.2",
+    "anonymous_public_clone": true,
+    "host_mounts": [],
+    "privileged": false,
+    "device_requests": [],
+    "source_status_empty": true,
+    "absent_input_directories": [
+      "sources",
+      "artifacts",
+      "private",
+      "runs"
+    ],
+    "incoming_host_source_or_store_imports": false,
+    "nix_config": {
+      "experimental-features": "nix-command flakes",
+      "substituters": "https://cache.nixos.org",
+      "sandbox": false,
+      "max-jobs": 2,
+      "cores": 4
+    },
+    "sandbox_scope": "Container isolation; Nix sandbox disabled inside the unprivileged container. No private project binary cache."
+  },
+  "measurements": {
+    "scope": "Cumulative initially-clean-container source build, public-revision fixes and package verification, measured before final QEMU session. Final-revision command reused components built from earlier public revisions.",
+    "initial_start_utc": "2026-11-18T12:02:17Z",
+    "bootstrap_store_kib": 614460,
+    "attempts": [
+      {
+        "name": "attempt-001",
+        "revision": "9097ccde6662661bc7d2f028a85f52f4890a4cfb",
+        "start_utc": "2026-11-18T12:02:39Z",
+        "end_utc": "2026-11-18T12:22:10Z",
+        "nix_wall_seconds": 1171,
+        "exit_status": 1,
+        "disposition": "Intentionally retired after a Firefox layout failure was found in the separate host build."
+      },
+      {
+        "name": "attempt-002",
+        "revision": "3bd89f5543ed5988979eaf61ddbeb5675b5cb09e",
+        "start_utc": "2026-11-18T12:23:15Z",
+        "end_utc": "2026-11-18T14:32:31Z",
+        "nix_wall_seconds": 7756,
+        "exit_status": 1,
+        "disposition": "Intentionally retired when the requested linker normalization changed dependencies."
+      },
+      {
+        "name": "attempt-003",
+        "revision": "0d565bbc608f3ffe9f6c66d036d9dcef8139ef49",
+        "start_utc": "2026-11-18T14:35:14Z",
+        "end_utc": "2026-11-18T16:27:31Z",
+        "nix_wall_seconds": 6737,
+        "exit_status": 1,
+        "disposition": "Build failed in Swift configure: ld64 inferred an invalid SDK version from the random temporary-directory suffix. Fixed in public commit f1354018b."
+      },
+      {
+        "name": "attempt-004",
+        "revision": "f1354018bb14bc323594f82ecaefcf8782e470a1",
+        "start_utc": "2026-11-18T16:35:05Z",
+        "end_utc": "2026-11-18T18:03:10Z",
+        "nix_wall_seconds": 5285,
+        "exit_status": 1,
+        "disposition": "Intentionally retired at its valid root-tree, retaining shared compiled dependencies and superseding unfinished intermediate packaging."
+      },
+      {
+        "name": "final-993",
+        "revision": "99312ab0555ab1e3dcfcf3fa9a6f0c33ef1f6bba",
+        "start_utc": "2026-11-18T18:05:34Z",
+        "end_utc": "2026-11-18T18:13:11Z",
+        "nix_wall_seconds": 457,
+        "exit_status": 0,
+        "disposition": "All six final outputs built successfully."
+      }
+    ],
+    "cumulative_wall_to_nix_success_seconds": 22254,
+    "cumulative_wall_to_metrics_seconds": 22357,
+    "final_nix_wall_seconds": 457,
+    "store_at_completion_kib": 65047668,
+    "memory_limit_bytes": 17179869184,
+    "memory_peak_bytes": 17180852224,
+    "memory_events": {
+      "low": 0,
+      "high": 0,
+      "max": 48132,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0,
+      "sock_throttled": 0
+    },
+    "swap_peak_bytes": 0,
+    "cpu_quota_cores": 8,
+    "cpu_stat_cumulative": {
+      "usage_usec": 106512375379,
+      "user_usec": 93435653774,
+      "system_usec": 13076721605,
+      "nice_usec": 0,
+      "core_sched.force_idle_usec": 0,
+      "nr_periods": 218872,
+      "nr_throttled": 44124,
+      "throttled_usec": 6549208211,
+      "nr_bursts": 0,
+      "burst_usec": 0
+    },
+    "source_status_empty": true,
+    "source_input_check_status": 0
+  },
+  "outputs": {
+    "qemu-reference-image": {
+      "derivation": "/nix/store/0mmbvrjyq89cn8jwj6kql8pkji26zk4w-siliconforest-qemu-0.1.0.img.drv",
+      "output": "/nix/store/dpm4rjf8hbrpgngl0dpf8lsfpbq5y0dm-siliconforest-qemu-0.1.0.img"
+    },
+    "audiotoolbox": {
+      "derivation": "/nix/store/a917l7w3r8jxgbzciqz8l610jdvz2lv9-siliconforest-audiotoolbox-release-family.drv",
+      "output": "/nix/store/p6yxpb6rdn8sbbgl349ypq9cvhm58v0y-siliconforest-audiotoolbox-release-family"
+    },
+    "qemu-image": {
+      "derivation": "/nix/store/k6gk7q1m67fd7f3dm9in39y7l0d98gix-siliconforest-qemu-desktop-image.drv",
+      "output": "/nix/store/aryqkbzdpj7frmplk4fhsfdyh4ljaf16-siliconforest-qemu-desktop-image"
+    },
+    "desktop": {
+      "derivation": "/nix/store/m56i1nag04fi5w7pmxsxw7gdq50whc7k-siliconforest-desktop-0.1.drv",
+      "output": "/nix/store/qw9g9wzxiv4ajj2q9490r9indiaqy7k8-siliconforest-desktop-0.1"
+    },
+    "sfvideo": {
+      "derivation": "/nix/store/nvkkjzlfpk79b3833xg5cscyxgklf03q-siliconforest-sfvideo-release.drv",
+      "output": "/nix/store/m6mrif9pym1g0avbkf75hfn7i927m9r8-siliconforest-sfvideo-release"
+    },
+    "qemu-proof-image": {
+      "derivation": "/nix/store/p7w5dlw40bnq8cykrwmx5p55l13iqxad-siliconforest-qemu-proof-image.drv",
+      "output": "/nix/store/qxcx5nwyb5grh5q32rc70ax66anp96n5-siliconforest-qemu-proof-image"
+    },
+    "root-image": {
+      "derivation": "/nix/store/qdyznx653kc1xami84vi254dwg8hhy02-siliconforest-rootfs-0.1.0.drv",
+      "output": "/nix/store/12gsmpmj0zi1qxddc2wib46jhawm1zpy-siliconforest-rootfs-0.1.0"
+    },
+    "release": {
+      "derivation": "/nix/store/ryi6a2qg0gp11avhc82nbd7bcy0nsf14-siliconforest-release-0.1.0.drv",
+      "output": "/nix/store/lahdzs0627brsvlnwicg4ygi84p4hiss-siliconforest-release-0.1.0"
+    },
+    "qemu-runner": {
+      "derivation": "/nix/store/v7w7fp14bs6dipdyggnhi4lwwyff08c0-siliconforest-qemu-tools.drv",
+      "output": "/nix/store/c3bg283cp3fy7m7yj5y851x6fd76a9fl-siliconforest-qemu-tools"
+    }
+  },
+  "runtime_closure": {
+    "scope": "Union of runtime references of all six final outputs; uncompressed NAR bytes, not compressed cache size or full build-dependency closure.",
+    "paths": 863,
+    "nar_bytes": 17823578464
+  },
+  "evaluated_graph": {
+    "derivations": 5684,
+    "fixed_output_derivations": 2161,
+    "url_fetch_derivations": 2147,
+    "url_fetches_without_content_hash": [],
+    "home_or_local_url_matches": [],
+    "source_reference_entries": 13879,
+    "non_fixed_build_phase_direct_network_command_matches": []
+  },
+  "desktop_determinism": {
+    "revision": "99312ab0555ab1e3dcfcf3fa9a6f0c33ef1f6bba",
+    "derivation": "/nix/store/m56i1nag04fi5w7pmxsxw7gdq50whc7k-siliconforest-desktop-0.1.drv",
+    "output": "/nix/store/qw9g9wzxiv4ajj2q9490r9indiaqy7k8-siliconforest-desktop-0.1",
+    "status": "PASS",
+    "host_first_build_status": 0,
+    "isolated_first_retry_build_status": 0,
+    "isolated_check_status": 0,
+    "command": "nix-store --realise --check --keep-failed --max-jobs 1 --cores 2 /nix/store/m56i1nag04fi5w7pmxsxw7gdq50whc7k-siliconforest-desktop-0.1.drv",
+    "nar_hash_host": "sha256:1pzmn0yda3pyhlbxah3x82gk87j1lxy46f5y6cvsn3gznik0slzm",
+    "nar_hash_isolated_before": "sha256:1pzmn0yda3pyhlbxah3x82gk87j1lxy46f5y6cvsn3gznik0slzm",
+    "nar_hash_isolated_after": "sha256:1pzmn0yda3pyhlbxah3x82gk87j1lxy46f5y6cvsn3gznik0slzm",
+    "binaries": {
+      "chonkstep-darwin-desktop": {
+        "sha256": "3f734add220ef7f4e6eee8726c6dd952b81c3b0bef07e51dd7232817213d7fbf",
+        "bytes": 31887158,
+        "n_oso_entries": 0,
+        "code_signature_valid": true
+      },
+      "chonkstep-dock": {
+        "sha256": "2c3b69a7e2598c465fa05b832820e93f11b5a9e54c397cc49229acb72bc12cb8",
+        "bytes": 7096072,
+        "n_oso_entries": 0,
+        "code_signature_valid": true
+      }
+    },
+    "isolated_start_utc": "2026-11-18T17:01:43Z",
+    "isolated_end_utc": "2026-11-18T17:22:07Z",
+    "earlier_failed_attempt": {
+      "status": 1,
+      "stage": "rustc ThinLTO, before package output",
+      "signal": "SIGSEGV",
+      "symbolized_frame": "AArch64PointerAuth::runOnMachineFunction",
+      "oom_events": 0,
+      "core_retained": false,
+      "cause": "Unknown; unchanged derivation succeeded on retry and rebuild."
+    },
+    "scope": "One package rebuilt in random temporary directories in an initially clean isolated store, identical to an independent host build. Whole-OS and arbitrary-machine bitwise reproducibility are not established."
+  },
+  "base_linker_check": {
+    "revision": "0d565bbc608f3ffe9f6c66d036d9dcef8139ef49",
+    "scope": "Actual base libSystem built in the initially clean container",
+    "mach_o_files": 4,
+    "n_oso_entries": 1497,
+    "nonzero_n_oso_entries": 0
+  },
+  "kernel_and_boot": {
+    "status": "PASS",
+    "scope": "Isolated source build and artifact structure; no M1 installation or execution.",
+    "modules_in_build_metadata": 69,
+    "stripped_bundles": 56,
+    "all_non_debug_sections_identical_after_strip": true,
+    "trackpad_member": "SFM1SPIHID",
+    "overlap_check": "19 segments, 0 overlapping pair(s)",
+    "stage2_release_uuid_occurrences": 1,
+    "boot_manifest": {
+      "files": {
+        "boot.bin": {
+          "sha256": "189e6bd20bcf2f2eaa6726833c5f3d68aba25190fd10a6d71e6d731ae8220803",
+          "size": 4128768
+        },
+        "bootargs.template": {
+          "sha256": "9c916ab7fbace64f5f1daf6cab9b3a52647b2f330a9d2850e4475ef66931f56b",
+          "size": 927
+        },
+        "kernel.kc": {
+          "sha256": "51294879c5369ee785fedced925e0187736f3195108a7943bf234b349bf0240a",
+          "size": 34449366
+        },
+        "pdsf_pack.py": {
+          "sha256": "d0fa6304839384045d25dea5b18bd2622bb0ecd48869cc89fd2a51d49ff60135",
+          "size": 7236
+        },
+        "sf-stage1.bin": {
+          "sha256": "840fd72f250f027f207bd84d05d15a0c760ada2dbbf86d70ef5d16b631d7a165",
+          "size": 4325376
+        },
+        "sf_personalize.py": {
+          "sha256": "12cc60659b1a31aba4e2f20bdc8bd57c51fc68125c0665d1946c3e943d76a924",
+          "size": 5680
+        }
+      },
+      "kernel_bin_max": 209715200,
+      "pack_set": [
+        "display=1",
+        "usb-nodes=remove0",
+        "sprr=1",
+        "amx=1",
+        "xnu-base=0x850000000"
+      ],
+      "release": "0.1.0",
+      "root_uuid": "37215ab4-59b9-8afb-ab76-394c5ee48edf"
+    }
+  },
+  "actual_ext4_root": {
+    "status": "PASS",
+    "root_image_bytes": 2209705984,
+    "layers": 39,
+    "absent_optional": [],
+    "files_read_back_from_ext4": {
+      "/usr/local/bin/sfvideo-gl": {
+        "bytes": 6746375,
+        "sha256": "923c02a9c0811875aa2ef1c3b8e893fbe7b4cdfc66a34aa2a1066a8879f9c1e7",
+        "architecture": "arm64",
+        "code_signature_valid": true,
+        "install_name": null
+      },
+      "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox": {
+        "bytes": 5803065,
+        "sha256": "3b24999acb95269d464b89c6fe2a2ae0c0be0c44f6d3e2db3a24bc9de69df735",
+        "architecture": "arm64",
+        "code_signature_valid": true,
+        "install_name": "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox"
+      },
+      "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox.output-sf": {
+        "bytes": 75401,
+        "sha256": "8e23874371d67119663bfa9cc9cd12a8474c9eb267e778a56740d88e530cc81b",
+        "architecture": "arm64",
+        "code_signature_valid": true,
+        "install_name": "@loader_path/AudioToolbox.output-sf"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libEGL.1.dylib": {
+        "bytes": 1451691,
+        "sha256": "cb48cfe7e6859a6d25fc95e517a59aeeda855de9db272c0f1f41e4f69785e733",
+        "architecture": "arm64",
+        "code_signature_valid": true,
+        "install_name": "/usr/local/lib/mesa-asahi-wl/libEGL.1.dylib"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libGLESv2.2.dylib": {
+        "bytes": 69582,
+        "sha256": "161c2d2c3dbef14eeae5a495a69bbf6c4e6024357b7ffd165a4d3f8af0931bee",
+        "architecture": "arm64",
+        "code_signature_valid": true,
+        "install_name": "/usr/local/lib/mesa-asahi-wl/libGLESv2.2.dylib"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libdrm.2.dylib": {
+        "bytes": 115435,
+        "sha256": "66ca891431971ea44b0926ef58133e3263e732ac01173254becf9ff44ba2cdbc",
+        "architecture": "arm64",
+        "code_signature_valid": true,
+        "install_name": "/usr/local/lib/mesa-asahi-wl/libdrm.2.dylib"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libgallium-26.3.0-devel.dylib": {
+        "bytes": 31448042,
+        "sha256": "d8107beb199b31c4fe27daae593309f1861bdbbf386aa3c0b34f3b1ff9d8c201",
+        "architecture": "arm64",
+        "code_signature_valid": true,
+        "install_name": "/usr/local/lib/mesa-asahi-wl/libgallium-26.3.0-devel.dylib"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libwayland-client.0.dylib": {
+        "bytes": 164182,
+        "sha256": "751bd960df4f1ea9c6b693361508d63fcdb5232f4618a0c19da7f536289cac8e",
+        "architecture": "arm64",
+        "code_signature_valid": true,
+        "install_name": "/usr/local/lib/mesa-asahi-wl/libwayland-client.0.dylib"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libwayland-egl.1.dylib": {
+        "bytes": 50163,
+        "sha256": "3884c1501a71184695b139cef5399966229e9967306c837b37f50901e7ff62d0",
+        "architecture": "arm64",
+        "code_signature_valid": true,
+        "install_name": "/usr/local/lib/mesa-asahi-wl/libwayland-egl.1.dylib"
+      }
+    },
+    "canonical_audio_matches_finch_family": true,
+    "player_and_mesa_match_release_layer": true,
+    "avfoundation_resources_link": "Versions/Current/Resources",
+    "font_files": 73,
+    "scope": "Presence, actual image bytes, architecture, loader identity and ad-hoc signature checks; no hardware media-playback test."
+  },
+  "actual_ext4_desktop": {
+    "status": "PASS",
+    "root_output": "/nix/store/12gsmpmj0zi1qxddc2wib46jhawm1zpy-siliconforest-rootfs-0.1.0",
+    "desktop_package": "/nix/store/qw9g9wzxiv4ajj2q9490r9indiaqy7k8-siliconforest-desktop-0.1",
+    "files_read_back_from_ext4": {
+      "/usr/bin/chonkstep-darwin-desktop": {
+        "sha256": "3f734add220ef7f4e6eee8726c6dd952b81c3b0bef07e51dd7232817213d7fbf",
+        "bytes": 31887158,
+        "matches_checked_desktop_package": true
+      },
+      "/usr/bin/chonkstep-dock": {
+        "sha256": "2c3b69a7e2598c465fa05b832820e93f11b5a9e54c397cc49229acb72bc12cb8",
+        "bytes": 7096072,
+        "matches_checked_desktop_package": true
+      }
+    },
+    "scope": "Actual image contains the exact desktop/dock bytes whose isolated --check and cross-store hashes passed."
+  },
+  "requested_path_comparison": {
+    "status": "PASS_REQUESTED_PATH_PRESENCE",
+    "scope": "Read-only comparison against IMAGE's previously captured installed-M1 listing; no new M1 contact and no claim of whole-root byte equality or new hardware execution.",
+    "requested_paths": {
+      "/usr/local/bin/sfvideo-gl": {
+        "present_in_built_root": true,
+        "comparison_group": "same"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libEGL.1.dylib": {
+        "present_in_built_root": true,
+        "comparison_group": "content"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libGLESv2.2.dylib": {
+        "present_in_built_root": true,
+        "comparison_group": "content"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libdrm.2.dylib": {
+        "present_in_built_root": true,
+        "comparison_group": "same"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libgallium-26.3.0-devel.dylib": {
+        "present_in_built_root": true,
+        "comparison_group": "content"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libwayland-client.0.dylib": {
+        "present_in_built_root": true,
+        "comparison_group": "same"
+      },
+      "/usr/local/lib/mesa-asahi-wl/libwayland-egl.1.dylib": {
+        "present_in_built_root": true,
+        "comparison_group": "same"
+      },
+      "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox.output-sf": {
+        "present_in_built_root": true,
+        "comparison_group": "same"
+      },
+      "/System/Library/Frameworks/AVFoundation.framework/Resources": {
+        "present_in_built_root": true,
+        "comparison_group": "same"
+      }
+    },
+    "missing_requested_paths": []
+  },
+  "release_archive_verification": {
+    "files": {
+      "MANIFEST.tsv": "ok",
+      "siliconforest-0.1.0-boot.tar.zst": "ok",
+      "siliconforest-0.1.0-root.ext4.zst.00": "ok",
+      "siliconforest-0.1.0-root.manifest.tsv": "ok"
+    },
+    "ok": true,
+    "root": "ok",
+    "signature": "not checked"
+  },
+  "local_validation": {
+    "ci_check": "PASS: 280 of 281 unit tests plus 77 C groups; one untracked-artifact-dependent test explicitly NOT RUN",
+    "mutations": "PASS, six suites",
+    "lab_validate": "PASS",
+    "lab_plan": "PASS, offline",
+    "source_plan": "PASS, offline",
+    "publication_check": "PASS, dry run only",
+    "rename_check": "clean",
+    "github_ci_at_tested_revision": [
+      "https://github.com/chriskearney/siliconforest/actions/runs/44350523868",
+      "https://github.com/chriskearney/siliconforest/actions/runs/44350523966"
+    ]
+  },
+  "limits": [
+    "Initial store was clean, but final-revision command reused components from earlier public revisions in the same isolated session; not one uninterrupted empty-store build at the final revision.",
+    "Peak temporary disk use was not measured. Runtime NAR closure size is not compressed cache size or full build-dependency closure.",
+    "The desktop package was rebuilt and compared across stores. Whole-OS or arbitrary-machine bitwise reproducibility is not established.",
+    "M1 kernel and boot files were built and inspected, not installed or executed on hardware.",
+    "QEMU uses its generic kernel and firmware framebuffer. No M1 GPU, Wi-Fi, audio or hardware-driver execution follows.",
+    "No signed or published binary release. The unsigned archive verifier did not check a signature.",
+    "Installer contract remains open: xz packaging, firmware slot/unpacker, root growth, install.json and boot icon.",
+    "Apple applications, acquired Mac firmware and the optional Mozilla bundle are outside the build. Homebrew bottles are pinned fetched binaries, not compiled by this entry."
+  ],
+  "qemu": {
+    "status": "PASS",
+    "route": "release/image/qemu/prepare-run.sh reference run 1500 none; TYPE_AFTER=150 pinned-runner run-vnc.sh run 5400 \"uname -m; echo typed-in-qemu\"",
+    "qemu_version": "10.2.4",
+    "accelerator": "tcg",
+    "virtual_cpus": 4,
+    "guest_memory_mib": 1024,
+    "screen": [
+      1024,
+      768
+    ],
+    "start_utc": "2026-11-18T18:16:04Z",
+    "end_utc": "2026-11-18T18:42:29Z",
+    "exit_status": 0,
+    "times_seconds": {
+      "session": 64.7,
+      "session_qemu_cpu": 33.9,
+      "desktop": 81.3,
+      "desktop_qemu_cpu": 75.0,
+      "end": 1572.7,
+      "end_qemu_cpu": 1234.3
+    },
+    "configured_session_seconds": 1500,
+    "guest_desktop_process_wall_seconds": 1504,
+    "desktop_elapsed_ms": 1488311,
+    "timing_scope": "The configured finite lifetime starts in TerminalLauncher before NativeIo initialization. The result elapsed clock starts later; preserve both clocks. No claim of 1500 seconds after the first desktop frame.",
+    "cleanup_complete": true,
+    "deadline_hit": false,
+    "frame_error": null,
+    "manager_failed": false,
+    "launch_failures": 0,
+    "managed_application_wait_status": 0,
+    "terminal": {
+      "child_shell_cleanup": {
+        "complete": true,
+        "error": null,
+        "kill_sent": true,
+        "status": 9,
+        "term_sent": true
+      },
+      "errors": [],
+      "ready": true,
+      "input_accepted_bytes": 29,
+      "input_unsent_bytes": 0,
+      "stop_cause": "signal",
+      "pty_eof": false,
+      "app_ready_observed": true,
+      "app_reaped_observed": true
+    },
+    "typing": {
+      "command": "uname -m; echo typed-in-qemu",
+      "expected_output_visually_observed": [
+        "arm64",
+        "typed-in-qemu",
+        "returned shell prompt"
+      ],
+      "method": "real VNC-emulated USB keyboard input; not synthetic compositor autopilot",
+      "sent_log": "typed at 18:20:23"
+    },
+    "guest_tool_checks": {
+      "completed": true,
+      "missing_executables": false,
+      "perl_ran": true,
+      "ssh_version_ran": true,
+      "zsh_ran": true
+    },
+    "captures": [
+      {
+        "file": "docs/images/qemu-public-clone-typed.png",
+        "vnc_source": "shots/011.ppm",
+        "lossless_rgb_verified": true,
+        "source_sha256": "1f979ef5699e1ac4c171db1f29523db40c6596ee58b7148b43ec3f6eae7ecc7e",
+        "png_sha256": "0a5cb66b0865ce2333ec5c2e4537c024720db93224a2ba96d85ffd1d18081fe1",
+        "decoded_rgb_sha256": "f734d5b6b9dde36cadfc8dc2c6c83369225107c797e268f7e33a7a6d0e12a4b3"
+      },
+      {
+        "file": "docs/images/qemu-public-clone-late.png",
+        "vnc_source": "shots/049.ppm",
+        "lossless_rgb_verified": true,
+        "ppm_sha256": "d894c6894f1e0ae55ce47fadd0159084aff6532c6303316145f4f53649763131",
+        "png_sha256": "388732e0e8d17ed43aa70cdd3b8377b590b4b18579bf08582e141c498898a4c5",
+        "rgb_sha256": "689da59e207920ae3e0cb68bf0fa452cd9a983222ff4d1ef3e064de33b7d8647"
+      }
+    ],
+    "immutable_reference_unchanged": true,
+    "prepared_disk_unchanged": true,
+    "reference_sha256": "fcb5dac233bb5ea5b3a07ebfdd5aaa4d5d02f94607c8f0bee4003a960a016a7b",
+    "prepared_sha256": "7754bf526a7b22843ad22980f917b7cf9aedc89ab9f3c51860e868c42d21c0ee",
+    "scope": "Complete finite desktop and managed-app cleanup, typing and visible dock in the same initially clean public-only container. No M1 hardware or optional application test. Guest writes stayed in its disposable overlay; no runtime disk or generated SSH keys published."
+  }
+}

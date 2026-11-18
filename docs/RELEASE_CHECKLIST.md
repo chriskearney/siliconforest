@@ -21,7 +21,7 @@ Nothing here is legal advice.
 | Personal address in files | F14 | the three vendored packaging files use the noreply address |
 | Issue wording | | titles and bodies reviewed; see the record kept outside git (`runs/public/issue-edits.md`) |
 
-| Continuous integration | F13 | the workflow passes on a source-only checkout: `tools/ci_check.py` runs `tools/check.py` unchanged and accepts exactly one known test that needs untracked build artefacts, reporting it as not run. Passed locally with clang and gcc; **not yet seen green on GitHub's runner** |
+| Continuous integration | F13 | the workflow passes on a source-only checkout: `tools/ci_check.py` runs `tools/check.py` unchanged and accepts exactly one known test that needs untracked build artefacts, reporting it as not run. Passed locally with clang and gcc; **green on GitHub for the public build branch**, including the flake source-manifest job; exact runs in the build receipt |
 
 All of these are fixed **in the tree only**. Every one is still in the history of this
 repository (see 2).
@@ -88,15 +88,23 @@ the sources side by side, each under its own licence with notices intact, is com
 
 ## High
 
-### 5. Build reproducibility for outsiders (F8). Work.
-32 recipes fetch from `file:///home/…` local clones; about 400 files name `/nix/store/<hash>`
-paths; 99 tools or recipes read the untracked `artifacts/` or `private/`; there is no single
-lock for the 25 source checkouts.
-- To do: a `sources.lock` and fetch script; recipes that fetch by URL and hash; a build from a
-  clean clone on a machine with none of the local directories; a QEMU boot of the result;
-  a BUILDING and an INSTALL guide that are not written for one disk.
-- Effort: one to two weeks. Until then the README says plainly that the system cannot be
-  built from a clone.
+### 5. Build reproducibility for outsiders (F8). Public entry verified; installer integration open.
+
+The original audit found local clones, literal store paths and untracked bench
+inputs. Historical recipes remain, outside the public release entry. A central
+`sources.lock`, pinned fetches and the flake now build all six release/root/QEMU
+outputs in an initially clean container using anonymous public Git and public
+fetches. Its QEMU desktop accepted typed commands and completed its configured
+1,500-second lifetime: 1,488.311 seconds on the post-initialization desktop clock
+and 1,504 seconds of process wall time.
+See [BUILDING](BUILDING.md), [the measured receipt](../reports/build-repro/public-build-001.json)
+and [the snapshot inventory](build/DEPENDENCIES.md).
+
+The desktop package passed an actual rebuild check with identical complete NAR
+across stores. Whole-OS bitwise reproducibility is not established. The new M1
+kernel/boot products were not installed on hardware. Installer integration still
+needs the archive/firmware-slot/growth/manifest/icon contract; the zstd build
+products have not passed that installer. No binary publication follows from this proof.
 
 ### 6. Per-file headers (F24, F25, F26, F27). Work, with owner sign-off on the MIT tags.
 - About 1,975 files say `SPDX-License-Identifier: MIT` with no copyright line (807 under

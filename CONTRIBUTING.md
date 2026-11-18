@@ -7,16 +7,23 @@ projects better than we do.
 
 ## What you can build and run today
 
-The whole system cannot yet be built from a clone (see "Building" in the
-[README](README.md) and [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md)). What runs
-anywhere with Python 3.10+ and a C compiler:
+The pinned release entry builds from public inputs on x86_64 Linux with Nix; see
+[Building](README.md#building), the [measured build guide](docs/BUILDING.md) and the
+[QEMU route](docs/release/QEMU.md). Historical bring-up recipes outside that entry
+may still require bench inputs; the dependency inventory distinguishes them.
+
+For source-only host checks with Python 3.10+ and a C compiler:
 
 ```sh
-python3 tools/check.py --sanitize --cross   # host tests (one needs an artefact not in git)
+python3 tools/ci_check.py
 python3 tools/check_mutations.py
 python3 tools/lab.py validate
-python3 tools/sf_rename.py check            # naming rules; must print "check: clean"
+python3 tools/sf_rename.py check
 ```
+
+The CI wrapper explicitly reports the one lab-artefact-dependent test as not run
+when its untracked packet is absent. It does not call that a full pass of
+`tools/check.py`. Run the tests beside the code you change as well.
 
 Many directories under `integrations/siliconforest/` have host-only tests of their own
 (`test_*.py`, `cargo test`); run the ones next to what you change. None of them contacts
