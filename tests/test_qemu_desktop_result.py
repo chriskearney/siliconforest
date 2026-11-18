@@ -43,6 +43,12 @@ class DesktopEvidence(unittest.TestCase):
             self.assertEqual(result['status'], expected)
             self.assertEqual(result['failed'], [])
 
+    def test_failed_application_is_a_failure_without_a_guest_pass_marker(self):
+        result = {'status': 'ENDED', 'desktop_up': True}
+        runner.record_evidence(result, b'QDDESK_DESKTOP_RC=1\n'
+                               b'QDDESK_RESULT cleanup=Incomplete launch_failures=1\nQDDESK_END\n')
+        self.assertEqual(result['status'], 'FAILED')
+
 
 if __name__ == '__main__':
     unittest.main()

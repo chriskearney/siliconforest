@@ -39,15 +39,18 @@ class Qmp:
         self.cmd('qmp_capabilities')
 
     def cmd(self, name, **args):
-        self.f.write(json.dumps({'execute': name, 'arguments': args}).encode() + b'\n')
-        self.f.flush()
-        while True:
-            line = self.f.readline()
-            if not line:
-                raise RuntimeError('QMP closed')
-            r = json.loads(line)
-            if 'return' in r or 'error' in r:
-                return r
+        try:
+            self.f.write(json.dumps({'execute': name, 'arguments': args}).encode() + b'\n')
+            self.f.flush()
+            while True:
+                line = self.f.readline()
+                if not line:
+                    raise RuntimeError('QMP closed')
+                r = json.loads(line)
+                if 'return' in r or 'error' in r:
+                    return r
+        except TimeoutError as error:
+            raise TimeoutError('QMP %s timed out' % name) from error
 
     def shot(self, path):
         # QD_NO_SHOTS=1: no QMP screendump (on a host where it hangs QEMU: seen on 17 November 2026 with QEMU 11.1.0)
@@ -167,7 +170,9 @@ def record_evidence(result, log):
         r'result=(FAIL|NOT-|MISMATCH|INCOMPLETE)|panic\(|QDDESK_DESKTOP_RC=[1-9]|launch_failures=[1-9]', line)]
     # A clean compositor exit is insufficient if its applications never launched
     # or its unattended checks could not finish before the session deadline.
-    if result['status'] == 'PASS' and (result['failed'] or not result.get('desktop_up')):
+    if result['status'] in ('PASS', 'ENDED') and result['failed']:
+        result['status'] = 'FAILED'
+    elif result['status'] == 'PASS' and not result.get('desktop_up'):
         result['status'] = 'FAILED'
 
 
@@ -185,7 +190,8 @@ def main():
     p.add_argument('--passed', default=r'QDDESK_PASS', help='serial marker for a passed unattended session')
     p.add_argument('--window', action='store_true', help='show a QEMU window and wait until the session or the window ends')
     p.add_argument('--timeout', type=int, default=900, help='upper bound for the whole run, seconds')
-    p.add_argument('--shot-every', type=float, default=10.0, help='seconds between screenshots (0: none)')
+    p.add_argument('--shot-every', type=float, default=10.0, help='seconds between live screenshots (0: disabled); final capture remains')
+    p.add_argument('--live-shots', action='store_true', help='also capture while the desktop runs; may stall ramfb on some QEMU versions')
     p.add_argument('--qemu', default='qemu-system-aarch64')
     p.add_argument('--cpu', default='neoverse-n2')   #  stalls in the firmware
     p.add_argument('--smp', type=int, default=2)
@@ -210,6 +216,8 @@ def main():
     shots = []
 
     def shot(name):
+        if name != 'final' and not a.live_shots:
+            return
         path = out / 'shots' / (name + '.png')
         if qmp.shot(path):
             shots.append(str(path))
