@@ -4,9 +4,10 @@
 # The SiliconForest release image: what it is, how it is built, how it is checked
 
 Status, 18 November 2026: the recipe builds the root, boot and release files and the root
-boots in QEMU to the desktop, from the build outputs the owner's M1 carries; the build from a
-clean clone is in progress; nothing has been published or installed. Read "What is proven"
-before relying on any of it.
+boots in QEMU to the desktop, both from the build outputs the owner's M1 carries and from a
+clone of the public repository built on the workstation (CODEX-BUILD's build; the build in a
+clean container is still to come); nothing has been published or installed. Read "What is
+proven" before relying on any of it.
 
 The owner's M1 (13-inch MacBook Pro, J293) runs SiliconForest from its own disk since
 13 November 2026. Its root filesystem was assembled by hand: an upstream PureDarwin image
@@ -261,7 +262,41 @@ build of `release/packages.nix` was not finished when this was written.
     ("RefCell already borrowed"); the dock died. The loans now end before the dead tile is drawn.
 - **Firefox's runtime**: 840 entries byte for byte with the M1's; the launcher's dry plan equals
   the M1's. Firefox itself was not started (no Mozilla bundle, no Homebrew in the image).
-- Not done: an install on any machine; the from-clone build and its reproducibility.
+- **From a clone.** CODEX-BUILD built the public repository at commit 1647a25 on the workstation
+  (its host build 008, `release/packages.nix`, no local store paths). That clone predates the
+  font licence texts above. On its root and QEMU disk:
+  - **QEMU**, `docs/release/QEMU.md`'s path with the clone's own runner (QEMU 10.2.4 from the
+    lock), run 21: the root mounts, the jobs start, the image check passes (perl, zsh, ssh, the
+    account, launchd's jobs); desktop, dock and terminal come up; `uname -m; echo typed-in-qemu`,
+    typed over VNC, printed `arm64` and the text; the session ran 1,500 s, the compositor exited
+    0, `QDDESK_PASS`. Pictures: `runs/image/qemu/run21/shots/typed.png` and `latest.png`.
+  - **A second build** (`nix-store --realise --check`, same machine): the root and its steps (the
+    root tree, the tree's files, the Homebrew prefix, the Activity Monitor libraries, the Firefox
+    runtime), the boot files, the release files and the QEMU disk came out the same bytes. The desktop step (`siliconforest-desktop-0.1`) did not, twice:
+    18 bytes of `chonkstep-darwin-desktop`'s debug map differ, the name of rustc's random
+    temporary link directory (`deps/rustcXXXXXX/`), and the signature over them; the code is the
+    same. Linking with `-Wl,-S` (no debug map) should fix it; that recipe is CODEX-BUILD's (not
+    tried yet).
+  - **Compared with the M1**: 71,779 entries the same, 228 content and 13 type differences.
+    46 of the content differences are the ones the local build has (above). The other 182 are
+    where the local build equals the M1 and the clone does not (`tools/explain-drift.py`):
+    127 build noise (object timestamps in the debug map: 92; build-time store paths: 35);
+    25 the rename (store and source paths named puredarwin in the M1's builds and siliconforest
+    in the clone's; with the longer names everything after them moves, as in the OpenSSH tools
+    and libcurl: the tool counts 22 and calls three of these (`ssh`, `sshd-auth`, `libcurl`)
+    changed source, but the strings only one side has there are random bytes); 30 source the clone has and the M1 does not yet, inferred from the strings only
+    one side has: the Firefox private AppKit (pinch magnification, scroll momentum, newer button
+    and text field constructors), its WindowServer, OpenGL, CoreText, Onyx2D, `fonts.conf` (a
+    Nimbus Roman alias) and `open-url`, the Cocoa root's CoreGraphics and CoreText, CloudKit's
+    declaration aliases, CFNetwork's proxy header, and the compositor, dock and terminal.
+    Present on the M1 and missing from the clone's root, where the local build has them (inferred
+    from the layers' sources, not checked per file): `sfvideo-gl` and the Wayland Mesa libraries
+    of a later sfvideo build than the public recipe makes, AudioToolbox's `.output-sf` copy, an
+    AVFoundation link, and seven headers renamed since (`PD*` to `SF*`). The clone's root has the
+    CFNetwork headers and StoreKit that the local build lacks, the M1's flattened CoreGraphics
+    and CoreText, and flattened AppKit and Onyx2D copies where the M1 has links.
+- Not done: an install on any machine; the build in a clean container; the M1 rebuilt from a
+  clone (it runs builds from before the rename).
 
 ## Tools
 
@@ -270,4 +305,8 @@ build of `release/packages.nix` was not finished when this was written.
 - `release/image/tools/classify.py`: the classification above, from the listing, the hashes,
   the base image's listing and hash indexes of build outputs and of the tree.
 - `release/image/compare.py`: built root against a classified listing.
+- `release/image/tools/explain-builds.py` (with `macho-diff.py`): every difference between two
+  built roots, Mach-O files split into object timestamps, store paths, UUID, signature and the
+  rest. `release/image/tools/explain-drift.py`: why a from-clone root differs from the M1 where
+  another root does not.
 - `release/image/sf_personalize.py`, `release/image/sf_verify_release.py`: for the installer.
