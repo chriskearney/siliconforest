@@ -1,0 +1,201 @@
+--- a/src/Frameworks/QuartzCore/CAOpenGLLayer.h
++++ b/src/Frameworks/QuartzCore/CAOpenGLLayer.h
+@@ -6,7 +6,9 @@
+ /* A layer an application draws with OpenGL (CGL). The layer's -display makes (once) a CGL context of the
+    layer's pixel format through the overridable methods below, renders into that context's offscreen surface at
+    the layer's pixel size, and reads the pixels back as the layer's contents: what draws the layer tree (AppKit
+-   on the CPU, CALayerContext with OpenGL) shows them like any other contents. */
++   on the CPU, CALayerContext with OpenGL) shows them like any other contents. (IOSURF) Where IOSurfaces have GPU
++   storage (SFFX_IOSURFACE_GPU=1), the picture is copied on the GPU into one of two such surfaces instead, and that
++   surface is the contents: nothing is read back through the CPU. */
+ @interface CAOpenGLLayer : CALayer {
+     BOOL _asynchronous;
+     CGLPixelFormatObj _sfPixelFormat;
+@@ -14,6 +16,9 @@
+     GLint _sfSurfaceSize[2];
+     id _sfTimer;
+     BOOL _sfFailed;
++    CFTypeRef _sfFrames[2];
++    unsigned _sfFrameNext;
++    BOOL _sfFramesOff;
+ }
+ 
+ @property(getter=isAsynchronous) BOOL asynchronous;
+--- a/src/Frameworks/QuartzCore/CAOpenGLLayer.m
++++ b/src/Frameworks/QuartzCore/CAOpenGLLayer.m
+@@ -53,6 +53,53 @@
+     free((void *)data);
+ }
+ 
++/* (IOSURF) The picture as an IOSurface with GPU storage: the layer context's renderer binds such contents without a
++ * copy (CGLPDBindSurfaceTexture), and with SFFX_GPU_PRESENT the window server hands its frame to the desktop the same
++ * way. Reading 2436x1370 pixels back, flipping them, making an image and converting it again into the renderer's
++ * texture cost VLC's 1080p picture ~40 ms a frame on the render thread: the window showed ~24 of 30 pictures a
++ * second. Everything is found at run time; without GPU storage (no SFFX_IOSURFACE_GPU) the layer reads back as before. */
++static struct {
++    CFTypeRef (*create)(CFDictionaryRef);
++    size_t (*gpuOffset)(CFTypeRef), (*width)(CFTypeRef), (*height)(CFTypeRef);
++    int (*copy)(CFTypeRef, int);
++} sfFrameAPI;
++
++static void sfLoadFrameAPI(void) {
++    void *lib = dlopen("/System/Library/Frameworks/IOSurface.framework/IOSurface", RTLD_LAZY | RTLD_GLOBAL);
++
++    if (lib != NULL) {
++        sfFrameAPI.create = dlsym(lib, "IOSurfaceCreate");
++        sfFrameAPI.gpuOffset = dlsym(lib, "IOSurfaceSFGPUGetOffset");
++        sfFrameAPI.width = dlsym(lib, "IOSurfaceGetWidth");
++        sfFrameAPI.height = dlsym(lib, "IOSurfaceGetHeight");
++    }
++    // CGL's GPU copy of the current context's framebuffer into a surface of its size (cgl-patches/0003)
++    sfFrameAPI.copy = dlsym(RTLD_DEFAULT, "CGLSFFXCopyFramebuffer");
++}
++
++static CFTypeRef sfCreateFrame(GLint width, GLint height) {
++    CFMutableDictionaryRef props = CFDictionaryCreateMutable(NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
++    CFStringRef keys[] = { CFSTR("IOSurfaceWidth"), CFSTR("IOSurfaceHeight"), CFSTR("IOSurfaceBytesPerElement"), CFSTR("IOSurfacePixelFormat") };
++    int values[] = { width, height, 4, 0x42475241 /* 'BGRA' */ };
++    CFTypeRef surface;
++
++    if (props == NULL)
++        return NULL;
++    for (int i = 0; i < 4; i++) {
++        CFNumberRef n = CFNumberCreate(NULL, kCFNumberIntType, &values[i]);
++
++        CFDictionarySetValue(props, keys[i], n);
++        CFRelease(n);
++    }
++    surface = sfFrameAPI.create(props);
++    CFRelease(props);
++    if (surface != NULL && sfFrameAPI.gpuOffset(surface) == 0) {
++        CFRelease(surface);
++        surface = NULL;
++    }
++    return surface;
++}
++
+ // the asynchronous layer's display-refresh tick: a timer target that does not keep the layer
+ @interface SFOpenGLLayerTick : NSObject {
+ @public
+@@ -94,6 +141,9 @@
+ }
+ 
+ - (void)dealloc {
++    for (int i = 0; i < 2; i++)
++        if (_sfFrames[i] != NULL)
++            CFRelease(_sfFrames[i]);
+     [_sfTimer invalidate];
+     [_sfTimer release];
+     if (_sfContext != NULL)
+@@ -165,6 +215,59 @@
+     return YES;
+ }
+ 
++// (IOSURF) the picture just drawn, copied on the GPU into the next of two GPU surfaces, as the contents; NO when that
++// cannot be done (no GPU storage, no CGL copy), and then the picture is read back as before
++- (BOOL)_sfPresentFrameWidth:(GLint)width height:(GLint)height {
++    static pthread_once_t once = PTHREAD_ONCE_INIT;
++
++    if (_sfFramesOff)
++        return NO;
++    pthread_once(&once, sfLoadFrameAPI);
++    if (sfFrameAPI.create == NULL || sfFrameAPI.gpuOffset == NULL || sfFrameAPI.width == NULL || sfFrameAPI.height == NULL ||
++        sfFrameAPI.copy == NULL) {
++        _sfFramesOff = YES;
++        return NO;
++    }
++    unsigned slot = _sfFrameNext++ % 2;
++    CFTypeRef frame = _sfFrames[slot];
++
++    if (frame != NULL && (sfFrameAPI.width(frame) != (size_t)width || sfFrameAPI.height(frame) != (size_t)height)) {
++        CFRelease(frame);
++        frame = _sfFrames[slot] = NULL;
++    }
++    if (frame == NULL && (frame = _sfFrames[slot] = sfCreateFrame(width, height)) == NULL) {
++        if (sfTraceLevel() > 0)
++            fprintf(stderr, "CAOpenGLLayer %p: no IOSurface with GPU storage; its pictures are read back\n", self);
++        _sfFramesOff = YES;
++        return NO;
++    }
++    // an opaque layer's alpha is not looked at (0320); the surface carries it to the renderer, so it is made 1 here
++    if ([self isOpaque]) {
++        GLboolean mask[4], scissor = glIsEnabled(GL_SCISSOR_TEST);
++        GLfloat clear[4];
++
++        glGetBooleanv(GL_COLOR_WRITEMASK, mask);
++        glGetFloatv(GL_COLOR_CLEAR_VALUE, clear);
++        glDisable(GL_SCISSOR_TEST);
++        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
++        glClearColor(0, 0, 0, 1);
++        glClear(GL_COLOR_BUFFER_BIT);
++        glColorMask(mask[0], mask[1], mask[2], mask[3]);
++        glClearColor(clear[0], clear[1], clear[2], clear[3]);
++        if (scissor)
++            glEnable(GL_SCISSOR_TEST);
++    }
++    // rows flipped on the way, top row first as an image's; complete on the GPU when it returns. Where it fails (the
++    // context not yet at the new size during a resize) this one picture is read back
++    if (!sfFrameAPI.copy(frame, 1)) {
++        if (sfTraceLevel() > 0)
++            fprintf(stderr, "CAOpenGLLayer %p: the GPU copy into its %dx%d surface failed; this picture is read back\n", self, width, height);
++        return NO;
++    }
++    [self setContents:(id)frame];
++    return YES;
++}
++
+ // renders and reads the pixels back as the contents; NO when nothing was drawn
+ - (BOOL)_sfRenderForced:(BOOL)forced {
+     CGFloat scale = [self contentsScale] > 0 ? [self contentsScale] : 1;
+@@ -198,7 +301,7 @@
+     double t1 = sfNow();
+     CGLLockContext(_sfContext);
+     double t2 = sfNow();
+-    int resized = 0, luma = -1, can = -1, left = 0;
++    int resized = 0, luma = -1, can = -1, left = 0, surfaced = 0;
+     GLenum err = 0;
+     if (_sfSurfaceSize[0] != width || _sfSurfaceSize[1] != height) {
+         resized = 1;
+@@ -208,7 +311,7 @@
+     }
+     if (forced || (can = [self canDrawInCGLContext:_sfContext pixelFormat:_sfPixelFormat forLayerTime:now displayTime:NULL])) {
+         size_t row = (size_t)width * 4;
+-        uint8_t *pixels = malloc(row * height), *flipped = malloc(row * height);
++        uint8_t *pixels = NULL, *flipped = NULL;
+ 
+         glViewport(0, 0, width, height);
+         [self drawInCGLContext:_sfContext pixelFormat:_sfPixelFormat forLayerTime:now displayTime:NULL];
+@@ -221,10 +324,10 @@
+             if (sfTraceLevel() > 0)
+                 fprintf(stderr, "CAOpenGLLayer %p: the drawing left context %p current, not the layer's; the last picture stays\n", self, CGLGetCurrentContext());
+             left = 1;
+-            free(pixels);
+-            free(flipped);
+         }
+-        else if (pixels != NULL && flipped != NULL) {
++        else if ((surfaced = [self _sfPresentFrameWidth:width height:height]))
++            drew = YES;
++        else if ((pixels = malloc(row * height)) != NULL && (flipped = malloc(row * height)) != NULL) {
+             glPixelStorei(GL_PACK_ALIGNMENT, 1);
+             err = glGetError();
+             glReadPixels(0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
+@@ -246,16 +349,14 @@
+             CGImageRelease(image);
+             drew = YES;
+         }
+-        else if (!left) {
++        else
+             free(pixels);
+-            free(flipped);
+-        }
+     }
+     CGLUnlockContext(_sfContext);
+     CGLSetCurrentContext(previous);
+     if (sfTraceLevel() >= 2)
+-        fprintf(stderr, "SFCAOGL %.4f %s %p %dx%d%s%s can=%d drew=%d luma=%d glerr=0x%x current %.1fms lock %.1fms total %.1fms\n", t0, pthread_main_np() ? "main" : "other", self, width, height,
+-                resized ? " resized" : "", left ? " left" : "", can, drew, luma, err, (t1 - t0) * 1e3, (t2 - t1) * 1e3, (sfNow() - t0) * 1e3);
++        fprintf(stderr, "SFCAOGL %.4f %s %p %dx%d%s%s%s can=%d drew=%d luma=%d glerr=0x%x current %.1fms lock %.1fms total %.1fms\n", t0, pthread_main_np() ? "main" : "other", self, width, height,
++                resized ? " resized" : "", left ? " left" : "", surfaced ? " surface" : "", can, drew, luma, err, (t1 - t0) * 1e3, (t2 - t1) * 1e3, (sfNow() - t0) * 1e3);
+     return drew;
+ }
+ 

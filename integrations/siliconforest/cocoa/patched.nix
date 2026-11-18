@@ -556,6 +556,11 @@
 #         before its draw in one variable for all its threads; when its video thread asked for the context during a draw
 #         on the main thread, that draw ended with no context current: black frames, about 0.1 s, during a corner drag).
 #         SF_CAOGL_TRACE=1 says when; SF_CAOGL_TRACE=2 also logs every render (time, thread, size, a sample of the picture)
+#   0331  QuartzCore (IOSURF): where IOSurfaces have GPU storage (SFFX_IOSURFACE_GPU=1), CAOpenGLLayer copies its picture
+#         on the GPU (CGLSFFXCopyFramebuffer, rows flipped, alpha 1 for an opaque layer) into the next of two such
+#         surfaces and makes that surface its contents, which the renderer binds without a copy; nothing is read back.
+#         Without GPU storage it reads back as before. (VLC's 1080p picture: ~40 ms a frame of read-back, image and
+#         per-pixel texture conversion on the render thread; the window showed ~24 of 30 pictures a second)
 #   0304, 0305w (FXPERF2's FX-029 follow-ups, adopted by TERM11 unchanged; opt-in SFFX_GPU_DAMAGE=1): a layer-only
 #         flush with nothing drawn into the window's own backing store tells the window server so, which then skips its
 #         whole-backing-store compare (11 MB a present; ~10 % of Firefox's parent main thread on cnn.com)
@@ -839,6 +844,7 @@ let
     ./patches/0321-quartzcore-layer-context-reclaims-its-root.patch
     ./patches/0326-quartzcore-opengl-layer-current-before-lock-and-keeps-its-picture.patch
     ./patches/0329-quartzcore-opengl-layer-reads-back-from-its-own-context.patch
+    ./patches/0331-quartzcore-opengl-layer-picture-as-a-gpu-surface.patch
   ];
   quartzcore = pd."quartzcore-msm-arm64".override { src = quartzcoreSrc; };
   wp = "${pd."wayland-protocols"}/share/wayland-protocols";
