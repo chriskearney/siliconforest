@@ -53,7 +53,16 @@ class Qmp:
         # QD_NO_SHOTS=1: no QMP screendump (on a host where it hangs QEMU: seen on 17 November 2026 with QEMU 11.1.0)
         if os.environ.get('QD_NO_SHOTS'):
             return False
-        r = self.cmd('screendump', filename=str(path), format='png')
+        # ramfb capture can stall while its live surface is being updated.
+        # Preserve the VM's run state and capture a stationary framebuffer.
+        running = self.cmd('query-status').get('return', {}).get('running', False)
+        if running:
+            self.cmd('stop')
+        try:
+            r = self.cmd('screendump', filename=str(path), format='png')
+        finally:
+            if running:
+                self.cmd('cont')
         return 'return' in r and Path(path).exists()
 
     def keys(self, *names, hold=0.08):
@@ -123,6 +132,13 @@ class Serial:
 
 
 def qemu_command(a, out):
+    # A flake image is immutable. Keep each run's guest writes in its own overlay
+    # so the same built image can be used again without retaining guest state.
+    disk = out / 'system-overlay.qcow2'
+    disk.unlink(missing_ok=True)
+    qemu_img = str(Path(a.qemu).with_name('qemu-img'))
+    subprocess.run([qemu_img, 'create', '-q', '-f', 'qcow2', '-F', 'raw',
+                    '-b', str(a.image.resolve()), str(disk)], check=True)
     vars_fd = out / 'AAVMF_VARS.fd'
     shutil.copyfile(AAVMF / 'AAVMF_VARS.fd', vars_fd)
     os.chmod(vars_fd, 0o644)
@@ -135,7 +151,7 @@ def qemu_command(a, out):
             '-smp', str(a.smp), '-m', str(a.memory), '-boot', 'order=c,strict=on',
             '-drive', 'if=pflash,format=raw,unit=0,readonly=on,file=%s' % (AAVMF / 'AAVMF_CODE.fd'),
             '-drive', 'if=pflash,format=raw,unit=1,file=%s' % vars_fd,
-            '-drive', 'if=none,id=system,file=%s,format=raw,cache=unsafe' % a.image.resolve(),
+            '-drive', 'if=none,id=system,file=%s,format=qcow2,cache=unsafe' % disk,
             '-device', 'virtio-blk-pci,drive=system,bootindex=1',
             '-device', 'ramfb',
             '-device', 'virtio-net-pci,netdev=net0', '-netdev', 'user,id=net0',
@@ -144,6 +160,18 @@ def qemu_command(a, out):
             '-serial', 'chardev:ser',
             '-qmp', 'unix:%s,server=on,wait=off' % (out / 'qmp.sock'),
             '-monitor', 'none', '-no-reboot'] + display + a.qemu_arg
+
+
+def record_evidence(result, log):
+    lines = [line.decode(errors='replace').strip() for line in log.splitlines()]
+    result['wmauto'] = [line for line in lines if line.startswith('WMAUTO') and
+                        'result=' in line and not line.startswith('WMAUTO check')]
+    result['failed'] = [line[:300] for line in lines if re.search(
+        r'result=(FAIL|NOT-|MISMATCH|INCOMPLETE)|panic\(|QDDESK_DESKTOP_RC=[1-9]|launch_failures=[1-9]', line)]
+    # A clean compositor exit is insufficient if its applications never launched
+    # or its unattended checks could not finish before the session deadline.
+    if result['status'] == 'PASS' and (result['failed'] or not result.get('desktop_up')):
+        result['status'] = 'FAILED'
 
 
 def main():
@@ -259,9 +287,7 @@ def main():
             (out / s).unlink(missing_ok=True)
     result['shots'] = shots
     log = (out / 'serial.log').read_bytes() if (out / 'serial.log').exists() else b''
-    lines = [l.decode(errors='replace').strip() for l in log.splitlines()]
-    result['wmauto'] = [l for l in lines if l.startswith('WMAUTO') and 'result=' in l and not l.startswith('WMAUTO check')]
-    result['failed'] = [l[:300] for l in lines if re.search(r'result=(FAILED|NOT-|MISMATCH)|panic\(|QDDESK_DESKTOP_RC=[1-9]', l)]
+    record_evidence(result, log)
     (out / 'result.json').write_text(json.dumps(result, indent=1) + '\n')
     print('qemu-desktop: %s  (%s)' % (result['status'], out))
     if 'error' in result:

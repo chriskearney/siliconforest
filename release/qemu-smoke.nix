@@ -10,7 +10,8 @@ let
   libsystem = import (sf + "/libsystem-default/build-libsystem.nix");
   qemuBase = import (sf + "/qemu-dev/build-image.nix") { };
   tokens = {
-    SECONDS = "45"; AUTOPILOT = "1"; STATS = "1"; SOUND = "0";
+    # TCG startup can consume more than 45 seconds on a busy build host.
+    SECONDS = "180"; AUTOPILOT = "1"; STATS = "1"; SOUND = "0";
     RENDERER = "cpu"; TERMINALS = "1"; FETCH = "0"; PERSIST = "0";
     SCALE = "1"; THEME = "sf-canopy"; ONLY = "settle,type"; ENV = "";
   };
