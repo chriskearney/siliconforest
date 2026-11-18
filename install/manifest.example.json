@@ -1,0 +1,24 @@
+{
+ "format": "siliconforest-install/1",
+ "release": "0.0.0-example",
+ "models": ["J293"],
+ "macos": {"min": "13.5", "max_major": 26},
+ "stub_firmware": ["13.5"],
+ "boot": {"file": "siliconforest-0.0.0-example-boot.tar.xz", "bytes": 9000000,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001"},
+ "root": {
+  "fs_uuid": "00000000-0000-4000-8000-000000000000",
+  "compression": "xz",
+  "image_bytes": 12884901888,
+  "image_sha256": "0000000000000000000000000000000000000000000000000000000000000002",
+  "min_bytes": 17179869184,
+  "default_bytes": 51539607552,
+  "parts": [
+   {"file": "siliconforest-0.0.0-example-root.ext4.xz.01", "bytes": 2000000000,
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000003"},
+   {"file": "siliconforest-0.0.0-example-root.ext4.xz.02", "bytes": 700000000,
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000004"}
+  ]
+ },
+ "firmware_slot": {"offset": 1073741824, "length": 33554432}
+}

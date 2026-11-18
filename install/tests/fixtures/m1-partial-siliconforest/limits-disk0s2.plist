@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ContainerCurrentSize</key>
+	<integer>420000000000</integer>
+	<key>CurrentSize</key>
+	<integer>420000000000</integer>
+	<key>MaximumSize</key>
+	<integer>420000000000</integer>
+	<key>MinimumSizeNoGuard</key>
+	<integer>128000000000</integer>
+	<key>MinimumSizePreferred</key>
+	<integer>130000000000</integer>
+	<key>Type</key>
+	<string>APFSContainerReference</string>
+</dict>
+</plist>

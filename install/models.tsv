@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+#
+# The Macs the SiliconForest installer accepts. One line per board, fields separated by TABs.
+# A release can narrow this list (its signed manifest names the boards it was built for); it
+# can never widen it.
+#
+#   target          `sysctl -n hw.targettype` (the board, e.g. J293)
+#   hw_model        `sysctl -n hw.model` (Apple's model identifier)
+#   device_class    the board's "compatible" name as the Asahi installer uses it (j293ap)
+#   chip            the SoC
+#   status          supported = installable; any other word = refused with this line's note
+#   macos_min       oldest macOS the installer runs on for this board
+#   macos_max_major newest macOS major version tested for this board (newer ones are refused)
+#   stub_firmware   macOS versions whose boot firmware SiliconForest's drivers are written against
+#                   (the stub volume is built from that version's restore image, as Asahi does)
+#   name            Apple's marketing name
+#
+# What a new board needs before it gets a line with "supported" (docs/INSTALL.md, "Other Macs"):
+# a SiliconForest kernel collection, device tree handling and stage 1/stage 2 built and booted on
+# that board; its storage write fence proven; one real install and uninstall on that board by a
+# person who can recover it; its firmware version recorded here.
+#
+#target	hw_model	device_class	chip	status	macos_min	macos_max_major	stub_firmware	name
+J293	MacBookPro17,1	j293ap	T8103	supported	13.5	26	13.5	MacBook Pro (13-inch, M1, 2020)

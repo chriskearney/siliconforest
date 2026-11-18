@@ -1,0 +1,13 @@
+{
+ "bless --getBoot": "/dev/disk3s5",
+ "dseditgroup -o checkmember -m user admin": "yes user is a member of admin",
+ "fdesetup status": "FileVault is Off.",
+ "pmset -g batt": "Now drawing from 'AC Power'",
+ "stat -f %Su /dev/console": "user",
+ "sw_vers -buildVersion": "25F84",
+ "sw_vers -productVersion": "26.5.2",
+ "sysctl -in sysctl.proc_translated": "0",
+ "sysctl -n hw.model": "Mac17,2",
+ "sysctl -n hw.targettype": "J704",
+ "tmutil listlocalsnapshots /": "Snapshots for disk /:"
+}

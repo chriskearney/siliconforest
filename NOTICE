@@ -131,6 +131,21 @@ m1-ave/tools/upstream/COPYING).
 What we take: the hardware video encoder driver as the source of the AVE kernel extension port
 (in progress, no hardware encoder result yet); copied files keep their SPDX lines and notices.
 
+Asahi Linux installer
+---------------------
+The Asahi Linux contributors, https://github.com/AsahiLinux/asahi-installer, v0.9.2
+(dffbb38e), published package installer-v0.9.2.tar.gz (SHA-256 484d999e...bbe8276).
+Licence: MIT ("Copyright (c) 2021 The Asahi Linux contributors", read from its LICENSE). The
+package also carries Python (PSF License) and libffi (MIT), as the Asahi project builds it.
+What we take: the installer's own code, unmodified, as the engine of SiliconForest's
+installer (install.sh downloads the package and checks its digest; it is not copied into this
+repository). install/engine/ drives its modules and routes their disk changes through
+install/engine/sf_gate.py; the order of the install steps, the size limits for shrinking
+macOS and the way the system disk and free space are found are adapted from its main.py and
+diskutil.py, and say so where they are. The earlier kit in
+integrations/siliconforest/m1-native-boot/install/ copies the same code into a build output
+with its LICENSE beside it.
+
 speakersafetyd
 --------------
 The Asahi Linux contributors, speakersafetyd 2.0.1 (4175df66)
