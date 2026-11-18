@@ -107,3 +107,43 @@ reference; stereo reports false as required here. They cover the final two
 missing reviewed VT imports. This is a public query fixture, not a decoder
 execution or canonical replacement. Actual QuickTime remains the v4 Quartz
 loader failure, despite this later export/query evidence.
+
+## Loader libraries (17 November 2026, SF-AI)
+
+`loader.nix` builds the six libraries QuickTime Player's load commands name that no
+earlier stage had: SwiftUI, DeveloperToolsSupport, the Swift `os` module
+(`libswiftos.dylib`), QuickLook, QuickLookUI and the Quartz umbrella. The last real
+load (v4, above) stopped at the first of them.
+
+| Library | Symbols bound by QuickTime Player | What it is |
+|---|---|---|
+| SwiftUI | 34 | A binding subset written here (`loader/SwiftUI.swift`): the `View` protocol with its hidden requirements, `Text`, `Image`, `Button`, the frame modifier, conditional content. Compiler-emitted Swift metadata with library evolution; no renderer. Anything that would draw stops with a message |
+| DeveloperToolsSupport | 2 | `ImageResource` and `ColorResource` as a name and a bundle |
+| libswiftos | 2 | `os.Logger` creation over libSystem's `os_log_create` |
+| QuickLook | 3 | No thumbnail generators: `QLThumbnailImageCreate` returns NULL, as documented when none can be made |
+| QuickLookUI | 1 | No preview panel: there is never a preview to open a document from |
+| Quartz | 0 | Umbrella that re-exports QuickLookUI |
+
+The application contains one SwiftUI view and imports no hosting class, so the
+subset is expected to be needed for binding only. That is an inference from the
+import table, not an observation.
+
+CGFloat: SwiftUI's frame modifier is mangled with `CoreGraphics.CGFloat`, which our
+Swift CoreFoundation overlay does not define. The recipe compiles Finch's
+`userland/swift/overlays/CoreFoundation/CGFloat.swift` (Apache-2.0 with the Swift
+Runtime Library Exception; from the Swift project's historical overlay) into the
+subset from the pinned Finch source and ships its licence beside it. Its proper home
+is `libswiftCoreFoundation`; when the Swift runtime build gains it, drop it here.
+
+`loader-check.nix` runs `loader/check_exports.py`: every name in
+`loader/imports.json` must be exported by the library with that install name. It
+passes, 42 of 42. This is a static prediction of dyld's verdict on these six
+libraries; nothing has been loaded on SiliconForest. With these libraries laid over
+the 15 November copy of the system and the stages above, `sf_gapscan.py` reports no
+required library missing and 112 symbols unbound (153 without them).
+`docs/roadmap/issues/SF-AI-quicktime.md` has the table and the plan.
+
+`../Network/toolchain.nix` needed one correction for any Swift source that imports
+Foundation: the kernel-private `sf_pthread_sched.h` is kept out of the generated
+Darwin module, as `../../rebase/swift-darwin-module.nix` already does for the Swift
+runtime build.
