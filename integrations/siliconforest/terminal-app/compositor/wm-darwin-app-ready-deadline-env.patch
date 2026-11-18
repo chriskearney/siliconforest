@@ -1,0 +1,78 @@
+SPDX-License-Identifier: MIT
+Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+
+wm-darwin: the READY deadline of a managed application (25 s) and the autopilot's wait for a
+focused window (15 s) can be set from the environment, CHONKSTEP_DARWIN_APP_READY_SECONDS and
+CHONKSTEP_DARWIN_AUTOPILOT_ARM_SECONDS (5..=600). The defaults are unchanged; the QEMU run of
+the release root (release/image/qemu/prepare-run.sh) sets them longer, because under TCG on a
+busy host the terminal took 27 s to start.
+
+diff -ru a/crates/wm-darwin/src/applications.rs b/crates/wm-darwin/src/applications.rs
+--- a/crates/wm-darwin/src/applications.rs	2026-11-18 01:38:36.038847963 -0800
++++ b/crates/wm-darwin/src/applications.rs	2026-11-18 01:38:36.205846039 -0800
+@@ -853,6 +853,19 @@
+ }
+ /// All waits/signals happen on the owning event loop; no detached reaper or
+ /// blocking Drop. Failure retains the PID/state for the session's final audit.
++/// How long an application has to report READY: 25 s, or CHONKSTEP_DARWIN_APP_READY_SECONDS
++/// (5..=600). Real hardware keeps the default; an emulated machine (QEMU's TCG on a busy host)
++/// starts a process an order of magnitude slower and sets it longer.
++pub const APP_READY_ENV: &str = "CHONKSTEP_DARWIN_APP_READY_SECONDS";
++fn ready_timeout() -> Duration {
++    Duration::from_secs(
++        std::env::var(APP_READY_ENV)
++            .ok()
++            .and_then(|v| v.parse::<u64>().ok())
++            .filter(|s| (5..=600).contains(s))
++            .unwrap_or(25),
++    )
++}
+ struct Lifecycle {
+     ready_deadline: Instant,
+     application_deadline: Instant,
+@@ -864,7 +877,7 @@
+ impl Lifecycle {
+     fn new(now: Instant, lifetime: Duration) -> Self {
+         Self {
+-            ready_deadline: now + Duration::from_secs(25),
++            ready_deadline: now + ready_timeout(),
+             application_deadline: now + lifetime,
+             term_at: None,
+             kill_at: None,
+diff -ru a/crates/wm-darwin/src/autopilot.rs b/crates/wm-darwin/src/autopilot.rs
+--- a/crates/wm-darwin/src/autopilot.rs	2026-11-18 01:38:36.117847053 -0800
++++ b/crates/wm-darwin/src/autopilot.rs	2026-11-18 01:38:36.212003824 -0800
+@@ -54,6 +54,15 @@
+ pub const ENV: &str = "CHONKSTEP_DARWIN_AUTOPILOT";
+ 
+ /// The volume phase's keys as HID usages (F11, F12, F10) and as the evdev codes they decode to.
++/// How long the autopilot waits for a visible focused window before it starts: 15 s, or
++/// CHONKSTEP_DARWIN_AUTOPILOT_ARM_SECONDS (5..=600) on an emulated machine.
++fn arm_ms() -> u64 {
++    std::env::var("CHONKSTEP_DARWIN_AUTOPILOT_ARM_SECONDS")
++        .ok()
++        .and_then(|v| v.parse::<u64>().ok())
++        .filter(|s| (5..=600).contains(s))
++        .map_or(15_000, |s| s * 1000)
++}
+ const VOLUME_KEYS: [u8; 6] = [0x44, 0x44, 0x45, 0x45, 0x43, 0x43];
+ const VOLUME_EVDEV: [u32; 6] = [
+     crate::volume::KEY_VOLUME_DOWN,
+@@ -141,7 +150,7 @@
+     }
+     fn length_ms(self) -> u64 {
+         match self {
+-            Phase::Arm => 15_000,
++            Phase::Arm => arm_ms(),
+             Phase::Settle => 2_000,
+             Phase::Pointer => 8_000,
+             Phase::Drag => 4_000,
+@@ -1094,7 +1103,7 @@
+                     self.begin(first, server);
+                 }
+             } else if t >= Phase::Arm.length_ms() {
+-                self.fail(String::from("WMAUTO failed reason=\"no visible focused window within 15 s\""));
++                self.fail(format!("WMAUTO failed reason=\"no visible focused window within {} s\"", arm_ms() / 1000));
+                 self.phase = Phase::Done;
+             }
+             return Ok(());

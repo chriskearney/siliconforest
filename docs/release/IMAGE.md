@@ -98,8 +98,23 @@ recipe yet; netd's launchd job carries `--live-after 0`, added by hand on 17 Nov
 | Wi-Fi firmware, NVRAM, CLM, txcap (`/Library/Firmware/brcm`), the Touch Bar and video decoder firmware (`/Library/Firmware/apple`) | Apple's firmware, no redistribution right | the installer copies them from the target's own Asahi Linux firmware into the two (empty) directories the root ships with, before the root is written |
 | Mozilla's Firefox bundle (`/Applications/Firefox.app/Contents/Resources/Mozilla.app`) and the outer bundle's `Info.plist` (it copies keys of Mozilla's) | redistribution under Mozilla's terms is not settled (the trademark policy restricts a patched build under the Firefox name) | fetched at install time from Mozilla (`firefox/acquire.py`: the DMG release.json's `mozilla_sha512` names, Mozilla's SHA512SUMS); the runtime around it is ours and in the root (below) |
 | Terminal.app, Activity Monitor.app and anything taken from them | Apple's applications | the user copies them from their own macOS with a helper (INSTALL) |
-| Homebrew (`/opt/homebrew`: 73 kegs on the M1, plus the lab's own builds inside some kegs) | each bottle's own licence; source offers for the GPL ones | poured at install time with `integrations/siliconforest/homebrew/hb_fetch.py` and `hb_pour.py` from a pinned formula list, owned by the account `sf`. Required, not optional: Firefox's launcher runs on Homebrew's `python@3.14` |
+| Homebrew bottles beyond the system's set | each bottle's own licence | the person installs them with `brew` (the client ships) |
 | host keys | per machine | made at the first start of the SSH server (`sf-sshd`) |
+
+## Homebrew in the root
+
+`/opt/homebrew` ships in the root (`release/image/homebrew.nix`): the system's set of formulae
+(m1-storage/tools/sf_userland_push.sh `SF_FORMULAE`: what the root's own programs call, Firefox's
+launcher on `python@3.14`, `/bin/bash`, `make`, `sqlite3`, the brew client's `git`, and the tools of
+a usable shell) with its dependency closure, 63 bottles pinned by sha256 in
+`release/image/homebrew.lock.json` and fetched from Homebrew's public registry, the brew client
+(Homebrew/brew at a pinned revision, BSD-2-Clause) and its portable Ruby. `homebrew/hb_pour.py`
+pours and relocates them as on the M1, owner 501:20. Every keg's licence is in the lock and in
+`/opt/homebrew/.sf-licences.tsv`; by count: MIT 15, GPL-3.0-or-later 11, Apache-2.0 4,
+BSD-2-Clause 4, Apache-2.0 OR MIT 4, BSD-3-Clause 3, GPL-2.0-or-later 2, and single ones
+(Python-2.0, Ruby, MPL-2.0, ISC, blessing, Unicode, LGPL-3.0-or-later, GPL-3.0-only, GCC's runtime
+exception, combinations). The M1 has ten more kegs the owner added with `brew` (neovim, lua, vim, ...):
+they are his, not the system's.
 
 ## First start on another machine
 
@@ -178,10 +193,10 @@ OpenSSH, which macOS and Linux both have. No key exists yet: making it is the ow
 |---|---|
 | `boot.tar.zst`: `kernel.kc` | an APSL-2.0 kernel linked with GPL-2.0 kernel extensions (the PCIe host bridge and DART ported from Linux, the Asahi-derived display and GPU pieces) in one collection; corecrypto is the MPL-2.0 open reimplementation (Vali0004/corecrypto), not Apple's, but its "experimental, unaudited" status should be stated |
 | `boot.tar.zst`: `sf-stage1.bin`, `boot.bin` | m1n1 (MIT) and our stage-2 code (MIT): no question known |
-| `root.ext4` | DejaVu fonts (Bitstream Vera licence, its text installed beside them); the same GPL-2.0 kexts as on-disk bundles in `/System/Library/Extensions`; GPL binaries needing a source offer (the Chonkstep desktop GPL-3.0-only, FFmpeg with x264, Perl under Artistic or GPL, the Darling-derived Metal pieces); fonts (each needs its licence text beside it); whatever upstream PureDarwin ships under Apple's binary driver licence (not established) |
+| `root.ext4` | the Homebrew bottles (63 formulae, licences above; GPL-2.0 and GPL-3.0 ones need a source offer: bash, coreutils, gawk, grep, gnu-sed, gnu-tar, findutils, make, nano, wget, gettext, readline, gmp, mpfr, libunistring, libidn2, git, ...); DejaVu fonts (Bitstream Vera licence, its text installed beside them); Noto Thai (OFL-1.1, beside them); the same GPL-2.0 kexts as on-disk bundles in `/System/Library/Extensions`; GPL binaries needing a source offer (the Chonkstep desktop GPL-3.0-only, FFmpeg with x264, Perl under Artistic or GPL, the Darling-derived Metal pieces); fonts (each needs its licence text beside it); whatever upstream PureDarwin ships under Apple's binary driver licence (not established) |
 | `root.manifest.tsv`, `MANIFEST.tsv`, `SHA256SUMS` | none: paths, sizes and hashes |
 
-Firmware, Apple's applications, Mozilla's bundle and Homebrew bottles are in no artifact.
+Firmware, Apple's applications and Mozilla's bundle are in no artifact.
 
 ## What is proven, and how to check it
 

@@ -60,6 +60,13 @@ in [
   { name = "openssh"; exclude = common; }
   { name = "ffmpeg-x264"; exclude = common ++ [ "include/*" "usr/include/*" ]; }
   { name = "sfvideo"; exclude = common; }
+  # the Thai fonts (cocoa/fonts-thai.nix: Noto, OFL-1.1)
+  { name = "fonts-thai"; exclude = common; optional = true; }
+  # /opt/homebrew (./homebrew.nix: the system's bottles, pinned, poured; the brew client)
+  { name = "homebrew"; exclude = common; }
+  # Activity Monitor's support libraries and tools (./activity-monitor.nix); built against the
+  # root assembled from the layers before it ("late": the libraries link to the root's own)
+  { name = "activity-monitor"; exclude = common; late = true; }
   # the desktop
   { name = "desktop"; exclude = common ++ [ "usr/bin/*.next" ]; }  # .next: the inject-capable test build
   { name = "terminal"; exclude = common; }

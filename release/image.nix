@@ -38,7 +38,7 @@ let
   # Firefox's runtime is assembled here unless the set brings it (./image/firefox-runtime.nix):
   # its providers are built from firefox/*.nix with release.json's arguments, the three selected
   # overrides are these pieces' outputs
-  allPieces = pieces // lib.optionalAttrs (!(pieces ? firefox-runtime) && pieces ? firefox-sc-network) {
+  allPieces0 = pieces // lib.optionalAttrs (!(pieces ? firefox-runtime) && pieces ? firefox-sc-network) {
     firefox-runtime = import (here + "/firefox-runtime.nix") {
       inherit pkgs;
       overrides = {
@@ -48,12 +48,19 @@ let
       };
     };
   };
+  # pieces the recipe builds itself unless the set brings them
+  defaults = lib.optionalAttrs (!(pieces ? homebrew)) { homebrew = import (here + "/homebrew.nix") { inherit pkgs tree; }; }
+    // lib.optionalAttrs (!(pieces ? activity-monitor)) {
+      activity-monitor = import (here + "/activity-monitor.nix") { inherit pkgs tree; linkRoot = rootTree; }; };
+  allPieces = allPieces0 // defaults;
   present = l: builtins.hasAttr (l.piece or l.name) allPieces;
   missing = map (l: l.name) (lib.filter (l: !(present l) && !(l.optional or false)) spec);
+  layerOf = l: { inherit (l) name; path = "${allPieces.${l.piece or l.name}}"; prefix = l.prefix or "/"; exclude = l.exclude or [ ]; }
+    // (if l ? only then { inherit (l) only; } else { });
   layers =
     assert lib.assertMsg (missing == [ ]) "release/image.nix: pieces missing: ${toString missing}";
-    map (l: { inherit (l) name; path = "${allPieces.${l.piece or l.name}}"; prefix = l.prefix or "/"; exclude = l.exclude or [ ]; } // (if l ? only then { inherit (l) only; } else { }))
-      (lib.filter present spec);
+    map layerOf (lib.filter (l: present l && !(l.late or false)) spec);
+  lateLayers = map layerOf (lib.filter (l: present l && (l.late or false)) spec);
   absent = map (l: l.name) (lib.filter (l: !(present l)) spec);
 
   # The two installers of the tree, run against the staged root exactly as they ran on the M1:
@@ -100,26 +107,37 @@ let
     cp -R ${../LICENSES} $out/usr/share/doc/siliconforest/LICENSES
   '';
   layersJson = pkgs.writeText "layers.json" (builtins.toJSON layers);
+  lateJson = pkgs.writeText "late-layers.json" (builtins.toJSON lateLayers);
   # fixed per release (./identity.nix): two builds give the same bytes, and stage 2 is built
   # for exactly this root (boot.stage2 = release/boot-stages.nix { rootUUID = identity.rootUUID; })
   fsUUID = identity.rootUUID;
   features = "has_journal ext_attr resize_inode dir_index filetype extent 64bit flex_bg metadata_csum_seed sparse_super large_file huge_file dir_nlink extra_isize metadata_csum";
 
-  rootfs = pkgs.runCommand "siliconforest-rootfs-${version}" {
-    nativeBuildInputs = with pkgs; [ e2fsprogs fakeroot python3 util-linux jq ];
-    passthru = { inherit layers absent; };
+  # the base with every layer but the late ones: what the late pieces link against
+  rootTree = pkgs.runCommand "siliconforest-root-tree-${version}" {
+    nativeBuildInputs = with pkgs; [ e2fsprogs python3 util-linux jq ];
   } ''
     set -euo pipefail
-    mkdir -p $out work
+    mkdir -p work $out
     img=$(echo ${base}/*.img)
     # the base image's second partition is its ext4 root
     read -r start size < <(sfdisk --json "$img" | jq -r '.partitiontable.partitions[1] | "\(.start) \(.size)"')
     dd if="$img" of=work/base.ext4 bs=512 skip=$start count=$size status=none
-    mkdir work/root
-    debugfs -R "rdump / work/root" work/base.ext4 2> work/rdump.log
-    rm work/base.ext4
-    python3 -I -B ${here}/assemble.py stage --root work/root --layers ${layersJson} \
-      --files ${files} --remove ${here}/remove.txt | tee $out/layers.log
+    debugfs -R "rdump / $out" work/base.ext4 2> work/rdump.log
+    python3 -I -B ${here}/assemble.py stage --root $out --layers ${layersJson} \
+      --files ${files} --remove ${here}/remove.txt > layers.log
+    mkdir -p $out/nix-support; cp layers.log $out/nix-support/layers.log
+  '';
+
+  rootfs = pkgs.runCommand "siliconforest-rootfs-${version}" {
+    nativeBuildInputs = with pkgs; [ e2fsprogs fakeroot python3 util-linux jq ];
+    passthru = { inherit layers lateLayers absent rootTree; };
+  } ''
+    set -euo pipefail
+    mkdir -p $out work
+    cp -a ${rootTree} work/root; chmod -R u+w work/root
+    cp work/root/nix-support/layers.log $out/layers.log; rm -rf work/root/nix-support
+    python3 -I -B ${here}/assemble.py stage --root work/root --layers ${lateJson} | tee -a $out/layers.log
     # Firmware is looked up at /Library/Firmware/{brcm,apple}; the release ships the empty
     # directories, the installer fills them from the target's own firmware (never from here)
     mkdir -p work/root/Library/Firmware/brcm work/root/Library/Firmware/apple
@@ -143,7 +161,7 @@ let
     python3 -I -B - <<PY > $out/image.json
     import json, os
     print(json.dumps({"version": "${version}", "fs_uuid_placeholder": "${fsUUID}", "features": "${features}",
-      "bytes": os.path.getsize("$out/siliconforest-root.ext4"), "layers": json.load(open("${layersJson}")),
+      "bytes": os.path.getsize("$out/siliconforest-root.ext4"), "layers": json.load(open("${layersJson}")) + json.load(open("${lateJson}")),
       "absent_optional": ${builtins.toJSON absent}}, indent=1))
     PY
   '';
@@ -223,4 +241,4 @@ let
     printf '%s' 'debug=0x218 -nogzalloc_mode keepsyms=1 serial=3 gopconsole=1 serial_video_mirror=0 -noprogress no_interrupt_masked_debug=1 no_lock_timeouts=1' > boot-args.txt
     mcopy -o -i "$out@@$(( espStart * 512 ))" boot-args.txt ::/EFI/BOOT/boot-args.txt
   '';
-in { inherit rootfs bootfiles release qemu layers absent; }
+in { inherit rootfs rootTree bootfiles release qemu layers lateLayers absent; }
