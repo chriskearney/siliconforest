@@ -15,6 +15,8 @@
 - (NSError *)playbackError;
 - (void)setVolume:(float)volume;
 - (CGImageRef)copyImageAtTime:(CMTime)time index:(size_t *)index;
+/* the size in pixels pictures are made at (zero: the decoded size); they are B, G, R and a skipped byte in memory */
+- (void)setOutputPixelSize:(CGSize)size;
 - (NSDictionary *)statistics;
 - (NSArray *)frameDigests;
 @end

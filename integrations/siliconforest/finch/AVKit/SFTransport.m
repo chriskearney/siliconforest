@@ -132,7 +132,7 @@ static void SFTriangle(NSPoint a,NSPoint b,NSPoint c){NSBezierPath *p=[NSBezierP
   [_playerView.player setMuted:NO];[_playerView.player setVolume:volume];[self setNeedsDisplay:YES];return;
  }
  if(!began)return;
- if(NSPointInRect(point,NSInsetRect(l.play,-6,-6))){[_playerView _togglePlayback:self];[self setNeedsDisplay:YES];return;}
+ if(NSPointInRect(point,NSInsetRect(l.play,-6,-6))){[_playerView _togglePlayback:self];[self setHidden:NO];[self display];return;}   /* (drawn at once: paused, nothing else redraws the panel) */
  if(NSPointInRect(point,NSInsetRect(l.back,-4,-6))||NSPointInRect(point,NSInsetRect(l.forward,-4,-6))){
   double to=[self current]+(NSPointInRect(point,NSInsetRect(l.back,-4,-6))?-SF_SKIP_SECONDS:SF_SKIP_SECONDS),duration=[self duration];
   if(duration>0)[_playerView.player seekToTime:CMTimeMakeWithSeconds(MAX(0,MIN(duration,to)),600) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
@@ -163,17 +163,40 @@ static void SFTriangle(NSPoint a,NSPoint b,NSPoint c){NSBezierPath *p=[NSBezierP
  return now-_lastActivity>3.0;
 }
 @end
-BOOL SFDrawPlayerContents(AVPlayerView *view,AVPlayerLayer *layer){
- CGImageRef image=(CGImageRef)[layer contents];if(!image)return NO;
- CGContextRef context=[[NSGraphicsContext currentContext] graphicsPort];if(!context)return NO;
- /* the inline bar takes its row under the picture; the floating panel lies over it */
- CGRect box=NSRectToCGRect(view.bounds);CGFloat controls=view.controlsStyle==AVPlayerViewControlsStyleInline?38:0;
- box.origin.y+=controls;box.size.height=MAX(0,box.size.height-controls);
- CGFloat width=CGImageGetWidth(image),height=CGImageGetHeight(image);if(width<=0||height<=0||box.size.height<=0)return NO;
- if(![view.videoGravity isEqualToString:AVLayerVideoGravityResize]){
-  CGFloat scale=[view.videoGravity isEqualToString:AVLayerVideoGravityResizeAspectFill]?MAX(box.size.width/width,box.size.height/height):MIN(box.size.width/width,box.size.height/height);
-  CGFloat w=width*scale,h=height*scale;box=CGRectMake(CGRectGetMidX(box)-w/2,CGRectGetMidY(box)-h/2,w,h);
+/* (QTP2) The picture is drawn by AppKit, as the contents of the player layer the view hosts (without OpenGL it draws a
+ * hosted layer into the window itself). The view tells the layer the size in device pixels the picture takes there
+ * (the video gravity's rectangle in the view, at the window's scale), so the player makes each picture at that size:
+ * drawn at its own size on whole pixels it is copied, not resampled (two pictures a second at 1080p before). Where
+ * the rectangle is centred the picture's size keeps the parity of the view's, so that its edges stay on whole pixels. */
+@interface AVPlayerLayer(SFDisplayPixelSize)
+- (void)sfSetDisplayPixelSize:(CGSize)size;
+@end
+/* (QTP2) the view's own drawing: black where the picture is not (the picture is drawn over it). Black under the
+ * whole picture was a second full-window fill per picture; the bars reach one point into the picture's rectangle so
+ * that no pixel at its edges is left as the last frame had it. */
+void SFFillOutsidePicture(AVPlayerView *view,AVPlayerLayer *layer,NSRect dirty){
+ [[NSColor blackColor] set];
+ CGImageRef image=(CGImageRef)[layer contents];NSRect b=view.bounds;
+ double iw=image?CGImageGetWidth(image):0,ih=image?CGImageGetHeight(image):0;
+ if(iw<=0||ih<=0||![view.videoGravity isEqualToString:AVLayerVideoGravityResizeAspect]){NSRectFill(dirty);return;}
+ double s=MIN(NSWidth(b)/iw,NSHeight(b)/ih);
+ NSRect inner=NSInsetRect(NSMakeRect(NSMidX(b)-iw*s/2,NSMidY(b)-ih*s/2,iw*s,ih*s),1,1);
+ if(NSIsEmptyRect(inner)){NSRectFill(dirty);return;}
+ NSRect bars[4]={NSMakeRect(NSMinX(b),NSMinY(b),NSWidth(b),NSMinY(inner)-NSMinY(b)),NSMakeRect(NSMinX(b),NSMaxY(inner),NSWidth(b),NSMaxY(b)-NSMaxY(inner)),
+  NSMakeRect(NSMinX(b),NSMinY(inner),NSMinX(inner)-NSMinX(b),NSHeight(inner)),NSMakeRect(NSMaxX(inner),NSMinY(inner),NSMaxX(b)-NSMaxX(inner),NSHeight(inner))};
+ for(int i=0;i<4;i++){NSRect r=NSIntersectionRect(bars[i],dirty);if(!NSIsEmptyRect(r))NSRectFill(r);}
+}
+void SFUpdatePicturePixelSize(AVPlayerView *view,AVPlayerLayer *layer){
+ if(![layer respondsToSelector:@selector(sfSetDisplayPixelSize:)])return;
+ CGSize p=view.player.currentItem.presentationSize;NSRect b=view.bounds;CGFloat scale=view.window?[view.window backingScaleFactor]:0;
+ if(scale<=0||p.width<=0||p.height<=0||NSWidth(b)<=0||NSHeight(b)<=0){[layer sfSetDisplayPixelSize:CGSizeZero];return;}
+ double bw=round(NSWidth(b)*scale),bh=round(NSHeight(b)*scale),w=bw,h=bh;
+ NSString *gravity=view.videoGravity;
+ if(![gravity isEqualToString:AVLayerVideoGravityResize]){
+  BOOL fill=[gravity isEqualToString:AVLayerVideoGravityResizeAspectFill];
+  /* fit: the picture spans the view's width when the view is the narrower (fill: when it is the wider) */
+  if((bw/bh>p.width/p.height)!=fill){h=bh;w=round(bh*p.width/p.height);if(((long)(bw-w))&1)w+=fill?1:-1;}
+  else{w=bw;h=round(bw*p.height/p.width);if(((long)(bh-h))&1)h+=fill?1:-1;}
  }
- CGContextSaveGState(context);CGContextClipToRect(context,CGRectMake(NSMinX(view.bounds),NSMinY(view.bounds)+controls,NSWidth(view.bounds),MAX(0,NSHeight(view.bounds)-controls)));
- CGContextDrawImage(context,box,image);CGContextRestoreGState(context);return YES;
+ [layer sfSetDisplayPixelSize:CGSizeMake(MAX(w,1),MAX(h,1))];
 }

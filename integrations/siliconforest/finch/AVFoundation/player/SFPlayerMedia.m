@@ -16,6 +16,8 @@
 #include <AudioToolbox/AudioQueue.h>
 #include "VideoToolbox.h"
 #include <libswscale/swscale.h>
+#include <libavutil/frame.h>
+#include <libavutil/pixfmt.h>
 #include <libavutil/md5.h>
 #include <pthread.h>
 #include <math.h>
@@ -45,7 +47,7 @@ typedef struct { CMTime pts; size_t width,height; uint8_t *bytes; } SFMediaFrame
  CMTime _mediaOffset;BOOL _rangeRun;   /* a reader started inside the file gives media times (no edit list): this far ahead */
  AVAsset *_asset;AVAssetTrack *_track;AVAssetReader *_reader;AVAssetReaderTrackOutput *_output;VTDecompressionSessionRef _session;
  NSMutableDictionary *_digests;
- struct SwsContext *_scale;CGImageRef _cachedImage;CMTime _cachedPTS;
+ struct SwsContext *_scale;CGImageRef _cachedImage;CMTime _cachedPTS;int _cachedWidth,_cachedHeight,_outWidth,_outHeight;BOOL _digesting;
  /* sound: the file's PCM read as the queue needs it */
  ExtAudioFileRef _audio;AudioStreamBasicDescription _format;SInt64 _audioFrames,_audioRead,_audioStartFrame;
  size_t _audioQueued,_audioReturned;BOOL _audioEnd;
@@ -100,12 +102,14 @@ static void sfDecoded(void *context,void *source,OSStatus status,VTDecodeInfoFla
   else{for(size_t n=0;n<h;n++)memcpy(data+n*w,y+n*ys,w);for(size_t n=0;n<h/2;n++)memcpy(data+w*h+n*w,uv+n*us,w);}
   CVPixelBufferUnlockBaseAddress(image,kCVPixelBufferLock_ReadOnly);
  }
+ /* (QTP2) the digest of each picture only when a test asks for them (SF_PLAYER_DIGESTS=1): it was three quarters of
+    the decoder thread's time */
  char md5[33]={0};
- if(!failure){uint8_t digest[16];av_md5_sum(digest,data,size);for(unsigned n=0;n<16;n++)snprintf(md5+2*n,3,"%02x",digest[n]);}
+ if(!failure&&s->_digesting){uint8_t digest[16];av_md5_sum(digest,data,size);for(unsigned n=0;n<16;n++)snprintf(md5+2*n,3,"%02x",digest[n]);}
  pthread_mutex_lock(&s->_lock);
  if(failure){free(data);s->_error=failure;pthread_mutex_unlock(&s->_lock);return;}
  /* the digest of every picture decoded, once per presentation time */
- { NSNumber *key=@(CMTimeGetSeconds(pts));
+ if(s->_digesting){ NSNumber *key=@(CMTimeGetSeconds(pts));
    NSString *text=[NSString stringWithUTF8String:md5],*known=s->_digests[key];
    if(!known)s->_digests[key]=text;else if(![known isEqualToString:text])s->_digestConflicts++; }
  if(s->_frameCount==s->_frameCapacity){size_t capacity=s->_frameCapacity?s->_frameCapacity*2:64;void *next=realloc(s->_frames,capacity*sizeof(SFMediaFrame));if(!next){free(data);s->_error=-1;pthread_mutex_unlock(&s->_lock);return;}s->_frames=next;s->_frameCapacity=capacity;}
@@ -227,7 +231,19 @@ static void sfReturned(void *context,AudioQueueRef queue,AudioQueueBufferRef buf
  if(!s->_closing){s->_audioReturned+=buffer->mAudioDataByteSize/s->_format.mBytesPerFrame;s->_callbacks++;sfFeed(s,queue,buffer);}
  pthread_mutex_unlock(&s->_lock);
 }
-static void sfFreeImage(void *info,const void *bytes,size_t size){(void)info;(void)size;free((void *)bytes);}
+/* a picture's pixels are kept for the next one when the image lets them go (one spare: 13 MB at 2444x1375, whose
+   pages were faulted in afresh for every picture) */
+static pthread_mutex_t sfSpareLock=PTHREAD_MUTEX_INITIALIZER;static void *sfSpare;static size_t sfSpareSize;
+static void sfFreeImage(void *info,const void *bytes,size_t size){
+ (void)info;void *old=NULL;
+ pthread_mutex_lock(&sfSpareLock);old=sfSpare;sfSpare=(void *)bytes;sfSpareSize=size;pthread_mutex_unlock(&sfSpareLock);
+ free(old);
+}
+static void *sfTakePixels(size_t size){
+ void *p=NULL;
+ pthread_mutex_lock(&sfSpareLock);if(sfSpare&&sfSpareSize==size){p=sfSpare;sfSpare=NULL;}pthread_mutex_unlock(&sfSpareLock);
+ return p?p:malloc(size);
+}
 
 @implementation SFPlayerMedia
 + (BOOL)needsBackend:(AVAsset *)asset {
@@ -240,6 +256,7 @@ static void sfFreeImage(void *info,const void *bytes,size_t size){(void)info;(vo
 - (instancetype)initWithAsset:(AVAsset *)asset error:(NSError **)error {
  if(!(self=[super init]))return nil;pthread_mutex_init(&_lock,NULL);pthread_cond_init(&_changed,NULL);atomic_init(&_error,0);
  _cachedPTS=kCMTimeInvalid;_want=kCMTimeInvalid;_dropBefore=kCMTimeInvalid;_runStart=kCMTimeZero;_mediaOffset=kCMTimeInvalid;_digests=[NSMutableDictionary dictionary];
+ {const char *d=getenv("SF_PLAYER_DIGESTS");_digesting=d&&d[0]=='1';}
  NSURL *url=[asset respondsToSelector:@selector(URL)]?[(AVURLAsset *)asset URL]:nil;
  if(!url.isFileURL){if(error)*error=sfError(-1,@"Only local files are supported");return nil;}
  _asset=asset;_track=[asset tracksWithMediaType:AVMediaTypeVideo].firstObject;
@@ -358,24 +375,42 @@ static void sfFreeImage(void *info,const void *bytes,size_t size){(void)info;(vo
  SFMediaFrame *chosen=&_frames[0];
  size_t index=(size_t)llround(MAX(0,sfSeconds(chosen->pts))*_fps);
  if(outIndex)*outIndex=index;
- if(_cachedImage&&CMTimeCompare(_cachedPTS,chosen->pts)==0){CGImageRef image=CGImageRetain(_cachedImage);pthread_mutex_unlock(&_lock);return image;}
- int w=(int)chosen->width,h=(int)chosen->height;
+ int w=(int)chosen->width,h=(int)chosen->height,ow=w,oh=h;
+ if(_outWidth>=16&&_outHeight>=16){ow=_outWidth;oh=_outHeight;}
+ if(_cachedImage&&CMTimeCompare(_cachedPTS,chosen->pts)==0&&_cachedWidth==ow&&_cachedHeight==oh){CGImageRef image=CGImageRetain(_cachedImage);pthread_mutex_unlock(&_lock);return image;}
  /* the picture's bytes are copied under the lock and converted outside it (the decoder may free the picture) */
  uint8_t *nv12=malloc((size_t)w*h*3/2);if(!nv12){pthread_mutex_unlock(&_lock);return NULL;}
  memcpy(nv12,chosen->bytes,(size_t)w*h*3/2);
  CMTime pts=chosen->pts;
  pthread_mutex_unlock(&_lock);
- uint8_t *pixels=malloc((size_t)w*h*4);if(!pixels){free(nv12);return NULL;}
- _scale=sws_getCachedContext(_scale,w,h,AV_PIX_FMT_NV12,w,h,AV_PIX_FMT_RGBA,SWS_BILINEAR,NULL,NULL,NULL);if(!_scale){free(pixels);free(nv12);return NULL;}
- const uint8_t *src[4]={nv12,nv12+w*h,NULL,NULL};int strides[4]={w,w,0,0};uint8_t *dst[4]={pixels,NULL,NULL,NULL};int output[4]={w*4,0,0,0};
- int converted=sws_scale(_scale,src,strides,0,h,dst,output);free(nv12);
- if(converted!=h){free(pixels);return NULL;}
- CGDataProviderRef provider=CGDataProviderCreateWithData(NULL,pixels,(size_t)w*h*4,sfFreeImage);CGColorSpaceRef color=CGColorSpaceCreateDeviceRGB();
- CGImageRef image=provider&&color?CGImageCreate(w,h,8,32,w*4,color,kCGImageAlphaNoneSkipLast|kCGBitmapByteOrderDefault,provider,NULL,false,kCGRenderingIntentDefault):NULL;
+ /* (QTP2) at the size the display asked for, in the window's own layout (B, G, R, a skipped byte), scaled and
+    converted in one pass on four threads (the decoded size took the M1 ~150 ms a picture to resample when drawn) */
+ size_t bytes=(size_t)ow*oh*4;
+ uint8_t *pixels=sfTakePixels(bytes);if(!pixels){free(nv12);return NULL;}
+ if(!_scale){_scale=sws_alloc_context();if(_scale){_scale->threads=4;_scale->flags=SWS_BILINEAR;}}
+ AVFrame *in=av_frame_alloc(),*out=av_frame_alloc();int converted=-1;
+ if(_scale&&in&&out){
+  in->format=AV_PIX_FMT_NV12;in->width=w;in->height=h;in->data[0]=nv12;in->data[1]=nv12+(size_t)w*h;in->linesize[0]=w;in->linesize[1]=w;
+  /* (video range; BT.709 for HD as players take it when the stream does not say, BT.601 below) */
+  in->color_range=AVCOL_RANGE_MPEG;in->colorspace=h>=720?AVCOL_SPC_BT709:AVCOL_SPC_SMPTE170M;in->chroma_location=AVCHROMA_LOC_LEFT;
+  out->format=AV_PIX_FMT_BGRA;out->width=ow;out->height=oh;out->data[0]=pixels;out->linesize[0]=ow*4;out->color_range=AVCOL_RANGE_JPEG;
+  converted=sws_scale_frame(_scale,out,in);
+ }
+ av_frame_free(&in);av_frame_free(&out);free(nv12);
+ if(converted<0){
+  static int said;if(!said++)fprintf(stderr,"SiliconForest player: picture conversion %dx%d -> %dx%d failed (%d)\n",w,h,ow,oh,converted);
+  free(pixels);return NULL;
+ }
+ CGDataProviderRef provider=CGDataProviderCreateWithData(NULL,pixels,bytes,sfFreeImage);CGColorSpaceRef color=CGColorSpaceCreateDeviceRGB();
+ CGImageRef image=provider&&color?CGImageCreate(ow,oh,8,32,(size_t)ow*4,color,kCGImageAlphaNoneSkipFirst|kCGBitmapByteOrder32Little,provider,NULL,false,kCGRenderingIntentDefault):NULL;
  if(provider)CGDataProviderRelease(provider);else free(pixels);if(color)CGColorSpaceRelease(color);
  if(!image)return NULL;
- pthread_mutex_lock(&_lock);if(_cachedImage)CGImageRelease(_cachedImage);_cachedImage=CGImageRetain(image);_cachedPTS=pts;pthread_mutex_unlock(&_lock);
+ pthread_mutex_lock(&_lock);if(_cachedImage)CGImageRelease(_cachedImage);_cachedImage=CGImageRetain(image);_cachedPTS=pts;_cachedWidth=ow;_cachedHeight=oh;pthread_mutex_unlock(&_lock);
  return image;
+}
+- (void)setOutputPixelSize:(CGSize)size {
+ int w=isfinite(size.width)&&size.width>=16&&size.width<=8192?(int)lround(size.width):0,h=isfinite(size.height)&&size.height>=16&&size.height<=8192?(int)lround(size.height):0;
+ pthread_mutex_lock(&_lock);_outWidth=w&&h?w:0;_outHeight=w&&h?h:0;pthread_mutex_unlock(&_lock);
 }
 - (NSArray *)frameDigests {
  pthread_mutex_lock(&_lock);NSArray *times=[[_digests allKeys] sortedArrayUsingSelector:@selector(compare:)];

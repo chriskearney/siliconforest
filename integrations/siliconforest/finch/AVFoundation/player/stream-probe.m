@@ -31,6 +31,7 @@ static size_t frameAt(SFPlayerMedia *media, double seconds)
 int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
+    setenv("SF_PLAYER_DIGESTS", "1", 1);   /* (the player takes each picture's digest only when asked) */
     @autoreleasepool {
         if (argc != 2) { fprintf(stderr, "usage: stream-probe movie\n"); return 2; }
         Class mediaClass = NSClassFromString(@"SFPlayerMedia");

@@ -640,6 +640,10 @@
 #         made in code kept an empty title); -[NSScreen devicePixelCounts]
 #   0360  AppKit (QTP): a document window's title is the document's display name, as on macOS (the application's
 #         name was appended: "movie.mov - QuickTime Player")
+#   0363  Onyx2D (QTP2; every application, through the guarded install only): an opaque image drawn on the device at
+#         its own size (within a pixel) is copied a row at a time instead of resampled and blended pixel by pixel
+#         (QuickTime Player's picture cost 150 ms a draw: two pictures a second); O2_NO_IMAGE_FAST_PATH=1 turns it off,
+#         O2_IMAGE_TRACE=1 says why an image was resampled
 #   0009  Security: SecItemCopyMatching writes its result on every path and answers
 #         errSecItemNotFound when nothing was found (Firefox crashed on the unwritten result)
 #   (0007 and 0008 are libSystem's sandbox profile compiler: ./build-libsystem-cocoa.nix)
@@ -814,6 +818,7 @@ let
     ./patches/0217-graphics-font-keeps-fontconfig-collection-face-index.patch
     ./patches/0146-onyx2d-glyph-cache-knows-a-reused-face.patch
     ./patches/0154-onyx2d-font-files-mapped-once.patch
+    ./patches/0363-onyx2d-images-at-device-pixels-copied.patch
   ];
   # upstream's framework recipes name no optimisation level: their compile lines get one here
   optimised = d: d.overrideAttrs (old: {

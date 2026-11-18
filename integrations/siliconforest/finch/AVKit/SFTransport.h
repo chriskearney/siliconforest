@@ -9,5 +9,6 @@
 @interface SFPlayerDrawToken:NSObject { AVPlayerView *_owner; }
 @property(assign) AVPlayerView *owner;
 @end
-BOOL SFDrawPlayerContents(AVPlayerView *view,AVPlayerLayer *layer);
+void SFUpdatePicturePixelSize(AVPlayerView *view,AVPlayerLayer *layer);
+void SFFillOutsidePicture(AVPlayerView *view,AVPlayerLayer *layer,NSRect dirty);
 NSRect SFControlsFrame(AVPlayerView *view);

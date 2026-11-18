@@ -196,6 +196,14 @@ static char kSlowMotionRange;
         handler();
 }
 
+/* the controls drawn again now (while paused no picture time redraws them) */
+- (void)sfRedrawControls
+{
+    for (NSView *view in self.subviews)
+        if ([view respondsToSelector:@selector(sfIdleHidden)]) { [view setHidden:NO]; [view display]; }
+    [self setNeedsDisplay:YES];
+}
+
 /* the keyboard, as AVKit's player view has it: space plays or pauses, the left and right arrows step one picture
    back or forward (pausing) */
 - (BOOL)acceptsFirstResponder { return self.player != nil; }
@@ -211,11 +219,13 @@ static char kSlowMotionRange;
             [player pause];
         else
             [player play];
+        [self sfRedrawControls];
         return;
     }
     if (player && !modifiers && (key == NSLeftArrowFunctionKey || key == NSRightArrowFunctionKey)) {
         [player pause];
         [player.currentItem stepByCount:key == NSRightArrowFunctionKey ? 1 : -1];
+        [self sfRedrawControls];
         return;
     }
     [super keyDown:event];

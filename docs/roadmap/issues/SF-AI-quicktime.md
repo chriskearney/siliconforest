@@ -319,13 +319,39 @@ the exit reason, refuses to start the application while the owner is at the mach
   play/pause, full screen (the window's own full screen), and the scrubber between the elapsed and the
   remaining time, which seeks by a click or a drag. They hide while a movie plays and the pointer rests for
   3 s, and come back when it moves. Space plays and pauses, the arrows step a picture.
+- **The picture rate (QTP2, 18 November).** DEMO's film showed the picture moving one to three times a second.
+  Measured without the recorder (the desk's `WMPACING` for QuickTime's window, 20 s of the 1080p30 cut): 20
+  commits per 10 s, 2 a second. Cause, from a sampling profiler inside the process: the main
+  thread drew each 1080p picture twice into the 2444x1375-pixel view through Onyx2D's bilinear resampler (AVKit's
+  own `drawRect:` and AppKit's draw of the hosted player layer; the prefix has no EGL, so layers are drawn by the
+  CPU), about 150 ms each. Changes: AVKit no longer draws the picture (AppKit draws the layer once) and fills
+  black only where the picture is not; the view tells the player layer the picture's size in device pixels and
+  the staged player makes each picture at that size in the window's own pixel layout (B, G, R, a skipped byte),
+  scaled and converted in one pass by swscale on four threads, its buffers reused; Onyx2D 0363 copies such a
+  picture instead of resampling it; AVKit's 30 Hz clock no longer redraws the whole view (a new picture does: two
+  redraws out of step were 52 commits a second, 16 shown); the per-picture MD5 is taken only for the test that
+  compares it (`SF_PLAYER_DIGESTS=1`). Result on the M1, private prefix: 297-301 commits and 270-293 shown per
+  10 s without the recorder; 231-233 commits, 229-232 shown with the desk's recorder running, and the recording
+  shows the picture changing 21-25 times a second. The main thread's CPU went from 9.0 s to 4.4 s in 15 s.
+  The decoder was never the limit (900 hardware jobs per pass, 0 errors).
+- **Colours.** HD pictures (720 lines and more) are now converted from YUV with BT.709's matrix, as players do when
+  the stream does not say; smaller ones with BT.601's. Before, every picture used swscale's default, BT.601.
+- **For the compositor's owner (desk side, not changed here).** Each full-window commit of QuickTime's window
+  costs the desk's commit handler 12.6 ms (`WMPACING ... commit handler`, 2556x1437 px of shared memory per
+  picture, about 30 a second: ~380 ms of the desk's time each second). Between 7 and 104 of ~300 commits per 10 s
+  were replaced before any flip showed them, depending on the run. A path without that copy, for this player and
+  any CPU-drawn video: the picture handed to the desk as a dma-buf (a subsurface for the video, or the whole-window
+  GPU presenter that Firefox's windows use, 0209w), or the desk uploading only the damaged rows.
 - Not done: the playback-speed menu, sharing and AirPlay buttons (absent), subtitles and alternative
   audio (absent), trimming.
 
 ## General pieces for the system install
 These are corrections or additions any application can meet; they live in the private prefix until the
 guarded install: libFoundation 0347, 0348, 0349, 0352, 0354, 0355, 0359, 0361; AppKit 0340, 0341, 0350,
-0351, 0353, 0356, 0357, 0358, 0360; CoreGraphics 0342; QuartzCore 0343-0345; CoreAudio 0346; the URL key
+0351, 0353, 0356, 0357, 0358, 0360; Onyx2D 0363 (an opaque image drawn within a pixel of its own size on whole
+device pixels is copied, not resampled: every application that draws such an image, through the guarded install
+only, to be checked with Firefox, Terminal and Activity Monitor; `O2_NO_IMAGE_FAST_PATH=1` turns it off and
+`O2_IMAGE_TRACE=1` says why an image was resampled); CoreGraphics 0342; QuartzCore 0343-0345; CoreAudio 0346; the URL key
 names and NSFileCoordinator in the framework wrappers. QuickTime Player's own prefix keeps only what is
 its alone (the additions, the private frameworks' absences, the AVKit and AVFoundation stages).
 
