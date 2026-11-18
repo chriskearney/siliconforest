@@ -1,0 +1,31 @@
+diff --git a/src/Frameworks/Foundation/Runtime.subproj/NSGeometry.m b/src/Frameworks/Foundation/Runtime.subproj/NSGeometry.m
+index fd5c58d..dd985e7 100644
+--- a/src/Frameworks/Foundation/Runtime.subproj/NSGeometry.m
++++ b/src/Frameworks/Foundation/Runtime.subproj/NSGeometry.m
+@@ -16,16 +16,23 @@ const NSPoint NSZeroPoint = { 0, 0 };
+ const NSSize NSZeroSize = { 0, 0 };
+ const NSRect NSZeroRect = { { 0, 0 }, { 0, 0 } };
+ 
++/* (QTP) Zero only when the rectangles provably do not overlap, as on macOS: a rectangle made unbounded by a
++ * computation with the largest double (an infinite or undefined edge) still meets a finite one, which bounds the
++ * result. (Apple's QuickTime Player intersects its "no maximum" window size this way; zero made every movie open at
++ * the smallest window size.) */
+ NSRect NSIntersectionRect(NSRect a, NSRect b) {
+-    if (!NSIntersectsRect(a, b)) {
++    if (NSMaxX(a) <= NSMinX(b) || NSMaxX(b) <= NSMinX(a) || NSMaxY(a) <= NSMinY(b) || NSMaxY(b) <= NSMinY(a)) {
+         return NSZeroRect;
+     }
+ 
+-    CGFloat minX = NSMinX(a) > NSMinX(b) ? NSMinX(a) : NSMinX(b);
+-    CGFloat minY = NSMinY(a) > NSMinY(b) ? NSMinY(a) : NSMinY(b);
++    CGFloat minX = NSMinX(a) < NSMinX(b) ? NSMinX(b) : NSMinX(a);
++    CGFloat minY = NSMinY(a) < NSMinY(b) ? NSMinY(b) : NSMinY(a);
+     CGFloat maxX = NSMaxX(a) < NSMaxX(b) ? NSMaxX(a) : NSMaxX(b);
+     CGFloat maxY = NSMaxY(a) < NSMaxY(b) ? NSMaxY(a) : NSMaxY(b);
+ 
++    if (!(maxX - minX > 0) || !(maxY - minY > 0)) {
++        return NSZeroRect;
++    }
+     return NSMakeRect(minX, minY, maxX - minX, maxY - minY);
+ }
+ 

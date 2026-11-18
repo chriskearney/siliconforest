@@ -621,7 +621,8 @@
 #         the file's path URL, -filePathURL, -isFileReferenceURL
 #   0354, 0355 libFoundation (QTP, applied by ../terminal-app/build-foundation.nix): to-many change notifications;
 #         NSFileManager URL forms, -setByAddingObjectsFromSet:, security scope (none), resource setting (refused),
-#         locale display names; 0359 libFoundation: -[NSError recoveryAttempter], -helpAnchor
+#         locale display names; 0359 libFoundation: -[NSError recoveryAttempter], -helpAnchor; 0361 libFoundation:
+#         NSIntersectionRect of an unbounded rectangle and a finite one, as on macOS
 #   0353  AppKit (QTP): names a document window is made with: NSWindow's layer-hosting request and title-bar
 #         opacity (kept, answered, no effect here), -[NSDocument _windowTitleDisplayName], system-spacing anchors,
 #         -[NSWindow isModalPanel], NSMenu's names (_setMenuName:, _menusWithName:), -[NSMenuItem

@@ -196,6 +196,31 @@ static char kSlowMotionRange;
         handler();
 }
 
+/* the keyboard, as AVKit's player view has it: space plays or pauses, the left and right arrows step one picture
+   back or forward (pausing) */
+- (BOOL)acceptsFirstResponder { return self.player != nil; }
+
+- (void)keyDown:(NSEvent *)event
+{
+    NSString *keys = [event charactersIgnoringModifiers];
+    unichar key = [keys length] ? [keys characterAtIndex:0] : 0;
+    NSUInteger modifiers = [event modifierFlags] & (NSCommandKeyMask | NSControlKeyMask | NSAlternateKeyMask);
+    AVPlayer *player = self.player;
+    if (player && !modifiers && key == ' ') {
+        if (player.rate != 0)
+            [player pause];
+        else
+            [player play];
+        return;
+    }
+    if (player && !modifiers && (key == NSLeftArrowFunctionKey || key == NSRightArrowFunctionKey)) {
+        [player pause];
+        [player.currentItem stepByCount:key == NSRightArrowFunctionKey ? 1 : -1];
+        return;
+    }
+    [super keyDown:event];
+}
+
 /* trimming (public on macOS) is not available in this view */
 - (BOOL)canBeginTrimming { return NO; }
 - (BOOL)isTrimming { return NO; }
