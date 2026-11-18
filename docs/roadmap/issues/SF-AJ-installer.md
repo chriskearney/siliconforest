@@ -1,4 +1,4 @@
-# SF-AJ: Installer: one command from macOS
+# SF-AJ: Installer: one command from macOS (#64)
 
 INSTALL stream, 18 November 2026. User documentation: `docs/INSTALL.md`. Code: `install.sh` (the
 one-line command's target, assembled), `install/bootstrap.sh`, `install/engine/`, `install/models.tsv`,

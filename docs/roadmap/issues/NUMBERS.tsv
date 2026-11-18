@@ -12,3 +12,4 @@ SF-J	33	[SF-J] Bluetooth: BCM4378 controller driver and a userspace host stack
 SF-K	34	[SF-K] Sleep and power: idle sleep on lid close, then real suspend
 SF-L	35	[SF-L] USB-C, docks and Thunderbolt in four stages
 SF-M	36	[SF-M] Wi-Fi hardening: firmware stall, soak, multi-CPU, WPA3, tree patches
+SF-AJ	64	[SF-AJ] Installer: one command from macOS
