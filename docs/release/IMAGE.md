@@ -114,7 +114,9 @@ pours and relocates them as on the M1, owner 501:20. Every keg's licence is in t
 BSD-2-Clause 4, Apache-2.0 OR MIT 4, BSD-3-Clause 3, GPL-2.0-or-later 2, and single ones
 (Python-2.0, Ruby, MPL-2.0, ISC, blessing, Unicode, LGPL-3.0-or-later, GPL-3.0-only, GCC's runtime
 exception, combinations). The M1 has ten more kegs the owner added with `brew` (neovim, lua, vim, ...):
-they are his, not the system's.
+they are his, not the system's. Built from the lock, the prefix equals the M1's for every one of
+the 48,298 files and links they share but one, Python's framework library, which is the same
+file with three executed pages lowered by the kernel (`pac-lower.py`).
 
 ## First start on another machine
 
