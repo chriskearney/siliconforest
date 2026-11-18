@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>APFSContainerReference</key>
+	<string>disk2</string>
+	<key>Content</key>
+	<string>Apple_APFS_Recovery</string>
+	<key>DeviceBlockSize</key>
+	<integer>4096</integer>
+	<key>DeviceIdentifier</key>
+	<string>disk0s3</string>
+	<key>DeviceNode</key>
+	<string>/dev/disk0s3</string>
+	<key>DiskUUID</key>
+	<string>D649ADD7-7A87-52EF-B0C2-31E789ADD291</string>
+	<key>Internal</key>
+	<true/>
+	<key>MountPoint</key>
+	<string></string>
+	<key>ParentWholeDisk</key>
+	<string>disk0</string>
+	<key>PartitionMapPartition</key>
+	<true/>
+	<key>PartitionMapPartitionOffset</key>
+	<integer>494739177472</integer>
+	<key>Size</key>
+	<integer>5368664064</integer>
+	<key>TotalSize</key>
+	<integer>5368664064</integer>
+	<key>VolumeName</key>
+	<string></string>
+	<key>WholeDisk</key>
+	<false/>
+</dict>
+</plist>

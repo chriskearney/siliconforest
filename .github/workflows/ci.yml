@@ -26,6 +26,10 @@ jobs:
         # tools/ci_check.py runs tools/check.py unchanged and accepts exactly one known test
         # that needs build artefacts which are not in git; it reports that test as NOT RUN.
         run: python3 tools/ci_check.py --cc ${{ matrix.cc }} ${{ matrix.flags }}
+      - name: Lint the installer's shell scripts
+        if: matrix.cc == 'gcc'
+        # shellcheck is part of GitHub's ubuntu-24.04 runner image
+        run: shellcheck -s sh install.sh install/bootstrap.sh
       - name: Check deliberately broken variants
         if: matrix.cc == 'clang'
         run: |

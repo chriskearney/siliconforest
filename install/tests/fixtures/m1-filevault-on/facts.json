@@ -1,0 +1,13 @@
+{
+ "bless --getBoot": "/dev/disk3s1",
+ "dseditgroup -o checkmember -m user admin": "yes user is a member of admin",
+ "fdesetup status": "FileVault is On.",
+ "pmset -g batt": "Now drawing from 'AC Power'",
+ "stat -f %Su /dev/console": "user",
+ "sw_vers -buildVersion": "24G90",
+ "sw_vers -productVersion": "15.6.1",
+ "sysctl -in sysctl.proc_translated": "0",
+ "sysctl -n hw.model": "MacBookPro17,1",
+ "sysctl -n hw.targettype": "J293",
+ "tmutil listlocalsnapshots /": "Snapshots for disk /:"
+}

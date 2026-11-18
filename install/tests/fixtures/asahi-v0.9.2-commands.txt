@@ -1,0 +1,10 @@
+diskutil apfs resizeContainer disk0s2 439651147776
+diskutil addPartition disk0s2 apfs SiliconForest 2499805184
+diskutil apfs changeVolumeRole disk4s1 D
+diskutil rename disk4s1 SiliconForest - Data
+diskutil apfs addVolume disk4 apfs SiliconForest -role S -groupWith disk4s1
+diskutil apfs addVolume disk4 apfs Preboot -role B
+diskutil apfs addVolume disk4 apfs Recovery -role R
+diskutil addPartition disk0s4 %EFI% %noformat% 524288000
+newfs_msdos -F 32 -v SFBOOT - Si /dev/rdisk0s5
+diskutil addPartition disk0s5 %Linux% %noformat% 51539607552

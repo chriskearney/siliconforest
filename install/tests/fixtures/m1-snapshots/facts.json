@@ -1,0 +1,13 @@
+{
+ "bless --getBoot": "/dev/disk3s1",
+ "dseditgroup -o checkmember -m user admin": "yes user is a member of admin",
+ "fdesetup status": "FileVault is Off.",
+ "pmset -g batt": "Now drawing from 'AC Power'",
+ "stat -f %Su /dev/console": "user",
+ "sw_vers -buildVersion": "24G90",
+ "sw_vers -productVersion": "15.6.1",
+ "sysctl -in sysctl.proc_translated": "0",
+ "sysctl -n hw.model": "MacBookPro17,1",
+ "sysctl -n hw.targettype": "J293",
+ "tmutil listlocalsnapshots /": "Snapshots for disk /:\ncom.apple.TimeMachine.2026-11-01-120000.local\ncom.apple.TimeMachine.2026-11-02-120000.local\ncom.apple.TimeMachine.2026-11-03-120000.local\ncom.apple.TimeMachine.2026-11-04-120000.local\ncom.apple.TimeMachine.2026-11-05-120000.local\ncom.apple.TimeMachine.2026-11-06-120000.local"
+}
