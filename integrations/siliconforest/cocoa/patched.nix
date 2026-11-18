@@ -564,7 +564,7 @@
 #   0333w WindowServer (IOSURF): a damage present finds the base's changed rows in one pass with sfGPUBaseEqual's
 #         comparison (NEON under SFFX_GPU_VECTOR_COMPARE), not a whole compare and then memcmp row by row: VLC's control
 #         bar redrawn twice a second cost 18-57 ms under the window server's lock, and its video presents waited
-#   0334w WindowServer (IOSURF): SF_WS_CADENCE=1 (opt-in): a steady source's render-thread frames are held, once a frame
+#   0334w WindowServer (IOSURF, attribute windowserverCadence only: VLC's private copy): SF_WS_CADENCE=1 (opt-in): a steady source's render-thread frames are held, once a frame
 #         before their first layer is handed over, to a fixed phase of the refreshes (SF_WS_CADENCE_PHASE ms after wsClock's
 #         refresh, 13: about the desk's flip, far from its latch) on the source's measured cadence (previous refresh +
 #         interval in refreshes while the frame is ready in time): VLC's 30 fps pictures 2 refreshes apart instead of 1 or 3
@@ -763,7 +763,7 @@ let
     ./patches/0327-appkit-opengl-view-drawn-and-reshaped-on-the-main-thread.patch
     ./patches/0328-appkit-first-layer-frame-after-a-resize-draws-the-window-whole.patch
   ];
-  windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
+  windowserverPatches = [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
     ./patches/0018-windowserver-popup-placement.patch
     ./patches/0022-windowserver-presented-frame-dump.patch
@@ -793,8 +793,12 @@ let
     ./patches/0173w-windowserver-pointer-enter-is-a-move.patch
     ./patches/0178w-windowserver-layers-presented-from-the-render-thread.patch
     ./patches/0333w-windowserver-changed-rows-found-in-one-vector-pass.patch
-    ./patches/0334w-windowserver-steady-sources-committed-on-a-steady-cadence.patch
   ];
+  windowserverSrc = patchedDir "src/Frameworks/WindowServer" windowserverPatches;
+  # (IOSURF) VLC's private copy only: the system's patches and the opt-in cadence hold (SF_WS_CADENCE)
+  windowserverCadenceSrc = patchedDir "src/Frameworks/WindowServer" (windowserverPatches ++ [
+    ./patches/0334w-windowserver-steady-sources-committed-on-a-steady-cadence.patch
+  ]);
   authenticationServicesSrc = patchedDir "src/Frameworks/AuthenticationServices" [
     ./patches/0003-authenticationservices-web-session-browser-side.patch
   ];
@@ -860,7 +864,7 @@ let
   wp = "${pd."wayland-protocols"}/share/wayland-protocols";
   # upstream's recipe names every protocol and object file; the three protocols the patch
   # uses are generated and linked the same way
-  windowserver = optimised ((pd."windowserver-arm64".override { src = windowserverSrc; }).overrideAttrs (old: {
+  mkWindowserver = src: optimised ((pd."windowserver-arm64".override { inherit src; }).overrideAttrs (old: {
     buildPhase = builtins.replaceStrings
       [ "cc=\"" "rpc_wayland.o xdg-shell-protocol.o" ]
       [ ''
@@ -878,6 +882,8 @@ let
               for n in xdg-decoration-unstable-v1 fractional-scale-v1 viewporter xdg-activation-v1 pointer-gestures-unstable-v1 cursor-shape-v1 tablet-unstable-v2 presentation-time; do $cc $cflags -c $n-protocol.c -o $n-protocol.o; done'' ]
         old.buildPhase);
   }));
+  windowserver = mkWindowserver windowserverSrc;
+  windowserverCadence = mkWindowserver windowserverCadenceSrc;
   # (0110) against the libFoundation the root has (NSIndexPath is in it), not upstream's
   foundation = import ../terminal-app/build-foundation.nix;
   appkit = optimised (pd."appkit-msm-arm64".override { src = appkitSrc; inherit windowserver foundation; });
@@ -891,5 +897,6 @@ let
   });
 in {
   inherit appkitSrc windowserverSrc authenticationServicesSrc onyx2dSrc windowserver appkit appFrameworks onyx2d security;
+  inherit windowserverCadenceSrc windowserverCadence;
   inherit coretextSrc coretext coregraphicsSrc coregraphics quartzcoreSrc quartzcore;
 }
