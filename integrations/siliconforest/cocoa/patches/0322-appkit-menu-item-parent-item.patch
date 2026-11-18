@@ -1,0 +1,30 @@
+--- a/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.h
++++ b/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.h
+@@ -64,6 +64,7 @@
+ 
+ - (BOOL)hasSubmenu;
+ - (NSMenu *)submenu;
++- (NSMenuItem *)parentItem;
+ 
+ - (BOOL)isSeparatorItem;
+ - (BOOL)isEnabled;
+--- a/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.m
++++ b/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.m
+@@ -131,6 +131,17 @@
+    return _menu;
+ }
+ 
++// (VLC) the item whose submenu this item's menu is (macOS 10.6): VLC's menu validation asks every item for it, and
++// the missing method ended the opening of each of its menus in an exception
++-(NSMenuItem *)parentItem {
++   NSMenu *supermenu=[_menu supermenu];
++
++   for(NSMenuItem *item in [supermenu itemArray])
++    if([item submenu]==_menu)
++     return item;
++   return nil;
++}
++
+ -(void)_setMenu:(NSMenu *)menu {
+    _menu=menu;
+    _submenu.supermenu=menu;

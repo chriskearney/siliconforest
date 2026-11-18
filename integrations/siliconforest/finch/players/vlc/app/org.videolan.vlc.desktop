@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=VLC
+Comment=VLC media player
+TryExec=/Applications/VLC.app/Contents/MacOS/vlc-sf
+Exec=/usr/bin/chonkstep-darwin-desktop --desktop-request application org.videolan.vlc
+Icon=/Applications/VLC.app
+Categories=AudioVideo;Player;Video;
+StartupWMClass=org.videolan.vlc

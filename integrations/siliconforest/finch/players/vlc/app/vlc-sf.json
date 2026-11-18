@@ -1,0 +1,7 @@
+{
+  "prefix": "/private/var/db/sfvlc",
+  "bundle": "/private/var/db/sfvlc/vendor/VLC.app",
+  "arguments": ["--glconv=none"],
+  "hardware_decode": true,
+  "notes": "hardware_decode: the launcher gives /dev/sfavd group staff, mode 0660, until reboot, so VLC's VideoToolbox decoder reaches the M1's decoder. --glconv=none: VLC copies the decoded pictures into OpenGL textures itself; its IOSurface path to OpenGL gives a green picture here (open item)."
+}

@@ -1,0 +1,129 @@
+--- a/src/Frameworks/AppKit/NSAnimation/NSAnimation.m
++++ b/src/Frameworks/AppKit/NSAnimation/NSAnimation.m
+@@ -15,6 +15,9 @@
+ #import <Foundation/NSValue.h>
+ #import <Foundation/NSTimer.h>
+ #import <Foundation/NSRunLoop.h>
++#import <Foundation/NSDictionary.h>
++#import <objc/runtime.h>
++#import <objc/message.h>
+ 
+ NSString * const NSAnimationProgressMarkNotification=@"NSAnimationProgressMarkNotification";
+ 
+@@ -136,22 +139,40 @@
+    return _runLoopModes;
+ }
+ 
++// (VLC) the current value follows the progress through the animation's curve, or the delegate's
++// -animation:valueForProgress:, as on macOS; it stayed 0, and VLC, which ends its fullscreen transitions when the value
++// reaches 1, never left its fullscreen window (the main window stayed empty)
+ -(void)setCurrentProgress:(NSAnimationProgress)progress {
++   float t=MAX(0.0,MIN(1.0,progress));
++
+    _currentProgress=progress;
++   if([_delegate respondsToSelector:@selector(animation:valueForProgress:)])
++    _currentValue=((float (*)(id,SEL,id,NSAnimationProgress))objc_msgSend)(_delegate,@selector(animation:valueForProgress:),self,progress);
++   else switch(_curve){
++    case NSAnimationEaseInOut: _currentValue=t*t*(3-2*t); break;
++    case NSAnimationEaseIn:    _currentValue=t*t; break;
++    case NSAnimationEaseOut:   _currentValue=t*(2-t); break;
++    default:                   _currentValue=t; break;
++   }
+ }
+ 
++static void sfAnimationUnlink(NSAnimation *receiver, BOOL start);
++static void sfAnimationFireLinks(NSAnimation *trigger, NSAnimationProgress progress);
++
+ -(void)clearStartAnimation {
+-   NSUnimplementedMethod();
++   sfAnimationUnlink(self,YES);
+ }
+ 
+ -(void)clearStopAnimation {
+-   NSUnimplementedMethod();
++   sfAnimationUnlink(self,NO);
+ }
+ 
+ -(void)_setCurrentProgressAndEndIfNeeded:(NSAnimationProgress)progress {
+    if(_isAnimating){
+       progress=MAX(0.0,MIN(1.0,progress));
+       [self setCurrentProgress:progress];
++      [[self retain] autorelease];
++      sfAnimationFireLinks(self,progress);
+ 
+       if(progress>=1.0){
+          if([_delegate respondsToSelector:@selector(animationDidEnd:)])
+@@ -219,12 +240,71 @@
+    }
+ }
+ 
++/* (VLC) Linked animations: the receiver starts (or stops) when another animation's progress reaches a value. VLC chains
++ * the two halves of its fullscreen transition so; the methods raised "not implemented" and VLC ended at its fullscreen
++ * button. The links are kept as associated objects: the animation that triggers has the list of links, each receiver
++ * the animation it waits for (one start and one stop link each, as on macOS, where a new one replaces the old). */
++static char SFAnimationLinksKey, SFAnimationStartTriggerKey, SFAnimationStopTriggerKey;
++
++static void sfAnimationUnlink(NSAnimation *receiver, BOOL start) {
++   char *key=start ? &SFAnimationStartTriggerKey : &SFAnimationStopTriggerKey;
++   NSAnimation *trigger=objc_getAssociatedObject(receiver,key);
++   NSMutableArray *links=trigger ? objc_getAssociatedObject(trigger,&SFAnimationLinksKey) : nil;
++
++   for(NSInteger i=(NSInteger)[links count]-1;i>=0;i--){
++    NSDictionary *link=[links objectAtIndex:i];
++    if([link objectForKey:@"animation"]==receiver && [[link objectForKey:@"start"] boolValue]==start)
++     [links removeObjectAtIndex:i];
++   }
++   objc_setAssociatedObject(receiver,key,nil,OBJC_ASSOCIATION_ASSIGN);
++}
++
++static void sfAnimationLink(NSAnimation *receiver, NSAnimation *trigger, NSAnimationProgress progress, BOOL start) {
++   NSMutableArray *links;
++
++   sfAnimationUnlink(receiver,start);
++   if(trigger==nil)
++    return;
++   links=objc_getAssociatedObject(trigger,&SFAnimationLinksKey);
++   if(links==nil){
++    links=[NSMutableArray array];
++    objc_setAssociatedObject(trigger,&SFAnimationLinksKey,links,OBJC_ASSOCIATION_RETAIN);
++   }
++   [links addObject:[NSDictionary dictionaryWithObjectsAndKeys:receiver,@"animation",[NSNumber numberWithFloat:progress],@"progress",
++       [NSNumber numberWithBool:start],@"start",nil]];
++   objc_setAssociatedObject(receiver,start ? &SFAnimationStartTriggerKey : &SFAnimationStopTriggerKey,trigger,OBJC_ASSOCIATION_ASSIGN);
++}
++
++// the links of this animation whose progress has been reached: their animations start or stop, each once
++static void sfAnimationFireLinks(NSAnimation *trigger, NSAnimationProgress progress) {
++   NSMutableArray *links=objc_getAssociatedObject(trigger,&SFAnimationLinksKey);
++   NSMutableArray *due=[NSMutableArray array];
++
++   for(NSInteger i=(NSInteger)[links count]-1;i>=0;i--){
++    NSDictionary *link=[links objectAtIndex:i];
++    if([[link objectForKey:@"progress"] floatValue]<=progress){
++     [due insertObject:link atIndex:0];
++     [links removeObjectAtIndex:i];
++    }
++   }
++   for(NSDictionary *link in due){
++    NSAnimation *animation=[link objectForKey:@"animation"];
++    BOOL start=[[link objectForKey:@"start"] boolValue];
++
++    objc_setAssociatedObject(animation,start ? &SFAnimationStartTriggerKey : &SFAnimationStopTriggerKey,nil,OBJC_ASSOCIATION_ASSIGN);
++    if(start)
++     [animation startAnimation];
++    else
++     [animation stopAnimation];
++   }
++}
++
+ -(void)startWhenAnimation:(NSAnimation *)animation reachesProgress:(NSAnimationProgress)progress {
+-   NSUnimplementedMethod();
++   sfAnimationLink(self,animation,progress,YES);
+ }
+ 
+ -(void)stopWhenAnimation:(NSAnimation *)animation reachesProgress:(NSAnimationProgress)progress {
+-   NSUnimplementedMethod();
++   sfAnimationLink(self,animation,progress,NO);
+ }
+ 
+ @end

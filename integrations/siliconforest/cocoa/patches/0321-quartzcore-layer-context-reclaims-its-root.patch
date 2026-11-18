@@ -1,0 +1,20 @@
+--- a/src/Frameworks/QuartzCore/CALayerContext.m
++++ b/src/Frameworks/QuartzCore/CALayerContext.m
+@@ -379,7 +379,16 @@
+ }
+ 
+ -(void)setLayer:(CALayer *)layer {
+-   if(layer==_layer)return;
++   if(layer==_layer){
++    // (VLC) the root it has may have lost its pointer to this context (-removeFromSuperlayer clears it, and a view that
++    // moves under a superview without a layer calls that on its root): without it a change of the layer, new
++    // contents among them, asked nobody for a frame (a player's picture stayed at its first frame)
++    if(_layer!=nil && [_layer _context]!=self){
++     [_layer _setContext:self];
++     [self _layerTreeChanged];
++    }
++    return;
++   }
+    [self _sffxMarkMutation];
+    __atomic_store_n(&_sfrtStale,1,__ATOMIC_SEQ_CST);
+    layer=[layer retain];

@@ -13,7 +13,12 @@ let
   pd = import ../qemu-dev/sf-userland.nix;
 in pd.packages.x86_64-linux.coreServices-arm64.overrideAttrs (old: {
   pname = "siliconforest-coreservices";
-  patches = (old.patches or []) ++ [ ./patches/coreservices-text-encoding-converter.patch ];
+  patches = (old.patches or []) ++ [
+    ./patches/coreservices-text-encoding-converter.patch
+    # FSGetCatalogInfo, FSGetVolumeParms, LSCopyAllHandlersForURLScheme (VLC media player 3.0:
+    # docs/roadmap/issues/SF-AH-vlc.md)
+    ./patches/coreservices-catalog-info-and-url-handlers.patch
+  ];
   buildPhase = builtins.replaceStrings
     [ "src/Libraries/CoreServices/UnicodeUtilities.c \\" ]
     [ "src/Libraries/CoreServices/UnicodeUtilities.c src/Libraries/CoreServices/TextEncodingConverter.c \\" ]

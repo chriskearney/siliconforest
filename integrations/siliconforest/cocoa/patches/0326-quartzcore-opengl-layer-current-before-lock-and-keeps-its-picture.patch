@@ -1,0 +1,48 @@
+--- a/src/Frameworks/QuartzCore/CAOpenGLLayer.m
++++ b/src/Frameworks/QuartzCore/CAOpenGLLayer.m
+@@ -11,6 +11,7 @@
+ #include <math.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <stdio.h>
+ 
+ @interface CALayer (CAOpenGLLayerPrivate)
+ - (void)_setNeedsRender;
+@@ -159,13 +160,26 @@
+     CFTimeInterval now = CFAbsoluteTimeGetCurrent();
+     BOOL drew = NO;
+ 
++    /* (VLC) The context is made current first and locked after, the order VLC keeps on its own threads, so neither
++     * waits for the other while holding what the other needs; then the size, which the context takes at once since
++     * it is current here. Where it cannot be made current nothing is drawn or read back: the layer keeps its last
++     * picture (it showed a black frame, read from no context, while its window was resized). */
++    if (CGLSetCurrentContext(_sfContext) != kCGLNoError) {
++        static int traced = -1;
++
++        if (traced < 0)
++            traced = getenv("SF_CAOGL_TRACE") != NULL;
++        if (traced)
++            fprintf(stderr, "CAOpenGLLayer %p: its context could not be made current; the last picture stays\n", self);
++        CGLSetCurrentContext(previous);
++        return NO;
++    }
+     CGLLockContext(_sfContext);
+     if (_sfSurfaceSize[0] != width || _sfSurfaceSize[1] != height) {
+         _sfSurfaceSize[0] = width;
+         _sfSurfaceSize[1] = height;
+         CGLSetParameter(_sfContext, kCGLCPSurfaceBackingSize, _sfSurfaceSize);
+     }
+-    CGLSetCurrentContext(_sfContext);
+     if (forced || [self canDrawInCGLContext:_sfContext pixelFormat:_sfPixelFormat forLayerTime:now displayTime:NULL]) {
+         size_t row = (size_t)width * 4;
+         uint8_t *pixels = malloc(row * height), *flipped = malloc(row * height);
+@@ -197,8 +211,8 @@
+             free(flipped);
+         }
+     }
+-    CGLSetCurrentContext(previous);
+     CGLUnlockContext(_sfContext);
++    CGLSetCurrentContext(previous);
+     return drew;
+ }
+ 

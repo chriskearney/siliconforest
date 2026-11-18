@@ -1,0 +1,29 @@
+diff -ruN a/src/Libraries/libSystem/stub/CMakeLists.txt b/src/Libraries/libSystem/stub/CMakeLists.txt
+--- a/src/Libraries/libSystem/stub/CMakeLists.txt	2026-11-17 22:00:00.000000000 -0800
++++ b/src/Libraries/libSystem/stub/CMakeLists.txt	2026-11-17 22:00:00.000000000 -0800
+@@ -191,6 +191,14 @@
+             _os_variant_is_basesystem _strnvis)
+         # Activity Monitor (GitHub issue 53): the memory-pressure level of the system
+         list(APPEND _libsystem_export_lines _memorystatus_get_level)
++        # VLC media player 3.0 (docs/roadmap/issues/SF-AH-vlc.md): libvlccore reads the errno
++        # table (sys_errlist, sys_nerr); the Breakpad framework it links imports the Mach
++        # exception interface (exc_server, exception_raise) and three launchd bootstrap calls.
++        # All of them come from this tree's own sources (libc gen/errlst.c, libsystem_kernel's
++        # exc.defs, libxpc's libbootstrap.c): they were missing from the export list, and the
++        # generated exception server was not compiled into libsystem_kernel.
++        list(APPEND _libsystem_export_lines _sys_errlist _sys_nerr _exc_server _exception_raise
++            _bootstrap_subset _bootstrap_create_server _bootstrap_create_service)
+         list(REMOVE_DUPLICATES _libsystem_export_lines)
+     endif()
+     set(_libsystem_exports_for_link ${CMAKE_CURRENT_BINARY_DIR}/libSystem.arm64.exports)
+diff -ruN a/src/Libraries/libSystem/libsystem_kernel/CMakeLists.txt b/src/Libraries/libSystem/libsystem_kernel/CMakeLists.txt
+--- a/src/Libraries/libSystem/libsystem_kernel/CMakeLists.txt	2026-11-17 22:00:00.000000000 -0800
++++ b/src/Libraries/libSystem/libsystem_kernel/CMakeLists.txt	2026-11-17 22:00:00.000000000 -0800
+@@ -323,6 +323,7 @@
+     ${CMAKE_CURRENT_BINARY_DIR}/clock_reply.c
+     ${CMAKE_CURRENT_BINARY_DIR}/clock.c
+     ${CMAKE_CURRENT_BINARY_DIR}/exc_user.c
++    ${CMAKE_CURRENT_BINARY_DIR}/exc_server.c
+     ${CMAKE_CURRENT_BINARY_DIR}/host_priv.c
+     ${CMAKE_CURRENT_BINARY_DIR}/host_security.c
+     ${CMAKE_CURRENT_BINARY_DIR}/lock_set.c

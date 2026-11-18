@@ -18,7 +18,8 @@
 // the C map table API keeps working beside them. The eighth (TERM6, 15 November): the indexed and unordered
 // accessors of a to-many key called directly are heard (-insertObject:in<Key>AtIndex: and the others). The ninth
 // (TERM6): -[NSFileHandle setReadabilityHandler:] calls its handler when a pipe has data, and -availableData gives
-// what one read gives (Activity Monitor reads `sample`'s report so).
+// what one read gives (Activity Monitor reads `sample`'s report so). The twelfth (VLC): a main-thread perform that does
+// not wait is queued for the run loop.
 #include <dlfcn.h>
 #import <Foundation/Foundation.h>
 #include <stdio.h>
@@ -350,6 +351,36 @@ static int eleventh_build(void)
     @catch (id e) { return 128; }
 }
 
+// the twelfth build (VLC, patches/foundation-main-thread-perform-is-queued.patch): on the main thread,
+// -performSelectorOnMainThread:withObject:waitUntilDone:NO is queued for the run loop, as on macOS, not run
+// before the call returns; with waitUntilDone:YES it still runs at once
+@interface SFProbePerform : NSObject { @public int ran; }
+- (void)mark;
+@end
+@implementation SFProbePerform
+- (void)mark { ran++; }
+@end
+
+static int twelfth_checks(void)
+{
+    int bad = 0;
+    SFProbePerform *p = [[SFProbePerform alloc] init];
+    [p performSelectorOnMainThread:@selector(mark) withObject:nil waitUntilDone:NO];
+    if (p->ran != 0) bad |= 1;                       // ran before the call returned
+    for (int i = 0; i < 50 && p->ran == 0; i++) [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
+    if (p->ran != 1) bad |= 2;                       // the run loop did not run it (once)
+    [p performSelectorOnMainThread:@selector(mark) withObject:nil waitUntilDone:YES];
+    if (p->ran != 2) bad |= 4;                       // waitUntilDone:YES on the main thread runs at once
+    [p release];
+    return bad;
+}
+
+static int twelfth_build(void)
+{
+    @try { return twelfth_checks(); }
+    @catch (id e) { return 8; }
+}
+
 int main(void)
 {
     NSAutoreleasePool *pool = [NSAutoreleasePool new];
@@ -367,9 +398,9 @@ int main(void)
     [root removeObserver:root forKeyPath:@"leaf.name"];
     [second setName:@"d"];
     int more = second_build() | (third_build() << 4) | (fourth_build() << 8) | (fifth_build() << 12) | (sixth_build() << 16) | (seventh_build() << 25);
-    int eighth = eighth_build(), ninth = ninth_build(), tenth = tenth_build(), eleventh = eleventh_build();
-    BOOL ok = afterLeaf == 1 && afterSwap == 2 && end == 3 && root->heard == 3 && more == 0 && eighth == 0 && ninth == 0 && tenth == 0 && eleventh == 0;
-    printf("sf-kvo-probe: notifications %d, %d, %d, %d (wanted 1, 2, 3, 3), key-value coding and subclasses %d (wanted 0), to-many accessors %d (wanted 0), readability handler %d (wanted 0), networking classes %d (wanted 0), VLC additions %d (wanted 0): %s\n", afterLeaf, afterSwap, end, root->heard, more, eighth, ninth, tenth, eleventh, ok ? "ok" : "FAIL");
+    int eighth = eighth_build(), ninth = ninth_build(), tenth = tenth_build(), eleventh = eleventh_build(), twelfth = twelfth_build();
+    BOOL ok = afterLeaf == 1 && afterSwap == 2 && end == 3 && root->heard == 3 && more == 0 && eighth == 0 && ninth == 0 && tenth == 0 && eleventh == 0 && twelfth == 0;
+    printf("sf-kvo-probe: notifications %d, %d, %d, %d (wanted 1, 2, 3, 3), key-value coding and subclasses %d (wanted 0), to-many accessors %d (wanted 0), readability handler %d (wanted 0), networking classes %d (wanted 0), VLC additions %d (wanted 0), main-thread perform queued %d (wanted 0): %s\n", afterLeaf, afterSwap, end, root->heard, more, eighth, ninth, tenth, eleventh, twelfth, ok ? "ok" : "FAIL");
     [pool release];
     return ok ? 0 : 1;
 }
