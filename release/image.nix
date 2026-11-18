@@ -81,6 +81,12 @@ let
     for d in bin sbin libexec etc; do [ -d ${allPieces.openssh}/$d ] && cp -R ${allPieces.openssh}/$d $out/ssh/; done
     cp ${allPieces.terminal}/usr/bin/chonk-terminal-darwin $out/
   '';
+  sourceCodeProLicence = pkgs.fetchurl {
+    name = "source-code-pro-LICENSE.md";
+    # adobe-fonts/source-code-pro, tag 2.042R-u/1.062R-i/1.026R-vf
+    url = "https://raw.githubusercontent.com/adobe-fonts/source-code-pro/d3f1a5962cde503f9409c21e58527611d4a19ef1/LICENSE.md";
+    sha256 = "1zxqwk2ivcvaixdnd65sk44gwifsxl4f9w3chsx9p3iqlll0x53w";
+  };
   # files of the tree that go in as they are (installed path <- tree path)
   files = pkgs.runCommand "siliconforest-image-files" { } ''
     put() { mkdir -p "$out/$(dirname "$1")"; cp "$2" "$out/$1"; }
@@ -95,6 +101,13 @@ let
     cp $f/DejaVuSans.ttf $out/System/Library/Fonts/
     cp $f/DejaVuSans.ttf $out/usr/share/fonts/TTF/
     cp ${pkgs.dejavu_fonts.full-ttf.src}/LICENSE $out/usr/share/darwin-desktop/LICENSE-DejaVu.txt
+    cp ${pkgs.dejavu_fonts.full-ttf.src}/LICENSE $out/System/Library/Fonts/LICENSE-DejaVu.txt
+    cp ${pkgs.dejavu_fonts.full-ttf.src}/LICENSE $out/usr/share/fonts/TTF/LICENSE-DejaVu.txt
+    # Source Code Pro (in the upstream base, nixpkgs source-code-pro 2.042, whose release archive
+    # carries no licence): its LICENSE.md at the release tag's commit, the OFL-1.1 with the copyright
+    # line the fonts' own name tables carry ("(c) 2023 Adobe ..., with Reserved Font Name 'Source'")
+    mkdir -p $out/System/Library/Fonts/SourceCodePro
+    cp ${sourceCodeProLicence} $out/System/Library/Fonts/SourceCodePro/LICENSE.md
     # first start on its own machine (release/image/firstboot)
     mkdir -p $out/usr/libexec $out/System/Library/LaunchDaemons
     cp ${here}/firstboot/sf-firstboot $out/usr/libexec/sf-firstboot
@@ -154,6 +167,8 @@ let
         -E hash_seed=${fsUUID},lazy_itable_init=0,lazy_journal_init=0,root_owner=0:0 \
         -d work/root '"$out"'/siliconforest-root.ext4 $blocks
     ' | tee -a $out/layers.log
+    # every font in the root has its licence text with it
+    python3 -I -B ${here}/check-font-licences.py work/root | tee -a $out/layers.log
     # the filesystem must carry exactly the features the M1's root has (and its ext4 driver reads)
     got=$(dumpe2fs -h $out/siliconforest-root.ext4 2>/dev/null | sed -n 's/^Filesystem features: *//p')
     [ "$got" = "${features}" ] || { echo "ext4 features: $got" >&2; exit 1; }
