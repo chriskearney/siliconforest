@@ -210,38 +210,41 @@ build of `release/packages.nix` was not finished when this was written.
   `e2fsck -fn` clean, both installers rc 0). `nix-build --check` rebuilt the root, the boot
   files and the release files a second time to the same bytes (same machine, same inputs; a
   build on another machine is CODEX-BUILD's from-clone check).
-- **Compared with the M1** (`compare.py`): 19,617 entries the same. 51 files differ in content,
-  each explained: 20 are files of an older build of the Cocoa root the M1 still carries, 14
-  are other builds of the same Finch, kernel-header or macOS-apps recipes, 3 the rename
-  stage's newer files, `dyld` the image's own with one page lowered by the kernel, 4 the
-  DejaVu fonts (another release of the font), 4 `*.xnu` (the base's halt/reboot of the
-  pre-rename image), one Activity Monitor library, netd's hand-edited job, `release.json`'s
-  records. 12 entries differ in type: framework links on the image where the M1 has flattened
-  copies. Present only on the M1, outside what must not ship: Homebrew and Mozilla's bundle
-  (they arrive at install time), the pointer set (made at first start), Finch frameworks
-  without a piece yet (Accounts, CloudKit, CoreBluetooth, CoreLocation, CoreWLAN,
-  CryptoTokenKit, LocalAuthentication, OpenDirectory, UserNotifications, and the CLI
-  conformance build), Activity Monitor's libraries, the Thai font. Present only in the image:
-  files of whole build outputs the hand install did not copy (headers, man pages, licences).
-  Modes: 6,448 files read-only (0444) on the M1 are 0644 in the image; the M1's copies came
-  from the Nix store by hand.
-- **Boot and release files** build: release 0.1.0 is a 1.2 GB root (169 MB as one zstd part),
+- **Compared with the M1** (`compare.py`, the build with Homebrew, the Activity Monitor libraries,
+  the Thai fonts and the Finch frameworks): 71,942 entries the same. 48 files differ in content,
+  each explained: 20 files of an older build of the Cocoa root the M1 still carries, others of
+  other builds of the same Finch, kernel-header, macOS-apps and Activity Monitor recipes (the
+  M1's Activity Monitor libraries are an earlier build of the same sources), the rename
+  stage's newer files, `dyld` the image's own with one page lowered by the kernel, the DejaVu
+  fonts (another release of the font), `*.xnu` (the pre-rename base's halt/reboot), netd's
+  hand-edited job, `release.json`'s records. 12 entries differ in type: framework links in the
+  image where the M1 has flattened copies. Present only on the M1, outside what must not ship:
+  the ten Homebrew kegs the owner added himself, Mozilla's bundle (install time), the pointer
+  set (first start). Homebrew alone: 48,297 of the 48,298 shared files and links are
+  identical; the other is Python's library with three pages lowered by the kernel. Present
+  only in the image: files of whole build outputs the hand install did not copy (headers, man
+  pages, licences). Modes: 6,448 files read-only (0444) on the M1 are 0644 in the image; the
+  M1's copies came from the Nix store by hand.
+- **Boot and release files** build: release 0.1.0 is a 2.2 GB root (292 MB as one zstd part),
   an 8.6 MB boot archive, the manifest, `MANIFEST.tsv`, `SHA256SUMS`. `sf_verify_release.py`
   accepts them unsigned and with an SSH signature by a throwaway key, and refuses a changed
   `SHA256SUMS`. `sf_personalize.py` packs `sf/kernel.bin` from the real boot files with
   invented partition values; both records check; `boot.bin` is copied unchanged.
-- **QEMU** (`release/image/qemu/prepare-run.sh`, then `qemu-dev/qd_run.py`; arm64 `virt`, TCG,
-  on a host at load 40 to 50): the kernel finds the root by the release's UUID and mounts it;
-  launchd from the release root starts its jobs (12 `org.siliconforest.*` listed), the console
-  shell, the SSH server (which makes its host key), `sf-firstboot`; perl, zsh and ssh run; the
-  desktop session starts and the compositor draws the release's wallpaper and pointer
-  (screenshot). The terminal starts and runs its shell (it recorded its screen state with the
-  shell's prompt drawn, bracketed paste on), but at that load it reported ready after 27.2 s
-  (four vCPUs; 2.2 s past the desktop's fixed 25 s), so the session counted it as failed and
-  ended; with two vCPUs it did not get that far. CODEX-BUILD's separate minimal QEMU root
-  met the same deadline. QMP screen captures hung QEMU once while the compositor ran (a known
-  QEMU problem on this host: `QD_NO_SHOTS`). Not observed: a terminal window on screen, typing,
-  the dock.
+- **QEMU** (`release/image/qemu/prepare-run.sh`, then `run-vnc.sh`; arm64 `virt`, TCG, four
+  vCPUs, host load 25 to 60): the kernel finds the root by the release's UUID and mounts it;
+  launchd starts the root's jobs, the SSH server makes its host key, `sf-firstboot` writes the
+  pointer set (83 cursors, its log); perl, zsh and ssh run. With the compositor patch
+  `wm-darwin-app-ready-deadline-env.patch` and the QEMU run's longer deadlines, the terminal
+  starts, reports ready and its window is on screen with the shell's prompt (pictures through
+  QEMU's VNC server, runs 9, 10 and 16: `runs/image/qemu/run16/shots`). The dock starts (its log),
+  but no picture shows it: the terminal fills the 800x600 screen. Typing is not shown: every run
+  in which keys reached the guest (through the emulated USB keyboard over VNC, or the autopilot's
+  synthetic records) and several without ended with the compositor killed by SIGBUS. A core dump
+  (run 16) places it in `wm_darwin::presenter::Scanout::write_damage`, writing into the
+  firmware framebuffer's mapping, which the dump reports unreadable: the QEMU graphics path
+  (IOGOPFramebuffer on ramfb), not a file of the root. It happens with the M1's own compositor
+  build as well, at 800x600 and 1024x768, with and without the kernel's framebuffer console.
+  Open, for the desktop's and the QEMU loop's owners.
 - **Firefox's runtime**: 840 entries byte for byte with the M1's; the launcher's dry plan equals
   the M1's. Firefox itself was not started (no Mozilla bundle, no Homebrew in the image).
 - Not done: an install on any machine; the from-clone build and its reproducibility.
