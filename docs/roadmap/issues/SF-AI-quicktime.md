@@ -1,4 +1,4 @@
-# SF-AI: Apple's QuickTime Player on SiliconForest
+# SF-AI: Apple's QuickTime Player on SiliconForest (GitHub issue 62)
 
 ## Goal
 The unmodified QuickTime Player (version 10.5, build 1252.3, from the owner's macOS 26.5.2; a git-ignored
