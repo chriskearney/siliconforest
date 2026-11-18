@@ -3,9 +3,10 @@
 
 # The SiliconForest release image: what it is, how it is built, how it is checked
 
-Status, 18 November 2026: the recipe exists and builds a root image locally; the boot files
-and the release packaging are written but not yet built from this tree's own outputs; nothing
-has been published or installed. Read "What is proven" before relying on any of it.
+Status, 18 November 2026: the recipe builds the root, boot and release files and the root
+boots in QEMU to the desktop, from the build outputs the owner's M1 carries; the build from a
+clean clone is in progress; nothing has been published or installed. Read "What is proven"
+before relying on any of it.
 
 The owner's M1 (13-inch MacBook Pro, J293) runs SiliconForest from its own disk since
 13 November 2026. Its root filesystem was assembled by hand: an upstream PureDarwin image
@@ -177,21 +178,50 @@ OpenSSH, which macOS and Linux both have. No key exists yet: making it is the ow
 |---|---|
 | `boot.tar.zst`: `kernel.kc` | an APSL-2.0 kernel linked with GPL-2.0 kernel extensions (the PCIe host bridge and DART ported from Linux, the Asahi-derived display and GPU pieces) in one collection; corecrypto is the MPL-2.0 open reimplementation (Vali0004/corecrypto), not Apple's, but its "experimental, unaudited" status should be stated |
 | `boot.tar.zst`: `sf-stage1.bin`, `boot.bin` | m1n1 (MIT) and our stage-2 code (MIT): no question known |
-| `root.ext4` | the same GPL-2.0 kexts as on-disk bundles in `/System/Library/Extensions`; GPL binaries needing a source offer (the Chonkstep desktop GPL-3.0-only, FFmpeg with x264, Perl under Artistic or GPL, the Darling-derived Metal pieces); fonts (each needs its licence text beside it); whatever upstream PureDarwin ships under Apple's binary driver licence (not established) |
+| `root.ext4` | DejaVu fonts (Bitstream Vera licence, its text installed beside them); the same GPL-2.0 kexts as on-disk bundles in `/System/Library/Extensions`; GPL binaries needing a source offer (the Chonkstep desktop GPL-3.0-only, FFmpeg with x264, Perl under Artistic or GPL, the Darling-derived Metal pieces); fonts (each needs its licence text beside it); whatever upstream PureDarwin ships under Apple's binary driver licence (not established) |
 | `root.manifest.tsv`, `MANIFEST.tsv`, `SHA256SUMS` | none: paths, sizes and hashes |
 
 Firmware, Apple's applications, Mozilla's bundle and Homebrew bottles are in no artifact.
 
 ## What is proven, and how to check it
 
-- Built: `rootfs` from the M1's own build outputs (the store paths the classification found,
-  `runs/image/local.nix`, not committed). The build passes its own checks: the feature line,
-  `e2fsck -fn`, the installers' rc 0.
-- Compared with the M1 (`release/image/compare.py root.manifest.tsv classified.tsv`): see the
-  status file of the IMAGE stream for the current numbers and every difference.
-- Not yet: the build from `release/packages.nix` (CODEX-BUILD's from-clone outputs), the boot
-  files from those stages, the release files, a QEMU start of the image, a second build for
-  reproducibility from the from-clone outputs, and any install.
+All of this was done on the workstation, 18 November 2026, with the build outputs the M1 itself
+carries (the local driver `runs/image/local.nix`, not committed: store paths). The from-clone
+build of `release/packages.nix` was not finished when this was written.
+
+- **Root image** builds; its own checks pass (the M1 root's exact ext4 feature line,
+  `e2fsck -fn` clean, both installers rc 0). `nix-build --check` rebuilt it to the same bytes.
+- **Compared with the M1** (`compare.py`): 19,617 entries the same. 51 files differ in content,
+  each explained: 20 are files of an older build of the Cocoa root the M1 still carries, 14
+  are other builds of the same Finch, kernel-header or macOS-apps recipes, 3 the rename
+  stage's newer files, `dyld` the image's own with one page lowered by the kernel, 4 the
+  DejaVu fonts (another release of the font), 4 `*.xnu` (the base's halt/reboot of the
+  pre-rename image), one Activity Monitor library, netd's hand-edited job, `release.json`'s
+  records. 12 entries differ in type: framework links on the image where the M1 has flattened
+  copies. Present only on the M1, outside what must not ship: Homebrew and Mozilla's bundle
+  (they arrive at install time), the pointer set (made at first start), Finch frameworks
+  without a piece yet (Accounts, CloudKit, CoreBluetooth, CoreLocation, CoreWLAN,
+  CryptoTokenKit, LocalAuthentication, OpenDirectory, UserNotifications, and the CLI
+  conformance build), Activity Monitor's libraries, the Thai font. Present only in the image:
+  files of whole build outputs the hand install did not copy (headers, man pages, licences).
+  Modes: 6,448 files read-only (0444) on the M1 are 0644 in the image; the M1's copies came
+  from the Nix store by hand.
+- **Boot and release files** build: release 0.1.0 is a 1.2 GB root (169 MB as one zstd part),
+  an 8.6 MB boot archive, the manifest, `MANIFEST.tsv`, `SHA256SUMS`. `sf_verify_release.py`
+  accepts them unsigned and with an SSH signature by a throwaway key, and refuses a changed
+  `SHA256SUMS`. `sf_personalize.py` packs `sf/kernel.bin` from the real boot files with
+  invented partition values; both records check; `boot.bin` is copied unchanged.
+- **QEMU** (`release/image/qemu/prepare-run.sh`, then `qemu-dev/qd_run.py`; arm64 `virt`, TCG,
+  on a host at load 40 to 50): the kernel finds the root by the release's UUID and mounts it;
+  launchd from the release root starts its jobs (12 `org.siliconforest.*` listed), the console
+  shell, the SSH server (which makes its host key), `sf-firstboot`; perl, zsh and ssh run; the
+  desktop session starts and the compositor draws the release's wallpaper and pointer
+  (screenshot). Its terminal was spawned but did not report ready within the desktop's fixed
+  25 s at that load, so the finite session ended; the same happened to CODEX-BUILD's separate
+  minimal QEMU root. Not observed: a terminal window, typing, the dock.
+- **Firefox's runtime**: 840 entries byte for byte with the M1's; the launcher's dry plan equals
+  the M1's. Firefox itself was not started (no Mozilla bundle, no Homebrew in the image).
+- Not done: an install on any machine; the from-clone build and its reproducibility.
 
 ## Tools
 
