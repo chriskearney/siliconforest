@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "scope": "source identity after descriptor digest admission; no hardware execution",
+  "files": {
+    "gate.c": "b8e7588bb6c582acb8f830cf8ee68d7379869ad81de94be467e4fed32c898e55",
+    "gate.h": "0c22feeada35194909e7527c5d8fdc3e322444d739782092d9ea0899c764df1d",
+    "main.c": "4519154b89f88ea0021e2346503b48cfed14a670d2136a20e39c937491e3d8c1",
+    "child_state.h": "a998f40e869a03709307cdb3eabcd8ca4d6917afb179427b95ce95872d512a5a",
+    "trackpad_reference.h": "ff3e92c6d1e7b9e27a457de72e9d2ee38d91d31b33de13bc789572fc8cbac559",
+    "descriptor_guard.c": "dea686f30a8997eefdd42cb81578920ef3267c701bc085b4e1c2ce94bf3832d6",
+    "descriptor_guard.h": "6ebd017a1c4a00f592f245ca23e81eaa6050add7fddcc84a6aa96984dc6341b3"
+  },
+  "sources": {
+    "gate.c": "integrations/siliconforest/m1-trackpad-child/registry-gate-native/gate.c",
+    "gate.h": "integrations/siliconforest/m1-trackpad-child/registry-gate-native/gate.h",
+    "main.c": "integrations/siliconforest/m1-trackpad-child/registry-gate-native/main.c",
+    "child_state.h": "integrations/siliconforest/m1-trackpad-child/child_state.h",
+    "trackpad_reference.h": "integrations/siliconforest/m1-trackpad-child/trackpad_reference.h",
+    "descriptor_guard.c": "integrations/siliconforest/m1-trackpad-child/descriptor_guard.c",
+    "descriptor_guard.h": "integrations/siliconforest/m1-trackpad-child/descriptor_guard.h"
+  }
+}

@@ -1,5 +1,6 @@
 /* Finite observation only. No service opens, report I/O, or registry writes. */
 #include "gate.h"
+#include "descriptor_guard.h"
 #include <string.h>
 
 uint32_t ng_u32(const uint8_t *p)
@@ -15,7 +16,7 @@ int ng_nonce_valid(const char *s)
 static int exact_name(const uint8_t *p, const char *name)
 { const void *z=memchr(p,0,NG_NAME_BYTES); return z && strcmp((const char *)p,name)==0; }
 
-int ng_classify(const uint8_t r[NG_BYTES], const uint8_t descriptor[110])
+int ng_classify(const uint8_t r[NG_BYTES], const uint8_t descriptor_digest[32])
 {
  uint32_t n=ng_u32(r+NG_HIDS),i,j; uint64_t parent=0,child=0;
  const uint8_t *s=r+NG_STATE;
@@ -38,7 +39,7 @@ int ng_classify(const uint8_t r[NG_BYTES], const uint8_t descriptor[110])
  if(ng_u32(r+NG_PARENTS)!=1 || ng_u32(r+NG_PARENT_DONE)!=1 || ng_u32(r+NG_ITER_VALID+16)!=1 || ng_u32(r+NG_ITER_VALID+20)!=1) return 1;
  if(ng_u64(r+NG_PROVIDER_ID)!=parent || ng_u64(r+NG_PROVIDER_IDS)!=parent) return 1;
  if(ng_u32(r+NG_COMPLETE)!=1 || ng_u32(r+NG_DESCRIPTOR_LEN)!=110 || ng_u32(r+NG_INTERFACE_LEN)!=4 || ng_u32(r+NG_STATE_LEN)!=32) return 1;
- if(memcmp(r+NG_DESCRIPTOR,descriptor,110) || ng_u32(r+NG_INTERFACE)!=2) return 1;
+ if(!sf_trackpad_descriptor_matches(r+NG_DESCRIPTOR,110,descriptor_digest) || ng_u32(r+NG_INTERFACE)!=2) return 1;
  if(ng_u32(s)!=1 || ng_u32(s+4)!=32 || ng_u32(s+28)!=0) return 1;
  commit=ng_u32(s+8); route=ng_u32(s+12); fault=ng_u32(s+16); stop=ng_u32(s+20); error=ng_u32(s+24);
  if(commit>1||route>1||fault>1||stop>1) return 1;
@@ -107,7 +108,7 @@ static int props(struct observation *o,uint32_t child)
  return 1;
 }
 
-int ng_collect(const struct ng_ops *ops,void *ctx,const uint8_t descriptor[110],uint8_t r[NG_BYTES])
+int ng_collect(const struct ng_ops *ops,void *ctx,const uint8_t descriptor_digest[32],uint8_t r[NG_BYTES])
 {
  struct observation o={ops,ctx,r,{0},0};
  uint32_t master=0,hidit=0,serialit=0,parentit=0,child=0,p=0; int end=0;
@@ -182,5 +183,5 @@ done:
   kr=ops->release(ctx,o.owned[--o.n]);
   if(kr) { ng_put32(r+NG_RELEASE_ERRORS,ng_u32(r+NG_RELEASE_ERRORS)+1); bad(&o,NG_OWNERSHIP,kr); }
  }
- { int result=ng_classify(r,descriptor); ng_put32(r+NG_RESULT,(uint32_t)result); return result; }
+ { int result=ng_classify(r,descriptor_digest); ng_put32(r+NG_RESULT,(uint32_t)result); return result; }
 }

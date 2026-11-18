@@ -2,6 +2,7 @@
 #include "SFM1SPITrackpad.h"
 #include "m1tp_child_policy.h"
 #include "trackpad_reference.h"
+#include "descriptor_guard.h"
 #include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/IOLib.h>
 #include <libkern/c++/OSData.h>

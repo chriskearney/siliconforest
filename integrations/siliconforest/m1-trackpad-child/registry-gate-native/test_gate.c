@@ -2,6 +2,7 @@
 #error assertion-based host tests require assertions
 #endif
 #include "gate.h"
+#include "descriptor_guard.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,6 +15,7 @@ struct fixture {
  int short_property,property_error,nonready,node_kind,invalid_node,error_port,null_next,eof_with_port;
 };
 static uint8_t descriptor[110];
+static uint8_t descriptor_digest[32];
 static int32_t call(struct fixture *f) { return ++f->calls==f->fail_at?-123:0; }
 static void acquired(struct fixture *f,uint32_t p)
 { assert(p<32); f->owned[p]++; f->acquired++; }
@@ -80,7 +82,7 @@ static struct fixture fresh(void)
 { struct fixture f; memset(&f,0,sizeof(f)); f.hid_n=2; f.parent_n=1; f.node_kind=1; return f; }
 static int run(struct fixture *f,uint8_t r[NG_BYTES])
 {
- int result=ng_collect(&ops,f,descriptor,r); unsigned i;
+ int result=ng_collect(&ops,f,descriptor_digest,r); unsigned i;
  assert(f->acquired==f->releases);
  for(i=0;i<32;i++) assert(f->owned[i]==f->released[i]);
  assert(result==(int)ng_u32(r+NG_RESULT)); return result;
@@ -89,6 +91,7 @@ int main(void)
 {
  struct fixture f; uint8_t r[NG_BYTES],good[NG_BYTES]; int calls,rights,i; unsigned mask;
  for(i=0;i<110;i++) descriptor[i]=(uint8_t)i;
+ assert(sf_trackpad_descriptor_digest(descriptor,sizeof(descriptor),descriptor_digest));
  f=fresh(); assert(run(&f,good)==0); calls=f.calls; rights=f.releases;
  for(i=1;i<=calls;i++) { f=fresh(); f.fail_at=i; assert(run(&f,r)==1); assert(ng_u32(r+NG_QUERY_ERRORS)==1); }
  for(i=1;i<=calls;i++) { f=fresh(); f.fail_at=i; f.error_port=1; assert(run(&f,r)==1); assert(ng_u32(r+NG_QUERY_ERRORS)==1); }
@@ -109,12 +112,12 @@ int main(void)
   memcpy(r,good,sizeof(r)); ng_put32(r+NG_STATE+8,c); ng_put32(r+NG_STATE+12,route);
   ng_put32(r+NG_STATE+16,fault); ng_put32(r+NG_STATE+20,stop); ng_put32(r+NG_STATE+24,e);
   expected=(route&&(!c||fault||stop||e))||(fault&&!e)||(e&&!fault&&!stop)?1:!c||!route||fault||stop||e?77:0;
-  assert(ng_classify(r,descriptor)==expected);
+  assert(ng_classify(r,descriptor_digest)==expected);
  }
  /* No field removal may turn a contradictory ready receipt into admission. */
- for(i=0;i<6;i++) { memcpy(r,good,sizeof(r)); ng_put32(r+NG_ITER_VALID+4*i,0); assert(ng_classify(r,descriptor)==1); }
- memcpy(r,good,sizeof(r)); r[NG_DESCRIPTOR]^=1; assert(ng_classify(r,descriptor)==1);
- memcpy(r,good,sizeof(r)); ng_put64(r+NG_PROVIDER_ID,UINT64_C(0x200000007)); assert(ng_classify(r,descriptor)==1);
+ for(i=0;i<6;i++) { memcpy(r,good,sizeof(r)); ng_put32(r+NG_ITER_VALID+4*i,0); assert(ng_classify(r,descriptor_digest)==1); }
+ memcpy(r,good,sizeof(r)); r[NG_DESCRIPTOR]^=1; assert(ng_classify(r,descriptor_digest)==1);
+ memcpy(r,good,sizeof(r)); ng_put64(r+NG_PROVIDER_ID,UINT64_C(0x200000007)); assert(ng_classify(r,descriptor_digest)==1);
  assert(ng_nonce_valid("0123456789abcdef0123456789abcdef0123456789abcdef"));
  assert(!ng_nonce_valid("0123456789ABCDEF0123456789abcdef0123456789abcdef")); assert(!ng_nonce_valid(NULL));
  printf("PASS: %d RPC failure boundaries, %d release boundaries, policy/ownership cases\n",calls,rights);

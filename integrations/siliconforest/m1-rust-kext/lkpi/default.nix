@@ -19,8 +19,9 @@ let
   modules = import ./modules.nix;
 
   # Linux's rust/ directory as checked out for the GPU plan (linux-aurora 6a08a08e, 7.2.11)
+  linuxSource = (import ../../../../release/sources.nix).linux-aurora.outPath;
   linuxRust = builtins.path {
-    path = /home/chrisk/src/darwin-lab/sources/gpu-plan/linux-aurora/rust;
+    path = linuxSource + "/rust";
     name = "linux-aurora-7.2.11-rust";
   };
 
@@ -36,7 +37,7 @@ let
   # bindings. Its files are used from that directory as they are; its README lists the steps.
   extras = ../../m1-lkpi-extras;
   # the driver's uAPI header, from the driver's tree, and the "drm.h" it includes
-  asahiUapi = /home/chrisk/src/darwin-lab/sources/gpu-plan/linux-aurora/include/uapi/drm/asahi_drm.h;
+  asahiUapi = linuxSource + "/include/uapi/drm/asahi_drm.h";
   extrasInclude = pkgs.runCommand "sf-lkpi-extras-include" { } ''
     mkdir -p $out/uapi/drm
     cp ${extras + "/c/include/sf_lkpi_extras.h"} $out/sf_lkpi_extras.h
@@ -380,7 +381,7 @@ let
   # D4: the Asahi driver, common code + G13 (--cfg sf_g13), from the driver tree with
   # ../agx/patches applied. `agxSrc` is also where the kext takes the driver's C from.
   asahiDriver = builtins.path {
-    path = /home/chrisk/src/darwin-lab/sources/gpu-plan/linux-aurora/drivers/gpu/drm/asahi;
+    path = linuxSource + "/drivers/gpu/drm/asahi";
     name = "linux-aurora-7.2.11-drm-asahi";
   };
   agxSrc = pkgs.runCommand "drm-asahi-for-pd" { nativeBuildInputs = [ pkgs.patch ]; } ''

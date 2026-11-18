@@ -61,7 +61,7 @@ int main(int argc,char **argv)
  uint8_t record[NG_BYTES]; int result;
  /* Reject usage before constructing an observation or invoking any RPC/stat. */
  if(argc!=3 || strcmp(argv[1],"--nonce") || !ng_nonce_valid(argv[2])) return 2;
- result=ng_collect(&operations,NULL,dl_m1_tp_descriptor_reference,record);
+ result=ng_collect(&operations,NULL,sf_trackpad_descriptor_sha256,record);
  if(export_record(argv[2],record,result)) return 1;
  return result;
 }

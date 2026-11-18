@@ -1,0 +1,146 @@
+[
+  {
+    "path": "wm-darwin-daily.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-inject.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-popups.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-applications.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-mac-command-q.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-client-states.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-desktop-night.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-trackpad-swipes.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-swipe-new-space.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-mac-command-chords.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-fullscreen-covers-dock.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-macos-desk.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-owner-round.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-input-robust.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-outputs.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-latch.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-cursor-plane.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-second-output.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-dock-tip-measured.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-minimise-dock.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-tiles-above-pinch.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-precise-wait.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-external-wallpaper-dock-units.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-pointer-set-virtual-seat.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-cursor-thread.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-relaunch-fifo-clipboard.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-synthetic-keys-bound.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-callbacks-asleep-shm-pacing.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-pacing-cost-corner-grips.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-frames-lost-or-repeated-late-latch-policy.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-restore-after-reboot.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-trackpad-finger-scroll-popup-dmabuf-unmap-serials.patch",
+    "strip": 2
+  },
+  {
+    "path": "wm-darwin-shown-intervals-capture-of-animating-scenes.patch",
+    "strip": 2
+  },
+  {
+    "path": "wm-darwin-clipboard-ask-again-window-position.patch",
+    "strip": 2
+  },
+  {
+    "path": "wm-darwin-h264-recording.patch",
+    "strip": 1
+  },
+  {
+    "path": "wm-darwin-siliconforest-themes.patch",
+    "strip": 1
+  }
+]

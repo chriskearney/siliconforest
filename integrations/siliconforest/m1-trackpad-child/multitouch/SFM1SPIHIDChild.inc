@@ -65,14 +65,14 @@ void SFM1SPIHID::childFault(int32_t error)
 
 bool SFM1SPIHID::prepareChild()
 {
-    static_assert(sizeof(dl_m1_tp_descriptor_reference)==DL_M1_TP_DESCRIPTOR_BYTES,"reference length");
+    static_assert(SF_TRACKPAD_DESCRIPTOR_LENGTH==DL_M1_TP_DESCRIPTOR_BYTES,"reference length");
     if (trackpadEnumeration.result!=M1TP_OBS_ENUM_OK ||
         trackpadEnumeration.stage!=M1TP_OBS_COMPLETE ||
         trackpadEnumeration.request_mask!=M1TP_CLAIM_MASK ||
         trackpadInterface.interface!=2 ||
         trackpadEnumeration.descriptor_payload_bytes!=DL_M1_TP_DESCRIPTOR_BYTES ||
-        !m1tp_child_descriptor_equal(trackpadEnumeration.descriptor,trackpadEnumeration.descriptor_bytes,
-                                    dl_m1_tp_descriptor_reference,sizeof(dl_m1_tp_descriptor_reference))) {
+        !sf_trackpad_descriptor_matches(trackpadEnumeration.descriptor,trackpadEnumeration.descriptor_bytes,
+                                        sf_trackpad_descriptor_sha256)) {
         childFault((int32_t)kIOReturnUnsupported); return false;
     }
     childOwned=new SFM1SPITrackpad;

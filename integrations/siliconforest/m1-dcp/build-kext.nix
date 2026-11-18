@@ -5,7 +5,7 @@
 let
   inherit (import ../m1-rust-kext/pins.nix) pkgs crossToolchain;
   lkpi = import ../m1-rust-kext/lkpi;
-  pin = /home/chrisk/src/darwin-lab/sources/gpu-plan/linux-aurora;
+  pin = (import ../../../release/sources.nix).linux-aurora.outPath;
   driver = builtins.path { path = pin + "/drivers/gpu/drm/apple"; name = "linux-aurora-drm-apple"; };
   pinFile = p: builtins.path { path = pin + "/${p}"; name = builtins.baseNameOf p; };
   headers = pkgs.lib.filter (h: h != "") (pkgs.lib.splitString "\n" (builtins.readFile ./tools/pin-headers.txt));

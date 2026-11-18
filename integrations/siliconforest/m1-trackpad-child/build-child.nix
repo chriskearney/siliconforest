@@ -2,8 +2,8 @@
 let
  pd = (import ../rebase/pd.nix).pd;
  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
- inputs = builtins.fromJSON (builtins.readFile ./sdk-build-inputs-001.json);
- names = [ "CMakeLists.txt" "Info.plist" "SFM1KeyboardHW.cpp" "SFM1KeyboardHW.h" "SFM1SPIHID.cpp" "SFM1SPIHID.h" "m1kbd_board.c" "m1kbd_hw.h" "m1kbd_pio.c" "m1kbd_hid.c" "m1kbd_hid.h" "native_protocol/dl_spi_hid.c" "native_protocol/dl_spi_hid.h" "observation_layout.h" "m1tp_enum.c" "m1tp_enum.h" "SFM1SPIHIDChild.inc" "SFM1SPITrackpad.cpp" "SFM1SPITrackpad.h" "m1tp_child_policy.c" "m1tp_child_policy.h" "child_state.h" "trackpad_reference.h" ];
+ inputs = builtins.fromJSON (builtins.readFile ./sdk-build-inputs-digest.json);
+ names = [ "CMakeLists.txt" "Info.plist" "SFM1KeyboardHW.cpp" "SFM1KeyboardHW.h" "SFM1SPIHID.cpp" "SFM1SPIHID.h" "m1kbd_board.c" "m1kbd_hw.h" "m1kbd_pio.c" "m1kbd_hid.c" "m1kbd_hid.h" "native_protocol/dl_spi_hid.c" "native_protocol/dl_spi_hid.h" "observation_layout.h" "m1tp_enum.c" "m1tp_enum.h" "SFM1SPIHIDChild.inc" "SFM1SPITrackpad.cpp" "SFM1SPITrackpad.h" "m1tp_child_policy.c" "m1tp_child_policy.h" "child_state.h" "trackpad_reference.h" "descriptor_guard.c" "descriptor_guard.h" ];
  lab = pkgs.runCommand "siliconforest-m1-passive-trackpad-child-module-source" {} ''
   mkdir -p "$out/native_protocol"
   cp ${./adapter/CMakeLists.txt} "$out/CMakeLists.txt"
@@ -28,7 +28,9 @@ let
   cp ${./adapter/m1tp_child_policy.c} "$out/m1tp_child_policy.c"
   cp ${./adapter/m1tp_child_policy.h} "$out/m1tp_child_policy.h"
   cp ${./child_state.h} "$out/child_state.h"
-  cp ${/home/chrisk/src/darwin-lab/runs/m1-desktop-010/trackpad-child-reference-001/trackpad_reference.h} "$out/trackpad_reference.h"
+  cp ${./trackpad_reference.h} "$out/trackpad_reference.h"
+  cp ${./descriptor_guard.c} "$out/descriptor_guard.c"
+  cp ${./descriptor_guard.h} "$out/descriptor_guard.h"
  '';
  checks = pkgs.lib.concatMapStringsSep "\n" (name:
   let sha = inputs.files.${name}.sha256;

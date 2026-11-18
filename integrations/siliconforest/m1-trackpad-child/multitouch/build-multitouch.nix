@@ -38,7 +38,9 @@ let
   cp ${./sf_tp_gesture_ring.h} "$out/sf_tp_gesture_ring.h"
   cp ${./m1tp_mt_selftest.c} "$out/m1tp_mt_selftest.c"
   cp ${./NOTICE} "$out/NOTICE"
-  cp ${/home/chrisk/src/darwin-lab/runs/m1-desktop-010/trackpad-child-reference-001/trackpad_reference.h} "$out/trackpad_reference.h"
+  cp ${../trackpad_reference.h} "$out/trackpad_reference.h"
+  cp ${../descriptor_guard.c} "$out/descriptor_guard.c"
+  cp ${../descriptor_guard.h} "$out/descriptor_guard.h"
  '';
 in pd.packages.x86_64-linux.kexts-arm64.overrideAttrs (old: {
  pname = "siliconforest-m1-spi-hid-multitouch";

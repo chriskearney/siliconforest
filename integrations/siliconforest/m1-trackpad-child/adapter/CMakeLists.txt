@@ -4,7 +4,7 @@ add_kext_bundle(SFM1SPIHID.kext INFO_PLIST Info.plist KERNEL_PRIVATE
 set_property(TARGET SFM1SPIHID.kext PROPERTY OUTPUT_NAME SFM1SPIHID)
 target_sources(SFM1SPIHID.kext PRIVATE
     SFM1SPIHID.cpp SFM1KeyboardHW.cpp m1kbd_board.c m1kbd_pio.c m1kbd_hid.c
-    native_protocol/dl_spi_hid.c m1tp_enum.c SFM1SPITrackpad.cpp m1tp_child_policy.c)
+    native_protocol/dl_spi_hid.c m1tp_enum.c SFM1SPITrackpad.cpp m1tp_child_policy.c descriptor_guard.c)
 target_include_directories(SFM1SPIHID.kext PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../IOHIDFamily/IOHIDSystem

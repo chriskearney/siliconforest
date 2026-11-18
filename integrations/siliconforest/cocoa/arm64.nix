@@ -5,7 +5,7 @@
 # that helper or every arm64 intermediate, so the few that are needed are rebuilt here from
 # the exported pieces. Nothing here changes a source file; patched builds are in ./patched.nix.
 let
-  flake = builtins.getFlake "git+file:///home/chrisk/src/darwin-lab/sources/puredarwin-baseline?submodules=1&shallow=1&rev=04b6ecb44f8d6d8c650b8e3e1912bc57b881265d";
+  flake = (import ../../../release/cocoa-base.nix).pd;
   pd = flake.packages.x86_64-linux;
   pkgs = import flake.inputs.nixpkgs { system = "x86_64-linux"; };
   src = flake.outPath;

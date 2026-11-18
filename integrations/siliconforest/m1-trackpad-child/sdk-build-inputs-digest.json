@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "scope": "source identity after descriptor digest admission; no hardware execution",
+  "files": {
+    "CMakeLists.txt": {
+      "sha256": "11c4ec4bd3da5bfe1da86c035963d0bc59b4d8190eb5dc9be61fcbfe7047a9ac"
+    },
+    "Info.plist": {
+      "sha256": "0eb1a15707fcfc648928cd19884030c6f51f7d209723b39ba81311e23d539b11"
+    },
+    "SFM1KeyboardHW.cpp": {
+      "sha256": "90c47f5c06a543082e339cac9a12af7ea32603afca923f71e629ca437334fb18"
+    },
+    "SFM1KeyboardHW.h": {
+      "sha256": "be4cacc865c0f44b93994ec910ec94e31d8829dfa1043d4b463945171e0070fb"
+    },
+    "SFM1SPIHID.cpp": {
+      "sha256": "054ebca1a6cd025120598c190b202b9caa9950fb06108eae855cc6281b804fc8"
+    },
+    "SFM1SPIHID.h": {
+      "sha256": "5a0aee619244492cc4822ca9a7bc4903110925b0493d4ba842742f28bdc5751e"
+    },
+    "m1kbd_board.c": {
+      "sha256": "d02e4a86f01a10a33eb75043a467bf0a191c16fb69e82134b8c5545b6d660a89"
+    },
+    "m1kbd_hw.h": {
+      "sha256": "a6fecae107fa4d29c0ee3d62eb1287bcc148af8cb5628ae1404b51da95be1970"
+    },
+    "m1kbd_pio.c": {
+      "sha256": "3af8a6bd82db427b9d3695634916bec57eea506c4a7768b686608f06f656bea3"
+    },
+    "m1kbd_hid.c": {
+      "sha256": "c4b9248c1b740d66bc6e39b2106ec3c67cb7e2d0e034d03386b6e920d34dddee"
+    },
+    "m1kbd_hid.h": {
+      "sha256": "0badc44929aee8ed18949684bc17cc51f6e81ebc06650f06d2f64ccd0dc36c85"
+    },
+    "native_protocol/dl_spi_hid.c": {
+      "sha256": "88f2ae23fc527affa440fe5ee7309ac9b566de6c842cdb3e0d03dd054bf53103"
+    },
+    "native_protocol/dl_spi_hid.h": {
+      "sha256": "c58d84b1965812b65210d0f0c794b577a6dcfecef1a5dc449e2ae1fc6fe5d5ec"
+    },
+    "observation_layout.h": {
+      "sha256": "65d264aa362ea642bb5d882d8afdc3a42436c942d7fc605230710e6834175eff"
+    },
+    "m1tp_enum.c": {
+      "sha256": "1b6cff1b4f2071ffa916965be3e89e89f062728aff97454052587c75bb1288b5"
+    },
+    "m1tp_enum.h": {
+      "sha256": "8a90316d98ca5ad97cc2a147128145dbcac1ff75009d94c03fdedae50d4a4083"
+    },
+    "SFM1SPIHIDChild.inc": {
+      "sha256": "3cd4f4acc99db56e49d6b3ce4aef840b707f0202c1e30e4be363a7715ca52fd4"
+    },
+    "SFM1SPITrackpad.cpp": {
+      "sha256": "0ad64e56bb4e20a91b851c351e7825ae271db62b9021b472ae5606ac63320d0f"
+    },
+    "SFM1SPITrackpad.h": {
+      "sha256": "3e52c45c7abc090037b9fbee29e27d0f7ca78ddd405739036d8759d6322ef54f"
+    },
+    "m1tp_child_policy.c": {
+      "sha256": "c4b68408ee1ef53dc3704005fef89650b26df17616cbede045d350d761c495cc"
+    },
+    "m1tp_child_policy.h": {
+      "sha256": "1c892b8a9165dfdefddf5378daea2ae4224c4027fcf92f3e6364deedfdd9bd7a"
+    },
+    "child_state.h": {
+      "sha256": "a998f40e869a03709307cdb3eabcd8ca4d6917afb179427b95ce95872d512a5a"
+    },
+    "trackpad_reference.h": {
+      "sha256": "ff3e92c6d1e7b9e27a457de72e9d2ee38d91d31b33de13bc789572fc8cbac559"
+    },
+    "descriptor_guard.c": {
+      "sha256": "dea686f30a8997eefdd42cb81578920ef3267c701bc085b4e1c2ce94bf3832d6"
+    },
+    "descriptor_guard.h": {
+      "sha256": "6ebd017a1c4a00f592f245ca23e81eaa6050add7fddcc84a6aa96984dc6341b3"
+    }
+  },
+  "sources": {
+    "CMakeLists.txt": "integrations/siliconforest/m1-trackpad-child/adapter/CMakeLists.txt",
+    "Info.plist": "integrations/siliconforest/m1-keyboard/Info.plist",
+    "SFM1KeyboardHW.cpp": "integrations/siliconforest/m1-keyboard/SFM1KeyboardHW.cpp",
+    "SFM1KeyboardHW.h": "integrations/siliconforest/m1-keyboard/SFM1KeyboardHW.h",
+    "SFM1SPIHID.cpp": "integrations/siliconforest/m1-trackpad-child/adapter/SFM1SPIHID.cpp",
+    "SFM1SPIHID.h": "integrations/siliconforest/m1-trackpad-child/adapter/SFM1SPIHID.h",
+    "m1kbd_board.c": "integrations/siliconforest/m1-keyboard/m1kbd_board.c",
+    "m1kbd_hw.h": "integrations/siliconforest/m1-keyboard/m1kbd_hw.h",
+    "m1kbd_pio.c": "integrations/siliconforest/m1-keyboard/m1kbd_pio.c",
+    "m1kbd_hid.c": "integrations/siliconforest/m1-keyboard/m1kbd_hid.c",
+    "m1kbd_hid.h": "integrations/siliconforest/m1-keyboard/m1kbd_hid.h",
+    "native_protocol/dl_spi_hid.c": "integrations/siliconforest/m1-keyboard/native_protocol/dl_spi_hid.c",
+    "native_protocol/dl_spi_hid.h": "integrations/siliconforest/m1-keyboard/native_protocol/dl_spi_hid.h",
+    "observation_layout.h": "integrations/siliconforest/m1-trackpad-enum/observation_layout.h",
+    "m1tp_enum.c": "integrations/siliconforest/m1-trackpad-enum/core/m1tp_enum.c",
+    "m1tp_enum.h": "integrations/siliconforest/m1-trackpad-enum/core/m1tp_enum.h",
+    "SFM1SPIHIDChild.inc": "integrations/siliconforest/m1-trackpad-child/adapter/SFM1SPIHIDChild.inc",
+    "SFM1SPITrackpad.cpp": "integrations/siliconforest/m1-trackpad-child/adapter/SFM1SPITrackpad.cpp",
+    "SFM1SPITrackpad.h": "integrations/siliconforest/m1-trackpad-child/adapter/SFM1SPITrackpad.h",
+    "m1tp_child_policy.c": "integrations/siliconforest/m1-trackpad-child/adapter/m1tp_child_policy.c",
+    "m1tp_child_policy.h": "integrations/siliconforest/m1-trackpad-child/adapter/m1tp_child_policy.h",
+    "child_state.h": "integrations/siliconforest/m1-trackpad-child/child_state.h",
+    "trackpad_reference.h": "integrations/siliconforest/m1-trackpad-child/trackpad_reference.h",
+    "descriptor_guard.c": "integrations/siliconforest/m1-trackpad-child/descriptor_guard.c",
+    "descriptor_guard.h": "integrations/siliconforest/m1-trackpad-child/descriptor_guard.h"
+  }
+}

@@ -44,7 +44,8 @@ uint64_t ng_u64(const uint8_t *);
 void ng_put32(uint8_t *, uint32_t);
 void ng_put64(uint8_t *, uint64_t);
 int ng_nonce_valid(const char *);
-/* 0 ready identity only, 77 clean absence/non-ready, 1 malformed/error. */
-int ng_classify(const uint8_t [NG_BYTES], const uint8_t [110]);
-int ng_collect(const struct ng_ops *, void *, const uint8_t [110], uint8_t [NG_BYTES]);
+/* The second argument is the expected SHA-256 digest, not descriptor bytes.
+ * 0 ready identity only, 77 clean absence/non-ready, 1 malformed/error. */
+int ng_classify(const uint8_t [NG_BYTES], const uint8_t [32]);
+int ng_collect(const struct ng_ops *, void *, const uint8_t [32], uint8_t [NG_BYTES]);
 #endif

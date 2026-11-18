@@ -16,7 +16,7 @@
 { extra ? [ ], remove ? [ ] }:
 let
   pd = import ./pin.nix;
-  pkgs = import (builtins.getFlake "git+file:///home/chrisk/src/darwin-lab/sources/puredarwin-baseline?submodules=1&shallow=1&rev=04b6ecb44f8d6d8c650b8e3e1912bc57b881265d").inputs.nixpkgs { system = "x86_64-linux"; };
+  pkgs = import (import ../../../release/cocoa-base.nix).pd.inputs.nixpkgs { system = "x86_64-linux"; };
   # upstream's Swift runtime with the Darwin module map of before the rename (../rebase/swift-darwin-module.nix)
   swiftRuntime = import ../rebase/swift-darwin-module.nix pd."swift-runtime-arm64";
   parts = [

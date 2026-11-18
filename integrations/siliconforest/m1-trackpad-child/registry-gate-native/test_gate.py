@@ -52,7 +52,7 @@ class GateTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory(prefix="darwin-native-gate-")
         cls.out = Path(cls.temp.name)
-        cls.flags = ["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wpedantic", "-O1", "-I", str(HERE)]
+        cls.flags = ["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wpedantic", "-O1", "-I", str(HERE), "-I", str(HERE.parent), "-DSF_TRACKPAD_GUARD_HOST_TEST", "-Wl,--no-as-needed", "-lcrypto", str(HERE.parent / "descriptor_guard.c")]
         subprocess.run(cls.flags + ["-shared", "-fPIC", str(HERE / "gate.c"), "-o", str(cls.out / "gate.so")], check=True)
         cls.lib = ctypes.CDLL(str(cls.out / "gate.so"))
         cls.lib.ng_classify.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
@@ -69,7 +69,7 @@ class GateTests(unittest.TestCase):
         subprocess.run([str(binary)], check=True, env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1"})
 
     def test_assertions_required(self):
-        p = subprocess.run(self.flags + ["-DNDEBUG", "-c", str(HERE / "test_gate.c"), "-o", str(self.out / "ndebug.o")], capture_output=True)
+        p = subprocess.run([f for f in self.flags if f != str(HERE.parent / "descriptor_guard.c")] + ["-DNDEBUG", "-c", str(HERE / "test_gate.c"), "-o", str(self.out / "ndebug.o")], capture_output=True)
         self.assertNotEqual(p.returncode, 0)
         self.assertIn(b"assertion-based host tests require assertions", p.stderr)
 
@@ -85,7 +85,7 @@ class GateTests(unittest.TestCase):
                     off = rng.randrange(704)
                     r[off] = rng.randrange(256)
             expected = decoder.classify(bytes(r), digest)
-            actual = self.lib.ng_classify(ctypes.create_string_buffer(bytes(r)), ctypes.create_string_buffer(descriptor))
+            actual = self.lib.ng_classify(ctypes.create_string_buffer(bytes(r)), ctypes.create_string_buffer(hashlib.sha256(descriptor).digest()))
             self.assertEqual(actual, expected, (i, r.hex()))
 
     def test_mutants_are_assertion_killed(self):
@@ -93,7 +93,7 @@ class GateTests(unittest.TestCase):
         mutants = {
             "release-errors": ("if(kr) { ng_put32(r+NG_RELEASE_ERRORS", "if(0) { ng_put32(r+NG_RELEASE_ERRORS"),
             "invalid-iterator": ("if(v!=1)", "if(0)"),
-            "descriptor": ("memcmp(r+NG_DESCRIPTOR,descriptor,110)", "memcmp(r+NG_DESCRIPTOR,descriptor,0)"),
+            "descriptor": ("!sf_trackpad_descriptor_matches(r+NG_DESCRIPTOR,110,descriptor_digest)", "descriptor_digest == NULL"),
             "identity-high32": ("return ng_u32(p) | (uint64_t)ng_u32(p+4)<<32;", "return ng_u32(p);"),
             "nonready": ("if(!commit||!route||fault||stop||error||!ng_u32(r+NG_KBD_NODE)||!ng_u32(r+NG_MOUSE_NODE)) return 77;", "if(!ng_u32(r+NG_KBD_NODE)||!ng_u32(r+NG_MOUSE_NODE)) return 77;"),
         }
