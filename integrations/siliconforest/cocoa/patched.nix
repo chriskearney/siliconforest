@@ -607,8 +607,23 @@
 #         renderer, and an animation the renderer cannot interpolate leaves the model value (it drew 0); 0345
 #         QuartzCore: CAConstraint, CAConstraintLayoutManager, CALayer's layoutManager (autoresizing only without one).
 #         0346 (CoreAudio, applied by ../m1-sound/sysaudio/build-sysaudio.nix) block-based property listeners; 0347
-#         (libFoundation, applied by ../terminal-app/build-foundation.nix) more URL resource values. The URL key names
-#         and NSFileCoordinator are in the framework wrappers (../terminal-app/compat).
+#         (libFoundation, applied by ../terminal-app/build-foundation.nix) more URL resource values; 0348 (libFoundation,
+#         the same) a bundle without a path is nil; 0349 (libFoundation, the same) +[NSString pathWithComponents:].
+#         The URL key names and NSFileCoordinator are in the framework wrappers (../terminal-app/compat).
+#   0350  AppKit (QTP): a document application's launch as on macOS: one that keeps its documents in iCloud
+#         shows the Open panel instead of an untitled document (NSShowAppCentricOpenPanelInsteadOfUntitledFile),
+#         and files named at launch that the delegate does not take are opened by the document controller
+#   0351  AppKit (QTP): document types named by uniform type identifier (LSItemContentTypes, conformance through
+#         CoreServices' table); the document controller asks -typeForContentsOfURL:error: and makes documents with
+#         -initWithContentsOfURL:ofType:error:, and has the block form of -openDocumentWithContentsOfURL:display:;
+#         -_autosaveDirectoryURLCreateIfNecessary: (where autosaved untitled documents are kept)
+#   0352  libFoundation (QTP, applied by ../terminal-app/build-foundation.nix): -[NSURL fileReferenceURL] answered by
+#         the file's path URL, -filePathURL, -isFileReferenceURL
+#   0353  AppKit (QTP): names a document window is made with: NSWindow's layer-hosting request and title-bar
+#         opacity (kept, answered, no effect here), -[NSDocument _windowTitleDisplayName], system-spacing anchors,
+#         -[NSWindow isModalPanel], NSMenu's names (_setMenuName:, _menusWithName:), -[NSMenuItem
+#         _matchesKeyEquivalent:modifierMask:], the light and medium system fonts, -[NSWindow _borderView] (its title bar
+#         has no versions button here)
 #   0009  Security: SecItemCopyMatching writes its result on every path and answers
 #         errSecItemNotFound when nothing was found (Firefox crashed on the unwritten result)
 #   (0007 and 0008 are libSystem's sandbox profile compiler: ./build-libsystem-cocoa.nix)
@@ -729,6 +744,9 @@ let
     ./patches/0178a-appkit-gpu-layers-presented-from-the-render-thread.patch
     ./patches/0340-appkit-binding-and-text-style-names.patch
     ./patches/0341-appkit-file-wrapper-url-interface.patch
+    ./patches/0350-appkit-document-application-launch.patch
+    ./patches/0351-appkit-document-types-by-identifier.patch
+    ./patches/0353-appkit-document-window-names.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
     ./patches/0004-windowserver-server-decorations-and-scale.patch

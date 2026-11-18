@@ -27,6 +27,7 @@ in pkgs.stdenv.mkDerivation {
   ${cc} $CF -c ${./SFCaptureInputItem.m} -o objects/SFCaptureInputItem.o
   ${cc} $CF -c ${./SFUnavailableCaptureView.m} -o objects/SFUnavailableCaptureView.o
   ${cc} $CF -c ${./SFPlayerController.m} -o objects/SFPlayerController.o
+  ${cc} $CF -c ${./SFQuickTimePlayerView.m} -o objects/SFQuickTimePlayerView.o
   ${cc} $CF -c ${./SFQuickTimeControls.m} -o objects/SFQuickTimeControls.o
   ${cc} $CF -c ${./ranges.c} -o objects/ranges.o
   ${cc} $CF -c ${./values.m} -o objects/values.o

@@ -13,9 +13,10 @@ files instantiate), supply each missing piece as our own code written from publi
 behaviour, and stage it beside the system until the application runs. Nothing from Apple's bundle, SDK or
 private headers is in this repository; only names appear here, because names are the interface.
 
-## State (18 November 2026, afternoon)
-**Not launched.** No window has been opened and the application has not been started on this system yet.
-What has now run on the M1 is our own probe against the private prefix, without a window:
+## State (18 November 2026, evening)
+**Launched, past dyld, no window of its own yet.** The application starts on the M1 from the private
+prefix, runs its launch code and waits in its event loop ("Stage 1 on the machine"). Before that, our
+own probe ran against the prefix without a window:
 
 - **All 154 names the prefix supplies are found by the real dyld** in the libraries the application binds
   them from (the 112 additions and the 42 of the loader libraries), and every behaviour check of the probe
@@ -244,6 +245,56 @@ Firefox/Terminal/Activity Monitor checks; nothing here installs anything.
 
 The conformance program `cocoa/conformance/qtp-names.m` checks each moved name without a window and builds for
 macOS as well, so the believed constant values (the text-style names above all) can be compared there.
+
+## Stage 1 on the machine (18 November)
+Bounded launches on the M1, each under the GUI lock, with the owner-input check, on a Space of its own,
+from a private directory: nothing installed, the application's own process only, stopped after seconds.
+Every launch inserts a small library of ours (`finch/QuickTime/exitwatch.nix`) that records why the
+program ends (exit, abort, a fatal signal or an uncaught exception, each with a backtrace) and prints the
+main thread's stack on request.
+
+- **The early end was a crash, not the environment.** The application asks at launch for an internal
+  resources bundle that only Apple's own builds carry. `+[NSBundle bundleWithPath:]` got a nil path and
+  handed NULL to CoreFoundation (SIGSEGV after 0.26 s, no crash report). On macOS the answer is nil.
+  libFoundation patch 0348 does the same; the next missing name on that path,
+  `+[NSString pathWithComponents:]`, is patch 0349.
+- **Then it runs, idle, with no window.** Its delegate declines an untitled document
+  (`applicationShouldOpenUntitledFile:` answers NO). On macOS the application still shows an Open
+  panel at launch: document applications that keep their documents in iCloud get the Open panel
+  instead of an untitled document (the `NSShowAppCentricOpenPanelInsteadOfUntitledFile` default
+  turns this off). Our AppKit did not, so nothing appeared. AppKit patch 0350 does it (also when
+  the application is reopened with no windows). It also hands files named at launch to the
+  document controller when the delegate takes none, as macOS does.
+- **Document types by identifier.** The application declares every document type by uniform type
+  identifier only (`LSItemContentTypes`, no extensions, no type names). The document controller
+  matched extensions only, so it found no type for any movie. AppKit patch 0351 names such types by
+  identifier, finds a file's type through the conformance table in CoreServices, asks
+  `-typeForContentsOfURL:error:` (the application overrides it), and makes documents with
+  `-initWithContentsOfURL:ofType:error:` (the only initialiser the application implements).
+- **On the way to the document window.** With a movie named at launch the application reads it
+  (`-[MGPlayerDocument readFromURL:ofType:error:]`, type `com.apple.quicktime-movie`) and starts loading
+  the asset. Each step stopped at a message nothing answered; the next ones were found ahead of time
+  from the application's own call sites (the receiver from the message before, the types from the
+  registers) so that one build round covers several:
+  libFoundation 0352 (`-[NSURL fileReferenceURL]`: there are no reference URLs here, so the file's
+  path URL, and `-isFileReferenceURL` says NO); AppKit 0353 (the document window's layer-hosting
+  request and title-bar opacity, kept and answered with no effect; the document's window title name;
+  the window's frame view, whose title bar has no versions button here; `isModalPanel`; menus by name;
+  a menu item's key-equivalent match; the light and medium system fonts; system-spacing anchors);
+  the slow-motion rate of a movie's frame rate (1: slow motion is not offered, so every movie plays at
+  its own rate); and in our AVKit, the player view's player controller, its layer's layout mode and
+  frame (the content's aspect fit), and the settings it keeps without acting on them (floating
+  controls' margin, zoom, hiding controls, stereo eyes, display sleep, time display style; each says so
+  once on stderr where it matters), the controller's initialiser, content size, looping, autoplay and
+  frame stepping, and "no" for chapters, alternative audio, subtitles and sharing, which this player
+  does not read.
+- **Where the menu bar is.** This desktop has no global menu bar: an application's main menu is
+  drawn in the first row of each of its titled windows that is not a panel. The Open panel is a panel,
+  so the menus appear with the first document window.
+
+The load test now takes a capture and the window list 3 s before it stops the application, records
+the exit reason, refuses to start the application while the owner is at the machine, and passes
+`--movie` as the `NSOpen` default (the way AppKit is told about a file named at launch).
 
 ## The 112 names
 Kinds: **real** (implemented), **constant**, **model** (holds what it is given; nothing in the system acts on

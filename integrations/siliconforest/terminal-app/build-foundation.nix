@@ -35,6 +35,8 @@
 #   ../cocoa/patches/0348: -[NSBundle initWithPath:] with no path is nil, as on macOS (QuickTime Player crashed at
 #     launch asking for a bundle it does not ship), and a failed initialisation releases the receiver
 #   ../cocoa/patches/0349: +[NSString pathWithComponents:] (missing; QuickTime Player got an exception at launch)
+#   ../cocoa/patches/0352: -[NSURL fileReferenceURL] answered by the file's path URL (no reference URLs here),
+#     -filePathURL, -isFileReferenceURL (QuickTime Player asks when it reads a movie)
 # A file every Objective-C program loads: QEMU pass and the guarded procedure before it replaces
 # the disk root's; until then it is tried from a scratch prefix (DYLD_LIBRARY_PATH).
 #
@@ -43,7 +45,7 @@ let
   pd = (import ../rebase/pd.nix).pd;
 in pd.packages.x86_64-linux."foundation-arm64".overrideAttrs (old: {
   pname = "siliconforest-foundation-macos-apps";
-  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ../cocoa/patches/0347-foundation-url-resource-values.patch ../cocoa/patches/0348-foundation-bundle-without-a-path-is-nil.patch ../cocoa/patches/0349-foundation-path-with-components.patch ];
+  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ../cocoa/patches/0347-foundation-url-resource-values.patch ../cocoa/patches/0348-foundation-bundle-without-a-path-is-nil.patch ../cocoa/patches/0349-foundation-path-with-components.patch ../cocoa/patches/0352-foundation-file-reference-urls-by-path.patch ];
   patchFlags = [ "-p4" ];
   buildPhase = let
     r = builtins.replaceStrings
