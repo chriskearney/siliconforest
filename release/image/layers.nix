@@ -68,8 +68,9 @@ in [
   # root assembled from the layers before it ("late": the libraries link to the root's own)
   { name = "activity-monitor"; exclude = common; late = true; }
   # the desktop
-  { name = "desktop"; exclude = common ++ [ "usr/bin/*.next" ]; }  # .next: the inject-capable test build
-  { name = "terminal"; exclude = common; }
+  # the compositor and the dock (not .next, the inject-capable test build), then the terminal alone
+  { name = "desktop"; exclude = common ++ [ "usr/bin/*.next" "usr/bin/chonk-terminal-darwin" ]; }
+  { name = "terminal"; only = [ "usr/bin/chonk-terminal-darwin" ]; }
   # Firefox's runtime, launcher and desktop entry (./firefox-runtime.nix, a tree at installed paths;
   # Mozilla's bundle arrives at install time)
   { name = "firefox-runtime"; exclude = common; }

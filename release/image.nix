@@ -69,24 +69,24 @@ let
   systemSource = pkgs.runCommand "siliconforest-image-system-source" { } ''
     mkdir -p $out/applications
     cp ${allPieces.system-tools}/sbin/sf-halt ${allPieces.system-tools}/usr/sbin/sf-clock $out/
-    cp ${tree}/m1-storage/system/{sf-boot,sf-command,sf-session,darwin-desktop-test.disk} $out/
-    cp ${tree}/m1-native-boot/guest/org.siliconforest.desktop.plist $out/
+    cp ${tree + "/m1-storage/system"}/{sf-boot,sf-command,sf-session,darwin-desktop-test.disk} $out/
+    cp ${tree + "/m1-native-boot/guest"}/org.siliconforest.desktop.plist $out/
     cp ${allPieces.desktop}/usr/bin/chonkstep-dock $out/
-    cp ${tree}/desktop/system/applications/org.siliconforest.terminal.desktop $out/applications/
-    cp ${tree}/desktop/system/dock-pins $out/
+    cp ${tree + "/desktop/system"}/applications/org.siliconforest.terminal.desktop $out/applications/
+    cp ${tree + "/desktop/system"}/dock-pins $out/
   '';
   userlandSource = pkgs.runCommand "siliconforest-image-userland-source" { } ''
     mkdir -p $out/ssh
-    cp ${tree}/m1-storage/userland/{sshd_config,sf-sshd,org.siliconforest.sshd.plist,brew,sf-environment,shasum} $out/
+    cp ${tree + "/m1-storage/userland"}/{sshd_config,sf-sshd,org.siliconforest.sshd.plist,brew,sf-environment,shasum} $out/
     for d in bin sbin libexec etc; do [ -d ${allPieces.openssh}/$d ] && cp -R ${allPieces.openssh}/$d $out/ssh/; done
     cp ${allPieces.terminal}/usr/bin/chonk-terminal-darwin $out/
   '';
   # files of the tree that go in as they are (installed path <- tree path)
   files = pkgs.runCommand "siliconforest-image-files" { } ''
-    put() { mkdir -p "$out/$(dirname "$1")"; cp "${tree}/$2" "$out/$1"; }
-    put usr/share/backgrounds/siliconforest/siliconforest.png chonkstep-darwin/backgrounds/siliconforest.png
+    put() { mkdir -p "$out/$(dirname "$1")"; cp "$2" "$out/$1"; }
+    put usr/share/backgrounds/siliconforest/siliconforest.png ${tree + "/chonkstep-darwin/backgrounds/siliconforest.png"}
     for w in sf-canopy sf-clearing sf-dieshot sf-wafer; do
-      put usr/share/backgrounds/siliconforest/$w.jpg desktop/themes/wallpapers/$w.jpg
+      put usr/share/backgrounds/siliconforest/$w.jpg ${tree + "/desktop/themes/wallpapers"}/$w.jpg
     done
     # the desktop's font, where the M1 has its copies (DejaVu 2.37, from nixpkgs), with its licence
     for d in usr/share/darwin-desktop System/Library/Fonts usr/share/fonts/TTF; do mkdir -p $out/$d; done
@@ -142,8 +142,8 @@ let
     # directories, the installer fills them from the target's own firmware (never from here)
     mkdir -p work/root/Library/Firmware/brcm work/root/Library/Firmware/apple
     fakeroot -- sh -euc '
-      sh ${tree}/m1-storage/system/sf-install.sh ${systemSource} work/root
-      sh ${tree}/m1-storage/userland/sf-userland-install.sh ${userlandSource} work/root
+      sh ${tree + "/m1-storage/system"}/sf-install.sh ${systemSource} work/root
+      sh ${tree + "/m1-storage/userland"}/sf-userland-install.sh ${userlandSource} work/root
       python3 -I -B ${here}/assemble.py owners --root work/root --perms ${here}/permissions.tsv --manifest '"$out"'/root.manifest.tsv
       bytes=$(du -s --block-size=4096 work/root | cut -f1)
       entries=$(wc -l < '"$out"'/root.manifest.tsv)
@@ -173,7 +173,7 @@ let
     cp ${boot.stage2} $out/boot.bin
     cp ${kernel}/kernel $out/kernel.kc
     cp ${here}/bootargs.template $out/bootargs.template
-    cp ${tree}/m1-native-boot/b1/pdsf_pack.py $out/pdsf_pack.py
+    cp ${tree + "/m1-native-boot/b1"}/pdsf_pack.py $out/pdsf_pack.py
     cp ${here}/sf_personalize.py $out/sf_personalize.py
     n=$(grep -a -c -F ${fsUUID} $out/boot.bin || true)
     [ "$n" = 1 ] || { echo "stage 2: the release root UUID ${fsUUID} found $n times, not once" >&2; exit 1; }

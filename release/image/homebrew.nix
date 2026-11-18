@@ -45,7 +45,7 @@ in pkgs.runCommand "siliconforest-homebrew-prefix" {
   '') l.formulae}
   cp -R ${brewSrc} brew; chmod -R u+w brew
   [ "$(cat brew/Library/Homebrew/vendor/portable-ruby-version)" = "${(lib.findFirst (f: f.name == "portable-ruby") null l.formulae).version}" ]
-  cp -R ${tree}/homebrew tools
+  cp -R ${tree + "/homebrew"} tools
   SF_HB_RUNS=$R python3 -I -B tools/hb_pour.py --name release --no-image --tag ${l.tag} --brew brew \
     ${lib.concatMapStringsSep " " (f: lib.escapeShellArg f.name) pour} > pour.json
   python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); e=d["stats"]["errors"]; print(json.dumps(d["stats"])); sys.exit(1 if e else 0)' $R/prefix/release.json

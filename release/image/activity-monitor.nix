@@ -30,9 +30,9 @@ in pkgs.runCommand "siliconforest-activity-monitor-support" {
   export CC=${a.common.darwinCrossToolchain}/bin/arm64-apple-darwin20.4-clang
   export LD=${a.common.nativeLd}/bin/ld SDK=${sdk}
   export INC="-I${a.common.libSystem}/usr/include -I${a.base.libobjc}/usr/include -I${a.base.corefoundation}/include -I${a.base.foundation}/usr/include"
-  export LINKROOT=${linkRoot} PY=python3 HB=${tree}/homebrew
+  export LINKROOT=${linkRoot} PY=python3 HB=${tree + "/homebrew"} TERMCOMPAT=${tree + "/terminal-app/compat"}
   export NTSTAT_INC=${xnu}/System/Library/Frameworks/System.framework/Versions/B/PrivateHeaders
-  bash ${tree}/activity-monitor/libs/build.sh $PWD/all > build.log 2>&1 || { tail -30 build.log >&2; exit 1; }
+  bash ${tree + "/activity-monitor/libs"}/build.sh $PWD/all > build.log 2>&1 || { tail -30 build.log >&2; exit 1; }
   mkdir -p $out
   (cd all && find . \( -type f -o -type l \) | sed 's#^\./##' \
      | grep -Ev '(AppKit|CoreFoundation|CoreGraphics|CoreServices|Foundation|IOKit|Metal)\.framework/' \
@@ -42,6 +42,6 @@ in pkgs.runCommand "siliconforest-activity-monitor-support" {
      | while read -r f; do [ -L "$out/$f" ] || { mkdir -p "$out/$(dirname "$f")"; cp -P "$f" "$out/$f"; }; done)
   LDF="-fuse-ld=$LD -nostdlib -Wl,-syslibroot,$LINKROOT -L$LINKROOT/usr/lib -Wl,-platform_version,macos,26.5,26.5"
   mkdir -p $out/usr/bin $out/usr/sbin
-  $CC -isysroot $SDK -mmacosx-version-min=26.5 -O1 -isystem $SDK/usr/include $INC ${tree}/activity-monitor/tools/sf-sample.c $LDF -lSystem -o $out/usr/bin/sample
-  $CC -isysroot $SDK -mmacosx-version-min=26.5 -O1 -isystem $SDK/usr/include $INC ${tree}/activity-monitor/tools/sf-lsof.c $LDF -lSystem -o $out/usr/sbin/lsof
+  $CC -isysroot $SDK -mmacosx-version-min=26.5 -O1 -isystem $SDK/usr/include $INC ${tree + "/activity-monitor/tools"}/sf-sample.c $LDF -lSystem -o $out/usr/bin/sample
+  $CC -isysroot $SDK -mmacosx-version-min=26.5 -O1 -isystem $SDK/usr/include $INC ${tree + "/activity-monitor/tools"}/sf-lsof.c $LDF -lSystem -o $out/usr/sbin/lsof
 ''
