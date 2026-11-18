@@ -147,3 +147,33 @@ required library missing and 112 symbols unbound (153 without them).
 Foundation: the kernel-private `sf_pthread_sched.h` is kept out of the generated
 Darwin module, as `../../rebase/swift-darwin-module.nix` already does for the Swift
 runtime build.
+
+## Additions and the private prefix (18 November 2026, SF-AI)
+
+The loader libraries above, and everything below, are for one private prefix that only
+QuickTime Player's launcher names through `DYLD_FRAMEWORK_PATH` and `DYLD_LIBRARY_PATH`.
+None of it is to be installed at a system path: the SwiftUI is a binding subset, and a
+real SwiftUI program must never find it.
+
+`additions.nix` builds, for each of 17 system frameworks from which QuickTime Player
+binds names SiliconForest lacks, a small library with that framework's install name. It
+defines the missing names (`additions/*.m`, `plain.c`) and re-exports
+`@loader_path/<Name>.sf-under`, which `qt_prefix.py` makes a symbolic link to the
+system's own image of the framework (or, for AVFoundation, MediaToolbox and WebKit, the
+staged provider). The process loads the system's file once; no system file changes.
+`additions/standin.m` exists only so that the linker has something with that name.
+
+`additions/symbols.json` lists all 112 names with what each is: real, constant, model or
+absence. An absence binds, and when used fails as its interface documents and says so
+once on stderr. `additions-check.nix` verifies 112 of 112 are exported from the right
+library; the kind of each (code or data) matches how the application binds it.
+`../AVKit/SFQuickTimeControls.m` holds the AVKit ones.
+
+`qt_prefix.py --out PREFIX --root / --additions ... --stage ...` assembles the prefix and
+reports names that the system image now exports itself; pass those to
+`additions.nix { omit = [ ... ]; }` (the `SF_OMIT_` guards in `additions/AppKit.m` show
+the pattern; add a guard where one is needed). `additions-probe.m` is our own check of an
+assembled prefix on SiliconForest: symbol lookups through the real dyld, then behaviour.
+
+Offline, against the 15 November copy of the system: 965 imports, none unbound. Not
+loaded on SiliconForest yet.

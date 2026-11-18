@@ -5,7 +5,8 @@
 
   check_exports.py --imports imports.json --root STAGE [--under TREE ...] --macho DIR
 
-imports.json maps an install name to the symbol names bound from it. Each library is read
+imports.json maps an install name to the symbol names bound from it (or is a per-symbol
+table: {"symbols": [{"library", "symbol", "kind", "note"}, ...]}). Each library is read
 at ROOT + install name; an umbrella's re-exported libraries are followed through ROOT and
 the --under trees. Exit status 1 if a library is absent, has another install name, is not
 arm64, or lacks a symbol. This predicts dyld's verdict for these libraries; it runs nothing.
@@ -21,6 +22,19 @@ def load_imports(path):
     """{install name: [symbol, ...]} with the comment entry dropped; raises on a malformed file."""
     data = json.loads(Path(path).read_text())
     out = {}
+    if isinstance(data.get('symbols'), list):       # the per-symbol table form (additions/symbols.json)
+        kinds = {'real', 'constant', 'model', 'absence'}
+        for row in data['symbols']:
+            if set(row) != {'library', 'symbol', 'kind', 'note'} or row['kind'] not in kinds or not row['note']:
+                raise ValueError(f'{path}: bad row {row!r}')
+            if not row['library'].startswith('/') or not row['symbol'].startswith('_'):
+                raise ValueError(f'{path}: bad library or symbol in {row!r}')
+            out.setdefault(row['library'], []).append(row['symbol'])
+        for key, value in out.items():
+            if len(set(value)) != len(value):
+                raise ValueError(f'{path}: a symbol of {key} is listed twice')
+            value.sort()
+        return out
     for key, value in data.items():
         if key == 'comment':
             continue
