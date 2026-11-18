@@ -1,0 +1,71 @@
+SPDX-License-Identifier: MIT
+Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+
+wm-darwin: write the firmware framebuffer (SFGOP) with aligned 32-bit stores only. The damage path
+copied each row segment with memcpy, whose 16-byte and unaligned vector stores fault on device
+memory: in QEMU (IOGOPFramebuffer on ramfb) the compositor died with SIGBUS as soon as a damaged
+rectangle started at an x that is not a multiple of four pixels (typing in a terminal does that).
+A core dump showed `stp q0, q1` at an address ending in 0x...b04 inside the framebuffer mapping,
+from Scanout::write_damage. snapshot() and restore() read and write the mapping the same way.
+The full-frame path already stored one word at a time.
+
+diff -ru a/crates/wm-darwin/src/presenter.rs b/crates/wm-darwin/src/presenter.rs
+--- a/crates/wm-darwin/src/presenter.rs	2026-11-18 04:11:41.520295622 -0800
++++ b/crates/wm-darwin/src/presenter.rs	2026-11-18 04:11:41.545648147 -0800
+@@ -41,6 +41,23 @@
+     /// Reused conversion buffer: up to `BAND_ROWS` full rows.
+     band: Vec<u8>,
+ }
++/// Copy `src` into the mapping at `dst` one aligned 32-bit store at a time. The mapping can be
++/// device memory (the firmware framebuffer, IOGOP on QEMU's ramfb), where the 16-byte and
++/// unaligned vector stores of memcpy fault: SIGBUS when a damage rectangle starts at an x that
++/// is not a multiple of four pixels. `dst` is 4-byte aligned (base, stride and x0 * 4 are).
++unsafe fn store_words(dst: *mut u8, src: &[u8]) {
++    let dst = dst as *mut u32;
++    for (i, w) in src.chunks_exact(4).enumerate() {
++        dst.add(i).write_volatile(u32::from_ne_bytes([w[0], w[1], w[2], w[3]]));
++    }
++}
++/// The reverse of `store_words`: aligned 32-bit loads from the mapping.
++unsafe fn load_words(src: *const u8, dst: &mut [u8]) {
++    let src = src as *const u32;
++    for (i, w) in dst.chunks_exact_mut(4).enumerate() {
++        w.copy_from_slice(&src.add(i).read_volatile().to_ne_bytes());
++    }
++}
+ /// Rows converted before they are copied out. Small enough to stay in cache,
+ /// large enough that the two clock readings per band cost nothing.
+ const BAND_ROWS: usize = 16;
+@@ -121,13 +138,7 @@
+                 for (i, native) in self.band.chunks_exact(bytes).take(rows).enumerate() {
+                     // In bounds: y + i < height, x0 * 4 + bytes <= width * 4 <= stride,
+                     // and stride * height is inside the validated mapping.
+-                    unsafe {
+-                        std::ptr::copy_nonoverlapping(
+-                            native.as_ptr(),
+-                            self.base.add((y + i) * stride + x0 * 4),
+-                            bytes,
+-                        )
+-                    };
++                    unsafe { store_words(self.base.add((y + i) * stride + x0 * 4), native) };
+                 }
+                 convert_ns += (converted - start).as_nanos() as u64;
+                 present_ns += converted.elapsed().as_nanos() as u64;
+@@ -144,7 +155,7 @@
+         let (width, stride) = (self.layout.width as usize * 4, self.layout.stride as usize);
+         let mut out = vec![0u8; width * self.layout.height as usize];
+         for (y, row) in out.chunks_exact_mut(width).enumerate() {
+-            unsafe { std::ptr::copy_nonoverlapping(self.base.add(y * stride), row.as_mut_ptr(), width) };
++            unsafe { load_words(self.base.add(y * stride), row) };
+         }
+         out
+     }
+@@ -155,7 +166,7 @@
+             return Err("framebuffer snapshot size mismatch".into());
+         }
+         for (y, row) in snapshot.chunks_exact(width).enumerate() {
+-            unsafe { std::ptr::copy_nonoverlapping(row.as_ptr(), self.base.add(y * stride), width) };
++            unsafe { store_words(self.base.add(y * stride), row) };
+         }
+         Ok(())
+     }
