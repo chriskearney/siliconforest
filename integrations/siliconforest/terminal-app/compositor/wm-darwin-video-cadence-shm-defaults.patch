@@ -1,0 +1,317 @@
+diff --git a/crates/wm-darwin/src/pacing.rs b/crates/wm-darwin/src/pacing.rs
+index de2ac75..11f2f45 100644
+--- a/crates/wm-darwin/src/pacing.rs
++++ b/crates/wm-darwin/src/pacing.rs
+@@ -66,6 +66,9 @@ struct Window {
+     shm_copy: Series,
+     /// the newest commit replaced one no frame had drawn (for `WMTRACE`)
+     last_replaced: bool,
++    /// deskperf-003: the last commit intervals (us), and commits held for the window's cadence (`video_cadence`)
++    recent_intervals: std::collections::VecDeque<u32>,
++    cadence_held: u64,
+ }
+ 
+ #[derive(Default)]
+@@ -124,6 +127,10 @@ impl PacingTrace {
+             if d < Duration::from_millis(250) {
+                 w.intervals.sample(d);
+             }
++            if w.recent_intervals.len() == 16 {
++                w.recent_intervals.pop_front();
++            }
++            w.recent_intervals.push_back(d.as_micros().min(1_000_000) as u32);
+         }
+     }
+     /// DESK9: a commit that brought nothing to show (its frame callbacks are answered without a repaint).
+@@ -220,6 +227,18 @@ impl PacingTrace {
+     pub fn pending_unshown(&self, id: u64) -> bool {
+         self.windows.get(&id).is_some_and(|w| w.pending.is_some())
+     }
++    /// deskperf-003: a window's cadence: its last picture's flip and how many refreshes (2..4) apart its pictures
++    /// come - when its last 16 commit intervals are steady (12 of them within a quarter of their median) and that
++    /// median is 1.5 refreshes or more (a 30 fps video: 2; 24/25 fps: 2, shown 2 or 3 apart). `None`: no cadence.
++    pub fn cadence(&self, id: u64, refresh: Duration) -> Option<(Instant, u32)> {
++        let w = self.windows.get(&id)?;
++        let shown = w.last_shown.filter(|t| t.elapsed() < Duration::from_secs(1))?;
++        let v: Vec<u32> = w.recent_intervals.iter().copied().collect();
++        cadence_of(&v, refresh.as_micros().max(1) as u32).map(|spacing| (shown, spacing))
++    }
++    pub fn cadence_held(&mut self, id: u64) {
++        self.windows.entry(id).or_default().cadence_held += 1;
++    }
+     pub fn fifo_held(&mut self, id: u64) {
+         self.windows.entry(id).or_default().fifo_held += 1;
+     }
+@@ -299,11 +318,12 @@ impl PacingTrace {
+             let shm = if w.shm_gpu + w.shm_cpu > 0 { format!(" | shm: into_gpu={} into_cpu={} copied_MB={:.1} {}", w.shm_gpu, w.shm_cpu, w.shm_px as f64 * 4.0 / 1e6, text95(&shm_copy, "copy")) } else { String::new() };
+             let hashes = if w.distinct + w.same + w.unhashed > 0 { format!(" | content: distinct={} same_as_before={} unread={} replaced_distinct={} revisits={} shown_distinct={}", w.distinct, w.same, w.unhashed, w.replaced_distinct, w.revisits, w.shown_distinct) } else { String::new() };
+             lines.push(format!(
+-                "WMPACING over_ms={window_ms} window={id} app={:?} commits={} shown={} replaced_before_shown={} fifo_held={} fifo_timeouts={} unchanged_commits={} | {} | {} | {} | {} | {} | commits by ms after the last flip {:?} | frames held for a fence={fence}{hashes}{shm}",
+-                w.app_id, w.commits, w.shown, w.replaced, w.fifo_held, w.fifo_timeouts, w.unchanged, text95(&ctf, "commit->flip"), text95(&shown_iv, "shown->shown"), window_text(&iv, "commit interval"), text95(&cb, "callback->commit"), text95(&handler, "commit handler"), w.phase
++                "WMPACING over_ms={window_ms} window={id} app={:?} commits={} shown={} replaced_before_shown={} fifo_held={} cadence_held={} fifo_timeouts={} unchanged_commits={} | {} | {} | {} | {} | {} | commits by ms after the last flip {:?} | frames held for a fence={fence}{hashes}{shm}",
++                w.app_id, w.commits, w.shown, w.replaced, w.fifo_held, w.cadence_held, w.fifo_timeouts, w.unchanged, text95(&ctf, "commit->flip"), text95(&shown_iv, "shown->shown"), window_text(&iv, "commit interval"), text95(&cb, "callback->commit"), text95(&handler, "commit handler"), w.phase
+             ));
+             w.shm_gpu = 0;
+             w.shm_cpu = 0;
++            w.cadence_held = 0;
+             w.shm_px = 0;
+             w.shown_distinct = 0;
+             w.commits = 0;
+@@ -352,6 +372,23 @@ impl PacingTrace {
+     }
+ }
+ 
++/// deskperf-003: how many refreshes of `refresh_us` apart a window's pictures come, from its last 16 commit intervals
++/// (us): steady (12 within a quarter of their median) and 1.5 refreshes or more; 2..4, else `None`.
++pub(crate) fn cadence_of(intervals: &[u32], refresh_us: u32) -> Option<u32> {
++    if intervals.len() < 16 {
++        return None;
++    }
++    let mut v = intervals.to_vec();
++    v.sort_unstable();
++    let median = v[v.len() / 2];
++    let steady = v.iter().filter(|d| (i64::from(**d) - i64::from(median)).unsigned_abs() * 4 <= u64::from(median)).count();
++    if steady < 12 || median * 2 < refresh_us * 3 {
++        return None;
++    }
++    let spacing = (median + 2_000) / refresh_us;
++    (2..=4).contains(&spacing).then_some(spacing)
++}
++
+ /// n, p50, p95, p99, max (ms) of a sorted series of microseconds.
+ fn text95(sorted: &[u32], what: &str) -> String {
+     let at = |p: f64| if sorted.is_empty() { 0.0 } else { f64::from(sorted[((sorted.len() - 1) as f64 * p).round() as usize]) / 1000.0 };
+@@ -362,6 +399,22 @@ fn text95(sorted: &[u32], what: &str) -> String {
+ mod tests {
+     use super::*;
+     #[test]
++    fn a_video_paced_windows_cadence_is_its_steady_interval_in_refreshes() {
++        let r = 16_667;
++        let jitter = |base: u32| -> Vec<u32> { (0..16).map(|i| base + [0, 1_500, 3_000, 900][i % 4] - 1_500).collect() };
++        assert_eq!(cadence_of(&jitter(33_333), r), Some(2), "30 fps: every 2 refreshes");
++        assert_eq!(cadence_of(&jitter(41_708), r), Some(2), "24 fps: at least 2 (2 or 3 apart)");
++        assert_eq!(cadence_of(&jitter(50_000), r), Some(3), "20 fps: 3");
++        assert_eq!(cadence_of(&jitter(16_667), r), None, "60 fps: no hold");
++        assert_eq!(cadence_of(&jitter(33_333)[..15], r), None, "too few intervals");
++        let mut uneven = jitter(33_333);
++        for d in uneven.iter_mut().step_by(2) {
++            *d = 16_000;
++        }
++        assert_eq!(cadence_of(&uneven, r), None, "not steady");
++        assert_eq!(cadence_of(&jitter(150_000), r), None, "slower than 4 refreshes: no hold");
++    }
++    #[test]
+     fn commits_replaced_before_a_frame_shows_them_are_counted_as_lost() {
+         let mut p = PacingTrace::default();
+         p.commit(7, Some("org.mozilla.firefox"));
+diff --git a/crates/wm-darwin/src/policy.rs b/crates/wm-darwin/src/policy.rs
+index 82a701b..139329a 100644
+--- a/crates/wm-darwin/src/policy.rs
++++ b/crates/wm-darwin/src/policy.rs
+@@ -7,7 +7,7 @@
+ //! | key | default | what |
+ //! |---|---|---|
+ //! | `fifo` | on | a GPU client's newer buffer waits for the next refresh instead of replacing one no frame showed yet (`server.rs` FIFO) |
+-//! | `fifo_shm` | off | the same for a window drawn on the CPU (shm: AppKit without its GPU presenter) |
++//! | `fifo_shm` | on (deskperf-003; off before) | the same for a window drawn on the CPU (shm: AppKit without its GPU presenter) |
+ //! | `client_wake` | on | the loop wakes for client requests while it waits (a commit is read when it comes, not up to 8 ms later) |
+ //! | `flip_time_callbacks` | on | frame callbacks carry the flip's time (CLOCK_MONOTONIC ms, wp_presentation's clock) and go out at the flip |
+ //! | `flip_stamps` | on | a flip's time is the kernel's stamp of it (when on a clock we read), not when its event was read |
+@@ -32,12 +32,13 @@
+ //! | `record_nice` | 0 | DESK11: the encoder's nice value (0..19: a higher number leaves the CPU to everything else first) |
+ //! | `motion` | on | THEME: a window fades in while rising when it appears and a theme change cross-fades, each as the theme in use says (`motion.rs`); off: at once |
+ //! | `record_writeback` | on | DESK11: the recorder's GPU buffers are CPU-mapped cached (fast to read); off: write-combined (for a comparison) |
+-//! | `shm_gpu` | off | DESKPERF: a window drawn on the CPU (wl_shm) is copied as it is into a GPU buffer of the desk's own and drawn from there like a dma-buf: no colour conversion, no texture upload a frame (before: 12.6 ms a full-window commit of QuickTime's, then its upload) |
++//! | `shm_gpu` | on (deskperf-003; off before) | DESKPERF: a window drawn on the CPU (wl_shm) is copied as it is into a GPU buffer of the desk's own and drawn from there like a dma-buf: no colour conversion, no texture upload a frame (before: 12.6 ms a full-window commit of QuickTime's, then its upload) |
+ //! | `pacing_trace` | off | DESKPERF: one `WMTRACE` line per commit, frame and flip (arrival against the latch, the flip that showed it): a test's switch |
+ //! | `record_flip_times` | on | DESKPERF: a recorded frame's time is its flip's (the refreshes between two flips, exactly), not when the loop took it |
+ //! | `record_background` | off | DESKPERF: the encoder runs in Darwin's background band (efficiency cores, below every application) |
+ //! | `shm_gpu_writeback` | on | deskperf-002: the desk's GPU buffers for shm pictures are CPU-mapped cached (the copy into write-combined memory took 3-4 ms of a 2556x1437 picture); off: write-combined |
+ //! | `shm_check` | off | deskperf-002: at a window's 30th and 150th commit into the desk's GPU buffer the screen's region of it is compared with the buffer (`WMSHM check`): a test's switch, it reads the frame back |
++//! | `video_cadence` | on | deskperf-003: a window whose pictures come every N refreshes (a 30 fps video: 2) and commits one early enough for the refresh before has it held until it can be shown N refreshes after the picture before (the FIFO's blocker, let go at its moment), so a 30 Hz clock beside the 60 Hz latch gives 2-2-2 instead of 1-3-1-3 (QuickTime, deskperf-002: 1: 76, 2: 78, 3: 73 in 8 s) |
+ //! | `commit_guard` | on | deskperf-002: while a drawn frame waits for its commit moment, client requests wait when the moment is closer than the longest recent commit handler (a client's commit then delayed the frame's commit and the late-latch margin grew) |
+ use std::path::PathBuf;
+ use std::time::{Duration, Instant, SystemTime};
+@@ -71,6 +72,8 @@ pub struct Switches {
+     pub shm_check: bool,
+     /// deskperf-002: no client dispatch right before a drawn frame's commit moment
+     pub commit_guard: bool,
++    /// deskperf-003: video-paced windows held to their cadence
++    pub video_cadence: bool,
+     /// percent, 25..400 (not a switch: `scroll_speed=<n>`)
+     pub scroll_speed: u16,
+     /// DESK11: the screen recorder's settings (`record_*`)
+@@ -155,12 +158,12 @@ impl RecordPolicy {
+ }
+ 
+ impl Switches {
+-    const KEYS: [&'static str; 21] = ["fifo", "fifo_shm", "client_wake", "flip_time_callbacks", "flip_stamps", "restore", "skip_unchanged", "partial_repaint", "framehash", "late_latch", "restore_after_reboot", "trackpad_scroll", "natural_scroll", "scroll_trace", "window_position", "motion", "shm_gpu", "pacing_trace", "shm_gpu_writeback", "shm_check", "commit_guard"];
++    const KEYS: [&'static str; 22] = ["fifo", "fifo_shm", "client_wake", "flip_time_callbacks", "flip_stamps", "restore", "skip_unchanged", "partial_repaint", "framehash", "late_latch", "restore_after_reboot", "trackpad_scroll", "natural_scroll", "scroll_trace", "window_position", "motion", "shm_gpu", "pacing_trace", "shm_gpu_writeback", "shm_check", "commit_guard", "video_cadence"];
+     fn defaults() -> Self {
+         let env = |key: &str| std::env::var(format!("CHONKSTEP_DARWIN_{}", key.to_ascii_uppercase())).ok().and_then(|v| parse_bool(&v));
+         Self {
+             fifo: env("fifo").unwrap_or(true),
+-            fifo_shm: env("fifo_shm").unwrap_or(false),
++            fifo_shm: env("fifo_shm").unwrap_or(true),
+             client_wake: env("client_wake").unwrap_or(true),
+             flip_time_callbacks: env("flip_time_callbacks").unwrap_or(true),
+             flip_stamps: env("flip_stamps").unwrap_or(true),
+@@ -175,11 +178,12 @@ impl Switches {
+             scroll_trace: env("scroll_trace").unwrap_or(false),
+             window_position: env("window_position").unwrap_or(false),
+             motion: env("motion").unwrap_or(true),
+-            shm_gpu: env("shm_gpu").unwrap_or(false),
++            shm_gpu: env("shm_gpu").unwrap_or(true),
+             pacing_trace: env("pacing_trace").unwrap_or(false),
+             shm_gpu_writeback: env("shm_gpu_writeback").unwrap_or(true),
+             shm_check: env("shm_check").unwrap_or(false),
+             commit_guard: env("commit_guard").unwrap_or(true),
++            video_cadence: env("video_cadence").unwrap_or(true),
+             scroll_speed: std::env::var("CHONKSTEP_DARWIN_SCROLL_SPEED").ok().and_then(|v| parse_speed(&v)).unwrap_or(100),
+             record: RecordPolicy::default(),
+         }
+@@ -207,6 +211,7 @@ impl Switches {
+             "shm_gpu_writeback" => &mut self.shm_gpu_writeback,
+             "shm_check" => &mut self.shm_check,
+             "commit_guard" => &mut self.commit_guard,
++            "video_cadence" => &mut self.video_cadence,
+             _ => return None,
+         })
+     }
+@@ -350,14 +355,14 @@ mod tests {
+     use super::*;
+     #[test]
+     fn the_policy_file_changes_switches_without_a_relaunch_and_a_test_pin_wins_until_released() {
+-        let base = Switches { fifo: true, fifo_shm: true, client_wake: true, flip_time_callbacks: true, flip_stamps: true, restore: true, skip_unchanged: true, partial_repaint: true, framehash: false, late_latch: true, restore_after_reboot: false, trackpad_scroll: true, natural_scroll: true, scroll_trace: false, window_position: false, motion: true, shm_gpu: false, pacing_trace: false, shm_gpu_writeback: true, shm_check: false, commit_guard: true, scroll_speed: 100, record: RecordPolicy::default() };
++        let base = Switches { fifo: true, fifo_shm: true, client_wake: true, flip_time_callbacks: true, flip_stamps: true, restore: true, skip_unchanged: true, partial_repaint: true, framehash: false, late_latch: true, restore_after_reboot: false, trackpad_scroll: true, natural_scroll: true, scroll_trace: false, window_position: false, motion: true, shm_gpu: false, pacing_trace: false, shm_gpu_writeback: true, shm_check: false, commit_guard: true, video_cadence: true, scroll_speed: 100, record: RecordPolicy::default() };
+         // DESK10: the trackpad's scrolling speed is a number, the rest switches
+         let (sp, refused) = Switches::parse("scroll_speed=140\nscroll_trace=on\ntrackpad_scroll=off\n", base);
+         assert!(refused.is_empty() && sp.scroll_speed == 140 && sp.scroll_trace && !sp.trackpad_scroll && sp.natural_scroll);
+         let (sp, refused) = Switches::parse("scroll_speed=1000\nscroll_speed=fast\n", base);
+         assert_eq!(sp.scroll_speed, 100);
+         assert_eq!(refused.len(), 2);
+-        assert!(sp.text().contains("scroll_trace=off window_position=off motion=on shm_gpu=off pacing_trace=off shm_gpu_writeback=on shm_check=off commit_guard=on scroll_speed=100 record_fps=60 record_scale=full"));
++        assert!(sp.text().contains("scroll_trace=off window_position=off motion=on shm_gpu=off pacing_trace=off shm_gpu_writeback=on shm_check=off commit_guard=on video_cadence=on scroll_speed=100 record_fps=60 record_scale=full"));
+         // DESKPERF: the new switches
+         let (d, refused) = Switches::parse("shm_gpu=on\npacing_trace=1\nrecord_flip_times=off\nrecord_background=on\n", base);
+         assert!(refused.is_empty() && d.shm_gpu && d.pacing_trace && !d.record.flip_times && d.record.background, "{refused:?}");
+diff --git a/crates/wm-darwin/src/server.rs b/crates/wm-darwin/src/server.rs
+index 3856fcd..4a2631d 100644
+--- a/crates/wm-darwin/src/server.rs
++++ b/crates/wm-darwin/src/server.rs
+@@ -33,12 +33,17 @@ pub(crate) enum FifoWhy {
+     Frame,
+     Timeout,
+     Off,
++    /// deskperf-003: a cadence hold's moment came
++    Cadence,
+ }
+ /// A commit held for the next refresh (DESK8, the FIFO): released when the next frame is drawn.
+ pub(crate) struct FifoHold {
+     barrier: smithay::wayland::compositor::Barrier,
+     since: std::time::Instant,
+     client: Option<Client>,
++    /// deskperf-003 (`video_cadence`): a picture of a video-paced window that came early is let go at this moment
++    /// (its frame then shows it a whole cadence after the picture before), not with the next frame
++    not_before: Option<std::time::Instant>,
+ }
+ 
+ #[derive(Default)]
+@@ -1406,7 +1411,7 @@ impl Server {
+             // A frame waiting for its moment (late latching): wake for it on time; the last
+             // two milliseconds are slept precisely (poll counts whole milliseconds).
+             let mut max = max;
+-            let due = [self.render_due.map(|d| d.0), self.commit_due.map(|d| d.0), self.callback_only_due].into_iter().flatten().min();
++            let due = [self.render_due.map(|d| d.0), self.commit_due.map(|d| d.0), self.callback_only_due, self.cadence_due()].into_iter().flatten().min();
+             let mut precise = None;
+             // DESK6: the last PRECISE_WINDOW before the moment is waited for in the real-time
+             // scheduling class (input_latency::precise_wait_until); without it, as before
+@@ -1468,7 +1473,11 @@ impl Server {
+             return;
+         }
+         let Some(id) = self.wm.backend().window_for_surface(surface) else { return };
+-        if self.fifo.contains_key(&id) || !self.pacing.pending_unshown(id) {
++        let pending = self.pacing.pending_unshown(id);
++        // deskperf-003: a window that shows a picture every N refreshes (a 30 fps video: 2) and commits the next one
++        // early enough for the next refresh is held until it can be shown N refreshes after the one before
++        let cadence = if pending { None } else { self.cadence_release_at(id) };
++        if self.fifo.contains_key(&id) || (!pending && cadence.is_none()) {
+             return;
+         }
+         let new_buffer = with_states(surface, |s| match &s.cached_state.get::<SurfaceAttributes>().pending().buffer {
+@@ -1486,8 +1495,34 @@ impl Server {
+         }
+         let barrier = smithay::wayland::compositor::Barrier::new(false);
+         smithay::wayland::compositor::add_blocker(surface, barrier.clone());
+-        self.fifo.insert(id, FifoHold { barrier, since: std::time::Instant::now(), client: surface.client() });
+-        self.pacing.fifo_held(id);
++        self.fifo.insert(id, FifoHold { barrier, since: std::time::Instant::now(), client: surface.client(), not_before: cadence });
++        if cadence.is_some() {
++            self.pacing.cadence_held(id);
++        } else {
++            self.pacing.fifo_held(id);
++        }
++    }
++    /// deskperf-003 (policy `video_cadence`): when a commit of window `id`, applied now, would be shown sooner than
++    /// its cadence after its last picture (a 30 fps video on the 60 Hz panel shows one every 2 refreshes: a commit
++    /// that came early in the refresh before would be shown after 1 and the next, a little late, after 3 - the 1-3
++    /// judder of a 30 Hz clock beside the 60 Hz latch), the moment to let it go so that the frame of its own blank
++    /// shows it; `None`: show it as usual.
++    fn cadence_release_at(&self, id: u64) -> Option<std::time::Instant> {
++        if !self.policy.now.video_cadence {
++            return None;
++        }
++        let interval = self.pacer.interval();
++        let (last_shown, spacing) = self.pacing.cadence(id, interval)?;
++        let target = last_shown + interval * spacing;
++        let now = std::time::Instant::now();
++        let budget = self.pacer.budget();
++        let reach = self.pacer.next_blank(now + budget);
++        if reach + interval / 2 >= target {
++            return None;
++        }
++        let handler = std::time::Duration::from_micros(u64::from(self.handler_recent.iter().copied().max().unwrap_or(0).min(12_000)));
++        let release = target.checked_sub(budget + handler + std::time::Duration::from_micros(1_000))?;
++        (release > now).then_some(release)
+     }
+     /// Held commits whose frame did not come (no frame in 40 ms: a fence, the renderer, the display going
+     /// off) or the FIFO switched off: applied now.
+@@ -1499,10 +1534,25 @@ impl Server {
+             self.fifo_release(FifoWhy::Off);
+         } else if self.fifo.values().any(|h| h.since.elapsed() > std::time::Duration::from_millis(40)) {
+             self.fifo_release(FifoWhy::Timeout);
++        } else if self.fifo.values().any(|h| h.not_before.is_some_and(|t| std::time::Instant::now() >= t)) {
++            self.fifo_release(FifoWhy::Cadence);
+         }
+     }
++    /// deskperf-003: the next moment a cadence hold is let go (the loop wakes for it).
++    pub(crate) fn cadence_due(&self) -> Option<std::time::Instant> {
++        self.fifo.values().filter_map(|h| h.not_before).min()
++    }
+     fn fifo_release(&mut self, why: FifoWhy) {
+-        let holds: Vec<(u64, FifoHold)> = self.fifo.drain().collect();
++        // a frame lets go of the FIFO's holds; a cadence hold waits for its own moment (deskperf-003)
++        let now = std::time::Instant::now();
++        let keep = |h: &FifoHold| match why {
++            FifoWhy::Frame => h.not_before.is_some_and(|t| now < t),
++            // a cadence moment lets go of the cadence holds that are due, nothing else
++            FifoWhy::Cadence => h.not_before.is_none_or(|t| now < t),
++            FifoWhy::Timeout | FifoWhy::Off => false,
++        };
++        let ids: Vec<u64> = self.fifo.iter().filter(|(_, h)| !keep(h)).map(|(id, _)| *id).collect();
++        let holds: Vec<(u64, FifoHold)> = ids.into_iter().filter_map(|id| self.fifo.remove(&id).map(|h| (id, h))).collect();
+         let dh = self.display_handle.clone();
+         let mut clients: Vec<Client> = Vec::new();
+         for (id, hold) in holds {
+diff --git a/crates/wm-darwin/tests/wayland_shm.rs b/crates/wm-darwin/tests/wayland_shm.rs
+index 75fc197..ee4a4e0 100644
+--- a/crates/wm-darwin/tests/wayland_shm.rs
++++ b/crates/wm-darwin/tests/wayland_shm.rs
+@@ -1972,6 +1972,7 @@ fn a_shm_window_drawn_from_the_desks_gpu_buffer_looks_as_the_cpu_copy(){
+         surface.commit();for _ in 0..3{queue.roundtrip(c).unwrap();}
+         buffer.destroy();pool.destroy();
+     };
++    pin("shm_gpu=off",false);
+     let first=picture(1,None,&vec![0u8;stride*hh]);
+     commit(&first,None,&mut queue,&mut c);
+     let cpu=h.snapshot();
