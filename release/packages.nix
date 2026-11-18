@@ -78,7 +78,12 @@ let
     firefox-surface = recipe "firefox/surface-session-build.nix" { gpuBacking = true; nv12Backing = true; };
     firefox-clocked-providers = recipe "finch/firefox-media/clocked-providers.nix";
     firefox-clock-family = recipe "finch/firefox-media/clock-family.nix";
-    firefox-sc-network = recipe "firefox/sc-network.nix";
+    # The release runtime's three override inputs expose Frameworks at their root.
+    # Keep the provider's installed-system layout unchanged for its other callers.
+    firefox-sc-network = pkgs.runCommand "siliconforest-firefox-network-override" { } ''
+      mkdir -p "$out"
+      cp -R --no-preserve=ownership ${recipe "firefox/sc-network.nix"}/System/Library/Frameworks "$out/Frameworks"
+    '';
     firefox-runtime = import ./image/firefox-runtime.nix {
       inherit pkgs;
       overrides = {
