@@ -190,7 +190,9 @@ carries (the local driver `runs/image/local.nix`, not committed: store paths). T
 build of `release/packages.nix` was not finished when this was written.
 
 - **Root image** builds; its own checks pass (the M1 root's exact ext4 feature line,
-  `e2fsck -fn` clean, both installers rc 0). `nix-build --check` rebuilt it to the same bytes.
+  `e2fsck -fn` clean, both installers rc 0). `nix-build --check` rebuilt the root, the boot
+  files and the release files a second time to the same bytes (same machine, same inputs; a
+  build on another machine is CODEX-BUILD's from-clone check).
 - **Compared with the M1** (`compare.py`): 19,617 entries the same. 51 files differ in content,
   each explained: 20 are files of an older build of the Cocoa root the M1 still carries, 14
   are other builds of the same Finch, kernel-header or macOS-apps recipes, 3 the rename
@@ -216,9 +218,13 @@ build of `release/packages.nix` was not finished when this was written.
   launchd from the release root starts its jobs (12 `org.siliconforest.*` listed), the console
   shell, the SSH server (which makes its host key), `sf-firstboot`; perl, zsh and ssh run; the
   desktop session starts and the compositor draws the release's wallpaper and pointer
-  (screenshot). Its terminal was spawned but did not report ready within the desktop's fixed
-  25 s at that load, so the finite session ended; the same happened to CODEX-BUILD's separate
-  minimal QEMU root. Not observed: a terminal window, typing, the dock.
+  (screenshot). The terminal starts and runs its shell (it recorded its screen state with the
+  shell's prompt drawn, bracketed paste on), but at that load it reported ready after 27.2 s
+  (four vCPUs; 2.2 s past the desktop's fixed 25 s), so the session counted it as failed and
+  ended; with two vCPUs it did not get that far. CODEX-BUILD's separate minimal QEMU root
+  met the same deadline. QMP screen captures hung QEMU once while the compositor ran (a known
+  QEMU problem on this host: `QD_NO_SHOTS`). Not observed: a terminal window on screen, typing,
+  the dock.
 - **Firefox's runtime**: 840 entries byte for byte with the M1's; the launcher's dry plan equals
   the M1's. Firefox itself was not started (no Mozilla bundle, no Homebrew in the image).
 - Not done: an install on any machine; the from-clone build and its reproducibility.
