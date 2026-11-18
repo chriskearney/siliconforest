@@ -27,6 +27,11 @@ let
   };
   renamed = pkgs.runCommand "siliconforest-${sourceName}-source" {
     nativeBuildInputs = [ pkgs.python3 ];
+    # Verify the complete generated tree and keep its store identity independent
+    # of implementation-only changes to the rename tool or build environment.
+    outputHashMode = "recursive";
+    outputHashAlgo = "sha256";
+    outputHash = (if sourceName == "upstream-cocoa" then lock.cocoaRename else lock.baseRename).narHash;
   } ''
     cp -R ${sources.${sourceName}} "$out"
     chmod -R u+w "$out"

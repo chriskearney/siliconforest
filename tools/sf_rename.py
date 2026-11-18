@@ -156,6 +156,7 @@ CLOSURE_DIRS = '''m1-bringup m1-bringup-platform m1-keyboard m1-trackpad-enum m1
 m1-userspace-diagnostics'''.split()
 # Single files that are never edited, with the reason.
 EXCEPT_FILES = {
+    'release/image/tools/classify.py': 'historical input classifier: matches original upstream package store names in read-only inventories',
     OLD_ROOT + 'm1-firstboot/host_console.py': 'hash-pinned host-side controller tool; never edited',
     OLD_ROOT + 'm1-bringup/normal_image.py': 'hash-pinned host-side image tool; never edited (its PINS key "puredarwin" names upstream)',
     OLD_ROOT + 'rebase/pd.nix': 'kept by name: it selects the upstream PureDarwin revision (edited by hand for the fork revision)',

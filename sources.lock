@@ -464,7 +464,8 @@
     "submodules": {
       "external/corecrypto": "corecrypto"
     },
-    "expectedForkCommit": "cd001928e0223fd77a7850f09e43580b51bde239"
+    "expectedForkCommit": "cd001928e0223fd77a7850f09e43580b51bde239",
+    "narHash": "sha256-wmYzq6smHR67c+rx+vzlJnVZq2srHQVWaDL8NJqK+cU="
   },
   "auxiliarySources": {
     "openssl-finch": {
@@ -567,6 +568,7 @@
     "submodules": {
       "external/corecrypto": "corecrypto-pin"
     },
-    "expectedForkCommit": "04b6ecb44f8d6d8c650b8e3e1912bc57b881265d"
+    "expectedForkCommit": "04b6ecb44f8d6d8c650b8e3e1912bc57b881265d",
+    "narHash": "sha256-KI140/9Gja0gKtJbeOfM3dCKMyce7BtL6/Qi29tknVM="
   }
 }
