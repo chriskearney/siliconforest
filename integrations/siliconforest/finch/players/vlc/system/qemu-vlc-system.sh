@@ -10,7 +10,9 @@
 # and the last snapshot; the host compares the root images file by file (sf_vlc_system.sh compare).
 # The checks: sf-vlc-features-probe (what of the six steps the system has), the probes of the replaced core
 # files, ls and sh, the programs, and VLC itself without a desktop (dummy interface, video and audio outputs:
-# it plays two seconds of a clip and quits), with only what its launcher keeps after a system install.
+# it plays two seconds of a clip and quits), with only what its launcher keeps after a system install. VLC's bundle
+# has no plugins.dat: with --no-plugins-scan it loads no plugin at all and exits 1 without a word (seen in r6, and on
+# the M1 with the private prefix), so the plugins are scanned.
 PATH=/bin:/sbin:/usr/bin:/usr/sbin; export PATH
 echo QDDESK_BEGIN
 T=/usr/share/sf-test
@@ -63,7 +65,7 @@ vlc() {  # <expected: plays|fails> <label>
     rm -f /private/tmp/vlc.out
     mkdir -p /private/tmp/vlchome; chown 501:20 /private/tmp/vlchome
     ( cd / && env HOME=/private/tmp/vlchome DYLD_FRAMEWORK_PATH=$V/Frameworks $PY -c 'import os, sys; os.setgid(20); os.setuid(501); os.execv(sys.argv[1], sys.argv[1:])' \
-        $V/VLC.app/Contents/MacOS/VLC -I dummy --no-video-title-show --vout=dummy --aout=dummy --codec=avcodec --no-plugins-scan \
+        $V/VLC.app/Contents/MacOS/VLC -I dummy --no-video-title-show --vout=dummy --aout=dummy --codec=avcodec \
         --play-and-exit --stop-time=2 $V/clip.mp4 > /private/tmp/vlc.out 2>&1 < /dev/null ) &
     pid=$!; n=0
     while kill -0 $pid 2>/dev/null && [ $n -lt 600 ]; do sleep 1; n=$((n + 1)); done
