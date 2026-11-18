@@ -1,0 +1,840 @@
+xnu: kern.sf_exitwait, what the threads of a process stuck in exit wait for
+
+SPDX-License-Identifier: MIT (this header, the two new files and the added lines; the patched
+files keep their Apple Public Source Licence)
+
+A process can stay in exit for good (ps ?E/?Es, ppid 1, no threads listed, task_for_pid
+failing, its descriptors and windows still open: SF-AH item 25, VLC after GPU-heavy runs).
+sample cannot attach to it and the M1 has no stackshot reader, so nothing tells which kernel
+wait it is in. This adds a report, off by default and root only, nothing runs until asked:
+
+  sysctl kern.sf_exitwait.report         every process in exit (P_LEXIT, not yet a zombie):
+                                         the state of its exit (lflag, proc ref bits, open
+                                         descriptor table, task active/halting/thread counts),
+                                         and per thread: state, wait event, block hint, owner
+                                         of the kernel mutex / rw lock it waits for, msleep
+                                         message, name, time blocked, continuation and the
+                                         kernel frame chain as unslid return addresses
+  sysctl kern.sf_exitwait.log=1          the same report into the kernel log (dmesg)
+  sysctl kern.sf_exitwait.pid=N          also process N in any state (-1: every process)
+  sysctl kern.sf_exitwait.kernel=1       also kernel_task's threads (driver and GPU workers)
+  sysctl kern.sf_exitwait.at_shutdown=1  (or boot-arg sf_exitwait_shutdown=1) the report on
+                                         the console after proc_shutdown, before unmounting
+
+Taking the report cannot wait on what a stuck process holds: the proc lists are walked under
+proc_list_lock without proc references (a process past proc_refdrain takes none; one in exit is
+already on zombproc), tasks are kept by task references, the global thread lists are taken
+with a try-lock (EBUSY after ~100 ms), every thread is held by a reference, and every word of
+another thread's stack, of a lock or of a thread name is read with ml_nofault_copy() within
+that thread's kernel stack. A thread that runs meanwhile is flagged "moved". Nothing in any
+process is changed. Wait events and wait queues are VM_KERNEL_UNSLIDE_OR_PERM, as stackshot.
+
+Files: bsd/kern/sf_exitwait_bsd.c (selection, format, sysctls, shutdown hook) and
+osfmk/kern/sf_exitwait.c (thread snapshots); one call in kern_shutdown.c; two conf/files lines.
+Applies (fuzz 0) after ../m1-upl-private/kernel.patch on kernel 48/50's series.
+UPSTREAM: no (SiliconForest diagnostic).
+
+--- a/src/Kernel/xnu/bsd/conf/files
++++ b/src/Kernel/xnu/bsd/conf/files
+@@ -413,6 +413,7 @@
+ bsd/kern/kern_malloc.c			standard
+ bsd/kern/kern_mman.c			standard
+ bsd/kern/sf_lfile.c			standard
++bsd/kern/sf_exitwait_bsd.c		standard
+ bsd/kern/kern_persona.c			standard
+ bsd/kern/kern_physio.c			standard
+ bsd/kern/kern_priv.c			standard
+--- a/src/Kernel/xnu/osfmk/conf/files
++++ b/src/Kernel/xnu/osfmk/conf/files
+@@ -170,6 +170,7 @@
+ osfmk/kern/printf.c			standard
+ osfmk/kern/priority.c			standard
+ osfmk/kern/processor.c		standard
++osfmk/kern/sf_exitwait.c	standard
+ osfmk/kern/recount.c		standard
+ osfmk/kern/restartable.c		standard
+ osfmk/kern/sched_average.c		standard
+--- a/src/Kernel/xnu/bsd/kern/kern_shutdown.c
++++ b/src/Kernel/xnu/bsd/kern/kern_shutdown.c
+@@ -198,6 +198,9 @@
+ 
+ #define SF_HALT_STEP(...) do { if (sf_halt_log_enabled()) printf("sfhaltlog: " __VA_ARGS__); } while (0)
+ 
++/* bsd/kern/sf_exitwait_bsd.c: kern.sf_exitwait.at_shutdown or boot-arg sf_exitwait_shutdown=1 */
++__private_extern__ void sf_exitwait_shutdown_report(void);
++
+ int
+ reboot_kernel(int howto, char *message)
+ {
+@@ -261,6 +264,8 @@
+ 		proc_shutdown(TRUE);
+ 		halt_log_enter("proc_shutdown", 0, mach_absolute_time() - startTime);
+ 		SF_HALT_STEP("proc_shutdown done\n");
++		/* SiliconForest: what is still in exit, before file systems go (off by default) */
++		sf_exitwait_shutdown_report();
+ 
+ #if CONFIG_AUDIT
+ 		startTime = mach_absolute_time();
+--- /dev/null
++++ b/src/Kernel/xnu/osfmk/kern/sf_exitwait.c
+@@ -0,0 +1,338 @@
++// SPDX-License-Identifier: MIT
++/*
++ * SiliconForest: what the threads of a task are waiting for, the Mach half of kern.sf_exitwait
++ * (bsd/kern/sf_exitwait_bsd.c chooses the tasks, formats the report and owns the switches).
++ *
++ * For one task: each of its threads' state, wait event, block hint, the owner of the kernel
++ * mutex or rw lock it waits for, its wait message and name, how long it has been off the
++ * processor, and its kernel frame chain (return addresses, unslid). It exists because a process
++ * stuck in exit cannot be sampled (task_for_pid fails) and the M1 has no stackshot reader.
++ *
++ * Nothing here can block on what it looks at: the global thread lists are taken with a
++ * try-lock (EBUSY after about 100 ms), every thread is held by a reference while it is looked
++ * at, and every word of another thread's kernel stack (and of a lock or a thread name) is read
++ * with ml_nofault_copy(), bounded by that thread's kernel stack. A thread that runs while it is
++ * looked at gives a stale answer, flagged SF_EW_MOVED, never a fault. Nothing is written.
++ */
++#include <mach/mach_types.h>
++#include <mach/vm_param.h>
++#include <kern/kern_types.h>
++#include <kern/block_hint.h>
++#include <kern/clock.h>
++#include <kern/kalloc.h>
++#include <kern/locks.h>
++#include <kern/lock_mtx.h>
++#include <kern/lock_rw.h>
++#include <kern/misc_protos.h>
++#include <kern/processor.h>
++#include <kern/queue.h>
++#include <kern/sched_prim.h>
++#include <kern/task.h>
++#include <kern/thread.h>
++#include <kern/waitq.h>
++#include <machine/machine_routines.h>
++#include <sys/errno.h>
++#if __has_feature(ptrauth_calls)
++#include <ptrauth.h>
++#endif
++
++/* the record bsd/kern/sf_exitwait_bsd.c reads; both files define it, the sizes are checked */
++#define SF_EW_FRAMES            24
++#define SF_EW_EXIT_THREAD       0x01    /* the proc's exit_thread */
++#define SF_EW_TERMINATED        0x02    /* on terminated_threads: done, not yet freed */
++#define SF_EW_RUNNABLE          0x04    /* TH_RUN: on a processor or a run queue, no frames */
++#define SF_EW_STACKLESS         0x08    /* blocked with a continuation, no kernel stack */
++#define SF_EW_TRUNCATED         0x10    /* the frame chain left the stack or was unreadable */
++#define SF_EW_MOVED             0x20    /* state or wait event changed while looked at */
++
++struct sf_ew_thread {
++	uint64_t        tid;
++	uint64_t        wait_event;     /* unslid when in the kernel image, else permuted */
++	uint64_t        waitq;          /* permuted */
++	uint64_t        continuation;   /* unslid */
++	uint64_t        blocked_us;     /* since it last left a processor, when not runnable */
++	uint64_t        owner_tid;      /* holder of the kernel mutex / rw lock it waits for */
++	uint64_t        frames[SF_EW_FRAMES]; /* unslid return addresses, innermost first */
++	char            wmesg[24];      /* msleep/tsleep message */
++	char            name[32];       /* thread name, when it has one */
++	int32_t         state;
++	int32_t         block_hint;
++	int32_t         sched_pri;
++	int32_t         wait_result;
++	uint32_t        nframes;
++	uint32_t        flags;
++};
++
++struct sf_ew_task {
++	int32_t         active;
++	int32_t         halting;
++	int32_t         ipc_active;
++	int32_t         thread_count;
++	uint32_t        active_thread_count;
++	int32_t         suspend_count;
++	int32_t         listed;         /* threads of the task on the global lists */
++	int32_t         terminated;     /* of those, on terminated_threads */
++};
++
++_Static_assert(sizeof(struct sf_ew_thread) == 320 && sizeof(struct sf_ew_task) == 32,
++    "the record bsd/kern/sf_exitwait_bsd.c shares");
++/* the BSD half decodes thread->state with its own copy of these */
++_Static_assert(TH_WAIT == 0x01 && TH_SUSP == 0x02 && TH_RUN == 0x04 && TH_UNINT == 0x08 &&
++    TH_TERMINATE == 0x10, "thread state bits bsd/kern/sf_exitwait_bsd.c decodes");
++
++/*
++ * The kernel's own calls between the two halves are private externs: the kernel collection's
++ * linker resolves kext imports against the kernel's exported names (kc-tools, one sorted table
++ * with duplicate names), so an exported name added here could change what a kext binds to.
++ */
++/* bsd/kern/sf_exitwait_bsd.c: the uthread's wait message (a literal) and name buffer */
++__private_extern__ const char *sf_exitwait_wmesg(thread_t thread);
++__private_extern__ const char *sf_exitwait_name(thread_t thread);
++
++__private_extern__ int sf_exitwait_task_threads(task_t task, void *exit_thread, struct sf_ew_task *ti, size_t ti_size,
++    struct sf_ew_thread *out, size_t rec_size, int max, int *count);
++
++static inline uint64_t
++sf_ew_strip(uint64_t v)
++{
++#if __has_feature(ptrauth_calls)
++	return (uint64_t)ptrauth_strip((void *)v, ptrauth_key_return_address);
++#else
++	return v;
++#endif
++}
++
++static bool
++sf_ew_read(vm_offset_t from, void *to, vm_size_t size)
++{
++	return ml_nofault_copy(from, (vm_offset_t)to, size) == size;
++}
++
++/* the thread holding the kernel mutex or rw lock behind a wait event, 0 when unknown */
++static uint64_t
++sf_ew_owner(int hint, event64_t event)
++{
++	thread_t owner = THREAD_NULL;
++	uint32_t word = 0;
++
++	switch (hint) {
++#if !LCK_MTX_USE_ARCH
++	case kThreadWaitKernelMutex:
++		/* the event is the address of the mutex's state word (lock_mtx.c, LCK_MTX_EVENT) */
++		if (sf_ew_read((vm_offset_t)event, &word, sizeof(word))) {
++			owner = ctid_get_thread_unsafe(word & LCK_MTX_CTID_MASK);
++		}
++		break;
++#endif
++	case kThreadWaitKernelRWLockRead:
++	case kThreadWaitKernelRWLockWrite:
++	case kThreadWaitKernelRWLockUpgrade: {
++		/* lock_rw.c lck_rw_from_event64(); the writer's ctid is lck_rw_owner */
++		vm_offset_t lck = (vm_offset_t)(waitq_untyped_event(event) & ~7ull);
++
++		if (sf_ew_read(lck + offsetof(lck_rw_t, lck_rw_owner), &word, sizeof(word))) {
++			owner = ctid_get_thread_unsafe(word);
++		}
++		break;
++	}
++	default:
++		break;
++	}
++	return owner != THREAD_NULL ? thread_tid(owner) : 0;
++}
++
++/* return addresses from a saved frame pointer up a kernel stack [lo, hi) */
++static uint32_t
++sf_ew_frames(vm_offset_t lo, vm_offset_t hi, uint64_t fp, uint64_t lr, uint64_t *out,
++    uint32_t max, uint32_t *flags)
++{
++	uint64_t frame[2];
++	uint32_t n = 0;
++
++	lr = sf_ew_strip(lr);
++	if (lr != 0) {
++		out[n++] = VM_KERNEL_UNSLIDE(lr);
++	}
++	while (n < max && fp != 0) {
++		if ((fp & 7) != 0 || fp < lo || fp + sizeof(frame) > hi ||
++		    !sf_ew_read((vm_offset_t)fp, frame, sizeof(frame))) {
++			*flags |= SF_EW_TRUNCATED;
++			break;
++		}
++		lr = sf_ew_strip(frame[1]);
++		if (lr == 0) {
++			break;
++		}
++		out[n++] = VM_KERNEL_UNSLIDE(lr);
++		frame[0] = sf_ew_strip(frame[0]);
++		/* the chain goes up the stack, or it is not a chain */
++		if (frame[0] != 0 && frame[0] <= fp) {
++			*flags |= SF_EW_TRUNCATED;
++			break;
++		}
++		fp = frame[0];
++	}
++	return n;
++}
++
++static void
++sf_ew_snapshot(thread_t thread, struct sf_ew_thread *r, void *exit_thread, uint64_t now)
++{
++	const char *wmesg, *name;
++	vm_offset_t kstack;
++	void *kstate;
++	event64_t event;
++	uint64_t last;
++	int state;
++	spl_t s;
++
++	bzero(r, sizeof(*r));
++	r->tid = thread_tid(thread);
++	if ((void *)thread == exit_thread) {
++		r->flags |= SF_EW_EXIT_THREAD;
++	}
++
++	s = splsched();
++	thread_lock(thread);
++	state = thread->state;
++	event = thread->wait_event;
++	r->waitq = VM_KERNEL_ADDRPERM(thread->waitq.wq_q);
++	r->block_hint = thread->block_hint;
++	r->sched_pri = thread->sched_pri;
++	r->wait_result = thread->wait_result;
++	r->continuation = thread->continuation != NULL ? VM_KERNEL_UNSLIDE(thread->continuation) : 0;
++	last = thread->last_run_time;
++	kstack = thread->kernel_stack;
++	kstate = thread->machine.kstackptr;
++	thread_unlock(thread);
++	splx(s);
++
++	r->state = state;
++	r->wait_event = event != NO_EVENT64 ?
++	    VM_KERNEL_UNSLIDE_OR_PERM(waitq_untyped_event(event)) : 0;
++	if (state & TH_WAIT) {
++		r->owner_tid = sf_ew_owner(r->block_hint, event);
++	}
++	if ((state & TH_RUN) == 0 && last != 0 && now > last) {
++		absolutetime_to_nanoseconds(now - last, &r->blocked_us);
++		r->blocked_us /= NSEC_PER_USEC;
++	}
++	wmesg = sf_exitwait_wmesg(thread);
++	if (wmesg != NULL) {
++		/* a literal; read without faulting all the same, and always terminated */
++		(void)ml_nofault_copy((vm_offset_t)wmesg, (vm_offset_t)r->wmesg, sizeof(r->wmesg) - 1);
++		r->wmesg[sizeof(r->wmesg) - 1] = '\0';
++	}
++	name = sf_exitwait_name(thread);
++	if (name != NULL) {
++		/* the buffer can be freed while it is read (kern_fork.c): never fault on it */
++		(void)ml_nofault_copy((vm_offset_t)name, (vm_offset_t)r->name, sizeof(r->name) - 1);
++		r->name[sizeof(r->name) - 1] = '\0';
++	}
++
++	if (state & TH_RUN) {
++		r->flags |= SF_EW_RUNNABLE;
++		return;
++	}
++	if (kstack == 0 || kstate == NULL) {
++		r->flags |= SF_EW_STACKLESS;
++		return;
++	}
++#if defined(__arm64__)
++	{
++		struct arm_kernel_saved_state ss;
++
++		if (!sf_ew_read((vm_offset_t)&((thread_kernel_state_t)kstate)->machine.ss, &ss, sizeof(ss))) {
++			r->flags |= SF_EW_TRUNCATED;
++			return;
++		}
++		r->nframes = sf_ew_frames(kstack, kstack + kernel_stack_size, ss.fp, ss.lr,
++		    r->frames, SF_EW_FRAMES, &r->flags);
++	}
++#else
++	r->flags |= SF_EW_TRUNCATED;
++#endif
++
++	s = splsched();
++	thread_lock(thread);
++	if (thread->state != state || thread->wait_event != event) {
++		r->flags |= SF_EW_MOVED;
++	}
++	thread_unlock(thread);
++	splx(s);
++}
++
++/*
++ * Up to max records for the threads of task, the exit thread marked. 0 and *count, or EINVAL
++ * (a record size the caller does not share), ENOMEM, EBUSY (the thread lists stayed locked).
++ */
++__private_extern__ int
++sf_exitwait_task_threads(task_t task, void *exit_thread, struct sf_ew_task *ti, size_t ti_size,
++    struct sf_ew_thread *out, size_t rec_size, int max, int *count)
++{
++	queue_head_t *lists[2] = { &threads, &terminated_threads };
++	thread_t *held;
++	uint8_t *terminated;
++	thread_t thread;
++	bool locked = false;
++	uint64_t now;
++	int n = 0;
++
++	*count = 0;
++	if (task == TASK_NULL || ti_size != sizeof(*ti) || rec_size != sizeof(*out) || max <= 0) {
++		return EINVAL;
++	}
++	held = kalloc_type(thread_t, max, Z_WAITOK | Z_ZERO);
++	terminated = kalloc_data(max, Z_WAITOK | Z_ZERO);
++	if (held == NULL || terminated == NULL) {
++		kfree_type(thread_t, max, held);
++		kfree_data(terminated, max);
++		return ENOMEM;
++	}
++	for (int tries = 0; tries < 100; tries++) {
++		if ((locked = lck_mtx_try_lock(&tasks_threads_lock))) {
++			break;
++		}
++		delay(1000);
++	}
++	if (!locked) {
++		kfree_type(thread_t, max, held);
++		kfree_data(terminated, max);
++		return EBUSY;
++	}
++	bzero(ti, sizeof(*ti));
++	ti->active = task->active;
++	ti->halting = task->halting;
++	ti->ipc_active = task->ipc_active;
++	ti->thread_count = task->thread_count;
++	ti->active_thread_count = task->active_thread_count;
++	ti->suspend_count = task->suspend_count;
++	for (int l = 0; l < 2; l++) {
++		queue_iterate(lists[l], thread, thread_t, threads) {
++			if (get_threadtask(thread) != task) {
++				continue;
++			}
++			ti->listed++;
++			ti->terminated += l;
++			if (n < max) {
++				thread_reference(thread);
++				terminated[n] = (uint8_t)l;
++				held[n++] = thread;
++			}
++		}
++	}
++	lck_mtx_unlock(&tasks_threads_lock);
++
++	now = mach_absolute_time();
++	for (int i = 0; i < n; i++) {
++		sf_ew_snapshot(held[i], &out[i], exit_thread, now);
++		if (terminated[i]) {
++			out[i].flags |= SF_EW_TERMINATED;
++		}
++		thread_deallocate(held[i]);
++	}
++	kfree_type(thread_t, max, held);
++	kfree_data(terminated, max);
++	*count = n;
++	return 0;
++}
+--- /dev/null
++++ b/src/Kernel/xnu/bsd/kern/sf_exitwait_bsd.c
+@@ -0,0 +1,419 @@
++// SPDX-License-Identifier: MIT
++/*
++ * SiliconForest: kern.sf_exitwait, what the threads of processes stuck in exit are waiting for.
++ *
++ * A process can stay in exit (ps: ?E, ppid 1, no threads listed, task_for_pid failing) with its
++ * descriptors and its windows still open, and neither sample nor a debugger can look at it. This
++ * reports, for every process in exit (P_LEXIT and not yet a zombie) and for any one process or
++ * all of them on request, the state of the process's exit and each thread's wait: event, block
++ * hint, the holder of a kernel lock it waits for, wait message, time blocked and the kernel
++ * frame chain as unslid return addresses (symbolicate against the kernel collection). The thread
++ * half is osfmk/kern/sf_exitwait.c.
++ *
++ * Off by default, and nothing runs until asked; root only:
++ *   sysctl kern.sf_exitwait.report         the report (read)
++ *   sysctl kern.sf_exitwait.log=1          the same report into the kernel log (dmesg)
++ *   sysctl kern.sf_exitwait.pid=N          also process N, in any state (-1: every process)
++ *   sysctl kern.sf_exitwait.kernel=1       also kernel_task's threads (GPU and driver workers)
++ *   sysctl kern.sf_exitwait.at_shutdown=1  or boot-arg sf_exitwait_shutdown=1: the report on the
++ *                                          console after proc_shutdown, before file systems are
++ *                                          unmounted, for a restart that hangs
++ * Taking the report blocks on nothing a stuck process can hold: the process lists are walked
++ * under proc_list_lock without process references (a process past proc_refdrain takes none),
++ * each task is kept by a task reference, and the thread half uses only try-locks and reads that
++ * cannot fault. It changes nothing in any process.
++ */
++#include <stdarg.h>
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <sys/kernel.h>
++#include <sys/kauth.h>
++#include <sys/proc_internal.h>
++#include <sys/sysctl.h>
++#include <sys/user.h>
++#include <kern/kalloc.h>
++#include <kern/locks.h>
++#include <kern/task.h>
++#include <kern/thread.h>
++#include <mach/vm_param.h>
++#include <pexpert/pexpert.h>
++
++/* the record osfmk/kern/sf_exitwait.c fills; both files define it, the sizes are checked */
++#define SF_EW_FRAMES            24
++#define SF_EW_EXIT_THREAD       0x01
++#define SF_EW_TERMINATED        0x02
++#define SF_EW_RUNNABLE          0x04
++#define SF_EW_STACKLESS         0x08
++#define SF_EW_TRUNCATED         0x10
++#define SF_EW_MOVED             0x20
++/* thread->state bits, osfmk/kern/thread.h (private to Mach; unchanged since Mach 3) */
++#define SF_TH_WAIT              0x01
++#define SF_TH_SUSP              0x02
++#define SF_TH_RUN               0x04
++#define SF_TH_UNINT             0x08
++#define SF_TH_TERMINATE         0x10
++
++struct sf_ew_thread {
++	uint64_t        tid;
++	uint64_t        wait_event;
++	uint64_t        waitq;
++	uint64_t        continuation;
++	uint64_t        blocked_us;
++	uint64_t        owner_tid;
++	uint64_t        frames[SF_EW_FRAMES];
++	char            wmesg[24];
++	char            name[32];
++	int32_t         state;
++	int32_t         block_hint;
++	int32_t         sched_pri;
++	int32_t         wait_result;
++	uint32_t        nframes;
++	uint32_t        flags;
++};
++
++struct sf_ew_task {
++	int32_t         active;
++	int32_t         halting;
++	int32_t         ipc_active;
++	int32_t         thread_count;
++	uint32_t        active_thread_count;
++	int32_t         suspend_count;
++	int32_t         listed;
++	int32_t         terminated;
++};
++
++_Static_assert(sizeof(struct sf_ew_thread) == 320 && sizeof(struct sf_ew_task) == 32,
++    "the record osfmk/kern/sf_exitwait.c shares");
++
++/* private externs: no name the kernel exports to kexts is added (see osfmk/kern/sf_exitwait.c) */
++__private_extern__ int sf_exitwait_task_threads(task_t task, void *exit_thread, struct sf_ew_task *ti,
++    size_t ti_size, struct sf_ew_thread *out, size_t rec_size, int max, int *count);
++__private_extern__ const char *sf_exitwait_wmesg(thread_t thread);
++__private_extern__ const char *sf_exitwait_name(thread_t thread);
++__private_extern__ void sf_exitwait_shutdown_report(void);
++
++#define SF_EW_MAX_TASKS         512
++#define SF_EW_MAX_THREADS       512             /* per task */
++#define SF_EW_REPORT_MAX        (1024 * 1024)
++
++static int sf_exitwait_pid = 0;
++static int sf_exitwait_kernel = 0;
++static int sf_exitwait_at_shutdown = 0;
++static int sf_exitwait_reports = 0;
++static LCK_GRP_DECLARE(sf_exitwait_grp, "sf_exitwait");
++static LCK_MTX_DECLARE(sf_exitwait_lock, &sf_exitwait_grp);    /* one report at a time */
++
++/* for the thread half: the uthread's msleep message and its name (pthread_setname_np) */
++__private_extern__ const char *
++sf_exitwait_wmesg(thread_t thread)
++{
++	struct uthread *ut = get_bsdthread_info(thread);
++
++	return ut != NULL ? ut->uu_wmesg : NULL;
++}
++
++__private_extern__ const char *
++sf_exitwait_name(thread_t thread)
++{
++	struct uthread *ut = get_bsdthread_info(thread);
++
++	return ut != NULL ? ut->pth_name : NULL;
++}
++
++struct sf_ew_proc {
++	task_t          task;           /* referenced */
++	void            *exit_thread;
++	pid_t           pid;
++	pid_t           ppid;
++	uint32_t        lflag;
++	uint32_t        refs;
++	int             stat;
++	int             xstat;
++	int             nfiles;
++	bool            zombproc;       /* on the zombproc list (proc_prepareexit has run) */
++	char            comm[MAXCOMLEN + 1];
++};
++
++struct sf_ew_out {
++	char            *buf;
++	size_t          len;
++	size_t          size;
++	bool            log;            /* each line also to the kernel log */
++	bool            truncated;
++};
++
++__printflike(2, 3)
++static void
++sf_ew_line(struct sf_ew_out *o, const char *fmt, ...)
++{
++	char line[384];
++	va_list ap;
++	int n;
++
++	va_start(ap, fmt);
++	n = vsnprintf(line, sizeof(line), fmt, ap);
++	va_end(ap);
++	if (n < 0) {
++		return;
++	}
++	if (o->log) {
++		printf("sf_exitwait: %s\n", line);
++	}
++	if (o->buf == NULL) {
++		return;
++	}
++	if ((size_t)n >= sizeof(line)) {
++		n = (int)sizeof(line) - 1;
++	}
++	if (o->len + (size_t)n + 2 > o->size) {
++		o->truncated = true;
++		return;
++	}
++	memcpy(o->buf + o->len, line, (size_t)n);
++	o->len += (size_t)n;
++	o->buf[o->len++] = '\n';
++	o->buf[o->len] = '\0';
++}
++
++static bool
++sf_ew_wanted(proc_t p)
++{
++	if (p->p_stat == SZOMB || (p->p_lflag & (P_LINTRANSIT | P_LHASTASK)) != P_LHASTASK) {
++		return false;
++	}
++	if (p == kernproc) {
++		return false;   /* kernel_task is asked for by kern.sf_exitwait.kernel */
++	}
++	return (p->p_lflag & P_LEXIT) != 0 || sf_exitwait_pid == -1 ||
++	       (sf_exitwait_pid > 0 && proc_getpid(p) == sf_exitwait_pid);
++}
++
++static int
++sf_ew_take(proc_t p, struct sf_ew_proc *e, bool on_zombproc)
++{
++	task_t task = proc_task(p);
++
++	if (task == TASK_NULL) {
++		return 0;
++	}
++	task_reference(task);
++	e->task = task;
++	e->exit_thread = p->exit_thread;
++	e->pid = proc_getpid(p);
++	e->ppid = p->p_ppid;
++	e->lflag = p->p_lflag;
++	e->refs = os_ref_get_raw_mask(&p->p_refcount);
++	e->stat = p->p_stat;
++	e->xstat = p->p_xstat;
++	e->nfiles = p->p_fd.fd_nfiles;
++	e->zombproc = on_zombproc;
++	strlcpy(e->comm, p->p_comm, sizeof(e->comm));
++	return 1;
++}
++
++static void
++sf_ew_threads(struct sf_ew_out *o, struct sf_ew_thread *rec, task_t task, void *exit_thread)
++{
++	struct sf_ew_task ti;
++	int count = 0, error;
++
++	error = sf_exitwait_task_threads(task, exit_thread, &ti, sizeof(ti), rec, sizeof(*rec),
++	    SF_EW_MAX_THREADS, &count);
++	if (error != 0) {
++		sf_ew_line(o, " threads not read: error %d%s", error,
++		    error == EBUSY ? " (thread lists stayed locked)" : "");
++		return;
++	}
++	sf_ew_line(o, " task active %d halting %d ipc %d threads %d (active %u) suspend %d; listed %d, "
++	    "terminated %d%s", ti.active, ti.halting, ti.ipc_active, ti.thread_count,
++	    ti.active_thread_count, ti.suspend_count, ti.listed, ti.terminated,
++	    ti.listed > count ? " (more than are shown)" : "");
++	for (int i = 0; i < count; i++) {
++		struct sf_ew_thread *t = &rec[i];
++		int s = t->state;
++
++		sf_ew_line(o, " tid %llu state 0x%x%s%s%s%s%s pri %d hint %d res %d blocked %llu.%03llu s"
++		    " event 0x%llx waitq 0x%llx owner %llu wmesg %s%s%s%s%s%s%s%s",
++		    t->tid, (unsigned)s, (s & SF_TH_WAIT) ? " wait" : "", (s & SF_TH_UNINT) ? " unint" : "",
++		    (s & SF_TH_RUN) ? " run" : "", (s & SF_TH_SUSP) ? " susp" : "",
++		    (s & SF_TH_TERMINATE) ? " term" : "", t->sched_pri, t->block_hint, t->wait_result,
++		    t->blocked_us / 1000000, (t->blocked_us / 1000) % 1000,
++		    t->wait_event, t->waitq, t->owner_tid, t->wmesg[0] ? t->wmesg : "-",
++		    t->name[0] ? " name " : "", t->name,
++		    (t->flags & SF_EW_EXIT_THREAD) ? " [exit thread]" : "",
++		    (t->flags & SF_EW_TERMINATED) ? " [terminated]" : "",
++		    (t->flags & SF_EW_STACKLESS) ? " [no stack]" : "",
++		    (t->flags & SF_EW_TRUNCATED) ? " [truncated]" : "",
++		    (t->flags & SF_EW_MOVED) ? " [moved]" : "");
++		if (t->continuation != 0) {
++			sf_ew_line(o, "  continuation 0x%llx", t->continuation);
++		}
++		for (uint32_t f = 0; f < t->nframes; f += 4) {
++			char frames[128];
++			size_t at = 0;
++
++			for (uint32_t k = f; k < t->nframes && k < f + 4; k++) {
++				at += (size_t)snprintf(frames + at, sizeof(frames) - at, " 0x%llx", t->frames[k]);
++			}
++			sf_ew_line(o, "  bt%s", frames);
++		}
++	}
++}
++
++/* the whole report into o; 0 or an errno */
++static int
++sf_ew_report(struct sf_ew_out *o, bool with_kernel)
++{
++	struct sf_ew_proc *procs;
++	struct sf_ew_thread *rec;
++	int nprocs = 0, more = 0, in_exit = 0;
++	proc_t p;
++
++	procs = kalloc_type(struct sf_ew_proc, SF_EW_MAX_TASKS, Z_WAITOK | Z_ZERO);
++	rec = kalloc_type(struct sf_ew_thread, SF_EW_MAX_THREADS, Z_WAITOK | Z_ZERO);
++	if (procs == NULL || rec == NULL) {
++		kfree_type(struct sf_ew_proc, SF_EW_MAX_TASKS, procs);
++		kfree_type(struct sf_ew_thread, SF_EW_MAX_THREADS, rec);
++		return ENOMEM;
++	}
++
++	lck_mtx_lock(&sf_exitwait_lock);
++	sf_exitwait_reports++;
++	/* no proc_ref: a process past proc_refdrain() takes none, and nothing here may wait */
++	proc_list_lock();
++	ALLPROC_FOREACH(p) {
++		if (sf_ew_wanted(p)) {
++			if (nprocs < SF_EW_MAX_TASKS) {
++				nprocs += sf_ew_take(p, &procs[nprocs], false);
++			} else {
++				more++;
++			}
++		}
++	}
++	ZOMBPROC_FOREACH(p) {
++		if (sf_ew_wanted(p)) {
++			if (nprocs < SF_EW_MAX_TASKS) {
++				nprocs += sf_ew_take(p, &procs[nprocs], true);
++			} else {
++				more++;
++			}
++		}
++	}
++	proc_list_unlock();
++
++	for (int i = 0; i < nprocs; i++) {
++		in_exit += (procs[i].lflag & P_LEXIT) != 0;
++	}
++	sf_ew_line(o, "report %d: %d process(es), %d in exit%s; pid %d kernel %d; frames are unslid "
++	    "return addresses, innermost first", sf_exitwait_reports, nprocs, in_exit,
++	    more ? " (more not shown)" : "", sf_exitwait_pid, with_kernel ? 1 : 0);
++	for (int i = 0; i < nprocs; i++) {
++		struct sf_ew_proc *e = &procs[i];
++
++		sf_ew_line(o, "pid %d ppid %d %s stat %d lflag 0x%x%s%s%s refs %u bits 0x%x%s%s xstat 0x%x "
++		    "fds %d%s", e->pid, e->ppid, e->comm, e->stat, e->lflag,
++		    (e->lflag & P_LEXIT) ? " exit" : "",
++		    (e->lflag & P_LPEXIT) ? " proc_exit" : "",
++		    (e->lflag & P_LTERM) ? " term" : "",
++		    e->refs >> P_REF_BITS, e->refs & ((1u << P_REF_BITS) - 1),
++		    (e->refs & P_REF_DEAD) ? " dead" : "",
++		    (e->refs & P_REF_DRAINING) ? " draining" : "",
++		    (unsigned)e->xstat, e->nfiles, e->zombproc ? " zombproc" : "");
++		sf_ew_threads(o, rec, e->task, e->exit_thread);
++		task_deallocate(e->task);
++	}
++	if (with_kernel) {
++		task_reference(kernel_task);
++		sf_ew_line(o, "kernel_task");
++		sf_ew_threads(o, rec, kernel_task, NULL);
++		task_deallocate(kernel_task);
++	}
++	if (o->truncated) {
++		sf_ew_line(o, "(report truncated)");
++	}
++	lck_mtx_unlock(&sf_exitwait_lock);
++
++	kfree_type(struct sf_ew_proc, SF_EW_MAX_TASKS, procs);
++	kfree_type(struct sf_ew_thread, SF_EW_MAX_THREADS, rec);
++	return 0;
++}
++
++static int
++sysctl_sf_exitwait_report SYSCTL_HANDLER_ARGS
++{
++#pragma unused(oidp, arg1, arg2)
++	struct sf_ew_out o = { .size = SF_EW_REPORT_MAX };
++	int error;
++
++	if (!kauth_cred_issuser(kauth_cred_get())) {
++		return EPERM;
++	}
++	if (req->newptr != USER_ADDR_NULL) {
++		return EPERM;
++	}
++	/* a size query: room for the largest report, the read itself says how much it is */
++	if (req->oldptr == USER_ADDR_NULL) {
++		req->oldidx = SF_EW_REPORT_MAX;
++		return 0;
++	}
++	o.buf = kalloc_data(o.size, Z_WAITOK | Z_ZERO);
++	if (o.buf == NULL) {
++		return ENOMEM;
++	}
++	error = sf_ew_report(&o, sf_exitwait_kernel != 0);
++	if (error == 0) {
++		error = SYSCTL_OUT(req, o.buf, o.len + 1);
++	}
++	kfree_data(o.buf, o.size);
++	return error;
++}
++
++static int
++sysctl_sf_exitwait_log SYSCTL_HANDLER_ARGS
++{
++#pragma unused(arg1, arg2)
++	struct sf_ew_out o = { .log = true };
++	int value = sf_exitwait_reports, error;
++
++	error = sysctl_handle_int(oidp, &value, 0, req);
++	if (error != 0 || req->newptr == USER_ADDR_NULL) {
++		return error;
++	}
++	if (value == 0) {
++		return 0;
++	}
++	return sf_ew_report(&o, sf_exitwait_kernel != 0);
++}
++
++/* kern_shutdown.c, after proc_shutdown(): what is left in exit, and the kernel's threads */
++__private_extern__ void
++sf_exitwait_shutdown_report(void)
++{
++	struct sf_ew_out o = { .log = true };
++	static int boot_arg = -1;
++
++	if (boot_arg < 0) {
++		int on = 0;
++
++		boot_arg = PE_parse_boot_argn("sf_exitwait_shutdown", &on, sizeof(on)) && on;
++	}
++	if (!boot_arg && !sf_exitwait_at_shutdown) {
++		return;
++	}
++	printf("sf_exitwait: at shutdown, after proc_shutdown\n");
++	(void)sf_ew_report(&o, true);
++}
++
++SYSCTL_DECL(_kern);
++SYSCTL_NODE(_kern, OID_AUTO, sf_exitwait, CTLFLAG_RW | CTLFLAG_LOCKED, 0,
++    "what the threads of processes in exit wait for (off until asked)");
++SYSCTL_PROC(_kern_sf_exitwait, OID_AUTO, report, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_LOCKED,
++    0, 0, sysctl_sf_exitwait_report, "A", "processes in exit and their threads' waits (root)");
++SYSCTL_PROC(_kern_sf_exitwait, OID_AUTO, log, CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_LOCKED,
++    0, 0, sysctl_sf_exitwait_log, "I", "write 1: the report into the kernel log; reads: reports made");
++SYSCTL_INT(_kern_sf_exitwait, OID_AUTO, pid, CTLFLAG_RW | CTLFLAG_LOCKED,
++    &sf_exitwait_pid, 0, "also this process in any state; -1: every process");
++SYSCTL_INT(_kern_sf_exitwait, OID_AUTO, kernel, CTLFLAG_RW | CTLFLAG_LOCKED,
++    &sf_exitwait_kernel, 0, "1: also kernel_task's threads");
++SYSCTL_INT(_kern_sf_exitwait, OID_AUTO, at_shutdown, CTLFLAG_RW | CTLFLAG_LOCKED,
++    &sf_exitwait_at_shutdown, 0, "1: the report on the console at shutdown, before unmounting");
