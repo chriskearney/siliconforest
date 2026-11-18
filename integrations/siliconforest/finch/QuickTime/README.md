@@ -156,12 +156,21 @@ None of it is to be installed at a system path: the SwiftUI is a binding subset,
 real SwiftUI program must never find it.
 
 `additions.nix` builds, for each of 17 system frameworks from which QuickTime Player
-binds names SiliconForest lacks, a small library with that framework's install name. It
-defines the missing names (`additions/*.m`, `plain.c`) and re-exports
+binds names SiliconForest lacks, a small library that is placed at that framework's path
+in the prefix. It defines the missing names (`additions/*.m`, `plain.c`) and re-exports
 `@loader_path/<Name>.sf-under`, which `qt_prefix.py` makes a symbolic link to the
 system's own image of the framework (or, for AVFoundation, MediaToolbox and WebKit, the
 staged provider). The process loads the system's file once; no system file changes.
 `additions/standin.m` exists only so that the linker has something with that name.
+
+Its install name is `<framework path>.sf-additions`, never the framework's own: dyld
+folds a library onto any loaded image with the same install name (`checkandAddImage`),
+and with equal names the system image was folded onto ours. That broke the first run on
+the M1 (load failures, and a stack overflow in dyld's symbol search through a re-export
+cycle); `docs/roadmap/issues/SF-AI-quicktime.md` has the details. `qt_prefix.py` refuses
+a prefix with an install name twice on a re-export chain, and a class that both our
+libraries and a loadable system image define. `NSFileWrapper` is AppKit's class on this
+system, so Foundation's additions re-export it (`additions/foundation-reexports.txt`).
 
 `additions/symbols.json` lists all 112 names with what each is: real, constant, model or
 absence. An absence binds, and when used fails as its interface documents and says so
@@ -175,5 +184,7 @@ reports names that the system image now exports itself; pass those to
 the pattern; add a guard where one is needed). `additions-probe.m` is our own check of an
 assembled prefix on SiliconForest: symbol lookups through the real dyld, then behaviour.
 
-Offline, against the 15 November copy of the system: 965 imports, none unbound. Not
-loaded on SiliconForest yet.
+Offline, against the 15 November copy of the system: 965 imports, none unbound. On the
+M1 (18 November, probe only, no window): all 154 names found by the real dyld through the
+prefix, every behaviour check passes, each system image loaded once. QuickTime Player
+itself has not been loaded yet.

@@ -13,23 +13,22 @@ files instantiate), supply each missing piece as our own code written from publi
 behaviour, and stage it beside the system until the application runs. Nothing from Apple's bundle, SDK or
 private headers is in this repository; only names appear here, because names are the interface.
 
-## State (18 November 2026)
-**Not launched.** The last real load on the M1 (15 November) stopped in dyld at a library that did not exist,
-before any symbol was bound. Everything below this line is static analysis and workstation builds: a
-prediction of what dyld and the Objective-C runtime will ask for, not a run. This work had no access to the M1.
+## State (18 November 2026, afternoon)
+**Not launched.** No window has been opened and the application has not been started on this system yet.
+What has now run on the M1 is our own probe against the private prefix, without a window:
 
-- **Offline, stage 0 is closed:** against the 15 November copy of the M1's system libraries, with this ticket's
-  private prefix laid over it, the static scan finds **965 of 965 symbols bound, no class missing and no
-  required library missing** (three Swift overlay libraries are absent, all weakly linked, which dyld skips).
-  It was 153 unbound before the loader libraries and 112 after them. 393 of the 3,538 selectors are still
-  implemented by nothing (459 before).
-- **Bound is not working.** Of the 112 names added last, 16 are real implementations, 37 are constants, 9 are
-  models that hold values nothing acts on, and 50 are absences: they bind, and when used they fail the way
-  their interface documents (or do nothing they cannot do properly) and say so once on stderr. The table
-  "The 112 names" lists every one, so that the first load on the machine can be read against it.
-- **The load test is prepared and has not been run.** One command sends a private prefix and the unmodified
-  application to the M1, runs our own probe against the prefix, then starts the application for a bounded time
-  and reports where it stopped ("The load test").
+- **All 154 names the prefix supplies are found by the real dyld** in the libraries the application binds
+  them from (the 112 additions and the 42 of the loader libraries), and every behaviour check of the probe
+  passes (file coordination, time formatting, export failing as documented, constraint layout, the time
+  resolver, the class hierarchies the application subclasses, display lookup, the "no Spaces"/"no AirDrop"
+  answers). Each system image is loaded exactly once; no class is defined twice.
+- **The first attempt crashed, and why is understood** ("What the first run on the machine found").
+- Offline, against the 15 November copy of the M1's libraries, the static scan still finds all 965 of the
+  application's imports bound. That remains a prediction until the application is loaded.
+
+Of the 112 names added last, 17 are real implementations, 37 are constants, 9 are models that hold values
+nothing acts on, and 49 are absences: they bind, and when used they fail the way their interface documents
+(or do nothing they cannot do properly) and say so once on stderr. The table "The 112 names" lists every one.
 
 ## What the binary asks for
 Measured on the arm64e slice with `llvm-otool`, `llvm-nm` and the lab's own Mach-O reader
@@ -172,6 +171,48 @@ The proper change, CGFloat in `libswiftCoreFoundation`, is proposed as
 `integrations/siliconforest/terminal-app/build-swift-runtime-cgfloat.nix`; it replaces a library every
 Swift program loads, so it goes through the core-library rehearsal, not through this ticket.
 
+## What the first run on the machine found
+The coordinator ran the load test without the application (`--no-launch`): the probe died with SIGSEGV
+before printing anything. Found by bisection on the M1 (one framework added at a time, core frameworks
+last) and read back from dyld's own source and output:
+
+- **dyld folds a library onto a loaded image with the same install name.** `checkandAddImage` in
+  `dyld2.cpp` deletes a newly mapped dylib whose install name equals that of any image already loaded and
+  hands back the loaded one. Our additions library carried the framework's own install name, and so did
+  the system image it re-exports. 15 of the 17 system images have exactly that name.
+- **Directly** (13 frameworks), the system image was folded onto ours, so our library became its own
+  re-exported library. dyld's "circular reference" retry then reloads the name without a loader path,
+  cannot resolve `@loader_path/…`, and the load fails ("Library not loaded … image not found"), taking
+  every framework that needs it down too.
+- **Through a SiliconForest wrapper** (CoreServices, QuartzCore): the image at those framework paths is a
+  compatibility wrapper named `…​.sfcompat` that re-exports the original library `…​.pd`, which carries
+  the canonical name. That one was folded onto ours, making a re-export cycle. dyld's
+  `ImageLoaderMachO::findExportedSymbol` searches re-exports with no record of where it has been; the first
+  lazy bind of a name neither image defines recursed 130,714 times and overflowed the stack. The probe's
+  own fault handler showed it (no crash report is written for a command-line program on this system).
+- Not involved: the symbolic link (a copy fails identically), initialiser order, chained fixups.
+  Compatibility versions are not enforced for libraries built for macOS 10.14 or later.
+
+**The change:** each additions library is found at the framework's path in the prefix but carries the
+install name `<that path>.sf-additions`. dyld matches requests by path, never by install name (apart from
+`@rpath`), so nothing else changes. `qt_prefix.py` now refuses a prefix in which an install name occurs
+twice on any re-export chain, and refuses a class our libraries define that any loadable system image also
+defines. That check found one: `NSFileWrapper` is AppKit's class on this system, so the Foundation additions
+now re-export AppKit's class instead of defining a second one. Each framework's other directories
+(Resources and the rest) are linked into the prefix, so that a bundle found from the binary's path in the
+prefix keeps its resources.
+
+After the change the same bisection rises steadily from 42 to 154 of 154 names found, with no crash at any
+step. The full log stays in the lab's run directory.
+
+**Where these names belong in the long run.** The additions are a way to give one application names the
+system lacks, without changing a system file. Many of them are not QuickTime-specific: the binding and
+text-style names, `NSFileCoordinator`, `NSMetadataItem` keys, `CAConstraint` and its layout manager,
+`CATextLayer`, `CAKeyframeAnimation`, the URL resource keys, `CGGetDisplaysWithRect`, the block-based audio
+property listener. They belong in the frameworks themselves, through the Cocoa patch series, where every
+application gets them. Each such move removes that name from the additions (`additions.nix { omit = … }`),
+and `qt_prefix.py` reports the names the system has gained so that none is defined twice.
+
 ## The 112 names
 Kinds: **real** (implemented), **constant**, **model** (holds what it is given; nothing in the system acts on
 it yet), **absence** (binds; when used it fails as its interface documents, or does nothing it cannot do
@@ -224,7 +265,7 @@ data was read from the binary and matches what is supplied.
 |  | `NSMetadataItemPixelWidthKey` | constant | documented value |
 |  | `class NSAppleScript` | absence | no AppleScript runtime: scripts fail with error -1753 |
 |  | `class NSFileCoordinator` | real | single process: the accessor runs at once; presenters are kept |
-|  | `class NSFileWrapper` | absence | creation fails with an error |
+|  | `class NSFileWrapper` | real | this system's own class, from AppKit (Cocotron), re-exported: one class in the process; it lacks initWithURL:options:error: |
 |  | `class NSMetadataItem` | absence | no Spotlight store: no item can be made |
 |  | `class NSNameSpecifier` | model | holds container, key and name; nothing evaluates it |
 |  | `_NSFullMethodName` | real | "-[Class selector]" for a receiver and selector |
@@ -317,8 +358,8 @@ What the offline numbers cannot say, and the test will:
   the count of unanswered selectors will be lower.
 - The staged AVFoundation and AVKit are linked against the build's base libraries; a symbol they need that
   the current system lacks would stop the load in one of our libraries, not in the application.
-- Placing a library of ours in front of CoreFoundation, Foundation and AppKit for one process is new on this
-  system. Leaf frameworks have been overridden this way before; core ones have not.
+- Placing a library of ours in front of CoreFoundation, Foundation and AppKit for one process now works for
+  our probe ("What the first run on the machine found"); the application itself has not been loaded.
 - Nothing here was run in QEMU either: the QEMU image has neither the media frameworks nor these stages, and
   building such an image was left for when it is needed. The workstation proves linking and export tables only.
 
@@ -351,8 +392,8 @@ What the offline numbers cannot say, and the test will:
   whether the helper is contacted at launch or only for recents and AVCHD folders is not yet known.
 - **SwiftUI.** Small if the inference above holds. If the view is reached after all, the subset stops the
   program with a clear message and the real SwiftUI becomes a prerequisite.
-- **Additions in front of core frameworks.** Finding a library of ours ahead of CoreFoundation, Foundation and
-  AppKit through the launcher's environment is untested on this system; the load test tells.
+- **Additions in front of core frameworks.** Works for our probe since the install-name change; the application
+  binds far more through them, and the first launch tells whether anything else in dyld or the runtime minds.
 - **arm64e.** The slice uses pointer authentication; SiliconForest already runs arm64e Apple binaries (Terminal,
   Activity Monitor), so this is a known path, not a new one.
 
