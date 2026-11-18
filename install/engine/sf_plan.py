@@ -191,8 +191,8 @@ class Refusal(Exception):
 # ---- plans ---------------------------------------------------------------------------------
 def sizes(manifest):
     if manifest:
-        o = manifest['os']
-        return o['root_min_bytes'], o['root_default_bytes'], False
+        r = manifest['root']
+        return r['min_bytes'], r['default_bytes'], False
     return PROVISIONAL_ROOT_MIN, PROVISIONAL_ROOT_DEFAULT, True
 
 

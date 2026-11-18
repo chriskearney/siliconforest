@@ -4,15 +4,19 @@
 
 sf/kernel.bin is a list of records (integrations/siliconforest/m1-native-boot/b1/pdsf_pack.py,
 src/pdsf.h): CONFIG (text: `bootargs=...` and keys), KERNEL (the kernel collection, gzip), END.
-A release's CONFIG names the root partition with three tokens that stand for values only the
-installed disk knows:
+The release's command-line template (release/image/bootargs.template on the release-image
+branch) names the root partition with three tokens that stand for values only the installed
+disk knows:
 
-    sfnvme_part=@SF_ROOT_PARTUUID@ sfnvme_part_lba=@SF_ROOT_LBA@ sfnvme_part_blocks=@SF_ROOT_BLOCKS@
+    sfnvme_part=@SF_PARTUUID@ sfnvme_part_lba=@SF_PART_LBA@ sfnvme_part_blocks=@SF_PART_BLOCKS@
 
 They are the storage driver's write fence (m1-storage/kernel/SFAppleNVMe.cpp): it writes only
 inside the partition with that GUID, first block and length, and only if both GPT copies agree.
 An unfilled token is not a GUID, so the driver refuses the partition and the root: fail closed.
-This module fills the tokens, keeps every other record byte for byte, and checks the result.
+The release's own sf_personalize.py packs sf/kernel.bin from the template; this module checks
+the result (`verify`: it must name exactly this Mac's root partition, and its records must be
+whole), and can fill the tokens of an already packed CONFIG record (`personalize`), keeping
+every other record byte for byte.
 """
 import hashlib
 import re
@@ -23,8 +27,8 @@ MAGIC, VERSION, ALIGN = 0x46534450, 1, 16
 END, CONFIG, KERNEL, RAMDISK = 0, 1, 2, 3
 HEADER = struct.Struct('<IHHIIQQ')
 BOOTARGS_CAPACITY = 608            # firmware BootArgs revision 2 (M1), terminating NUL included
-TOKENS = ('@SF_ROOT_PARTUUID@', '@SF_ROOT_LBA@', '@SF_ROOT_BLOCKS@')
-GUID = re.compile(r'^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$')
+TOKENS = ('@SF_PARTUUID@', '@SF_PART_LBA@', '@SF_PART_BLOCKS@')
+GUID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
 
 
 class ConfigError(Exception):
@@ -81,7 +85,7 @@ def personalize(data, partuuid, first_block, blocks, kernel_sha256=None):
         raise ConfigError('expected CONFIG, KERNEL, [RAMDISK], END; found %r' % kinds)
     if kernel_sha256 is not None and kernel_digest(data) != kernel_sha256:
         raise ConfigError('the KERNEL record is not the one the release manifest names')
-    guid = partuuid.upper()
+    guid = partuuid.lower()
     if not GUID.match(guid):
         raise ConfigError('not a partition GUID: %r' % partuuid)
     if not (isinstance(first_block, int) and isinstance(blocks, int) and first_block > 0 and blocks > 0):
@@ -110,3 +114,22 @@ def personalize(data, partuuid, first_block, blocks, kernel_sha256=None):
     if [r[0] for r in check] != kinds or any(x[4] != y[4] for x, y in zip(check[1:], recs[1:])):
         raise ConfigError('the rewritten file does not keep the other records')
     return out
+
+
+def verify(data, partuuid, first_block, blocks, fs_uuid=None):
+    """Raise ConfigError unless `data` is a whole record list whose command line names exactly
+    this partition (and, if given, the release's root filesystem) once each."""
+    recs = parse(data)
+    kinds = [r[0] for r in recs]
+    if kinds[0] != CONFIG or kinds.count(CONFIG) != 1 or kinds.count(KERNEL) != 1 or kinds[-1] != END:
+        raise ConfigError('expected CONFIG, KERNEL, [RAMDISK], END; found %r' % kinds)
+    words = bootargs(data).split()
+    want = {'sfnvme_part': partuuid.lower(), 'sfnvme_part_lba': str(first_block), 'sfnvme_part_blocks': str(blocks)}
+    if fs_uuid is not None:
+        want['boot-uuid'] = fs_uuid.lower()
+    for key, value in want.items():
+        found = [w for w in words if w.startswith(key + '=')]
+        if found != ['%s=%s' % (key, value)]:
+            raise ConfigError('the command line has %r for %s, not %s' % (found, key, value))
+    if '@' in ' '.join(words):
+        raise ConfigError('an unfilled token is left in the command line')

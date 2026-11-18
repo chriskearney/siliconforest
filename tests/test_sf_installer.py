@@ -212,48 +212,47 @@ class Plans(unittest.TestCase):
 
 
 class KernelConfig(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.m, _, self.kbin = fakemac.make_release(self.tmp)
+    TEMPLATE = 'sfnvme_part=@SF_PARTUUID@ sfnvme_part_lba=@SF_PART_LBA@ sfnvme_part_blocks=@SF_PART_BLOCKS@'
 
-    def tearDown(self):
-        shutil.rmtree(self.tmp)
-
-    def test_fills_the_three_tokens_and_keeps_the_kernel(self):
-        guid = fakemac.fake_uuid('root')
-        out = sf_kernelcfg.personalize(self.kbin, guid.lower(), 123456, 7890, self.m['os']['kernel_record_sha256'])
-        args = sf_kernelcfg.bootargs(out)
-        self.assertIn('sfnvme_part=%s sfnvme_part_lba=123456 sfnvme_part_blocks=7890' % guid, args)
-        self.assertNotIn('@SF_', args)
-        self.assertEqual(sf_kernelcfg.kernel_digest(out), self.m['os']['kernel_record_sha256'])
+    def pack(self, args, kernel=b'SYNTHETIC KERNEL' * 64):
         sys.path.insert(0, str(ROOT / 'integrations' / 'siliconforest' / 'm1-native-boot' / 'b1'))
         import pdsf_pack
+        return pdsf_pack, pdsf_pack.records(pdsf_pack.config_text(args, display=1), kernel)
+
+    def test_fills_the_three_tokens_and_keeps_the_kernel(self):
+        pdsf_pack, kbin = self.pack('-v rd=uuid boot-uuid=%s ' % fakemac.fake_uuid('fs').lower() + self.TEMPLATE)
+        guid = fakemac.fake_uuid('root')
+        out = sf_kernelcfg.personalize(kbin, guid, 123456, 7890, sf_kernelcfg.kernel_digest(kbin))
+        self.assertIn('sfnvme_part=%s sfnvme_part_lba=123456 sfnvme_part_blocks=7890' % guid.lower(), sf_kernelcfg.bootargs(out))
+        sf_kernelcfg.verify(out, guid, 123456, 7890, fakemac.fake_uuid('fs'))
         found, end = pdsf_pack.parse(out)
         self.assertEqual(end, len(out))
         self.assertTrue(all(item[4] for item in found))
 
+    def test_verify_refuses_another_partition_or_root(self):
+        g = fakemac.fake_uuid('root')
+        _, kbin = self.pack('rd=uuid boot-uuid=%s ' % fakemac.fake_uuid('fs').lower() + self.TEMPLATE)
+        out = sf_kernelcfg.personalize(kbin, g, 10, 20)
+        for args in ((fakemac.fake_uuid('other'), 10, 20, None), (g, 11, 20, None), (g, 10, 21, None), (g, 10, 20, fakemac.fake_uuid('other-fs'))):
+            with self.assertRaises(sf_kernelcfg.ConfigError):
+                sf_kernelcfg.verify(out, *args)
+        with self.assertRaises(sf_kernelcfg.ConfigError):
+            sf_kernelcfg.verify(kbin, g, 10, 20)               # tokens still in it
+
     def test_refusals(self):
         g = fakemac.fake_uuid('root')
-        bad = [
-            (self.kbin.replace(b'@SF_ROOT_LBA@', b'4096'), g, 1, 1, None),           # a token missing (CRC also breaks: refused either way)
-            (self.kbin, 'not-a-guid', 1, 1, None),
-            (self.kbin, g, 0, 1, None),
-            (self.kbin, g, 1, 1, '0' * 64),                                            # another kernel
-            (self.kbin[:-8], g, 1, 1, None),                                           # cut off
-        ]
+        _, kbin = self.pack(self.TEMPLATE)
+        bad = [(kbin.replace(b'@SF_PART_LBA@', b'4096'), g, 1, 1, None), (kbin, 'not-a-guid', 1, 1, None), (kbin, g, 0, 1, None),
+               (kbin, g, 1, 1, '0' * 64), (kbin[:-8], g, 1, 1, None)]
         for data, guid, first, blocks, digest in bad:
             with self.assertRaises(sf_kernelcfg.ConfigError):
                 sf_kernelcfg.personalize(data, guid, first, blocks, digest)
-
-    def test_token_twice_and_too_long(self):
-        sys.path.insert(0, str(ROOT / 'integrations' / 'siliconforest' / 'm1-native-boot' / 'b1'))
-        import pdsf_pack
-        twice = pdsf_pack.records(pdsf_pack.config_text('sfnvme_part=@SF_ROOT_PARTUUID@ @SF_ROOT_PARTUUID@ sfnvme_part_lba=@SF_ROOT_LBA@ sfnvme_part_blocks=@SF_ROOT_BLOCKS@'), b'k')
+        _, twice = self.pack(self.TEMPLATE + ' @SF_PARTUUID@')
         with self.assertRaises(sf_kernelcfg.ConfigError):
-            sf_kernelcfg.personalize(twice, fakemac.fake_uuid('x'), 1, 1)
-        long = pdsf_pack.records(pdsf_pack.config_text('x' * 505 + ' sfnvme_part=@SF_ROOT_PARTUUID@ sfnvme_part_lba=@SF_ROOT_LBA@ sfnvme_part_blocks=@SF_ROOT_BLOCKS@'), b'k')
+            sf_kernelcfg.personalize(twice, g, 1, 1)
+        _, long = self.pack('x' * 510 + ' ' + self.TEMPLATE)
         with self.assertRaises(sf_kernelcfg.ConfigError):
-            sf_kernelcfg.personalize(long, fakemac.fake_uuid('x'), 123456789, 123456789)
+            sf_kernelcfg.personalize(long, g, 123456789, 123456789)
 
 
 class FirmwareSlot(unittest.TestCase):
@@ -262,8 +261,8 @@ class FirmwareSlot(unittest.TestCase):
             fw = os.path.join(tmp, 'firmware.tar')
             fakemac.firmware_tar(fw)
             data, names = sf_fwslot.payload(fw)
-            self.assertTrue(all(n.startswith('brcm/') for n in names))
-            self.assertEqual(len(names), 4)                  # three files and the hard link; not isp/
+            self.assertTrue(all(n.startswith(sf_fwslot.WANT) for n in names))
+            self.assertEqual(len(names), 5)                  # Wi-Fi, Bluetooth, the hard link, Touch Bar; not isp_
             dev = os.path.join(tmp, 'dev')
             with open(dev, 'wb') as fd:
                 fd.truncate(8 << 20)
@@ -288,25 +287,32 @@ class Manifest(unittest.TestCase):
         ex = json.loads((ROOT / 'install' / 'manifest.example.json').read_text())
         sf_manifest.check(ex, ['J293'])
         with tempfile.TemporaryDirectory() as tmp:
-            m, _, _ = fakemac.make_release(tmp)
-        sf_manifest.check(m, ['J293'])
+            m, mp, _ = fakemac.make_release(tmp)
+            sums = sf_manifest.parse_sums(pathlib.Path(tmp, 'SHA256SUMS').read_text())
+            sf_manifest.check(m, ['J293'], sums)
+            self.assertEqual(sf_engine.load_manifest(mp, MODELS)['release'], 'test-1')
+            pathlib.Path(mp).write_text(pathlib.Path(mp).read_text() + ' ')   # install.json no longer as signed
+            with self.assertRaises(sf_manifest.ManifestError):
+                sf_engine.load_manifest(mp, MODELS)
         muts = [
             lambda d: d.update(format='other/1'),
             lambda d: d.update(models=['J704']),
-            lambda d: d.update(base_url='http://example.invalid/'),
-            lambda d: d['files'][0].update(sha256='ABC'),
-            lambda d: d['files'].pop(),
-            lambda d: d['os'].update(root_image_bytes=4097),
-            lambda d: d['os'].update(boot_partition_bytes=1 << 29),
-            lambda d: d['os']['firmware_slot'].update(offset=d['os']['root_image_bytes']),
-            lambda d: d['engine'].update(name='something-else'),
-            lambda d: d['files'][1].update(file='../escape.zip'),
+            lambda d: d['boot'].update(sha256='ABC'),
+            lambda d: d['boot'].update(sha256='0' * 64),                      # not the digest SHA256SUMS has
+            lambda d: d['root'].update(image_bytes=4097),
+            lambda d: d['root'].update(compression='zstd'),
+            lambda d: d['root'].update(fs_uuid=d['root']['fs_uuid'].upper()),
+            lambda d: d['root']['parts'].append(dict(d['root']['parts'][0])),
+            lambda d: d['firmware_slot'].update(offset=d['root']['image_bytes']),
+            lambda d: d['boot'].update(file='../escape.tar.xz'),
         ]
         for i, mut in enumerate(muts):
             d = json.loads(json.dumps(m))
             mut(d)
             with self.assertRaises(sf_manifest.ManifestError, msg='mutation %d' % i):
-                sf_manifest.check(d, ['J293'])
+                sf_manifest.check(d, ['J293'], sums)
+        with self.assertRaises(sf_manifest.ManifestError):
+            sf_manifest.parse_sums('%s  a\n%s  a\n' % ('0' * 64, '1' * 64))
 
 
 class Gate(unittest.TestCase):
@@ -369,10 +375,7 @@ class EndToEnd(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.m, self.mp, self.kbin = fakemac.make_release(self.tmp)
-        os.makedirs(os.path.join(self.tmp, 'os'))
-        pkg = sf_manifest.role(self.m, 'os-package')['file']
-        shutil.copy(os.path.join(self.tmp, pkg), os.path.join(self.tmp, 'os', pkg))
+        self.m, self.mp, _ = fakemac.make_release(self.tmp)
         self.mac = fakemac.FakeMac(name='e2e')
         self.reader = lambda: sf_plan.gather(self.mac).layout
         self.journal = os.path.join(self.tmp, 'journal.jsonl')
@@ -402,17 +405,20 @@ class EndToEnd(unittest.TestCase):
         # this Mac's root partition is in sf/kernel.bin
         k = open(os.path.join(res['mount'], 'sf', 'kernel.bin'), 'rb').read()
         args = sf_kernelcfg.bootargs(k)
-        self.assertIn('sfnvme_part=%s sfnvme_part_lba=%d sfnvme_part_blocks=%d' % (ours.root.uuid, ours.root.offset // 4096, ours.root.size // 4096), args)
-        # the firmware is in the root's slot; the root image itself is otherwise as shipped
-        dev = open(self.mac.device_file(res['root']), 'rb').read(8 << 20)
-        slot = self.m['os']['firmware_slot']['offset']
+        self.assertIn('sfnvme_part=%s sfnvme_part_lba=%d sfnvme_part_blocks=%d' % (ours.root.uuid.lower(), ours.root.offset // 4096, ours.root.size // 4096), args)
+        self.assertIn('boot-uuid=%s' % self.m['root']['fs_uuid'], args)
+        # the root image was written (and read back) and the firmware is in its slot
+        with open(self.mac.device_file(res['root']), 'rb') as fd:
+            dev = fd.read(8 << 20)
+        slot = self.m['firmware_slot']['offset']
+        self.assertEqual(dev[:16], b'SYNTHETIC ROOT\n\0')
         self.assertTrue(dev[slot:slot + 20].startswith(b'SFFWSLOT1\nlength='))
-        self.assertEqual(dev[:slot], bytes(slot))
+        self.assertEqual(dev[16:slot], bytes(slot - 16))
         # bless went to our new system volume; the machine was asked to shut down
         self.assertTrue(self.mac.default_boot.startswith('/dev/disk4s'))
         self.assertIn(['POWER', '-h'], self.mac.events)
         # the journal has a start and a done for every change
-        lines = [json.loads(l) for l in open(self.journal)]
+        lines = [json.loads(l) for l in pathlib.Path(self.journal).read_text().splitlines()]
         starts = [l for l in lines if l.get('state') == 'start' and l['step'] not in ('open', 'write')]
         self.assertEqual(len(starts), len([l for l in lines if l.get('state') == 'done' and l['step'] not in ('open', 'write')]))
         self.assertEqual(len(starts), 12)
@@ -432,8 +438,8 @@ class EndToEnd(unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             sf_engine.execute_update(uplan, ugate, self.m, self.tmp, run=self.info_with_mount(res))
-        self.assertEqual(open(os.path.join(res['mount'], 'sf', 'boot.bin.old'), 'rb').read(), b'an older stage 2')
-        self.assertIn('already this release', out.getvalue())               # kernel.bin was already current
+        self.assertEqual(pathlib.Path(res['mount'], 'sf', 'boot.bin.old').read_bytes(), b'an older stage 2')
+        self.assertIn('kernel.bin is already this release', out.getvalue())   # kernel.bin was already current
         self.assertFalse([c for c in ugate.calls if ugate.classify(c) is not None])
 
         # uninstall: refused while SiliconForest is the startup disk
@@ -456,6 +462,22 @@ class EndToEnd(unittest.TestCase):
                 return 0, plistlib.dumps(d)
             return self.mac(argv)
         return run
+
+    def test_root_write_refuses_a_bad_image(self):
+        before, plan, gate, res = self.install()
+        root = self.reader().find_ours().root
+        part = pathlib.Path(self.tmp, self.m['root']['parts'][1]['file'])
+        whole = part.read_bytes()
+        part.write_bytes(whole[:-100])                                    # cut short
+        with self.assertRaises(sf_gate.Refused), contextlib.redirect_stdout(io.StringIO()):
+            sf_engine.write_root(gate, self.m, self.tmp, root.dev, root.size)
+        part.write_bytes(whole)
+        bad = json.loads(json.dumps(self.m))
+        bad['root']['image_sha256'] = '0' * 64                             # reads back as something else
+        with self.assertRaises(sf_gate.Refused), contextlib.redirect_stdout(io.StringIO()):
+            sf_engine.write_root(gate, bad, self.tmp, root.dev, root.size)
+        with self.assertRaises(sf_gate.Refused):                          # larger than its partition
+            sf_engine.write_root(gate, self.m, self.tmp, root.dev, 4096)
 
     def test_uninstall_when_deleting_the_container_leaves_its_partition(self):
         self.install()

@@ -1,21 +1,34 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
-"""The release manifest: what a SiliconForest release consists of, checked before it is used.
+"""What a SiliconForest release consists of, checked before anything of it is used.
 
-The manifest is a JSON file published with each release next to a detached signature
-(ECDSA P-256 over SHA-256 of the exact bytes, DER; verified by install.sh with macOS's own
-`openssl dgst -sha256 -verify` before this module ever sees the file). This module checks
-its shape; it trusts nothing it has not checked. Schema: install/manifest.example.json.
+A release (docs/release/IMAGE.md on the release-image branch) publishes, among others:
+
+  SHA256SUMS        "<sha256>  <file>" for every file of the release
+  SHA256SUMS.sig    an SSH signature of SHA256SUMS (namespace siliconforest-release, identity
+                    release@siliconforest), checked by install.sh with macOS's own
+                    `ssh-keygen -Y verify` against the key pinned in install.sh
+  siliconforest-<v>-install.json   what the installer needs to know (this module's schema;
+                    example: install/manifest.example.json)
+  siliconforest-<v>-boot.tar.xz    the boot files (stage 1, stage 2, the kernel collection, the
+                    command-line template, pdsf_pack.py, sf_personalize.py, boot.json, the icon)
+  siliconforest-<v>-root.ext4.xz.NN   the root filesystem image, xz-compressed, in parts
+
+install.json is trusted only because its SHA-256 is in the signed SHA256SUMS (install.sh checks
+that); every file it names must also be in SHA256SUMS with the same digest (checked here).
+xz, not zstd: stock macOS cannot decompress zstd (its tar calls an external `zstd` that is not
+there), while liblzma is in macOS and in the engine's Python.
 """
 import json
 import re
 
-FORMAT = 'siliconforest-release/1'
+FORMAT = 'siliconforest-install/1'
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
-UUID = re.compile(r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$')
+UUID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
 NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$')
 VERSION = re.compile(r'^[0-9]+(\.[0-9]+){0,3}$')
-ROLES = ('stage1', 'os-package')
+BOOT_FILES = ('boot.json', 'boot.bin', 'kernel.kc', 'bootargs.template', 'pdsf_pack.py', 'sf_personalize.py',
+              'sf-stage1.bin', 'siliconforest.icns')
 
 
 class ManifestError(Exception):
@@ -27,27 +40,34 @@ def _need(cond, what):
         raise ManifestError(what)
 
 
-def _file(entry, where):
+def parse_sums(text):
+    out = {}
+    for line in (text.decode() if isinstance(text, bytes) else text).splitlines():
+        if not line.strip() or line.startswith('#'):
+            continue
+        m = re.match(r'^([0-9a-f]{64})  (\S+)$', line)
+        _need(m, 'SHA256SUMS: bad line %r' % line)
+        _need(m.group(2) not in out, 'SHA256SUMS names %s twice' % m.group(2))
+        out[m.group(2)] = m.group(1)
+    return out
+
+
+def _file(entry, where, sums):
     _need(isinstance(entry, dict), where + ': not an object')
     _need(isinstance(entry.get('file'), str) and NAME.match(entry['file']), where + ': file name')
     _need(isinstance(entry.get('bytes'), int) and entry['bytes'] > 0, where + ': bytes')
     _need(isinstance(entry.get('sha256'), str) and HEX64.match(entry['sha256']), where + ': sha256')
-    parts = entry.get('parts')
-    if parts is not None:
-        _need(isinstance(parts, list) and parts, where + ': parts')
-        for i, p in enumerate(parts):
-            _file(p, '%s part %d' % (where, i))
-        _need(sum(p['bytes'] for p in parts) == entry['bytes'], where + ': parts do not add up to bytes')
+    if sums is not None:
+        _need(sums.get(entry['file']) == entry['sha256'], '%s: %s is not in SHA256SUMS with this digest' % (where, entry['file']))
 
 
-def check(data, supported_targets):
-    """Return the manifest (a dict) if it is well formed, else raise ManifestError."""
+def check(data, supported_targets, sums=None):
+    """The install descriptor (a dict) if it is well formed, else ManifestError.
+    sums: the parsed signed SHA256SUMS (None only in tests of the shape alone)."""
     m = json.loads(data) if isinstance(data, (bytes, str)) else data
     _need(isinstance(m, dict), 'not an object')
     _need(m.get('format') == FORMAT, 'format is not ' + FORMAT)
     _need(isinstance(m.get('release'), str) and NAME.match(m['release']), 'release')
-    base = m.get('base_url')
-    _need(isinstance(base, str) and base.startswith('https://') and base.endswith('/'), 'base_url must be https and end in /')
     models = m.get('models')
     _need(isinstance(models, list) and models and all(isinstance(t, str) for t in models), 'models')
     extra = [t for t in models if t not in supported_targets]
@@ -57,35 +77,27 @@ def check(data, supported_targets):
     _need(isinstance(mac.get('max_major'), int), 'macos.max_major')
     _need(isinstance(m.get('stub_firmware'), list) and m['stub_firmware'] and
           all(isinstance(v, str) and VERSION.match(v) for v in m['stub_firmware']), 'stub_firmware')
-    eng = m.get('engine', {})
-    _file(eng, 'engine')
-    _need(eng.get('name') == 'asahi-installer', 'engine.name')
-    _need(isinstance(eng.get('urls'), list) and eng['urls'] and all(isinstance(u, str) and u.startswith('https://')
-                                                                     for u in eng['urls']), 'engine.urls')
-    files = m.get('files')
-    _need(isinstance(files, list), 'files')
-    roles = {}
-    for i, f in enumerate(files):
-        _file(f, 'files[%d]' % i)
-        _need(f.get('role') in ROLES, 'files[%d].role' % i)
-        _need(f['role'] not in roles, 'two files with role ' + f['role'])
-        roles[f['role']] = f
-    _need(set(roles) == set(ROLES), 'files must have exactly the roles ' + ', '.join(ROLES))
-    os_ = m.get('os', {})
-    _need(isinstance(os_.get('root_fs_uuid'), str) and UUID.match(os_['root_fs_uuid']), 'os.root_fs_uuid')
-    for k in ('root_image_bytes', 'root_min_bytes', 'root_default_bytes', 'boot_partition_bytes'):
-        _need(isinstance(os_.get(k), int) and os_[k] > 0, 'os.' + k)
-    _need(os_['root_image_bytes'] % 4096 == 0, 'os.root_image_bytes is not a multiple of 4096 (the Asahi installer refuses it)')
-    _need(os_['root_image_bytes'] <= os_['root_min_bytes'] <= os_['root_default_bytes'], 'os: image <= min <= default')
-    _need(os_['boot_partition_bytes'] == 524288000, 'os.boot_partition_bytes must be 500 MiB (the size the installed boot chain was proven with)')
-    _need(os_.get('kernel_file') == 'esp/sf/kernel.bin', 'os.kernel_file')
-    _need(isinstance(os_.get('kernel_record_sha256'), str) and HEX64.match(os_['kernel_record_sha256']), 'os.kernel_record_sha256')
-    slot = os_.get('firmware_slot')
-    _need(isinstance(slot, dict) and isinstance(slot.get('offset'), int) and isinstance(slot.get('length'), int), 'os.firmware_slot')
-    _need(slot['offset'] % 4096 == 0 and slot['length'] >= (1 << 20) and slot['offset'] + slot['length'] <= os_['root_image_bytes'],
-          'os.firmware_slot must be 4096-aligned, at least 1 MiB and inside the root image')
+    _file(m.get('boot'), 'boot', sums)
+    r = m.get('root', {})
+    _need(isinstance(r.get('fs_uuid'), str) and UUID.match(r['fs_uuid']), 'root.fs_uuid (lower case)')
+    _need(r.get('compression') == 'xz', 'root.compression must be xz')
+    for k in ('image_bytes', 'min_bytes', 'default_bytes'):
+        _need(isinstance(r.get(k), int) and r[k] > 0, 'root.' + k)
+    _need(isinstance(r.get('image_sha256'), str) and HEX64.match(r['image_sha256']), 'root.image_sha256')
+    _need(r['image_bytes'] % 4096 == 0, 'root.image_bytes is not a multiple of 4096')
+    _need(r['image_bytes'] <= r['min_bytes'] <= r['default_bytes'], 'root: image <= min <= default')
+    parts = r.get('parts')
+    _need(isinstance(parts, list) and parts, 'root.parts')
+    for i, p in enumerate(parts):
+        _file(p, 'root.parts[%d]' % i, sums)
+    _need(len({p['file'] for p in parts}) == len(parts), 'root.parts names a file twice')
+    slot = m.get('firmware_slot')
+    _need(isinstance(slot, dict) and isinstance(slot.get('offset'), int) and isinstance(slot.get('length'), int), 'firmware_slot')
+    _need(slot['offset'] % 4096 == 0 and slot['length'] >= (1 << 20) and slot['offset'] + slot['length'] <= r['image_bytes'],
+          'firmware_slot must be 4096-aligned, at least 1 MiB and inside the root image')
     return m
 
 
-def role(m, name):
-    return next(f for f in m['files'] if f['role'] == name)
+def downloads(m):
+    """[(file, bytes, sha256)] the installer fetches for this release (the engine is separate)."""
+    return [(m['boot']['file'], m['boot']['bytes'], m['boot']['sha256'])] + [(p['file'], p['bytes'], p['sha256']) for p in m['root']['parts']]

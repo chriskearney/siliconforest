@@ -91,7 +91,7 @@ class Gate:
             return 'setBoot' if '--setBoot' in argv else None
         if prog == 'bputil':
             return None if argv[1:2] == ['-d'] else 'bputil'
-        if prog in ('newfs_msdos', 'shutdown', 'reboot', 'kmutil', 'gpt', 'pdisk', 'fdisk', 'dd', 'asr', 'csrutil', 'nvram-write'):
+        if prog in ('newfs_msdos', 'shutdown', 'reboot', 'kmutil', 'gpt', 'fdisk', 'dd', 'asr', 'csrutil', 'nvram-write'):
             return prog
         if prog in PASS:
             return None

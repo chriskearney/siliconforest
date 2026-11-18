@@ -18,8 +18,9 @@
 # install/tools/assemble.py; edit those, then run the assembler. Nothing on the disk changes
 # before you have seen the plan and typed the word it asks for. Downloads are checked before
 # use: the engine (the Asahi Linux installer v0.9.2, which brings its own Python) against the
-# SHA-256 below, a release against its manifest, whose signature is checked with the public
-# key below before the manifest is read. Log: ~/Library/Logs/SiliconForest/.
+# SHA-256 below; a release by its SHA256SUMS, whose SSH signature is checked with macOS's own
+# ssh-keygen against the key below before anything else of the release is read; then every
+# file against SHA256SUMS. Log: ~/Library/Logs/SiliconForest/.
 
 # The whole script is one function, called on the last line: a download cut short runs nothing.
 sf_main() {
@@ -28,10 +29,11 @@ sf_main() {
   ENGINE_FILE=installer-v0.9.2.tar.gz
   ENGINE_SHA256=484d999e53b4aef27d17c4478e49567e96842f8a6cb35c073a0df5bf0bbe8276
   ENGINE_URLS="https://cdn.asahilinux.org/installer/installer-v0.9.2.tar.gz"
-  # PEM public key (ECDSA P-256) that signs SiliconForest release manifests. Empty: no release has
-  # been signed yet, and the installer refuses every release until the key is put here.
-  RELEASE_KEY=""
-  MANIFEST_URL=${SF_MANIFEST_URL:-https://github.com/chriskearney/siliconforest/releases/latest/download/siliconforest-manifest.json}
+  # The key that signs releases, as an ssh-keygen allowed-signers line:
+  #   release@siliconforest namespaces="siliconforest-release" ssh-ed25519 AAAA...
+  # Empty: no release has been signed yet, and the installer refuses every release until it is here.
+  RELEASE_SIGNERS=""
+  RELEASE_BASE=${SF_RELEASE_BASE:-https://github.com/chriskearney/siliconforest/releases/latest/download/}
 
   cmd=install
   dry=""
@@ -93,22 +95,28 @@ sf_main() {
   fi
   [ -x "$PY" ] || sf_die "No Python in the engine package ($PY). Nothing was changed."
 
-  # ---- the release: a signed manifest, or none yet -------------------------------------------
+  # ---- the release: signed SHA256SUMS and install.json, or none yet ---------------------------
   MANIFEST=""
   REL=$WORK/release
-  rm -f "$REL/manifest.json" "$REL/manifest.json.sig"
+  rm -f "$REL/SHA256SUMS" "$REL/SHA256SUMS.sig" "$REL/allowed_signers" "$REL"/*-install.json
   if [ "$cmd" != uninstall ]; then
-    if curl -fsSL --retry 2 -o "$REL/manifest.json" "$MANIFEST_URL" 2>>"$LOG" &&
-       curl -fsSL --retry 2 -o "$REL/manifest.json.sig" "$MANIFEST_URL.sig" 2>>"$LOG"; then
-      [ -n "$RELEASE_KEY" ] || sf_die "A release manifest exists, but this installer has no release key to check it with. Use a newer installer. Nothing was changed."
-      printf '%s\n' "$RELEASE_KEY" > "$REL/release-key.pem"
-      if ! openssl dgst -sha256 -verify "$REL/release-key.pem" -signature "$REL/manifest.json.sig" "$REL/manifest.json" >>"$LOG" 2>&1; then
-        sf_die "The release manifest's signature is not valid. Nothing was changed."
+    if curl -fsSL --retry 2 -o "$REL/SHA256SUMS" "${RELEASE_BASE}SHA256SUMS" 2>>"$LOG" &&
+       curl -fsSL --retry 2 -o "$REL/SHA256SUMS.sig" "${RELEASE_BASE}SHA256SUMS.sig" 2>>"$LOG"; then
+      [ -n "$RELEASE_SIGNERS" ] || sf_die "A release exists, but this installer has no release key to check it with. Use a newer installer. Nothing was changed."
+      printf '%s\n' "$RELEASE_SIGNERS" > "$REL/allowed_signers"
+      if ! ssh-keygen -Y verify -f "$REL/allowed_signers" -I release@siliconforest -n siliconforest-release \
+           -s "$REL/SHA256SUMS.sig" < "$REL/SHA256SUMS" >>"$LOG" 2>&1; then
+        sf_die "The release's signature is not valid. Nothing was changed."
       fi
-      MANIFEST=$REL/manifest.json
-      sf_say "Release manifest: signature checked."
+      line=$(grep -E '^[0-9a-f]{64}  siliconforest-[A-Za-z0-9._+-]+-install\.json$' "$REL/SHA256SUMS" | head -n 1)
+      [ -n "$line" ] || sf_die "The release names no install.json. Nothing was changed."
+      ijson=${line#*  }
+      curl -fsSL --retry 2 -o "$REL/$ijson" "$RELEASE_BASE$ijson" 2>>"$LOG" || sf_die "Could not download $ijson. Nothing was changed."
+      [ "$(sf_sha256 "$REL/$ijson")" = "${line%%  *}" ] || sf_die "$ijson is not the file the signed release names. Nothing was changed."
+      MANIFEST=$REL/$ijson
+      sf_say "Release: signature checked ($ijson)."
     else
-      rm -f "$REL/manifest.json" "$REL/manifest.json.sig"
+      rm -f "$REL/SHA256SUMS" "$REL/SHA256SUMS.sig"
       sf_say "No SiliconForest release has been published yet."
     fi
   fi
@@ -116,12 +124,8 @@ sf_main() {
   # ---- downloads of the release, each checked ---------------------------------------------------
   if [ -n "$MANIFEST" ] && [ -z "$dry" ] && { [ "$cmd" = install ] || [ "$cmd" = update ]; }; then
     "$PY" -I "$SF/sf_engine.py" files --manifest "$MANIFEST" > "$REL/files.txt"
-    while read -r name url bytes sum joined; do
-      if [ "$url" = - ]; then
-        sf_join "$REL" "$name" "$bytes" "$sum"
-      else
-        sf_fetch "$REL/$name" "$url" "$bytes" "$sum"
-      fi
+    while read -r name bytes sum; do
+      sf_fetch "$REL/$name" "$RELEASE_BASE$name" "$bytes" "$sum"
     done < "$REL/files.txt"
   fi
 
@@ -172,17 +176,6 @@ sf_fetch() {
     sf_die "Could not download $2. Nothing was changed; run the same command again to resume."
   [ "$(wc -c < "$1" | tr -d ' ')" = "$3" ] || { rm -f "$1"; sf_die "$(basename "$1") has the wrong size. Nothing was changed; run again."; }
   [ "$(sf_sha256 "$1")" = "$4" ] || { rm -f "$1"; sf_die "$(basename "$1") is not the file the release names (SHA-256). Nothing was changed."; }
-}
-
-# <dir> <name> <bytes> <sha256>: join <name>.partNN (already checked) into <name>, then check it
-sf_join() {
-  if [ -f "$1/$2" ] && [ "$(sf_sha256 "$1/$2")" = "$4" ]; then
-    return 0
-  fi
-  cat "$1/$2".part* > "$1/$2.joining"
-  mv "$1/$2.joining" "$1/$2"
-  [ "$(sf_sha256 "$1/$2")" = "$4" ] || sf_die "$2: the joined parts are not the file the release names. Nothing was changed."
-  rm -f "$1/$2".part*
 }
 
 sf_engine_fetch() {

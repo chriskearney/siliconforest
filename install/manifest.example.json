@@ -1,42 +1,24 @@
 {
- "format": "siliconforest-release/1",
+ "format": "siliconforest-install/1",
  "release": "0.0.0-example",
- "base_url": "https://github.com/chriskearney/siliconforest/releases/download/v0.0.0-example/",
  "models": ["J293"],
  "macos": {"min": "13.5", "max_major": 26},
  "stub_firmware": ["13.5"],
- "engine": {
-  "name": "asahi-installer",
-  "version": "v0.9.2",
-  "file": "installer-v0.9.2.tar.gz",
-  "bytes": 22215466,
-  "sha256": "484d999e53b4aef27d17c4478e49567e96842f8a6cb35c073a0df5bf0bbe8276",
-  "urls": [
-   "https://github.com/chriskearney/siliconforest/releases/download/v0.0.0-example/installer-v0.9.2.tar.gz",
-   "https://cdn.asahilinux.org/installer/installer-v0.9.2.tar.gz"
+ "boot": {"file": "siliconforest-0.0.0-example-boot.tar.xz", "bytes": 9000000,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001"},
+ "root": {
+  "fs_uuid": "00000000-0000-4000-8000-000000000000",
+  "compression": "xz",
+  "image_bytes": 12884901888,
+  "image_sha256": "0000000000000000000000000000000000000000000000000000000000000002",
+  "min_bytes": 17179869184,
+  "default_bytes": 51539607552,
+  "parts": [
+   {"file": "siliconforest-0.0.0-example-root.ext4.xz.01", "bytes": 2000000000,
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000003"},
+   {"file": "siliconforest-0.0.0-example-root.ext4.xz.02", "bytes": 700000000,
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000004"}
   ]
  },
- "files": [
-  {"role": "stage1", "file": "siliconforest-0.0.0-example-stage1.bin", "bytes": 4325376,
-   "sha256": "0000000000000000000000000000000000000000000000000000000000000001"},
-  {"role": "os-package", "file": "siliconforest-0.0.0-example-os.zip", "bytes": 3000000000,
-   "sha256": "0000000000000000000000000000000000000000000000000000000000000002",
-   "parts": [
-    {"file": "siliconforest-0.0.0-example-os.zip.part01", "bytes": 2000000000,
-     "sha256": "0000000000000000000000000000000000000000000000000000000000000003"},
-    {"file": "siliconforest-0.0.0-example-os.zip.part02", "bytes": 1000000000,
-     "sha256": "0000000000000000000000000000000000000000000000000000000000000004"}
-   ]}
- ],
- "os": {
-  "root_fs_uuid": "00000000-0000-4000-8000-000000000000",
-  "root_image": "root.img",
-  "root_image_bytes": 12884901888,
-  "root_min_bytes": 17179869184,
-  "root_default_bytes": 51539607552,
-  "boot_partition_bytes": 524288000,
-  "kernel_file": "esp/sf/kernel.bin",
-  "kernel_record_sha256": "0000000000000000000000000000000000000000000000000000000000000005",
-  "firmware_slot": {"offset": 1073741824, "length": 33554432}
- }
+ "firmware_slot": {"offset": 1073741824, "length": 33554432}
 }

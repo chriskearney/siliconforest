@@ -9,8 +9,8 @@ Not part of CI (CI fetches no sources). It copies the checkout's src/ and asahi_
 the published package lays them out, lets sf_engine.AsahiEngine patch the modules (diskutil,
 subprocess, open, os.system), and then runs Asahi's DiskUtil (reading FakeMac's plists with
 Asahi's parser), resizeContainer, addPartition, OSInstaller.partition_disk and
-OSInstaller.install (FAT format, root image raw write, esp tree, boot object) exactly as
-sf_engine does, followed by our finish(). What it cannot run here: SystemInfo (ioreg/nvram of a
+OSInstaller.install (FAT format, esp tree, boot object) exactly as sf_engine does, followed by
+our finish() (root image from its xz parts, release personalisation, firmware slot). What it cannot run here: SystemInfo (ioreg/nvram of a
 real Mac), the stub's contents (Apple's restore image), firmware collection, bless and step 2.
 """
 import os
@@ -48,12 +48,12 @@ class RealAsahiBehindTheGate(unittest.TestCase):
         shutil.copytree(os.path.join(SRC, 'asahi_firmware'), os.path.join(eng, 'asahi_firmware'))
         pathlib.Path(eng, 'version.tag').write_text('v0.9.2\n')
         rel = os.path.join(tmp, 'rel')
-        os.makedirs(os.path.join(rel, 'os'))
+        os.makedirs(rel)
         m, _, _ = fakemac.make_release(rel)
-        pkg = sf_manifest.role(m, 'os-package')['file']
-        shutil.copy(os.path.join(rel, pkg), os.path.join(rel, 'os', pkg))
+        boot = sf_engine.unpack_boot(m, rel)
         os.makedirs(os.path.join(eng, 'boot'))
-        shutil.copy(os.path.join(rel, sf_manifest.role(m, 'stage1')['file']), os.path.join(eng, 'boot', sf_engine.STAGE1_NAME))
+        shutil.copy(os.path.join(boot, 'sf-stage1.bin'), os.path.join(eng, 'boot', sf_engine.STAGE1_NAME))
+        package = sf_engine.os_package(boot, rel)
         os.environ.update(REPO_BASE=rel, DISTRO='SiliconForest')
 
         mac = fakemac.FakeMac(name='asahi')
@@ -76,7 +76,7 @@ class RealAsahiBehindTheGate(unittest.TestCase):
             stub_part = du.addPartition(free[0].name, 'apfs', 'SiliconForest', plan['stub_bytes'])
             self.assertEqual(stub_part.name, 'disk0s4')
             ae.stub.StubInstaller(None, du, None).prepare_volume(stub_part)    # Data/System/Preboot/Recovery volumes
-            template = sf_engine.installer_template(m, plan)
+            template = sf_engine.installer_template(m, plan, package)
             osins = ae.osinstall.OSInstaller(du, {'os_list': [template]}, template)
             osins.load_package()
             osins.name = 'SiliconForest'
@@ -90,7 +90,7 @@ class RealAsahiBehindTheGate(unittest.TestCase):
             mount = du.mount(efi.name)
             fwtar = os.path.join(tmp, 'firmware.tar')
             fakemac.firmware_tar(fwtar)
-            sf_engine.finish(gate, m, rel, mount, root.name, root.uuid, root.offset // 4096, root.size // 4096, fwtar, None)
+            sf_engine.finish(gate, m, rel, mount, root.name, root.uuid, root.offset // 4096, root.size // 4096, root.size, fwtar, None)
         finally:
             os.chdir(cwd)
             os.system = real_system
@@ -101,7 +101,9 @@ class RealAsahiBehindTheGate(unittest.TestCase):
         boot_obj = pathlib.Path(stub_ins.boot_obj_path).read_bytes()
         self.assertIn(('chosen.asahi,efi-system-partition=%s\nchainload=%s;sf/boot.bin\n' % (efi.uuid.lower(), efi.uuid.lower())).encode(), boot_obj)
         self.assertEqual(sorted(os.listdir(os.path.join(mount, 'sf'))), ['boot.bin', 'kernel.bin'])
-        self.assertIn('sfnvme_part=%s ' % root.uuid, sf_kernelcfg.bootargs(pathlib.Path(mount, 'sf', 'kernel.bin').read_bytes()))
+        self.assertIn('sfnvme_part=%s ' % root.uuid.lower(), sf_kernelcfg.bootargs(pathlib.Path(mount, 'sf', 'kernel.bin').read_bytes()))
+        with open(mac.device_file(root.name), 'rb') as fd:
+            self.assertEqual(fd.read(16), b'SYNTHETIC ROOT\n\0')
         changing = [c for c in gate.calls if gate.classify(c) is not None]
         print('\nchanging commands issued by Asahi\'s code, all allowed by the gate:')
         for c in changing:

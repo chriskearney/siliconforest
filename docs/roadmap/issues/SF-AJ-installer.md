@@ -22,10 +22,10 @@ November 2026 (`integrations/siliconforest/m1-native-boot/install/INSTALL.md`).
 
 1. Paste `curl -fsSL https://raw.githubusercontent.com/chriskearney/siliconforest/main/install.sh | sh` into Terminal on macOS.
 2. It checks the Mac (model table, macOS 13.5–26, admin at the console, Rosetta, FileVault, snapshots, power) and reads the disk; anything wrong stops with a sentence and "Nothing was changed".
-3. It fetches its engine (the Asahi Linux installer package, SHA-256 pinned) and the signed release manifest.
+3. It fetches its engine (the Asahi Linux installer package, SHA-256 pinned) and the release's signed `SHA256SUMS` and `install.json`.
 4. It shows the disk and a numbered list of exactly what will change (macOS shrinks by X and keeps Y free; three new partitions; nothing else).
 5. The user types `install`; sudo asks for the password; the plan is made again and must match.
-6. Downloads are checked against the manifest; macOS is shrunk; the stub (from Apple's macOS 13.5 restore files), SFBOOT and the root are made and filled; Wi-Fi/Bluetooth firmware is collected from Apple's recovery image and put into the root; the root partition's identifiers go into `sf/kernel.bin`.
+6. Downloads are checked against `SHA256SUMS`; macOS is shrunk; the stub (from Apple's macOS 13.5 restore files), SFBOOT and the root are made and filled (the root read back and checked); Wi-Fi/Bluetooth/Touch Bar firmware is collected from Apple's recovery image and put into the root; the root partition's identifiers go into `sf/kernel.bin`.
 7. The password once more (bless); the Asahi installer's recovery instructions; the Mac shuts down.
 8. Hold power, choose SiliconForest, sign in, `bputil` and `kmutil` with the macOS password (Apple requires the owner to do this).
 9. SiliconForest starts; the user sets macOS back as the startup disk; from then on SiliconForest is chosen at start.
@@ -51,10 +51,12 @@ script route `omacom/omarchy-mac` (667500c, README); our kit `integrations/silic
 | Consent | menu; separate "Continue?" for the resize; then questions; then it writes | backup checkbox; plans bound to a digest of the disk layout | the menu, cut down by a patch | Omacom's plan-bound-to-layout idea | one typed confirmation after a numbered list of every change; the plan is rebuilt under sudo and must equal the confirmed one |
 | Stub | built from single files of Apple's IPSW over HTTP ranges; Finish Installation.app; `step2.sh` | the same engine, plus a restore-image helper for encrypted newer restore images | Asahi's | Asahi's, unchanged | stub firmware fixed to 13.5 (`supported_fw`), the version SiliconForest's drivers were brought up on |
 | Recovery step | `step2.sh`: clear texts for "wrong recoveryOS" and "not 1TR"; `bputil -nc`, `kmutil configure-boot` | a native Recovery app | Asahi's | Asahi's step 2 and its words, unchanged | none |
-| Firmware | collected from the recovery ramdisk into `vendorfw/` on the ESP; Linux's initramfs unpacks it | the same (and more for newer Macs) | not collected | Asahi's collection, `copy_firmware` to SFBOOT | the brcm/ files also go into a preallocated slot inside the root, because SiliconForest's storage driver reads only its root (`sfnvme_readfence=1`) |
+| Firmware | collected from the recovery ramdisk into `vendorfw/` on the ESP; Linux's initramfs unpacks it | the same (and more for newer Macs) | not collected | Asahi's collection, `copy_firmware` to SFBOOT | the brcm/ (Wi-Fi, Bluetooth) and apple/dfrmtfw, tpmtfw (Touch Bar, trackpad) files also go into a preallocated slot inside the root, because SiliconForest's storage driver reads only its root (`sfnvme_readfence=1`) and macOS cannot write ext4 |
 | OS package | `installer_data.json`; zip with `esp/` tree and raw images; `expand`; streamed by HTTP range | Asahi package format, catalog-pinned | our `installer_data.json` + zip | the format, as is | downloaded whole and checked before use: Asahi's range reader drops a URL's query string, so it cannot stream GitHub release assets (signed redirects), and a stream cannot be checked before it is written |
-| Integrity | TLS (+ zip CRC) | Ed25519-signed catalog, SHA-256 of engine and image, trust root in the app | SHA-256 manifest of the kit | signed manifest + SHA-256 of every file | ECDSA P-256, because macOS's LibreSSL 3.3.6 cannot verify Ed25519 from a shell; P-256 verification by `openssl dgst` was confirmed on a real Mac (macOS 26.5.2, test key, nothing written) |
-| Per-machine data | appends the ESP PARTUUID and `chainload=` to m1n1 | the same | the same | the same | new: the root partition's GUID, first block and length are written into `sf/kernel.bin`'s CONFIG record (the storage driver's write fence); unfilled tokens fail closed |
+| Integrity | TLS (+ zip CRC) | Ed25519-signed catalog, SHA-256 of engine and image, trust root in the app | SHA-256 manifest of the kit | a signed list of every file's SHA-256 | an SSH signature (Ed25519) of `SHA256SUMS`, IMAGE's scheme, verified by macOS's own `ssh-keygen -Y verify` (OpenSSH 10.2 on macOS 26.5.2: a good and a tampered signature tried on a real Mac, nothing written); macOS's LibreSSL 3.3.6 has no Ed25519, an ECDSA P-256 `openssl dgst` check also works there and was the first draft |
+| Compression | zip (deflate) | zip | none | xz for the root and boot files | not zstd: stock macOS cannot decompress it (its `tar` calls an external `zstd` that is absent; tried on a real Mac), while liblzma is in macOS and in the engine's Python |
+| Root image | written raw from the package zip by the engine (`image`) | the same | written from Linux by hand | | written by our code from the xz parts straight onto the new partition, then read back and compared with the release's SHA-256 (no `e2fsck` or `resize2fs` on macOS) |
+| Per-machine data | appends the ESP PARTUUID and `chainload=` to m1n1 | the same | the same | the same | new: the root partition's GUID, first block and length go into `sf/kernel.bin`'s command line (the storage driver's write fence), packed on the Mac by the release's own `sf_personalize.py` (IMAGE) and then checked by ours (`sf_kernelcfg.verify`: exactly this partition and the release's root, once each); the root filesystem UUID is a per-release constant, never changed at install |
 | Default startup disk | blesses the new OS (step 2 needs its paired recovery) and leaves it default | the same; user picks at start | the same, then the owner set Linux back | the same | the user is told to set macOS back after the first start: SiliconForest cannot change NVRAM, and a failed start must land in macOS |
 | Dangerous menu items | "m: Upgrade m1n1 on an existing OS", "v: Rebuild vendor firmware" for any stub | engine overlay | removed by `main-menu.patch` (with our stage 1, "m" would overwrite another system's stub) | | no menu at all: the engine is driven step by step; the gate refuses blessing or formatting anything this run did not create |
 | Telemetry | reports install statistics (`REPORT`) | none found | unset | | none (the engine's `REPORT` is removed from the environment) |
@@ -88,15 +90,16 @@ adds the plan, the gate, the identifiers and the firmware slot. Recommendation: 
 ## Structure and safety properties
 
     install.sh            POSIX sh, macOS tools only: platform checks, engine download (SHA-256),
-                          manifest signature (openssl), artifact downloads (resume, size, SHA-256)
+                          release signature (ssh-keygen -Y verify over SHA256SUMS), install.json,
+                          artifact downloads (resume, size, SHA-256)
     install/engine/       Python, run by the engine's Python:
       sf_disk.py          diskutil plists -> layout; free areas, our pieces, others, digest
       sf_plan.py          facts (read-only commands), checks, plans for install/uninstall/update
       sf_gate.py          the one door for every change; journal; simulation hook
       sf_engine.py        plan -> confirm -> sudo -> same plan -> Asahi engine behind the gate
-      sf_kernelcfg.py     CONFIG record tokens -> this Mac's root partition
+      sf_kernelcfg.py     checks the packed sf/kernel.bin names exactly this root partition
       sf_fwslot.py        firmware tar into the root's firmware slot
-      sf_manifest.py      release manifest schema check
+      sf_manifest.py      install.json schema, cross-checked against the signed SHA256SUMS
     install/models.tsv    the model table (data)
     install/tools/assemble.py   install.sh = bootstrap.sh + engine files as here-documents
 
@@ -116,19 +119,22 @@ adds the plan, the gate, the identifiers and the firmware slot. Recommendation: 
 - Logs: `~/Library/Logs/SiliconForest/installer-<time>.log`; journal
   `/var/db/siliconforest-installer/journal.jsonl` (a start and an end line for every change); a copy of
   the log and `sf/install.json` on SFBOOT.
-- Without a signed manifest it never gets past the plan; without a pinned release key it refuses any
-  manifest it finds.
+- The root image is written by our code through the gate and read back; a short, long or different
+  image stops the install before the boot files are written.
+- Without a signed release it never gets past the plan; without a pinned release key it refuses any
+  release it finds.
 
 ## Tests
 
-- `tests/test_sf_installer.py` (in CI through `tools/ci_check.py`), 32 tests, all pass (18 November 2026,
+- `tests/test_sf_installer.py` (in CI through `tools/ci_check.py`), 33 tests, all pass (18 November 2026,
   Python 3.14 here; CI runs 3.12): model table; fixtures current; FakeMac's plists have the keys and
   types of the real recording; the real recording parses (three partitions, a container with two
   macOS systems) and is refused as the wrong model; macOS range; console/admin/Rosetta/battery;
   FileVault on and converting; release narrowing; plans for stock, size requests, too little space
   (with the size that would fit), snapshot overhead, Asahi with and without free space, already
   installed, partial (two depths), uninstall plans; digest; CONFIG rewriting and its refusals
-  (checked with `pdsf_pack.py`); the firmware slot; manifest mutations; the gate refusing 15 kinds
+  (checked with `pdsf_pack.py`) and its verifier; the firmware slot; install.json mutations and the
+  SHA256SUMS cross-check; the root write refusing a short, wrong or oversized image; the gate refusing 15 kinds
   of wrong command and stopping when another partition moves; install → update → uninstall end to
   end on the model, ending with the same partitions at the same offsets and sizes as before; uninstall when deleting
   the container leaves its partition; `sf_engine.main` for check, dry run, no release, declined
@@ -161,10 +167,10 @@ log and journal):
 1. `--check`, `--dry-run`, `--dry-run --size 30`, `--size 1000`: plans as expected; refusals worded right.
 2. Ctrl-C at the confirmation; answer something other than `install`: nothing changed (compare listings).
 3. Install with defaults. Note times of each phase. Before the recovery step, from macOS: the
-   partitions are where the plan said; `shasum -a 256` of `sf/boot.bin` matches the release;
-   `sf/kernel.bin`'s bootargs (`pdsf_pack.py list` on a copy) name the root's GUID, first block and
-   length as `diskutil info` gives them; the firmware slot (read-only `dd` of 4 KiB at the slot offset
-   of the root partition) starts `SFFWSLOT1\nlength=`.
+   partitions are where the plan said; `shasum -a 256` of `sf/boot.bin` matches the release's
+   `boot.bin`; `sf/kernel.bin`'s command line names the root's GUID, first block and length as
+   `diskutil info` gives them; the firmware slot (read-only `dd` of 4 KiB at the slot offset of the root
+   partition) starts `SFFWSLOT1\nlength=`.
 4. Recovery step: wrong ways first (release the button early; press twice) to see Asahi's texts; then right.
 5. First start: the mark, the desktop, Wi-Fi joins a network (the firmware arrived), a terminal works,
    restart lands in SiliconForest (it is the default).
@@ -180,15 +186,25 @@ log and journal):
 Stop and recover (macOS from the picker) at any unexpected output; never DFU; never edit the journal.
 Pass: every step as written, macOS unharmed after each.
 
-## What I need from IMAGE and BUILD (sent 18 November 2026; `runs/m1-coord/requests-for-*`)
+## Agreed with IMAGE and BUILD, and what is still open (18 November 2026; `runs/m1-coord/requests-for-*`)
 
-- IMAGE: the release artifacts and manifest (`install/manifest.example.json`): os.zip in the Asahi
-  package format (split above 2 GiB), stage 1, the engine mirror; root image with a fixed per-release
-  filesystem UUID and label `SiliconForest`; `kernel.bin` with the three tokens; the firmware slot in
-  the root image and a first-start job that unpacks it; whether the root grows to its partition at first
-  start; the list of licence questions per artifact.
-- BUILD: stage 2 built for the release's root filesystem UUID (no install-time binary patching); the
-  output names; nothing to build for the engine.
+Agreed: one root filesystem UUID per release (`release/identity.nix` on the release-image branch),
+stage 2 built for it (BUILD), the root image carries it and the installer never changes it; per
+machine only the kernel's command line changes, packed on the Mac by the release's
+`sf_personalize.py` (lower-case partition GUID, 4096-byte blocks) and checked by `sf_kernelcfg`;
+IMAGE's `SHA256SUMS` + SSH signature (namespace `siliconforest-release`, identity
+`release@siliconforest`). IMAGE's `sf_personalize.py` was run here on a synthetic boot directory with
+its real `bootargs.template` and our check accepted the result (555 characters of command line).
+
+Asked of IMAGE, not yet answered: xz instead of zstd for the root parts and the boot tar (zstd
+cannot be decompressed on stock macOS); `siliconforest-<v>-install.json` (`install/manifest.example.json`)
+listed in `SHA256SUMS`; `sf-stage1.bin` and `siliconforest.icns` in the boot tar; the firmware slot in
+the root image (a contiguous preallocated file whose first block starts `SFFWSLOT1`) and a first-start
+job that unpacks it into /Library/Firmware/brcm and /Library/Firmware/apple (IMAGE proposed writing the
+firmware into the image with `debugfs` on the installing machine: macOS has no debugfs); whether the
+root grows to its partition at first start (no `resize2fs` on macOS); the licence questions per artifact.
+Answered for IMAGE: account at install time and Homebrew at install time or first run are owner
+decisions (D8, D9 below); Apple applications: the installer does nothing (D5).
 
 ## Decisions for the owner
 
@@ -197,10 +213,10 @@ Pass: every step as written, macOS unharmed after each.
   the stub (ranged reads of Apple's restore image, Preboot/Recovery set-up, step 2), the most fragile
   and most field-tested part. Cost: we depend on Asahi's package format and code; we pin it and mirror it.
 - **D2. Hosting and signing.** Recommendation: GitHub Releases of this repository (2 GiB per file: the
-  root package is split into parts, the installer joins and checks them); the Asahi package mirrored there
-  with its own digest, Asahi's CDN as fallback; manifests signed with an ECDSA P-256 key generated and kept
-  offline by the owner (only its public half goes into `install.sh`), one signature per release.
-  Until the key exists, the installer refuses every release.
+  root image comes in parts under 1.9 GiB, each checked); the Asahi package mirrored there with its own
+  digest, Asahi's CDN as fallback; `SHA256SUMS` signed with an SSH Ed25519 key that the owner makes and
+  keeps offline (`ssh-keygen -Y sign -n siliconforest-release`; only the public half goes into
+  `install.sh`), one signature per release. Until the key exists, the installer refuses every release.
 - **D3. Supported models.** Recommendation: a Mac is listed as supported only after SiliconForest boots on
   that model and one real install and uninstall have been done on it (section 13 of `docs/INSTALL.md`);
   the release manifest can narrow the list, never widen it; today one model.
@@ -213,6 +229,10 @@ Pass: every step as written, macOS unharmed after each.
   MPL-2.0 reimplementation); Firefox and other third-party binaries in the root; fonts; Apple's binary
   driver licence in PureDarwin's tree. Firmware is never shipped (extracted on the user's Mac). The
   Asahi package (MIT) and the Python inside it (PSF) are redistributable with their notices.
+- **D8. The first account** (IMAGE's question): recommendation: the first start asks for a user name
+  and password and makes that person's account (an administrator); no account without a password.
+- **D9. Homebrew pieces** (IMAGE's question): recommendation: in the release image (checked like everything
+  else), not fetched at first start, so a fresh install works offline after Wi-Fi joins.
 - **D7. The one-liner's URL.** Recommendation: `main` until the first release, then the release tag in the
   documented command, so the script and the release it expects match.
 

@@ -11,7 +11,8 @@ of it say, not as a measured diskutil does in every corner.
 
 SimulatedAsahi issues, through the gate, the same commands in the same order as the Asahi
 installer v0.9.2 does for "install into free space" (main.py, stub.py, osinstall.py, read
-for this), and writes the boot partition's files and the root image like it.
+for this; checked against the real code's commands, fixtures/asahi-v0.9.2-commands.txt), and
+copies the boot partition's files like it; the root is written by sf_engine.finish.
 """
 import io
 import json
@@ -320,57 +321,96 @@ def install_asahi(mac, at, root_bytes=60e9):
 
 
 # ---- a synthetic release, built in a temporary directory ----------------------------------------
-def make_release(tmp, root_image_bytes=8 * MiB, slot_offset=4 * MiB, slot_len=2 * MiB, root_min=16 * (1 << 30)):
+# A stand-in for the release's own sf_personalize.py (release/image/ on the release-image branch):
+# the same command line and outputs, made with the release's pdsf_pack.py. SYNTHETIC.
+PERSONALIZE = r'''
+import argparse, json, os, re, subprocess, sys
+ap = argparse.ArgumentParser()
+ap.add_argument('bootdir'); ap.add_argument('--partuuid', required=True)
+ap.add_argument('--part-lba', type=int, required=True); ap.add_argument('--part-blocks', type=int, required=True)
+ap.add_argument('-o', '--out', required=True)
+a = ap.parse_args()
+if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', a.partuuid):
+    sys.exit('sf_personalize: --partuuid: expected a lower-case UUID')
+meta = json.load(open(os.path.join(a.bootdir, 'boot.json')))
+args = ' '.join(l.strip() for l in open(os.path.join(a.bootdir, 'bootargs.template')) if l.strip() and not l.startswith('#'))
+for k, v in {'@SF_FSUUID@': meta['root_uuid'], '@SF_PARTUUID@': a.partuuid, '@SF_PART_LBA@': str(a.part_lba), '@SF_PART_BLOCKS@': str(a.part_blocks)}.items():
+    if args.count(k) != 1:
+        sys.exit('sf_personalize: %s occurs %d times' % (k, args.count(k)))
+    args = args.replace(k, v)
+os.makedirs(a.out, exist_ok=True)
+open(os.path.join(a.out, 'boot.bin'), 'wb').write(open(os.path.join(a.bootdir, 'boot.bin'), 'rb').read())
+cmd = [sys.executable, '-I', '-B', os.path.join(a.bootdir, 'pdsf_pack.py'), 'pack', '--kernel', os.path.join(a.bootdir, 'kernel.kc'),
+       '--bootargs', args, '-o', os.path.join(a.out, 'kernel.bin')]
+for kv in meta['pack_set']:
+    cmd += ['--set', kv]
+subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
+'''
+
+
+def make_release(tmp, root_image_bytes=8 * MiB, slot_offset=4 * MiB, slot_len=2 * MiB, root_min=16 * (1 << 30), parts=2):
+    """SHA256SUMS, install.json, boot.tar.xz and root.ext4.xz parts as the release-image work defines them."""
     import hashlib
-    import sys
-    here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.join(here, '..', '..', 'integrations', 'siliconforest', 'm1-native-boot', 'b1'))
-    import pdsf_pack
-    fs_uuid = fake_uuid('release-root-fs')
-    args = ('-v rd=uuid boot-uuid=%s sfnvme=3 sfnvme_ttl=0 sfnvme_part=@SF_ROOT_PARTUUID@ sfnvme_part_lba=@SF_ROOT_LBA@ '
-            'sfnvme_part_blocks=@SF_ROOT_BLOCKS@ sfnvme_write=1 sfnvme_readfence=1' % fs_uuid)
-    kernel = b'SYNTHETIC KERNEL COLLECTION, NOT A KERNEL\n' * 1000
-    cfg = pdsf_pack.config_text(args, display=1, sprr=1)
-    kernel_bin = pdsf_pack.records(cfg, kernel)
+    import lzma
+    import shutil
+    b1 = pathlib.Path(__file__).resolve().parents[2] / 'integrations' / 'siliconforest' / 'm1-native-boot' / 'b1'
+    fs_uuid = fake_uuid('release-root-fs').lower()
+    v = 'test-1'
+    boot = os.path.join(tmp, 'bootsrc')
+    os.makedirs(boot)
+    files = {
+        'boot.bin': b'SYNTHETIC STAGE 2 for ' + fs_uuid.encode() + b'\n' + bytes(4096),
+        'kernel.kc': b'SYNTHETIC KERNEL COLLECTION, NOT A KERNEL\n' * 1000,
+        'bootargs.template': ('# synthetic\n-v rd=uuid boot-uuid=@SF_FSUUID@ sfnvme=3 sfnvme_ttl=0\nsfnvme_part=@SF_PARTUUID@ '
+                              'sfnvme_part_lba=@SF_PART_LBA@ sfnvme_part_blocks=@SF_PART_BLOCKS@ sfnvme_write=1 sfnvme_readfence=1\n').encode(),
+        'pdsf_pack.py': (b1 / 'pdsf_pack.py').read_bytes(),
+        'sf_personalize.py': PERSONALIZE.encode(),
+        'sf-stage1.bin': b'SYNTHETIC STAGE 1 ##m1n1_ver##test\0' + bytes(100),
+        'siliconforest.icns': b'icns',
+    }
+    for n, d in files.items():
+        pathlib.Path(boot, n).write_bytes(d)
+    meta = dict(root_uuid=fs_uuid, pack_set=['display=1', 'sprr=1'],
+                files={n: dict(sha256=hashlib.sha256(d).hexdigest()) for n, d in files.items()})
+    pathlib.Path(boot, 'boot.json').write_text(json.dumps(meta))
+    btar = os.path.join(tmp, 'siliconforest-%s-boot.tar.xz' % v)
+    with tarfile.open(btar, 'w:xz') as t:
+        for n in sorted(os.listdir(boot)):
+            t.add(os.path.join(boot, n), n)
+    shutil.rmtree(boot)
     root = bytearray(root_image_bytes)
     root[slot_offset:slot_offset + 10] = b'SFFWSLOT1\n'
-    boot_bin = b'SYNTHETIC STAGE 2\n' * 100
-    zpath = os.path.join(tmp, 'siliconforest-test-os.zip')
-    with zipfile.ZipFile(zpath, 'w', zipfile.ZIP_DEFLATED) as z:
-        for d in ('esp/', 'esp/sf/'):
-            z.writestr(zipfile.ZipInfo(d), b'')
-        z.writestr('esp/sf/boot.bin', boot_bin)
-        z.writestr('esp/sf/kernel.bin', kernel_bin)
-        z.writestr('root.img', bytes(root))
-        z.writestr('siliconforest.icns', b'icns')
-    s1 = os.path.join(tmp, 'siliconforest-test-stage1.bin')
-    with open(s1, 'wb') as fd:
-        fd.write(b'SYNTHETIC STAGE 1 ##m1n1_ver##test\0' + bytes(100))
-    f = lambda p: dict(bytes=os.path.getsize(p), sha256=hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest())
-    kern_rec = hashlib.sha256(pdsf_pack.gzip_bytes(kernel)).hexdigest()
+    root[0:16] = b'SYNTHETIC ROOT\n\0'
+    xz = lzma.compress(bytes(root), format=lzma.FORMAT_XZ)
+    step = len(xz) // parts + 1
+    part_files = []
+    for i in range(parts):
+        name = 'siliconforest-%s-root.ext4.xz.%02d' % (v, i + 1)
+        pathlib.Path(tmp, name).write_bytes(xz[i * step:(i + 1) * step])
+        part_files.append(name)
+    f = lambda n: dict(file=n, bytes=os.path.getsize(os.path.join(tmp, n)), sha256=hashlib.sha256(pathlib.Path(tmp, n).read_bytes()).hexdigest())
     m = {
-        'format': 'siliconforest-release/1', 'release': 'test-1', 'base_url': 'https://example.invalid/release/',
-        'models': ['J293'], 'macos': {'min': '13.5', 'max_major': 26}, 'stub_firmware': ['13.5'],
-        'engine': dict(name='asahi-installer', version='v0.9.2', file='installer-v0.9.2.tar.gz', bytes=22215466,
-                       sha256='484d999e53b4aef27d17c4478e49567e96842f8a6cb35c073a0df5bf0bbe8276', urls=['https://cdn.asahilinux.org/installer/installer-v0.9.2.tar.gz']),
-        'files': [dict(role='stage1', file=os.path.basename(s1), **f(s1)), dict(role='os-package', file=os.path.basename(zpath), **f(zpath))],
-        'os': dict(root_fs_uuid=fs_uuid, root_image='root.img', root_image_bytes=root_image_bytes, root_min_bytes=root_min,
-                   root_default_bytes=48 * (1 << 30), boot_partition_bytes=524_288_000, kernel_file='esp/sf/kernel.bin',
-                   kernel_record_sha256=kern_rec, firmware_slot=dict(offset=slot_offset, length=slot_len)),
+        'format': 'siliconforest-install/1', 'release': v, 'models': ['J293'], 'macos': {'min': '13.5', 'max_major': 26},
+        'stub_firmware': ['13.5'], 'boot': f(os.path.basename(btar)),
+        'root': dict(fs_uuid=fs_uuid, compression='xz', image_bytes=root_image_bytes, image_sha256=hashlib.sha256(bytes(root)).hexdigest(),
+                     min_bytes=root_min, default_bytes=48 * (1 << 30), parts=[f(n) for n in part_files]),
+        'firmware_slot': dict(offset=slot_offset, length=slot_len),
     }
-    mp = os.path.join(tmp, 'manifest.json')
-    with open(mp, 'w') as fd:
-        json.dump(m, fd, indent=1)
-    return m, mp, kernel_bin
+    mp = os.path.join(tmp, 'siliconforest-%s-install.json' % v)
+    pathlib.Path(mp).write_text(json.dumps(m, indent=1))
+    names = [os.path.basename(mp), os.path.basename(btar)] + part_files
+    pathlib.Path(tmp, 'SHA256SUMS').write_text(''.join('%s  %s\n' % (f(n)['sha256'], n) for n in sorted(names)))
+    return m, mp, None
 
 
 def firmware_tar(path):
-    """A stand-in for the engine's vendorfw/firmware.tar: made-up bytes under Apple-style names."""
+    """A stand-in for the engine's vendorfw/firmware.tar: made-up bytes under Asahi-style names."""
     with tarfile.open(path, 'w') as t:
         for name, data in (('brcm/brcmfmac4378b1-pcie.apple,shikoku-SYNTHETIC.bin', b'not firmware' * 100),
                            ('brcm/brcmfmac4378b1-pcie.apple,shikoku-SYNTHETIC.txt', b'synthetic=1\n'),
                            ('brcm/brcmbt4378b1-shikoku-SYNTHETIC.bin', b'not bt firmware'),
-                           ('isp/SYNTHETIC.bin', b'not wanted')):
+                           ('apple/dfrmtfw-j293.bin', b'not touch bar firmware'),
+                           ('apple/isp_SYNTHETIC.dat', b'not wanted')):
             ti = tarfile.TarInfo(name)
             ti.size = len(data)
             t.addfile(ti, io.BytesIO(data))
@@ -404,20 +444,21 @@ class SimulatedAsahi:
         g.run(['newfs_msdos', '-F', '32', '-v', 'SFBOOT - Si', '/dev/r' + mac.dev(efi)], why='engine')
         g.run(['diskutil', 'addPartition', mac.dev(efi), '%Linux%', '%noformat%', str(plan['root_bytes'])], why='engine')
         root = mac.parts[mac.parts.index(efi) + 1]
-        pkg = zipfile.ZipFile(os.path.join(artifacts, 'os', [f for f in manifest['files'] if f['role'] == 'os-package'][0]['file']))
-        with g.open('/dev/r' + mac.dev(root), 'r+b') as fd:                                                     # osinstall.py install: image
-            fd.write(pkg.read('root.img'))
+        import sf_engine
+        boot = sf_engine.unpack_boot(manifest, artifacts)
+        pkg = zipfile.ZipFile(os.path.join(artifacts, 'os', sf_engine.os_package(boot, artifacts)))
         g.run(['diskutil', 'mount', mac.dev(efi)], why='engine')
         mnt = mac.mounts[mac.dev(efi)]
-        for n in pkg.namelist():                                                                              # source: esp
+        for n in pkg.namelist():                                                                              # osinstall.py install: source esp
             if n.startswith('esp/') and not n.endswith('/'):
                 dst = os.path.join(mnt, n[4:])
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 with open(dst, 'wb') as fd:
                     fd.write(pkg.read(n))
+        pkg.close()
         fw = os.path.join(mac.tmp, 'firmware.tar')
         firmware_tar(fw)
-        finish(g, manifest, artifacts, mnt, mac.dev(root), root['uuid'], root['offset'] // mac.block, root['size'] // mac.block, fw, log)
+        finish(g, manifest, artifacts, mnt, mac.dev(root), root['uuid'], root['offset'] // mac.block, root['size'] // mac.block, root['size'], fw, log)
         vol = next(v['dev'] for v in mac.containers[ref]['volumes'] if v['roles'] == ['System'])
         g.run(['bless', '--setBoot', '--device', '/dev/' + vol, '--user', 'user', '--stdinpass'], why='engine', input=b'not-a-password')  # main.py bless
         g.system('shutdown -h now')                                                                          # main.py step2_indirect

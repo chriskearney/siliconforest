@@ -90,9 +90,9 @@ SiliconForest in all), `--uninstall`, `--update`, `--help`.
 
 What you trust when you run it: the script itself, fetched over HTTPS from this repository. It
 then checks everything else before using it: the installer engine against a SHA-256 written in
-the script, the release's manifest against a signature made with the project's release key
-(whose public half is in the script), and every release file against the SHA-256 the manifest
-lists. A download cut short cannot run half a script (the script is one function called on its
+the script; the release's list of files and their SHA-256 (`SHA256SUMS`) against a signature made
+with the project's release key, whose public half is in the script (checked with macOS's own
+`ssh-keygen`); and every release file against that list. A download cut short cannot run half a script (the script is one function called on its
 last line). Nothing on the disk changes before you have seen the plan and typed a word.
 
 ## 4. Step by step
@@ -118,8 +118,9 @@ stops with nothing changed.
 **Step 4: your password, then the work.** sudo asks for your macOS password. The installer reads
 the disk again and continues only if it is still exactly as planned. Then it shrinks macOS (the
 Mac may seem to pause for a minute: that is normal), downloads the stub's files from Apple, makes
-the three partitions, writes the root, copies the Wi-Fi and Bluetooth firmware for your Mac
-(section 7), and writes your Mac's partition identifiers into `sf/kernel.bin`. It asks for your
+the three partitions, writes the root and reads it back to check it, copies the Wi-Fi, Bluetooth
+and Touch Bar firmware for your Mac (section 7), and writes your Mac's partition identifiers into
+`sf/kernel.bin`. It asks for your
 password once more to make SiliconForest the startup disk for the next start. Each step is logged.
 
 **Step 5: the instructions for recovery.** The installer prints them (they are the Asahi Linux
@@ -169,9 +170,9 @@ or in the startup picker select macOS, hold the Option key and click "Always Use
 **Choosing at each start:** shut down, then press and hold the power button until "Loading startup
 options…"; choose SiliconForest or macOS. A plain press starts the default (macOS).
 
-## 7. Wi-Fi and Bluetooth firmware
+## 7. Wi-Fi, Bluetooth and Touch Bar firmware
 
-The Wi-Fi and Bluetooth chips need Apple's firmware. SiliconForest does not distribute it. The
+The Wi-Fi and Bluetooth chips and the Touch Bar need Apple's firmware. SiliconForest does not distribute it. The
 installer takes it, as the Asahi Linux installer does, from Apple's recovery image for your Mac
 model (downloaded from Apple during step 4), and puts it inside SiliconForest's root, where the
 first start unpacks it. You do not have to do anything. To join a network, use SiliconForest's

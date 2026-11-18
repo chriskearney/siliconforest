@@ -5,7 +5,9 @@
 The firmware is Apple's and is never shipped by SiliconForest. The installer's engine (the
 Asahi Linux installer) collects it on the user's Mac from Apple's recovery image for this
 model, into `vendorfw/firmware.tar` with the names Linux's brcmfmac driver uses, which are
-the names SiliconForest's driver looks for (/Library/Firmware/brcm).
+the names SiliconForest's drivers look for: brcm/ (Wi-Fi and Bluetooth, /Library/Firmware/brcm)
+and apple/dfrmtfw-<board>.bin, apple/tpmtfw-<board>.bin (Touch Bar and trackpad,
+/Library/Firmware/apple).
 
 SiliconForest's storage driver reads only its own root partition, so the firmware has to be
 inside it. The release's root image contains a preallocated, contiguous file (the slot) at a
@@ -13,7 +15,7 @@ byte offset the release manifest gives. An empty slot starts with the line `SFFW
 The installer writes, at that offset of the new root partition:
 
     4096-byte header: b'SFFWSLOT1\\nlength=<payload bytes>\\nsha256=<hex>\\n', zero padded
-    payload:          a tar of the brcm/ members of firmware.tar
+    payload:          a tar of those members of firmware.tar
 
 and SiliconForest's first start checks the header and unpacks the payload. Only file data
 inside one existing file changes; the filesystem's metadata is not touched.
@@ -24,6 +26,7 @@ import tarfile
 
 HEAD = 4096
 EMPTY = b'SFFWSLOT1\n'
+WANT = ('brcm/', 'apple/dfrmtfw-', 'apple/tpmtfw-')
 
 
 class SlotError(Exception):
@@ -31,13 +34,13 @@ class SlotError(Exception):
 
 
 def payload(firmware_tar):
-    """A tar with the brcm/ members (Wi-Fi and Bluetooth) of the engine's firmware.tar."""
+    """A tar with the members of the engine's firmware.tar that SiliconForest's drivers load."""
     src = tarfile.open(firmware_tar, 'r:')
     out = io.BytesIO()
     dst = tarfile.open(fileobj=out, mode='w', format=tarfile.USTAR_FORMAT)
     names = set()
     for m in src.getmembers():
-        if not m.name.startswith('brcm/') or '..' in m.name.split('/'):
+        if not m.name.startswith(WANT) or '..' in m.name.split('/'):
             continue
         if m.isreg():
             dst.addfile(m, src.extractfile(m))

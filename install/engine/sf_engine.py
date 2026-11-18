@@ -68,11 +68,17 @@ def load_models():
     raise SystemExit('models.tsv is missing')
 
 
-def load_manifest(path, models):
+def load_manifest(path, models, sums_path=None):
+    """install.json, cross-checked against the signed SHA256SUMS beside it (install.sh has checked
+    the signature, and this checks install.json's own digest in it again)."""
     if not path:
         return None
     supported = [t for t, m in models.items() if m.status == 'supported']
-    return sf_manifest.check(_read(path), supported)
+    sums_path = sums_path or os.path.join(os.path.dirname(path), 'SHA256SUMS')
+    sums = sf_manifest.parse_sums(_read(sums_path))
+    if sums.get(os.path.basename(path)) != hashlib.sha256(_read(path)).hexdigest():
+        raise sf_manifest.ManifestError('%s is not in SHA256SUMS with its digest' % os.path.basename(path))
+    return sf_manifest.check(_read(path), supported, sums)
 
 
 def show_findings(findings):
@@ -175,7 +181,9 @@ class AsahiEngine:
         im.is_edu_128gb = False
         im.cur_os = find_cur_os(parts, sysinfo)
         im.check_cur_os()
-        template = installer_template(manifest, plan)
+        boot = unpack_boot(manifest, artifacts)
+        shutil.copy(os.path.join(boot, 'sf-stage1.bin'), os.path.join(self.dir, 'boot', STAGE1_NAME))
+        template = installer_template(manifest, plan, os_package(boot, artifacts))
         data = {'os_list': [template]}
         with open('installer_data.json', 'w') as fd:
             json.dump(data, fd, indent=1)
@@ -208,9 +216,9 @@ class AsahiEngine:
         efi, root = osins.efi_part, osins.part_info[1]
         mount = dutil.mount(efi.name)
         bs = plan['block_size']
-        finish(self.gate, manifest, artifacts, mount, root.name, root.uuid, root.offset // bs, root.size // bs, 'vendorfw/firmware.tar', log)
+        finish(self.gate, manifest, artifacts, mount, root.name, root.uuid, root.offset // bs, root.size // bs, root.size, 'vendorfw/firmware.tar', log)
         with open(os.path.join(mount, 'sf', 'install.json'), 'w') as fd:
-            json.dump(dict(release=manifest['release'], vgid=ins.osi.vgid, boot_partuuid=efi.uuid.lower(), root_partuuid=root.uuid,
+            json.dump(dict(release=manifest['release'], vgid=ins.osi.vgid, boot_partuuid=efi.uuid.lower(), root_partuuid=root.uuid.lower(),
                            root_first_block=root.offset // bs, root_blocks=root.size // bs, installed=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())), fd, indent=1)
         if log:
             shutil.copy(log, os.path.join(mount, 'sf', 'install.log'))
@@ -239,29 +247,121 @@ def find_cur_os(parts, sysinfo):
     return cur
 
 
-def installer_template(manifest, plan):
-    o = manifest['os']
-    pkg = sf_manifest.role(manifest, 'os-package')['file']
+def installer_template(manifest, plan, package):
+    """The Asahi installer's description of SiliconForest. The root partition has no `image`: the
+    engine leaves it empty and write_root() fills it (from the release's xz parts, checked)."""
+    r = manifest['root']
     return dict(name='SiliconForest', default_os_name='SiliconForest', boot_object=STAGE1_NAME, next_object='sf/boot.bin',
-                package=pkg, icon='siliconforest.icns', supported_fw=list(manifest['stub_firmware']),
+                package=package, icon='siliconforest.icns', supported_fw=list(manifest['stub_firmware']),
                 partitions=[dict(name='SFBOOT', type='EFI', size='%dB' % plan['boot_bytes'], format='fat', source='esp', copy_firmware=True),
-                            dict(name='Root', type='Linux', size='%dB' % o['root_min_bytes'], image=o['root_image'] if 'root_image' in o else 'root.img', expand=True)])
+                            dict(name='Root', type='Linux', size='%dB' % r['min_bytes'], expand=True)])
 
 
-def finish(gate, manifest, artifacts, mount, root_dev, root_uuid, first, blocks, firmware_tar, log):
-    """Ours, after the engine has made the partitions: this Mac's identifiers and its firmware."""
-    o = manifest['os']
-    kpath = os.path.join(mount, 'sf', 'kernel.bin')
-    data = _read(kpath)
-    new = sf_kernelcfg.personalize(data, root_uuid, first, blocks, o['kernel_record_sha256'])
+def unpack_boot(manifest, artifacts):
+    """The release's boot files, from its boot.tar.xz, into <artifacts>/boot (regular files only)."""
+    import tarfile
+    out = os.path.join(artifacts, 'boot')
+    shutil.rmtree(out, ignore_errors=True)
+    os.makedirs(out)
+    with tarfile.open(os.path.join(artifacts, manifest['boot']['file']), 'r:xz') as t:
+        for m in t.getmembers():
+            name = m.name[2:] if m.name.startswith('./') else m.name
+            if m.isdir() and name in ('', '.'):
+                continue
+            if not m.isreg() or '/' in name or name not in sf_manifest.BOOT_FILES:
+                raise sf_gate.Refused('boot files: unexpected member %r' % m.name)
+            with t.extractfile(m) as src, open(os.path.join(out, name), 'wb') as dst:
+                shutil.copyfileobj(src, dst)
+    missing = [n for n in sf_manifest.BOOT_FILES if not os.path.exists(os.path.join(out, n))]
+    if missing:
+        raise sf_gate.Refused('boot files missing from the release: ' + ', '.join(missing))
+    return out
+
+
+def os_package(boot, artifacts):
+    """The Asahi-format OS package the engine copies to SFBOOT: esp/sf/boot.bin and the icon."""
+    import zipfile
+    path = os.path.join(artifacts, 'os', 'siliconforest-local-os.zip')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with zipfile.ZipFile(path, 'w', zipfile.ZIP_STORED) as z:
+        for d in ('esp/', 'esp/sf/'):               # the engine's extract_tree makes directories from members
+            info = zipfile.ZipInfo(d)
+            info.external_attr = (0o40755 << 16) | 0x10
+            z.writestr(info, b'')
+        z.write(os.path.join(boot, 'boot.bin'), 'esp/sf/boot.bin')
+        z.write(os.path.join(boot, 'siliconforest.icns'), 'siliconforest.icns')
+    return os.path.basename(path)
+
+
+def write_root(gate, manifest, artifacts, root_dev, root_bytes):
+    """Stream the root image from its xz parts onto the new root partition, then read it back."""
+    import lzma
+    r = manifest['root']
+    if r['image_bytes'] > root_bytes:
+        raise sf_gate.Refused('the root image (%d bytes) is larger than its partition (%d)' % (r['image_bytes'], root_bytes))
+    dec, written, chunk, pending = lzma.LZMADecompressor(format=lzma.FORMAT_XZ), 0, 4 << 20, b''
+    with gate.open('/dev/r' + root_dev, 'r+b', buffering=0) as dev:
+        for part in r['parts']:
+            with open(os.path.join(artifacts, part['file']), 'rb') as src:
+                while True:
+                    data = src.read(chunk)
+                    if not data:
+                        break
+                    pending += dec.decompress(data)
+                    cut = len(pending) // 4096 * 4096      # raw devices take whole 4 KiB blocks
+                    if cut:
+                        if written + cut > r['image_bytes']:
+                            raise sf_gate.Refused('the root image is longer than the release says')
+                        dev.write(pending[:cut])
+                        written += cut
+                        pending = pending[cut:]
+        if not dec.eof or pending or written != r['image_bytes']:
+            raise sf_gate.Refused('the root image ended at %d bytes, not %d' % (written + len(pending), r['image_bytes']))
+        dev.seek(0)
+        h, left = hashlib.sha256(), written
+        while left:
+            data = dev.read(min(chunk, left))
+            if not data:
+                break
+            h.update(data)
+            left -= len(data)
+    if left or h.hexdigest() != r['image_sha256']:
+        raise sf_gate.Refused('the root partition does not read back as the release\'s image')
+    say('Root filesystem: %d bytes written and read back (SHA-256 as the release names it).' % written)
+
+
+def personal_boot_files(manifest, boot, artifacts, root_uuid, first, blocks):
+    """sf/boot.bin and sf/kernel.bin for this Mac, made by the release's own sf_personalize.py,
+    then checked here: the command line names exactly this root partition and the release's root."""
+    out = os.path.join(artifacts, 'personal')
+    shutil.rmtree(out, ignore_errors=True)
+    res = subprocess.run([sys.executable, '-I', '-B', os.path.join(boot, 'sf_personalize.py'), boot, '--partuuid', root_uuid.lower(),
+                          '--part-lba', str(first), '--part-blocks', str(blocks), '-o', out], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if res.returncode != 0:
+        raise sf_gate.Refused('the release\'s sf_personalize.py refused: ' + res.stdout.decode('utf-8', 'replace').strip())
+    kern, stage2 = _read(os.path.join(out, 'kernel.bin')), _read(os.path.join(out, 'boot.bin'))
+    sf_kernelcfg.verify(kern, root_uuid, first, blocks, manifest['root']['fs_uuid'])
+    if stage2 != _read(os.path.join(boot, 'boot.bin')):
+        raise sf_gate.Refused('sf_personalize.py changed stage 2')
+    return stage2, kern
+
+
+def finish(gate, manifest, artifacts, mount, root_dev, root_uuid, first, blocks, root_bytes, firmware_tar, log):
+    """Ours, after the engine has made the partitions: the root, this Mac's identifiers, its firmware."""
+    boot = os.path.join(artifacts, 'boot')
+    write_root(gate, manifest, artifacts, root_dev, root_bytes)
+    stage2, kern = personal_boot_files(manifest, boot, artifacts, root_uuid, first, blocks)
     gate.write_dirs = (os.path.join(mount, 'sf'),)
-    gate.write_file(kpath, new)
-    if _read(kpath) != new:
-        raise sf_gate.Refused('sf/kernel.bin does not read back as written')
-    say('sf/kernel.bin: root partition %s, first block %d, %d blocks.' % (root_uuid, first, blocks))
+    for name, data in (('boot.bin', stage2), ('kernel.bin', kern)):
+        path = os.path.join(mount, 'sf', name)
+        gate.write_file(path, data)
+        if _read(path) != data:
+            raise sf_gate.Refused('sf/%s does not read back as written' % name)
+    say('sf/kernel.bin: root partition %s, first block %d, %d blocks.' % (root_uuid.lower(), first, blocks))
     blob, names = sf_fwslot.payload(firmware_tar)
-    n = sf_fwslot.write('/dev/r' + root_dev, o['firmware_slot']['offset'], o['firmware_slot']['length'], blob, opener=gate.open)
-    say('Wi-Fi/Bluetooth firmware: %d files, %d bytes into the root\'s firmware slot.' % (len(names), n))
+    slot = manifest['firmware_slot']
+    n = sf_fwslot.write('/dev/r' + root_dev, slot['offset'], slot['length'], blob, opener=gate.open)
+    say('Wi-Fi/Bluetooth and Touch Bar firmware: %d files, %d bytes into the root\'s firmware slot.' % (len(names), n))
 
 
 # ---- uninstall and update (no engine needed) --------------------------------------------------
@@ -298,14 +398,12 @@ def execute_update(plan, gate, manifest, artifacts, run=real_run):
         mount = info.get('MountPoint')
     if not mount or not os.path.isdir(os.path.join(mount, 'sf')):
         raise sf_gate.Refused('SFBOOT (%s) has no sf/ directory' % plan['boot_dev'])
-    import zipfile
-    pkg = zipfile.ZipFile(os.path.join(artifacts, sf_manifest.role(manifest, 'os-package')['file']))
-    boot, kern = pkg.read('esp/sf/boot.bin'), pkg.read('esp/sf/kernel.bin')
     r = plan['root']
-    kern = sf_kernelcfg.personalize(kern, r['uuid'], r['first_block'], r['blocks'], manifest['os']['kernel_record_sha256'])
+    boot = unpack_boot(manifest, artifacts)
+    stage2, kern = personal_boot_files(manifest, boot, artifacts, r['uuid'], r['first_block'], r['blocks'])
     sf = os.path.join(mount, 'sf')
     gate.write_dirs = (sf,)
-    for name, data in (('boot.bin', boot), ('kernel.bin', kern)):
+    for name, data in (('boot.bin', stage2), ('kernel.bin', kern)):
         path = os.path.join(sf, name)
         if os.path.exists(path) and _read(path) == data:
             say('sf/%s is already this release\'s.' % name)
@@ -332,17 +430,8 @@ def parse_size(text):
 
 
 def download_list(manifest):
-    """Lines for install.sh: `<file> <url> <bytes> <sha256> [<joined file>]`, parts before their whole."""
-    base = manifest['base_url']
-    out = []
-    for f in manifest['files']:
-        for part in f.get('parts') or []:
-            out.append('%s %s%s %d %s %s' % (part['file'], base, part['file'], part['bytes'], part['sha256'], f['file']))
-        if not f.get('parts'):
-            out.append('%s %s%s %d %s' % (f['file'], base, f['file'], f['bytes'], f['sha256']))
-        else:
-            out.append('%s - %d %s' % (f['file'], f['bytes'], f['sha256']))
-    return out
+    """Lines for install.sh: `<file> <bytes> <sha256>` (the base URL is install.sh's)."""
+    return ['%s %d %s' % f for f in sf_manifest.downloads(manifest)]
 
 
 # ---- main ----------------------------------------------------------------------------------
@@ -420,14 +509,7 @@ def main(argv=None):
     gate.note(step='begin', kind=cmd, release=plan.get('release'), digest=plan['layout_digest'])
     try:
         if cmd == 'install':
-            stage1 = sf_manifest.role(manifest, 'stage1')['file']
             os.makedirs(os.path.join(args.engine, 'boot'), exist_ok=True)
-            shutil.copy(os.path.join(args.artifacts, stage1), os.path.join(args.engine, 'boot', STAGE1_NAME))
-            os.makedirs(os.path.join(args.artifacts, 'os'), exist_ok=True)
-            pkg = sf_manifest.role(manifest, 'os-package')['file']
-            target = os.path.join(args.artifacts, 'os', pkg)
-            if not os.path.exists(target):
-                os.link(os.path.join(args.artifacts, pkg), target)
             os.environ.update(DISTRO='SiliconForest', DISTRO_DOCS='https://github.com/chriskearney/siliconforest/blob/main/docs/INSTALL.md',
                               REPO_BASE=args.artifacts)
             for k in ('REPORT', 'REPORT_TAG', 'EXPERT', 'IPSW_BASE', 'INSTALLER_DATA', 'ALLOW_VM'):
