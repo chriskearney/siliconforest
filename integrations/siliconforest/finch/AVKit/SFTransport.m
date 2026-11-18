@@ -132,15 +132,29 @@ static void SFTriangle(NSPoint a,NSPoint b,NSPoint c){NSBezierPath *p=[NSBezierP
   float volume=(float)MAX(0,MIN(1,(point.x-NSMinX(l.volume))/NSWidth(l.volume)));
   [_playerView.player setMuted:NO];[_playerView.player setVolume:volume];[self setNeedsDisplay:YES];return;
  }
- if(!began)return;
- if(NSPointInRect(point,NSInsetRect(l.play,-6,-6))){[_playerView _togglePlayback:self];[self setHidden:NO];[self display];return;}   /* (drawn at once: paused, nothing else redraws the panel) */
- if(NSPointInRect(point,NSInsetRect(l.back,-4,-6))||NSPointInRect(point,NSInsetRect(l.forward,-4,-6))){
-  double to=[self current]+(NSPointInRect(point,NSInsetRect(l.back,-4,-6))?-SF_SKIP_SECONDS:SF_SKIP_SECONDS),duration=[self duration];
+ /* (QTP2) the buttons act when the button is released over them, as buttons do: full screen toggled on the press
+    changed the window under the held button, and the desk took the release at the window's new top edge as the end
+    of a resize (the window came back 50 points taller) */
+ if(began)_pressed=[self buttonAt:point];
+}
+- (int)buttonAt:(NSPoint)point {
+ SFHudLayout l=SFHud(self.bounds);
+ if(NSPointInRect(point,NSInsetRect(l.play,-6,-6)))return 1;
+ if(NSPointInRect(point,NSInsetRect(l.back,-4,-6)))return 2;
+ if(NSPointInRect(point,NSInsetRect(l.forward,-4,-6)))return 3;
+ if(NSPointInRect(point,NSInsetRect(l.volumeIcon,-4,-4)))return 4;
+ if(NSPointInRect(point,NSInsetRect(l.fullScreen,-6,-6)))return 5;
+ return 0;
+}
+- (void)pressButton:(int)button {
+ if(button==1){[_playerView _togglePlayback:self];[self setHidden:NO];[self display];return;}   /* (drawn at once: paused, nothing else redraws the panel) */
+ if(button==2||button==3){
+  double to=[self current]+(button==2?-SF_SKIP_SECONDS:SF_SKIP_SECONDS),duration=[self duration];
   if(duration>0)[_playerView.player seekToTime:CMTimeMakeWithSeconds(MAX(0,MIN(duration,to)),600) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
   [self setNeedsDisplay:YES];return;
  }
- if(NSPointInRect(point,NSInsetRect(l.volumeIcon,-4,-4))){[_playerView.player setMuted:![_playerView.player isMuted]];[self setNeedsDisplay:YES];return;}
- if(NSPointInRect(point,NSInsetRect(l.fullScreen,-6,-6))){[[self window] toggleFullScreen:self];return;}
+ if(button==4){[_playerView.player setMuted:![_playerView.player isMuted]];[self setNeedsDisplay:YES];return;}
+ if(button==5){[[self window] toggleFullScreen:self];return;}
 }
 - (void)mouseDown:(NSEvent *)event {
  NSPoint point=[self convertPoint:[event locationInWindow] fromView:nil];
@@ -152,7 +166,11 @@ static void SFTriangle(NSPoint a,NSPoint b,NSPoint c){NSBezierPath *p=[NSBezierP
 - (void)mouseDragged:(NSEvent *)event {
  if([self isFloating])[self trackFloating:[self convertPoint:[event locationInWindow] fromView:nil] began:NO];
 }
-- (void)mouseUp:(NSEvent *)event {(void)event;_tracking=0;}
+- (void)mouseUp:(NSEvent *)event {
+ int pressed=_pressed;
+ _tracking=0;_pressed=0;
+ if(pressed&&[self isFloating]&&[self buttonAt:[self convertPoint:[event locationInWindow] fromView:nil]]==pressed)[self pressButton:pressed];
+}
 /* the floating panel goes while a movie plays and the pointer has not moved for 3 s, and comes back when it moves
    (asked at every picture the player view shows; while paused it stays) */
 - (BOOL)sfIdleHidden {
@@ -160,7 +178,8 @@ static void SFTriangle(NSPoint a,NSPoint b,NSPoint c){NSBezierPath *p=[NSBezierP
  double now=[NSDate timeIntervalSinceReferenceDate];
  NSPoint mouse=[NSEvent mouseLocation];   /* (the desk's pointer, as the display last reported it) */
  if(!_lastActivity||!NSEqualPoints(mouse,_lastMouse)){_lastMouse=mouse;_lastActivity=now;}
- if(_playerView.player.rate==0||_tracking){_lastActivity=now;return NO;}
+ /* (held as long as a press or drag on it lasts: the release is the window's for the view at the press) */
+ if(_playerView.player.rate==0||_tracking||_pressed){_lastActivity=now;return NO;}
  return now-_lastActivity>3.0;
 }
 @end

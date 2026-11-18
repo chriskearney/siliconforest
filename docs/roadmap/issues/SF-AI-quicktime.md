@@ -358,9 +358,13 @@ the exit reason, refuses to start the application while the owner is at the mach
   M1, private prefix). In full screen the picture is shown 17-20 times a second (passes c8, c9), against 28-29 in a
   window: QuickTime's main thread is three quarters idle there, its commits come every ~49 ms and the desk shows one
   in four refreshes; the window's buffer is 2561x1601 pixels for a 2560x1600 output (AppKit's full-screen frame is
-  1707.33 points, its backing store whole pixels of whole points). Inferred, not measured: the desk's path for that
-  buffer is the limit. Not chased yet: after leaving full screen the window's content is 2556x1550 pixels instead of
-  2556x1475 and covers the desk's bottom bar; the same happens without 0362 (pass c5).
+  1707.33 points, its backing store whole pixels of whole points). On the compositor's next build (DESKPERF's, 16:4xZ)
+  full screen shows 27 a second (pass ab-a: 273 commits, 266 shown per 10 s). After leaving full screen the window was
+  2556x1550 pixels instead of 2556x1475, over the desk's bottom bar: the panel's buttons acted on the press, so the
+  window left full screen under the held button and the release landed on its new top edge, which the desk took as
+  the end of a resize by 50 points (WindowServer trace: size limits unchanged, button up above the window, then the
+  taller configure). The panel's buttons now act on the release over the same button, as buttons do, and the window
+  keeps its size (pass t1: 2556x1475 before and after).
 - **For the compositor's owner (desk side, not changed here).** Each full-window commit of QuickTime's window
   costs the desk's commit handler 12.6 ms (`WMPACING ... commit handler`, 2556x1437 px of shared memory per
   picture, about 30 a second: ~380 ms of the desk's time each second). Between 7 and 104 of ~300 commits per 10 s
