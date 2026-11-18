@@ -602,6 +602,13 @@
       "url": "https://raw.githubusercontent.com/notofonts/noto-fonts/ffebf8c1ee449e544955a7e813c54f9b73848eac/LICENSE",
       "sha256": "0dab92d0544f7b233403f14b84a663bdbfa746982eda629e7f4f9ffe1b036feb",
       "revision": "ffebf8c1ee449e544955a7e813c54f9b73848eac"
+    },
+    "source-code-pro-license": {
+      "fetcher": "fetchurl",
+      "name": "source-code-pro-LICENSE.md",
+      "url": "https://raw.githubusercontent.com/adobe-fonts/source-code-pro/d3f1a5962cde503f9409c21e58527611d4a19ef1/LICENSE.md",
+      "sha256": "1zxqwk2ivcvaixdnd65sk44gwifsxl4f9w3chsx9p3iqlll0x53w",
+      "revision": "d3f1a5962cde503f9409c21e58527611d4a19ef1"
     }
   },
   "cocoaRename": {

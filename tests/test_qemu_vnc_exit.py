@@ -16,12 +16,12 @@ class VncExitStatus(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             runner = root / 'runner'
-            for status in (0, 17):
+            for variable, status in (("QD_RUNNER", 0), ("QD_RUNNER", 17), ("QD_RUN", 0), ("QD_RUN", 17)):
                 runner.write_text('#!/bin/sh\nexit %d\n' % status)
                 runner.chmod(0o755)
                 result = subprocess.run(
                     ['sh', str(SCRIPT), str(root), '1'],
-                    env={**os.environ, 'QD_RUNNER': str(runner)},
+                    env={**{k: v for k, v in os.environ.items() if k not in ('QD_RUNNER', 'QD_RUN')}, variable: str(runner)},
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10,
                 )
                 self.assertEqual(result.returncode, status, result.stdout.decode())
