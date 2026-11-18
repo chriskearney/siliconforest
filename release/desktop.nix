@@ -28,6 +28,11 @@ let
   '';
   linkInputs = import (sf + "/chonkstep-darwin/link-inputs.nix");
   darwinLinker = pkgs.writeShellScript "siliconforest-darwin-linker" ''
+    # Cargo hashes RUSTFLAGS into crate identities. Keep the temporary native
+    # object path out of those flags and add it only when the linker runs.
+    if [ -n "''${DARWIN_SPAWN_OBJECT:-}" ]; then
+      set -- "$@" "$DARWIN_SPAWN_OBJECT"
+    fi
     exec ${pkgs.python3}/bin/python3 ${sf + "/chonkstep-darwin/darwin-linker-inputs.py"} "$@"
   '';
   build = { name, src, command, binaries, prepare ? "" }:
@@ -78,8 +83,9 @@ let
       "$(get toolchain)/bin/arm64-apple-darwin20.4-clang" -std=c11 -Wall -Wextra -Werror -Wpedantic -O1 \
         -isystem "$SDKROOT/usr/include" -I ${sf + "/chonkstep-darwin/darwin-spawn"} \
         -c ${sf + "/chonkstep-darwin/darwin-spawn/darwin_spawn.c"} -o "$TMPDIR/darwin_spawn.o"
+      export DARWIN_SPAWN_OBJECT="$TMPDIR/darwin_spawn.o"
       # ld64's debug map otherwise records rustc's random temporary link path.
-      export CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS="-L native=$(get xkb) -L native=$(get sfgop) -C panic=unwind -C link-arg=-Wl,-S -C link-arg=$TMPDIR/darwin_spawn.o"
+      export CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS="-L native=$(get xkb) -L native=$(get sfgop) -C panic=unwind -C link-arg=-Wl,-S"
     '';
     command = ''
       cargo rustc -j "$NIX_BUILD_CORES" --offline --locked --release -p wm-darwin \
