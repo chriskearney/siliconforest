@@ -142,5 +142,9 @@
   {
     "path": "wm-darwin-siliconforest-themes.patch",
     "strip": 1
+  },
+  {
+    "path": "wm-darwin-app-ready-deadline-env.patch",
+    "strip": 1
   }
 ]

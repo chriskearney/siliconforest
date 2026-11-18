@@ -43,7 +43,9 @@ reference header. Only the digest is public. This build has not been installed o
 hardware. The raw descriptor and historical build records remain outside this
 new source closure.
 
-Apple applications and firmware are user-supplied inputs outside the build.
+The included Homebrew package set comes from public bottles pinned in `sources.lock`
+(and checked against IMAGE's bottle manifest); those packages are not compiled by
+this entry. Apple applications and firmware are user-supplied inputs outside the build.
 The Firefox binary bundle is optional and obtained separately. The base's
 corecrypto dependency is the public MPL-2.0 reimplementation pinned in the lock,
 not an Apple binary; its upstream README describes its experimental, unaudited

@@ -30,8 +30,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hb_macho  # noqa: E402
 
-LAB = Path(__file__).resolve().parents[3]
-RUNS = LAB / 'runs/homebrew'
+LAB = Path(__file__).resolve().parents[3] if len(Path(__file__).resolve().parents) > 3 else Path(__file__).resolve().parent
+# SF_HB_RUNS: another working directory of the same layout (the release image's recipe pours in its build directory)
+RUNS = Path(os.environ['SF_HB_RUNS']) if os.environ.get('SF_HB_RUNS') else LAB / 'runs/homebrew'
 PREFIX = '/opt/homebrew'
 PLACEHOLDERS = [('@@HOMEBREW_PREFIX@@', PREFIX), ('@@HOMEBREW_CELLAR@@', PREFIX + '/Cellar'),
                 ('@@HOMEBREW_REPOSITORY@@', PREFIX), ('@@HOMEBREW_LIBRARY@@', PREFIX + '/Library'),
@@ -232,6 +233,8 @@ def main():
     if a.brew:
         for item in ('bin/brew', 'Library', 'completions', 'LICENSE.txt', '.git'):
             src = a.brew / item
+            if not src.exists() and item == '.git':
+                continue      # a source archive of the client (the release image) has no history
             if src.is_dir():
                 subprocess.run(['cp', '-a', '--reflink=auto', str(src), str(root / item)], check=True)
             else:

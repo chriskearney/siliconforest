@@ -10,7 +10,15 @@ let
     STATS = if proof then "1" else "0";
     SOUND = "0"; RENDERER = "cpu"; TERMINALS = "1"; FETCH = "0";
     PERSIST = "0"; SCALE = "1"; THEME = "sf-canopy"; ONLY = "settle";
-    ENV = if proof then "( sleep 240; sh /usr/libexec/sf-image-check ) &" else "";
+    ENV = ''
+      export CHONKSTEP_DARWIN_APP_READY_SECONDS=180 CHONKSTEP_DARWIN_AUTOPILOT_ARM_SECONDS=240
+      ( n=0; while [ ! -S "$runtime/wayland-0" ] && [ $n -lt 900 ]; do sleep 1; n=$((n+1)); done; sleep 1
+        XDG_STATE_HOME=$state HOME=/var/root LANG=en_US.UTF-8 exec /usr/bin/chonkstep-dock > /var/log/chonkstep-dock.log 2>&1 ) &
+    '' + pkgs.lib.optionalString proof ''
+      ( mkdir -p /private/var/tmp/sfshots; i=0; while [ $i -lt 60 ]; do sleep 30; i=$((i+1))
+        /usr/bin/chonkstep-darwin-desktop --screencapture /private/var/tmp/sfshots/s$(printf %03d $i).png > /dev/null 2>&1; done ) &
+      ( sleep 240; sh /usr/libexec/sf-image-check ) &
+    '';
   };
   session = pkgs.writeText "qemu-release-session" (builtins.replaceStrings
     (map (name: "@${name}@") (builtins.attrNames tokens))

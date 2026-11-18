@@ -32,6 +32,16 @@ let
     system-perl = recipe "macos-compat/build-perl.nix";
     foundation-networking = recipe "terminal-app/build-foundation-networking.nix";
     libcompression = recipe "finch/libcompression/build.nix";
+    fonts-thai = recipe "cocoa/fonts-thai.nix";
+    # Keep all direct release pins in sources.lock and reject a drifting bottle manifest.
+    homebrew = let
+      pinned = (builtins.fromJSON (builtins.readFile ../sources.lock)).homebrew;
+    in assert pinned == builtins.fromJSON (builtins.readFile ./image/homebrew.lock.json);
+      import ./image/homebrew.nix { inherit pkgs; };
+    activity-monitor = import ./image/activity-monitor.nix {
+      inherit pkgs;
+      linkRoot = image.rootTree;
+    };
     finch-frameworks = let
       paths = map (name: recipe "finch/${name}/build.nix") [
         "Accounts" "CloudKit" "CoreBluetooth" "CoreLocation" "CoreWLAN"
@@ -104,6 +114,7 @@ in {
     boot-stage2 = boot.stage2;
     boot-stage2-template = templateBoot.stage2;
     boot-stage2-release = releaseBoot.stage2;
+    root-tree = image.rootTree;
     root-image = image.rootfs;
     bootfiles = image.bootfiles;
     release = image.release;

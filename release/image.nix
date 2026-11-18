@@ -38,7 +38,7 @@ let
   # Firefox's runtime is assembled here unless the set brings it (./image/firefox-runtime.nix):
   # its providers are built from firefox/*.nix with release.json's arguments, the three selected
   # overrides are these pieces' outputs
-  allPieces = pieces // lib.optionalAttrs (!(pieces ? firefox-runtime) && pieces ? firefox-sc-network) {
+  allPieces0 = pieces // lib.optionalAttrs (!(pieces ? firefox-runtime) && pieces ? firefox-sc-network) {
     firefox-runtime = import (here + "/firefox-runtime.nix") {
       inherit pkgs;
       overrides = {
@@ -48,12 +48,19 @@ let
       };
     };
   };
+  # pieces the recipe builds itself unless the set brings them
+  defaults = lib.optionalAttrs (!(pieces ? homebrew)) { homebrew = import (here + "/homebrew.nix") { inherit pkgs tree; }; }
+    // lib.optionalAttrs (!(pieces ? activity-monitor)) {
+      activity-monitor = import (here + "/activity-monitor.nix") { inherit pkgs tree; linkRoot = rootTree; }; };
+  allPieces = allPieces0 // defaults;
   present = l: builtins.hasAttr (l.piece or l.name) allPieces;
   missing = map (l: l.name) (lib.filter (l: !(present l) && !(l.optional or false)) spec);
+  layerOf = l: { inherit (l) name; path = "${allPieces.${l.piece or l.name}}"; prefix = l.prefix or "/"; exclude = l.exclude or [ ]; }
+    // (if l ? only then { inherit (l) only; } else { });
   layers =
     assert lib.assertMsg (missing == [ ]) "release/image.nix: pieces missing: ${toString missing}";
-    map (l: { inherit (l) name; path = "${allPieces.${l.piece or l.name}}"; prefix = l.prefix or "/"; exclude = l.exclude or [ ]; } // (if l ? only then { inherit (l) only; } else { }))
-      (lib.filter present spec);
+    map layerOf (lib.filter (l: present l && !(l.late or false)) spec);
+  lateLayers = map layerOf (lib.filter (l: present l && (l.late or false)) spec);
   absent = map (l: l.name) (lib.filter (l: !(present l)) spec);
 
   # The two installers of the tree, run against the staged root exactly as they ran on the M1:
@@ -62,24 +69,24 @@ let
   systemSource = pkgs.runCommand "siliconforest-image-system-source" { } ''
     mkdir -p $out/applications
     cp ${allPieces.system-tools}/sbin/sf-halt ${allPieces.system-tools}/usr/sbin/sf-clock $out/
-    cp ${tree}/m1-storage/system/{sf-boot,sf-command,sf-session,darwin-desktop-test.disk} $out/
-    cp ${tree}/m1-native-boot/guest/org.siliconforest.desktop.plist $out/
+    cp ${tree + "/m1-storage/system"}/{sf-boot,sf-command,sf-session,darwin-desktop-test.disk} $out/
+    cp ${tree + "/m1-native-boot/guest"}/org.siliconforest.desktop.plist $out/
     cp ${allPieces.desktop}/usr/bin/chonkstep-dock $out/
-    cp ${tree}/desktop/system/applications/org.siliconforest.terminal.desktop $out/applications/
-    cp ${tree}/desktop/system/dock-pins $out/
+    cp ${tree + "/desktop/system"}/applications/org.siliconforest.terminal.desktop $out/applications/
+    cp ${tree + "/desktop/system"}/dock-pins $out/
   '';
   userlandSource = pkgs.runCommand "siliconforest-image-userland-source" { } ''
     mkdir -p $out/ssh
-    cp ${tree}/m1-storage/userland/{sshd_config,sf-sshd,org.siliconforest.sshd.plist,brew,sf-environment,shasum} $out/
+    cp ${tree + "/m1-storage/userland"}/{sshd_config,sf-sshd,org.siliconforest.sshd.plist,brew,sf-environment,shasum} $out/
     for d in bin sbin libexec etc; do [ -d ${allPieces.openssh}/$d ] && cp -R ${allPieces.openssh}/$d $out/ssh/; done
     cp ${allPieces.terminal}/usr/bin/chonk-terminal-darwin $out/
   '';
   # files of the tree that go in as they are (installed path <- tree path)
   files = pkgs.runCommand "siliconforest-image-files" { } ''
-    put() { mkdir -p "$out/$(dirname "$1")"; cp "${tree}/$2" "$out/$1"; }
-    put usr/share/backgrounds/siliconforest/siliconforest.png chonkstep-darwin/backgrounds/siliconforest.png
+    put() { mkdir -p "$out/$(dirname "$1")"; cp "$2" "$out/$1"; }
+    put usr/share/backgrounds/siliconforest/siliconforest.png ${tree + "/chonkstep-darwin/backgrounds/siliconforest.png"}
     for w in sf-canopy sf-clearing sf-dieshot sf-wafer; do
-      put usr/share/backgrounds/siliconforest/$w.jpg desktop/themes/wallpapers/$w.jpg
+      put usr/share/backgrounds/siliconforest/$w.jpg ${tree + "/desktop/themes/wallpapers"}/$w.jpg
     done
     # the desktop's font, where the M1 has its copies (DejaVu 2.37, from nixpkgs), with its licence
     for d in usr/share/darwin-desktop System/Library/Fonts usr/share/fonts/TTF; do mkdir -p $out/$d; done
@@ -100,32 +107,43 @@ let
     cp -R ${../LICENSES} $out/usr/share/doc/siliconforest/LICENSES
   '';
   layersJson = pkgs.writeText "layers.json" (builtins.toJSON layers);
+  lateJson = pkgs.writeText "late-layers.json" (builtins.toJSON lateLayers);
   # fixed per release (./identity.nix): two builds give the same bytes, and stage 2 is built
   # for exactly this root (boot.stage2 = release/boot-stages.nix { rootUUID = identity.rootUUID; })
   fsUUID = identity.rootUUID;
   features = "has_journal ext_attr resize_inode dir_index filetype extent 64bit flex_bg metadata_csum_seed sparse_super large_file huge_file dir_nlink extra_isize metadata_csum";
 
-  rootfs = pkgs.runCommand "siliconforest-rootfs-${version}" {
-    nativeBuildInputs = with pkgs; [ e2fsprogs fakeroot python3 util-linux jq ];
-    passthru = { inherit layers absent; };
+  # the base with every layer but the late ones: what the late pieces link against
+  rootTree = pkgs.runCommand "siliconforest-root-tree-${version}" {
+    nativeBuildInputs = with pkgs; [ e2fsprogs python3 util-linux jq ];
   } ''
     set -euo pipefail
-    mkdir -p $out work
+    mkdir -p work $out
     img=$(echo ${base}/*.img)
     # the base image's second partition is its ext4 root
     read -r start size < <(sfdisk --json "$img" | jq -r '.partitiontable.partitions[1] | "\(.start) \(.size)"')
     dd if="$img" of=work/base.ext4 bs=512 skip=$start count=$size status=none
-    mkdir work/root
-    debugfs -R "rdump / work/root" work/base.ext4 2> work/rdump.log
-    rm work/base.ext4
-    python3 -I -B ${here}/assemble.py stage --root work/root --layers ${layersJson} \
-      --files ${files} --remove ${here}/remove.txt | tee $out/layers.log
+    debugfs -R "rdump / $out" work/base.ext4 2> work/rdump.log
+    python3 -I -B ${here}/assemble.py stage --root $out --layers ${layersJson} \
+      --files ${files} --remove ${here}/remove.txt > layers.log
+    mkdir -p $out/nix-support; cp layers.log $out/nix-support/layers.log
+  '';
+
+  rootfs = pkgs.runCommand "siliconforest-rootfs-${version}" {
+    nativeBuildInputs = with pkgs; [ e2fsprogs fakeroot python3 util-linux jq ];
+    passthru = { inherit layers lateLayers absent rootTree; };
+  } ''
+    set -euo pipefail
+    mkdir -p $out work
+    cp -a ${rootTree} work/root; chmod -R u+w work/root
+    cp work/root/nix-support/layers.log $out/layers.log; rm -rf work/root/nix-support
+    python3 -I -B ${here}/assemble.py stage --root work/root --layers ${lateJson} | tee -a $out/layers.log
     # Firmware is looked up at /Library/Firmware/{brcm,apple}; the release ships the empty
     # directories, the installer fills them from the target's own firmware (never from here)
     mkdir -p work/root/Library/Firmware/brcm work/root/Library/Firmware/apple
     fakeroot -- sh -euc '
-      sh ${tree}/m1-storage/system/sf-install.sh ${systemSource} work/root
-      sh ${tree}/m1-storage/userland/sf-userland-install.sh ${userlandSource} work/root
+      sh ${tree + "/m1-storage/system"}/sf-install.sh ${systemSource} work/root
+      sh ${tree + "/m1-storage/userland"}/sf-userland-install.sh ${userlandSource} work/root
       python3 -I -B ${here}/assemble.py owners --root work/root --perms ${here}/permissions.tsv --manifest '"$out"'/root.manifest.tsv
       bytes=$(du -s --block-size=4096 work/root | cut -f1)
       entries=$(wc -l < '"$out"'/root.manifest.tsv)
@@ -143,7 +161,7 @@ let
     python3 -I -B - <<PY > $out/image.json
     import json, os
     print(json.dumps({"version": "${version}", "fs_uuid_placeholder": "${fsUUID}", "features": "${features}",
-      "bytes": os.path.getsize("$out/siliconforest-root.ext4"), "layers": json.load(open("${layersJson}")),
+      "bytes": os.path.getsize("$out/siliconforest-root.ext4"), "layers": json.load(open("${layersJson}")) + json.load(open("${lateJson}")),
       "absent_optional": ${builtins.toJSON absent}}, indent=1))
     PY
   '';
@@ -155,7 +173,7 @@ let
     cp ${boot.stage2} $out/boot.bin
     cp ${kernel}/kernel $out/kernel.kc
     cp ${here}/bootargs.template $out/bootargs.template
-    cp ${tree}/m1-native-boot/b1/pdsf_pack.py $out/pdsf_pack.py
+    cp ${tree + "/m1-native-boot/b1"}/pdsf_pack.py $out/pdsf_pack.py
     cp ${here}/sf_personalize.py $out/sf_personalize.py
     n=$(grep -a -c -F ${fsUUID} $out/boot.bin || true)
     [ "$n" = 1 ] || { echo "stage 2: the release root UUID ${fsUUID} found $n times, not once" >&2; exit 1; }
@@ -223,4 +241,4 @@ let
     printf '%s' 'debug=0x218 -nogzalloc_mode keepsyms=1 serial=3 gopconsole=1 serial_video_mirror=0 -noprogress no_interrupt_masked_debug=1 no_lock_timeouts=1' > boot-args.txt
     mcopy -o -i "$out@@$(( espStart * 512 ))" boot-args.txt ::/EFI/BOOT/boot-args.txt
   '';
-in { inherit rootfs bootfiles release qemu layers absent; }
+in { inherit rootfs rootTree bootfiles release qemu layers lateLayers absent; }

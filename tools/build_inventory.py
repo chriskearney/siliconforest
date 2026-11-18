@@ -33,7 +33,12 @@ def release_candidates(root, files):
     every historical experiment. The recipe() wrapper has an explicit base.
     """
     known = set(files)
-    pending = ["flake.nix", "release/packages.nix", "tools/sf_rename.py", "tools/sf_rename_data.json"]
+    pending = [
+        "flake.nix", "release/packages.nix", "tools/sf_rename.py", "tools/sf_rename_data.json",
+        # The mandatory Homebrew layer executes these native Python helpers.
+        "integrations/siliconforest/homebrew/hb_pour.py",
+        "integrations/siliconforest/homebrew/hb_macho.py",
+    ]
     seen = set()
     while pending:
         name = pending.pop()
@@ -53,7 +58,7 @@ def release_candidates(root, files):
                      for recipe in re.findall(r'file\s*=\s*"([^"]+\.nix)"', text)]
         if name.startswith("release/"):
             refs += [str(root / "integrations/siliconforest" / p)
-                     for p in re.findall(r'sf\s*\+\s*"/([^"]+)"', text)]
+                     for p in re.findall(r'(?:sf|tree)\s*\+\s*"/([^"]+)"', text)]
         for ref in refs:
             candidate = Path(ref) if ref.startswith("/") else path.parent / ref
             candidate = Path(os.path.normpath(candidate))
