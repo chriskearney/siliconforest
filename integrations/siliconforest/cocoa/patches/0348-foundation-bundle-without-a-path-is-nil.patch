@@ -1,0 +1,36 @@
+diff --git a/src/Frameworks/Foundation/Runtime.subproj/NSBundle.m b/src/Frameworks/Foundation/Runtime.subproj/NSBundle.m
+index 3a5952d..bcdad0d 100644
+--- a/src/Frameworks/Foundation/Runtime.subproj/NSBundle.m
++++ b/src/Frameworks/Foundation/Runtime.subproj/NSBundle.m
+@@ -103,17 +103,30 @@ static inline id __NSAutoreleaseCF(CFTypeRef cf) {
+         return nil;
+     }
+ 
++    // (QTP) no path names no bundle: nil, as on macOS (CoreFoundation was handed NULL and the program crashed;
++    // first seen with Apple's QuickTime Player, which asks for an internal bundle it does not ship). On every
++    // failure the receiver is released (it leaked).
++    if (path == nil || [path length] == 0) {
++        [self release];
++        return nil;
++    }
++
+     CFURLRef url = CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
+                                                  (CFStringRef)path,
+                                                  kCFURLPOSIXPathStyle, true);
+     if (url == NULL) {
++        [self release];
+         return nil;
+     }
+ 
+     _bundle = CFBundleCreate(kCFAllocatorDefault, url);
+     CFRelease(url);
+ 
+-    return _bundle != NULL ? self : nil;
++    if (_bundle == NULL) {
++        [self release];
++        return nil;
++    }
++    return self;
+ }
+ 
+ - (void)dealloc {

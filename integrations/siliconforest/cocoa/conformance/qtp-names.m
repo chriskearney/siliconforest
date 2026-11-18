@@ -1,4 +1,4 @@
-// qtp-names.m - the names Cocoa patches 0340-0347 and the framework wrappers add (first user: Apple's
+// qtp-names.m - the names Cocoa patches 0340-0349 and the framework wrappers add (first user: Apple's
 // QuickTime Player, docs/roadmap/issues/SF-AI-quicktime.md), checked without a window.
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
@@ -244,6 +244,35 @@ static void fileCoordinator(NSString *dir)
     [coordinator release];
 }
 
+static void paths(void)
+{
+    struct { NSArray *components; NSString *path; } cases[] = {
+        { @[ @"/", @"usr", @"lib" ], @"/usr/lib" },
+        { @[ @"a", @"b" ], @"a/b" },
+        { @[ @"a/", @"", @"/b/" ], @"a/b" },
+        { @[ @"/" ], @"/" },
+        { @[], @"" },
+    };
+    SEL selector = sel_registerName("pathWithComponents:");
+    if (![NSString respondsToSelector:selector]) {
+        check(NO, @"+[NSString pathWithComponents:] exists");
+        return;
+    }
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        NSString *path = SEND(NSString *, NSArray *)([NSString class], selector, cases[i].components);
+        check([path isEqualToString:cases[i].path],
+              [NSString stringWithFormat:@"pathWithComponents: %@ is \"%@\" (got \"%@\")",
+                  [cases[i].components componentsJoinedByString:@","], cases[i].path, path]);
+    }
+}
+
+static void bundles(void)
+{
+    NSString *none = nil;   // (a variable: the macOS SDK declares the argument nonnull)
+    check([NSBundle bundleWithPath:none] == nil, @"+[NSBundle bundleWithPath:nil] is nil");
+    check([NSBundle bundleWithPath:@""] == nil, @"+[NSBundle bundleWithPath:@\"\"] is nil");
+}
+
 int main(void)
 {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
@@ -259,6 +288,8 @@ int main(void)
     audioListenerBlock();
     urlKeys(dir);
     fileCoordinator(dir);
+    paths();
+    bundles();
     [[NSFileManager defaultManager] removeItemAtPath:dir error:NULL];
     printf("QTPNAMES result failed=%d\n", failed);
     [pool release];

@@ -32,6 +32,9 @@
 #     (Codex's Intents requests)
 #   (18 November; QTP) ../cocoa/patches/0347: -[NSURL getResourceValue:forKey:error:] answers the parent directory,
 #     volume, read-only, hidden-extension and file-identity keys (first user: Apple's QuickTime Player)
+#   ../cocoa/patches/0348: -[NSBundle initWithPath:] with no path is nil, as on macOS (QuickTime Player crashed at
+#     launch asking for a bundle it does not ship), and a failed initialisation releases the receiver
+#   ../cocoa/patches/0349: +[NSString pathWithComponents:] (missing; QuickTime Player got an exception at launch)
 # A file every Objective-C program loads: QEMU pass and the guarded procedure before it replaces
 # the disk root's; until then it is tried from a scratch prefix (DYLD_LIBRARY_PATH).
 #
@@ -40,7 +43,7 @@ let
   pd = (import ../rebase/pd.nix).pd;
 in pd.packages.x86_64-linux."foundation-arm64".overrideAttrs (old: {
   pname = "siliconforest-foundation-macos-apps";
-  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ../cocoa/patches/0347-foundation-url-resource-values.patch ];
+  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ../cocoa/patches/0347-foundation-url-resource-values.patch ../cocoa/patches/0348-foundation-bundle-without-a-path-is-nil.patch ../cocoa/patches/0349-foundation-path-with-components.patch ];
   patchFlags = [ "-p4" ];
   buildPhase = let
     r = builtins.replaceStrings
