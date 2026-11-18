@@ -4,7 +4,7 @@ Goal: the official VLC media player for macOS (arm64), unmodified, starts from a
 own on SiliconForest, opens a file and plays video with sound in its own window, with working
 transport controls, on the M1.
 
-Status on 18 November 2026, 08:25Z: **it plays, driven through its own interface, with hardware
+Status on 18 November 2026, 10:50Z (see items 21 and 22 and the cycles below for what changed since 08:25Z): **it plays, driven through its own interface, with hardware
 decoding, from a private prefix.** `/Applications/VLC.app` starts the unmodified VLC through the launcher; File >
 Open File opens a movie; play, pause, resume, seeking on the timeline, fullscreen and back, resizing the
 window, playing to the end and Quit (menu and Command-Q, no process left) were each seen working on the M1
@@ -46,7 +46,7 @@ program met them on the M1.
 | 8 | Sparkle (VLC's own copy) needs libxar, WebKit, `NSURLDownload`, Security transforms | VLC's updater cannot load | **replaced at load time** by a provider with the same interface that reports "no updates available/unavailable" (`finch/players/compat/unavailable.m`); the copy in the bundle is untouched | private; agreed by the owner's coordinator on 18 November |
 | 9 | Two OpenGL libraries in one process: the system's CGL uses the GPU Mesa, while AppKit, QuartzCore and CoreVideo name the older `/usr/lib/libGL.1.dylib`; VLC's shader calls landed in the library without a context | system inconsistency | the launcher puts the GPU Mesa's directories first on the library path, as the Firefox launcher does | works around; the system fix is one libGL for the system's frameworks and its CGL |
 | 10 | The picture, VLC's default output (`caopengllayer`): the window stayed black, then showed only the first frame | two faults in QuartzCore | `cocoa/patches/0320`: an opaque `CAOpenGLLayer`'s picture is taken without its alpha (VLC draws its video with alpha 0 into an opaque layer). `0321`: a layer context gives its root layer the pointer back that AppKit's re-parenting of the view had cleared, so new contents ask for a frame again | candidate, private; **the picture works** |
-| 11 | The picture, second output (`--vout=macosx`, NSOpenGLView): starts, then `CGLSetCurrentContext` fails (10004) when the video thread takes the context | with the traced CGL: `EGL_BAD_ACCESS`, the NSOpenGLContext stays current on the main thread, so the 250 ms wait of 0009 ends without it; then VLC asserts that `-[VLCOpenGLVideoView reshape]` runs on the main thread, which ours does not. Earlier note: VLC makes a context current on its own thread and locks it with `CGLLockContext`; our CGL sits on EGL, where a context is current on one thread at a time | open; not needed for the default output | **open** |
+| 11 | The picture, second output (`--vout=macosx`, NSOpenGLView): starts, then `CGLSetCurrentContext` fails (10004) when the video thread takes the context; then VLC aborted (`-reshape` off the main thread) | **fixed, opt-in**: `cocoa/patches/0327` (a frame flushed from another thread is drawn into its view on the main thread; `-reshape` runs on the main thread and at once when the frame changes; a best-resolution view's drawable is sized in pixels) and 0009's lending (`SF_CGL_LEND=1`: a context's binding follows its `CGLLockContext` between threads). With both, VLC's NSOpenGLView output shows the whole picture, sharp, with menus and controls; without lending its video thread still waits out 250 ms per frame. Lending is off by default: in one 12-drag run of the default output it coincided with 1 failure (since fixed: a context is reserved before it is bound) | Earlier note: `EGL_BAD_ACCESS`, the NSOpenGLContext stays current on the main thread, so the 250 ms wait of 0009 ends without it; then VLC asserts that `-[VLCOpenGLVideoView reshape]` runs on the main thread, which ours does not. Earlier note: VLC makes a context current on its own thread and locks it with `CGLLockContext`; our CGL sits on EGL, where a context is current on one thread at a time | open; not needed for the default output | **open** |
 | 12 | Hardware decoding: `/dev/sfavd` is root's alone, so VideoToolbox's hardware decoder refuses the account `sf` ("Cannot open the AVD device: Permission denied") and VLC decodes in software | device permission | interim in the launcher, off by default and **not yet tried**: while still root it gives the node group staff and mode 0660 (lasts until reboot). The proper fix is a kernel item: see below | open |
 | 15 | AppKit: `-[NSMenuItem parentItem]` missing; every VLC menu ended in an exception before it opened | missing method | `cocoa/patches/0322` | candidate, private; menus work |
 | 16 | Foundation: `-performSelectorOnMainThread:withObject:waitUntilDone:NO` on the main thread ran the message at once. VLC's playlist adds an item while it holds its lock and sends itself the update this way; the update took the same lock and the interface stopped (its Open dialog never started a file; sampled: main thread waiting on the playlist mutex) | semantics differ from macOS, which queues it | `terminal-app/patches/foundation-main-thread-perform-is-queued.patch`: queued on the main run loop as on macOS | candidate, private (a core library: the QEMU rehearsal and the guarded installer before any system install; it changes when other programs' main-thread messages run) |
@@ -55,6 +55,7 @@ program met them on the M1.
 | 19 | Fullscreen: VLC ended at its fullscreen button (`-[NSAnimation startWhenAnimation:reachesProgress:]` raised "not implemented"), and after that was fixed the main window stayed empty after leaving fullscreen (NSAnimation's `currentValue` stayed 0; VLC finishes its transition when it reaches 1) | missing AppKit behaviour | `cocoa/patches/0325`: linked animations, and the current value follows the progress through the curve or the delegate | candidate, private; fullscreen in and out works (the desktop's docks stay drawn over it) |
 | 20 | Hardware decoding: `/dev/sfavd` root's alone; then VideoToolbox's pictures reached OpenGL green (VLC's IOSurface converter, `glconv_cvpx`) | permission; IOSurface texture path | the launcher (still root) gives the node group staff, mode 0660, until reboot (`"hardware_decode": true`); `--glconv=none` in the release's arguments makes VLC copy the decoded pictures to its textures itself (`cvpx` converter) | works with the copy; the IOSurface path is open; the proper device permission is a kernel item |
 | 21 | Resizing the playing window by its corner (DEMO's film take, 18 November): black frames for about 67 ms and VLC's log "Failure setting current CGLContext: invalid context"; in the repeat, "Failure restoring previous CGLContext" and VLC aborted | **cause established** with a traced CGL (`SF_CGL_TRACE=1`), 12-drag sessions of DEMO's drag (40 moves 50 ms apart, 1280x813 <-> 1520x948, hardware decoding): every failed make-current was `EGL_BAD_ACCESS` (0x3002), 16 of 19 with the context still current on another thread when traced (the other 3 had just been let go). CGL lets a context be made current on one thread while another still has it (the application orders its use with CGLLockContext); EGL refuses it. VLC makes its context current on its video thread while the layer draws with it on another; the frame was not prepared or not drawn, and the layer read back from no context: a black frame | `firefox/cgl-patches/0009` (`cgl-gpu.nix --arg contextHandoff true`): a thread asking for a context another thread has current waits for it to be let go, at most 250 ms (`SF_CGL_HANDOFF_MS`). `cocoa/patches/0326`: CAOpenGLLayer makes the context current before locking it (VLC's order, so neither side waits holding what the other needs) and keeps its last picture when the context cannot be made current | private, works: before, installed CGL: 9 failures in 3 drags, then VLC aborted; traced CGL with the wait off: 19 failures in 10 drags, then VLC aborted; with both fixes: 0 failures, 0 black mid-drag captures, no abort in 2 x 12 drags; waits 0.5-10.6 ms. The one frame DEMO saw with the picture over the whole window was not seen in my captures: not shown fixed |
+| 22 | DEMO's second take: during the corner drag, 26 of 1366 recorded frames showed VLC's picture over the whole window, without menu strip or control bar | **AppKit, established from the compositor's own recording** (`dragrec.py`, the compositor's `--screencapture` recorder, 8 drags): 301 of 1741 frames without the menu strip; in them the window's content is transparent (the desktop and the Terminal behind show through) except VLC's picture. A resize gives the window a new, empty backing store; the next layers-only frame (VLC's video layer has a new picture 30 times a second) drew the layer into that store and flushed it before the window's views were drawn | `cocoa/patches/0328`: the first layers-only frame after a window was resized draws the window whole instead | private, works: 0 of 1742 frames (8 drags) and 0 of 2521 frames (12 drags) without the menu strip |
 | 13 | Button pictures (`VLCPlayTemplate`, ...) not found; subtitle font `HelveticaNeue.dfont` absent | AppKit named-image lookup in the bundle; font | open | open |
 | 14 | DiskArbitration (Blu-ray plug-in), Growl's Carbon and Secure Transport calls, `SecTrustGetResult` and others in the TLS plug-in | not on the path to playing a local file | not done; those plug-ins fail to load and VLC goes on without them | listed |
 
@@ -158,3 +159,67 @@ test instrument on its virtual seat into the test's own window.
 
 Test clip: Big Buck Bunny, (c) Blender Foundation, CC BY 3.0, https://peach.blender.org; cut on
 the workstation, never committed.
+
+## Cycles, CPU and dropped frames (18 November)
+
+**12 launch-play-quit cycles, 12 passed** (`finch/players/vlc/cycles.py`). Each cycle, as a person would: `open -a
+/Applications/VLC.app` with the 30-second 1080p H.264/AAC clip; after 8 s a window with a moving picture (capture),
+the M1's decoder working (456-789 decoder jobs during the cycle), sound to the audio server (each session 826,368 to
+1,341,440 frames; 0 underruns in 11 sessions, 1 underrun in one); Command-Q; no VLC process left within 10 s; no
+failure, assertion or exception in VLC's log. 20-31 s per cycle. Repeated with the final private set (AppKit with 0327 and
+0328, CGL 0009 with the reservation): 12 of 12 again.
+
+**One minute of 1080p30 H.264 with hardware decoding** (`perf.py`, the 3-minute clip, 63.5 s measured after 10 s of
+playback, window 2444x1550 panel pixels, nothing else playing): VLC's own counters: 1,898 frames displayed, **0 frames
+lost**, 0 audio buffers lost (29.9 frames a second). The decoder: 1,905 jobs, 30.0 a second. CPU, as process time over
+the minute: **VLC 128.7 % of one core** (of 8), the compositor 15.9 %, coreaudiod 1.1 %. Repeated with the final private
+set: 1,890 frames displayed in 63.2 s, 0 lost in the minute (1 in the 10 s of start-up before it), VLC 128.7 %, the
+compositor 15.6 %, coreaudiod 1.0 %, the decoder 30.0 jobs a second. Most of VLC's share is the
+two copies per frame (the decoded picture into textures; the drawn frame read back for the window). Not measured:
+the panel's own frame timing, lip sync.
+
+## Proposal: installing VLC's changes system-wide (not done)
+
+Today everything VLC needs beyond the system lives in `/private/var/db/sfvlc` and reaches VLC through its launcher's
+`DYLD_LIBRARY_PATH` and `DYLD_FRAMEWORK_PATH`. A system install moves each piece into the system in its own step, each
+with the previous file kept beside it as `<file>.pre-vlc`, one restore script (`sf_vlc_restore.sh`, tried first in QEMU,
+then on the M1), and the lifecycle set after every step. After the last step the launcher keeps only what cannot be
+system-wide: becoming the account `sf`, the stand-in for VLC's own Sparkle (it must win over the copy inside VLC's
+bundle, which only `DYLD_FRAMEWORK_PATH` can do), and the interim decoder permission.
+
+**The lifecycle set** (after every step, on the M1, owner idle, synthetic input on the virtual seat):
+Firefox starts, loads a page, plays a video with sound, opens and closes a second window, quits with no process left;
+Terminal opens two tabs, types, quits; Activity Monitor opens, switches tabs, quits; the four themes apply; VLC plays
+the 3-minute clip with hardware decoding, is resized by its corner (12 drags, as in item 21), goes fullscreen and back,
+quits; QuickTime Player's current state is unchanged (QTP's own check). Each step also compares the exports of each
+replaced library with the file before (a superset, or every removal explained).
+
+| Step | Files | Built by | What else it touches | Gate |
+|---|---|---|---|---|
+| 1 | new `AddressBook`, `ScriptingBridge`, `WebKit`, `MediaPlayer` frameworks in `/System/Library/Frameworks` | `finch/players/compat/frameworks-system-foundation.nix` (only those three), `finch/MediaPlayer/build.nix` | anything that weak-links them: a scan of every installed program first (`sf_gapscan.py --system`) | lifecycle set |
+| 2 | CoreFoundation and Foundation (`Versions/C`) wrappers; `CoreServices.pd` | `terminal-app/build-compat.nix`, `macos-compat/build-coreservices.nix` | additions only (`NSGregorianCalendar`, `NSAppleScript`, `FSGetCatalogInfo`, `FSGetVolumeParms`, `LSCopyAllHandlersForURLScheme`): export audit | lifecycle set |
+| 3 | `QuartzCore.pd` with 0320, 0321, 0326 | `cocoa/patched.nix -A quartzcore` | 0320 and 0326 change only CAOpenGLLayer; **0321 changes `-[CALayerContext setLayer:]` for every layer tree, Firefox's included** | lifecycle set, plus Firefox scrolling and video presentation checks of its own stream |
+| 4 | `AppKit` with 0322-0325, 0327 | `cocoa/patched.nix -A appkit` | 0322 adds a method; **0323 changes the scale of custom backing layers (Firefox has some)**; **0324 changes programmatic window resizes for every app**; 0325 changes NSAnimation (Terminal and Activity Monitor panels); 0327 changes NSOpenGLView/NSOpenGLContext only | lifecycle set, plus Firefox at 150 % checked for sharpness and window geometry |
+| 5 | `/usr/lib/libFoundation.dylib` with the main-thread perform change (a core file) | `terminal-app/build-foundation-networking.nix` | **every Cocoa program: a main-thread `performSelectorOnMainThread:…waitUntilDone:NO` now runs later, not at once** | QEMU rehearsal and fresh boot (`sf_terminal.sh install-stage`, `qemu NAME`, `qemu NAME second`: compat check `failed=0`, `QDDESK_PASS`, `sf-kvo-probe`), then the guarded installer (`sf_terminal.sh install core`, `macos-compat/sf-lib-install.sh`), then the lifecycle set and an hour of Firefox use |
+| 6 | `/usr/lib/libSystem.B.dylib` with the seven exports (a core file) | `libsystem-default/build-libsystem-legacy-exports.nix` (the optimised default plus one export patch; dyld unchanged) | exports only: the image's code is the default's | as step 5 |
+| 7 | CGL with `contextHandoff` (0009): `OpenGL.framework` and `libGL.1.dylib` | `firefox/cgl-gpu.nix --arg canonical true --arg nv12Backing true --arg contextHandoff true` | **Firefox's GL** | see below; until then VLC keeps its private CGL |
+
+**What 0009 needs before Firefox's CGL can take it.** 0009 is off by default (`contextHandoff`); the canonical build
+Firefox uses is unchanged. With it on, one rule changes behaviour for any program: a thread asking for a context
+another thread has current waits for it (at most 250 ms, `SF_CGL_HANDOFF_MS`; the context is reserved for the waiting
+thread before it binds, so no third thread slips in between) instead of failing at once with `kCGLBadContext`. A second
+rule is opt-in only (`SF_CGL_LEND=1`): a context's EGL binding leaves a thread when that thread lets go of the
+context's `CGLLockContext` completely, and comes back when it locks or makes it current again; on macOS a context may
+be current on several threads at once, EGL allows one, and VLC's NSOpenGLView output needs this. Before Firefox's
+build takes 0009:
+1. Read Gecko's use of CGL (`GLContextCGL`, its compositor and render threads): every place that makes a context
+   current on more than one thread; whether any thread relies on a make-current failing fast (a 250 ms wait instead
+   would be a stall); and, if lending is ever wanted, whether any thread calls GL after `CGLUnlockContext` without
+   making the context current again.
+2. Build the Firefox cohort with `contextHandoff` and run its own qualification (FX's presentation series, video at
+   1080p60 and 4K, WebGL, popups, resize, twelve rounds) against the same build without it, comparing frame times.
+3. Only then a canonical CGL install, through Firefox's own installer and rollback (`install-canonical-graphics.py`).
+
+**Not part of the install.** The decoder device's permission is a kernel item (the driver creating `/dev/sfavd` with an
+owner and mode meant for it, or a broker); the launcher's step stays until then. The `/Applications/VLC.app` wrapper and
+its launcher entry are already installed and are removed by `/private/var/db/sfvlc/app/uninstall.sh`.

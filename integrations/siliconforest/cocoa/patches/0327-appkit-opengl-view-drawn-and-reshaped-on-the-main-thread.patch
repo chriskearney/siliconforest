@@ -1,0 +1,109 @@
+--- a/src/Frameworks/AppKit/NSOpenGL/NSOpenGLContext.m
++++ b/src/Frameworks/AppKit/NSOpenGL/NSOpenGLContext.m
+@@ -6,6 +6,9 @@
+ 
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
+ #import <AppKit/NSOpenGLContext.h>
++#import <objc/runtime.h>
++#import <Foundation/NSThread.h>
++#include <dispatch/dispatch.h>
+ #import <AppKit/NSOpenGLPixelFormat.h>
+ #import <AppKit/NSGraphicsContext.h>
+ #import <AppKit/NSRaise.h>
+@@ -116,6 +119,17 @@
+     
+     if([_view window]!=nil)
+         rect=[_view convertRect:rect toView:nil];
++    // (VLC) a view that asks for the best resolution draws at the window's pixel scale, as on macOS: its drawable is
++    // the view's size in pixels (VLC sets its viewport from -convertRectToBacking:; the picture overflowed a drawable
++    // sized in points and was shown enlarged)
++    if([_view wantsBestResolutionOpenGLSurface] && [_view window]!=nil){
++        CGFloat scale=[[_view window] backingScaleFactor];
++
++        if(scale>0){
++            rect.size.width=ceil(rect.size.width*scale);
++            rect.size.height=ceil(rect.size.height*scale);
++        }
++    }
+    
+    GLint size[2]={
+     rect.size.width,
+@@ -293,6 +307,47 @@
+    if(image==NULL)
+     return;
+ 
++   /* (VLC) A frame flushed from another thread is drawn into its view on the main thread, the newest one only: views
++    * are drawn there (VLC's NSOpenGLView output flushes from its video thread, and its view asserts that its -reshape,
++    * which focusing it may call, runs on the main thread). */
++   if(![NSThread isMainThread]){
++    NSView *view=[_view retain];
++    static char pendingKey;
++
++    @synchronized(self){
++     objc_setAssociatedObject(self,&pendingKey,(id)image,OBJC_ASSOCIATION_RETAIN);
++    }
++    CGImageRelease(image);
++    [self retain];
++    dispatch_async(dispatch_get_main_queue(),^{
++     CGImageRef latest;
++
++     @synchronized(self){
++      latest=(CGImageRef)[(id)objc_getAssociatedObject(self,&pendingKey) retain];
++      objc_setAssociatedObject(self,&pendingKey,nil,OBJC_ASSOCIATION_RETAIN);
++     }
++     if(latest!=NULL && view==_view && [view window]!=nil && [view lockFocusIfCanDraw]){
++      CGContextRef port=[[NSGraphicsContext currentContext] graphicsPort];
++      NSRect       bounds=[view bounds];
++
++      CGContextSaveGState(port);
++      if([view isFlipped]){
++       CGContextTranslateCTM(port,0,bounds.origin.y*2+bounds.size.height);
++       CGContextScaleCTM(port,1,-1);
++      }
++      CGContextDrawImage(port,CGRectMake(bounds.origin.x,bounds.origin.y,bounds.size.width,bounds.size.height),latest);
++      CGContextRestoreGState(port);
++      [view unlockFocus];
++      [[view window] flushWindow];
++     }
++     if(latest!=NULL)
++      CGImageRelease(latest);
++     [view release];
++     [self release];
++    });
++    return;
++   }
++
+    focused=([NSView focusView]==_view);
+    if(focused || [_view lockFocusIfCanDraw]){
+     CGContextRef port=[[NSGraphicsContext currentContext] graphicsPort];
+--- a/src/Frameworks/AppKit/NSOpenGL/NSOpenGLView.m
++++ b/src/Frameworks/AppKit/NSOpenGL/NSOpenGLView.m
+@@ -11,6 +11,7 @@
+ #import <AppKit/NSOpenGLPixelFormat.h>
+ #import <AppKit/NSRaise.h>
+ #import <Foundation/NSKeyedArchiver.h>
++#import <Foundation/NSThread.h>
+ 
+ @implementation NSOpenGLView
+ 
+@@ -127,7 +128,8 @@
+     [_context setView:self];
+         [context makeCurrentContext];
+ 
+-        if (_needsReshape){
++        // (VLC) -reshape runs on the main thread, as on macOS; a view focused elsewhere leaves it for the main thread
++        if (_needsReshape && [NSThread isMainThread]){
+                 [self reshape];
+                 _needsReshape = NO;
+         }
+@@ -151,5 +153,10 @@
+         [super setFrame:frame];
+         _needsReshape = YES;
+         [self update];
++        // (VLC) as on macOS, a change of the view's size is told to it at once (on the main thread)
++        if ([NSThread isMainThread] && _context != nil) {
++                [self reshape];
++                _needsReshape = NO;
++        }
+ }
+ @end

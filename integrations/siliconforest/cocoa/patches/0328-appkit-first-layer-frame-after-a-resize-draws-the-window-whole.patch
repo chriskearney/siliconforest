@@ -1,0 +1,30 @@
+--- a/src/Frameworks/AppKit/NSView.m
++++ b/src/Frameworks/AppKit/NSView.m
+@@ -2071,6 +2071,16 @@
+     * waiting for the GPU on the main thread) */
+    if(![_window isVisible] && [context respondsToSelector:@selector(_sfrtEnabled)] && [(id)context _sfrtEnabled])
+     return;
++   /* (VLC) The window was resized since its views were last drawn: its backing store is new and still empty, and a
++    * layers-only frame would show the layer over a blank window. VLC's picture stood over the whole window, without
++    * its menus and controls, for 2-5 frames at a time while the window was resized by its corner. The window is drawn
++    * whole instead, this view with it. */
++   if(objc_getAssociatedObject(_window,@selector(_sfResizedSinceLayerFrame))!=nil){
++    objc_setAssociatedObject(_window,@selector(_sfResizedSinceLayerFrame),nil,OBJC_ASSOCIATION_ASSIGN);
++    [self setNeedsDisplay:YES];
++    [_window displayIfNeeded];
++    return;
++   }
+    sfSFRTCommitFrame=YES;
+    [self _drawLayerContext];
+    sfSFRTCommitFrame=NO;
+--- a/src/Frameworks/AppKit/NSWindow.m
++++ b/src/Frameworks/AppKit/NSWindow.m
+@@ -1171,6 +1171,8 @@
+ 
+     if(didSize) {
+         NSSize oldSize = [_backgroundView frame].size;
++        // (VLC) the next layers-only frame of a view in this window draws the window whole first (NSView.m)
++        objc_setAssociatedObject(self, @selector(_sfResizedSinceLayerFrame), (id)kCFBooleanTrue, OBJC_ASSOCIATION_ASSIGN);
+         [_backgroundView setFrameSize:_frame.size];
+         [_backgroundView resizeSubviewsWithOldSize:oldSize];
+         [self invalidateContextsWithNewSize:_frame.size forceRebuild:YES];

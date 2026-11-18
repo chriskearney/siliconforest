@@ -546,6 +546,11 @@
 #   0326  QuartzCore (VLC): CAOpenGLLayer makes its context current before locking it (VLC's order on its own threads)
 #         and, where the context cannot be made current, draws and reads back nothing, keeping its last picture (black
 #         frames while VLC's window was resized)
+#   0327  AppKit (VLC): an NSOpenGLContext flushed from another thread has its frame drawn into its view on the main thread
+#         (the newest only); NSOpenGLView's -reshape runs on the main thread, and at once when its frame changes, as on
+#         macOS (VLC's NSOpenGLView output asserted it); a view wanting the best resolution gets a drawable in pixels
+#   0328  AppKit (VLC): the first layers-only frame after a window was resized draws the window whole (its backing store is
+#         new and empty: VLC's picture stood over the whole window, without menus and controls, during a corner drag)
 #   0304, 0305w (FXPERF2's FX-029 follow-ups, adopted by TERM11 unchanged; opt-in SFFX_GPU_DAMAGE=1): a layer-only
 #         flush with nothing drawn into the window's own backing store tells the window server so, which then skips its
 #         whole-backing-store compare (11 MB a present; ~10 % of Firefox's parent main thread on cnn.com)
@@ -737,6 +742,8 @@ let
     ./patches/0323-appkit-custom-backing-layer-follows-window-scale.patch
     ./patches/0324-appkit-window-keeps-the-size-the-desktop-allows.patch
     ./patches/0325-appkit-linked-animations-and-current-value.patch
+    ./patches/0327-appkit-opengl-view-drawn-and-reshaped-on-the-main-thread.patch
+    ./patches/0328-appkit-first-layer-frame-after-a-resize-draws-the-window-whole.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
