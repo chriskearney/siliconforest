@@ -1,0 +1,26 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+# /usr/libexec/sf-firstboot: what a SiliconForest root installed from a release makes on its own
+# machine at its first start, once (launchd job org.siliconforest.firstboot). Each step only acts
+# when its result is missing, so it is safe at every start.
+#   - the pointer set as an Xcursor theme in /usr/share/icons/default, written by the desktop
+#     itself (chonkstep-darwin-desktop --write-cursor-theme), as on the owner's M1
+# The SSH host key is made by sf-sshd at its own first start; nothing else here is per machine.
+PATH=/bin:/sbin:/usr/bin:/usr/sbin; export PATH
+log=/var/log/sf-firstboot.log
+mkdir -p /var/log
+{
+    echo "sf-firstboot $(date -u +%FT%TZ 2>/dev/null)"
+    if [ ! -e /usr/share/icons/default ] && [ -x /usr/bin/chonkstep-darwin-desktop ]; then
+        mkdir -p /usr/share/icons
+        rm -rf /usr/share/icons/default.sf-new
+        if /usr/bin/chonkstep-darwin-desktop --write-cursor-theme /usr/share/icons/default.sf-new &&
+           mv /usr/share/icons/default.sf-new /usr/share/icons/default; then
+            echo "cursor theme written: $(ls /usr/share/icons/default/cursors | wc -l) cursors"
+        else
+            echo "cursor theme FAILED"
+        fi
+    fi
+} >> "$log" 2>&1
+exit 0

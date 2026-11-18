@@ -12,7 +12,6 @@
 # 18 November 2026, classified file by file against the build outputs); see
 # docs/release/IMAGE.md, "Where the layers come from".
 let
-  fx = "/usr/local/lib/siliconforest/firefox/160-system1";
   common = [ "nix-support/*" ];
   headers = [ "*.h" "*/Headers/*" "include/*" "usr/include/*" ];
 in [
@@ -20,17 +19,23 @@ in [
   # (not its demo applications, its own Terminal.app, keyboard data or the Finder/Dock/MenuBar
   # of upstream's desktop, which SiliconForest does not run)
   { name = "cocoa-root"; optional = true; exclude = common ++ [ "Applications/*" "System/Library/CoreServices/*"
-      "usr/share/xkeyboard-config-2/*" "System/Library/Desktop Pictures/*" "usr/share/vulkan/*" ]; }
+      "usr/share/xkeyboard-config-2/*" "System/Library/Desktop Pictures/*" "usr/share/vulkan/*"
+      # its own libbsm: the system keeps the base's, a link to libSystem
+      "usr/lib/libbsm.dylib" "usr/lib/libbsm.0.dylib" ]; }
   { name = "macos-apps-root"; exclude = common; }
   { name = "system-perl"; exclude = common; optional = true; }
-  { name = "foundation-networking"; exclude = common; optional = true; }
-  { name = "homebrew-overlay"; exclude = common; }
+  # FoundationNetworking's CA bundle and licences (its libraries are in macos-apps-root)
+  { name = "foundation-networking"; optional = true;
+    only = [ "System/Library/Frameworks/Foundation.framework/Versions/A/Resources/*" ]; }
+  # (not its libSystem: the system's is macos-apps-root's)
+  { name = "homebrew-overlay"; exclude = common ++ [ "usr/lib/libSystem.B.dylib" "usr/lib/libhbcrash.dylib" ]; }
   { name = "iosurface"; exclude = common ++ headers; }
   { name = "corevideo"; exclude = common ++ headers; }
   { name = "cgl"; prefix = "/System/Library"; only = [ "Frameworks/OpenGL.framework/Versions/A/OpenGL" ]; }
   { name = "cgl-dispatch"; piece = "cgl"; prefix = "/usr/local/lib/siliconforest/opengl/v1"; only = [ "lib/*" ]; }
   { name = "vulkan-system"; exclude = common ++ headers; }
-  { name = "mesa-libdrm"; exclude = common ++ [ "bin/*" "share/*" ]; optional = true; }
+  # only libdrm of this Mesa bundle: the GL libraries are vulkan-system's
+  { name = "mesa-libdrm"; only = [ "usr/local/lib/mesa-asahi/libdrm.2.dylib" ]; optional = true; }
   # Finch frameworks
   { name = "audiotoolbox"; exclude = common; }
   { name = "coremedia"; exclude = common; }
@@ -58,13 +63,7 @@ in [
   # the desktop
   { name = "desktop"; exclude = common ++ [ "usr/bin/*.next" ]; }  # .next: the inject-capable test build
   { name = "terminal"; exclude = common; }
-  # Firefox's runtime (everything but Mozilla's bundle, which is downloaded at first run)
-  { name = "firefox-runtime"; prefix = fx; exclude = common ++ [ "original/*" ]; optional = true; }
-  { name = "firefox-sandbox"; prefix = fx + "/sandbox"; exclude = common; }
-  { name = "firefox-io"; prefix = fx + "/io"; exclude = common; }
-  { name = "firefox-avfoundation"; prefix = fx + "/avfoundation"; exclude = common; }
-  { name = "firefox-surface"; prefix = fx + "/surface"; exclude = common; }
-  { name = "firefox-clocked-providers"; prefix = fx + "/overrides/video-shared-v1"; exclude = common; }
-  { name = "firefox-clock-family"; prefix = fx + "/overrides/audio-clock-v1"; exclude = common; }
-  { name = "firefox-sc-network"; prefix = fx + "/overrides/network-v1"; exclude = common; }
+  # Firefox's runtime, launcher and desktop entry (./firefox-runtime.nix, a tree at installed paths;
+  # Mozilla's bundle arrives at install time)
+  { name = "firefox-runtime"; exclude = common; }
 ]

@@ -28,18 +28,31 @@
 #   kernel     the kernel collection (m1-kernel50/build-kc.nix): $out/kernel
 #   boot       { stage1 = <sf-stage1.bin>; stage2 = <stage 2 built for identity.rootUUID> }
 #   pieces     name -> build output laid out at installed paths (release/packages.nix)
-{ pkgs, base, kernel, boot, pieces, qemuBase ? null, version ? "0.1.0"
+{ pkgs, base, kernel, boot, pieces ? { }, qemuBase ? null, version ? "0.1.0"
 , identity ? import ./identity.nix { inherit version; }, slackPercent ? 25 }:
 let
   lib = pkgs.lib;
   here = ./image;
   tree = ../integrations/siliconforest;
   spec = import (here + "/layers.nix");
-  present = l: builtins.hasAttr (l.piece or l.name) pieces;
+  # Firefox's runtime is assembled here unless the set brings it (./image/firefox-runtime.nix):
+  # its providers are built from firefox/*.nix with release.json's arguments, the three selected
+  # overrides are these pieces' outputs
+  allPieces = pieces // lib.optionalAttrs (!(pieces ? firefox-runtime) && pieces ? firefox-sc-network) {
+    firefox-runtime = import (here + "/firefox-runtime.nix") {
+      inherit pkgs;
+      overrides = {
+        "network-v1" = pieces.firefox-sc-network;
+        "audio-clock-v1" = pieces.firefox-clock-family;
+        "video-clock-0172-v1" = pieces.firefox-clocked-providers;
+      };
+    };
+  };
+  present = l: builtins.hasAttr (l.piece or l.name) allPieces;
   missing = map (l: l.name) (lib.filter (l: !(present l) && !(l.optional or false)) spec);
   layers =
     assert lib.assertMsg (missing == [ ]) "release/image.nix: pieces missing: ${toString missing}";
-    map (l: { inherit (l) name; path = "${pieces.${l.piece or l.name}}"; prefix = l.prefix or "/"; exclude = l.exclude or [ ]; } // (if l ? only then { inherit (l) only; } else { }))
+    map (l: { inherit (l) name; path = "${allPieces.${l.piece or l.name}}"; prefix = l.prefix or "/"; exclude = l.exclude or [ ]; } // (if l ? only then { inherit (l) only; } else { }))
       (lib.filter present spec);
   absent = map (l: l.name) (lib.filter (l: !(present l)) spec);
 
@@ -48,18 +61,18 @@ let
   # m1-storage/userland/sf-userland-install.sh (SSH, the account sf, environment, Homebrew's links).
   systemSource = pkgs.runCommand "siliconforest-image-system-source" { } ''
     mkdir -p $out/applications
-    cp ${pieces.system-tools}/sbin/sf-halt ${pieces.system-tools}/usr/sbin/sf-clock $out/
+    cp ${allPieces.system-tools}/sbin/sf-halt ${allPieces.system-tools}/usr/sbin/sf-clock $out/
     cp ${tree}/m1-storage/system/{sf-boot,sf-command,sf-session,darwin-desktop-test.disk} $out/
     cp ${tree}/m1-native-boot/guest/org.siliconforest.desktop.plist $out/
-    cp ${pieces.desktop}/usr/bin/chonkstep-dock $out/
+    cp ${allPieces.desktop}/usr/bin/chonkstep-dock $out/
     cp ${tree}/desktop/system/applications/org.siliconforest.terminal.desktop $out/applications/
     cp ${tree}/desktop/system/dock-pins $out/
   '';
   userlandSource = pkgs.runCommand "siliconforest-image-userland-source" { } ''
     mkdir -p $out/ssh
     cp ${tree}/m1-storage/userland/{sshd_config,sf-sshd,org.siliconforest.sshd.plist,brew,sf-environment,shasum} $out/
-    for d in bin sbin libexec etc; do [ -d ${pieces.openssh}/$d ] && cp -R ${pieces.openssh}/$d $out/ssh/; done
-    cp ${pieces.terminal}/usr/bin/chonk-terminal-darwin $out/
+    for d in bin sbin libexec etc; do [ -d ${allPieces.openssh}/$d ] && cp -R ${allPieces.openssh}/$d $out/ssh/; done
+    cp ${allPieces.terminal}/usr/bin/chonk-terminal-darwin $out/
   '';
   # files of the tree that go in as they are (installed path <- tree path)
   files = pkgs.runCommand "siliconforest-image-files" { } ''
@@ -68,6 +81,18 @@ let
     for w in sf-canopy sf-clearing sf-dieshot sf-wafer; do
       put usr/share/backgrounds/siliconforest/$w.jpg desktop/themes/wallpapers/$w.jpg
     done
+    # the desktop's font, where the M1 has its copies (DejaVu 2.37, from nixpkgs), with its licence
+    for d in usr/share/darwin-desktop System/Library/Fonts usr/share/fonts/TTF; do mkdir -p $out/$d; done
+    f=${pkgs.dejavu_fonts}/share/fonts/truetype
+    cp $f/DejaVuSans.ttf $f/DejaVuSans-Bold.ttf $out/usr/share/darwin-desktop/
+    cp $f/DejaVuSans.ttf $out/System/Library/Fonts/
+    cp $f/DejaVuSans.ttf $out/usr/share/fonts/TTF/
+    cp ${pkgs.dejavu_fonts.full-ttf.src}/LICENSE $out/usr/share/darwin-desktop/LICENSE-DejaVu.txt
+    # first start on its own machine (release/image/firstboot)
+    mkdir -p $out/usr/libexec $out/System/Library/LaunchDaemons
+    cp ${here}/firstboot/sf-firstboot $out/usr/libexec/sf-firstboot
+    chmod 755 $out/usr/libexec/sf-firstboot
+    cp ${here}/firstboot/org.siliconforest.firstboot.plist $out/System/Library/LaunchDaemons/
     mkdir -p $out/usr/share/doc/siliconforest
     cp ${../LICENSE} $out/usr/share/doc/siliconforest/LICENSE
     cp ${../NOTICE} $out/usr/share/doc/siliconforest/NOTICE
@@ -174,7 +199,7 @@ let
   '';
 
   qemu = if qemuBase == null then null else pkgs.runCommand "siliconforest-qemu-${version}.img" {
-    nativeBuildInputs = with pkgs; [ util-linux jq e2fsprogs ];
+    nativeBuildInputs = with pkgs; [ util-linux jq e2fsprogs mtools ];
   } ''
     set -euo pipefail
     img=$(echo ${qemuBase}/*.img)
@@ -193,5 +218,9 @@ let
     } | sfdisk -q $out
     dd if="$img" of=$out bs=512 skip=$espStart seek=$espStart count=$espSize conv=notrunc status=none
     dd if=$root of=$out bs=512 seek=$(( espStart + espSize )) conv=notrunc,sparse status=none
+    # the QEMU loop's boot arguments for an emulated guest (qemu-dev/qd_image.py, debug kernel):
+    # no_lock_timeouts=1, or a descheduled vCPU on a busy host reads as a spinlock deadlock
+    printf '%s' 'debug=0x218 -nogzalloc_mode keepsyms=1 serial=3 gopconsole=1 serial_video_mirror=0 -noprogress no_interrupt_masked_debug=1 no_lock_timeouts=1' > boot-args.txt
+    mcopy -o -i "$out@@$(( espStart * 512 ))" boot-args.txt ::/EFI/BOOT/boot-args.txt
   '';
 in { inherit rootfs bootfiles release qemu layers absent; }

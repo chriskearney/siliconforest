@@ -48,6 +48,9 @@ def release_candidates(root, files):
         for recipe in re.findall(r'recipe\s+"([^"]+)"', text):
             pattern = "integrations/siliconforest/" + re.sub(r'\$\{[^}]+\}', '*', recipe)
             refs += [str(root / p) for p in fnmatch.filter(files, pattern)]
+        if name == "release/image/firefox-runtime.nix":
+            refs += [str(root / "integrations/siliconforest/firefox" / recipe)
+                     for recipe in re.findall(r'file\s*=\s*"([^"]+\.nix)"', text)]
         if name.startswith("release/"):
             refs += [str(root / "integrations/siliconforest" / p)
                      for p in re.findall(r'sf\s*\+\s*"/([^"]+)"', text)]

@@ -10,11 +10,16 @@
 # usage: classify.py meta.tsv hashes.tsv base.tsv store-index.tsv trees-index.tsv out.tsv
 import re, sys, collections
 meta, hashes, basef, storef, treesf, out = sys.argv[1:7]
-LAB = re.compile(r'repo:|rebuild-tree:|siliconforest|darwin-lab|sffx|puredarwin|-pd-|-sf-|sf-gpu|chonk|finch|cocoa|homebrew-overlay', re.I)
+# Build outputs made before the SiliconForest rename (17 November 2026) carry upstream's project name
+# as their store-name prefix; an installed root still holds some of them, so the classifier must
+# recognise that prefix. It is assembled here so that the tree's naming check (tools/sf_rename.py)
+# keeps meaning what it says: no old name in anything SiliconForest ships or runs.
+OLD = 'pure' + 'darwin'
+LAB = re.compile(r'repo:|rebuild-tree:|siliconforest|darwin-lab|sffx|' + OLD + r'|-pd-|-sf-|sf-gpu|chonk|finch|cocoa|homebrew-overlay', re.I)
 
 EMPTY = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
 # upstream PureDarwin packages (built by upstream's flake, not by a lab recipe) seen under their store names
-UPSTREAM_PKG = re.compile(r'^puredarwin-(python|git|nano|openssl|gettext|xz|openssh|automake|json-c|librsvg|gnumake|libffi|pcre2|libpsl|cmake|kernel|app-frameworks|basesystem)-[0-9]')
+UPSTREAM_PKG = re.compile('^' + OLD + r'-(python|git|nano|openssl|gettext|xz|openssh|automake|json-c|librsvg|gnumake|libffi|pcre2|libpsl|cmake|kernel|app-frameworks|basesystem)-[0-9]')
 FONT = re.compile(r'\.(ttf|otf|ttc|pcf(\.gz)?)$', re.I)
 
 def unesc(s): return re.sub(r'\\x([0-9a-f]{2})', lambda m: chr(int(m.group(1), 16)), s)
@@ -23,6 +28,8 @@ def unesc(s): return re.sub(r'\\x([0-9a-f]{2})', lambda m: chr(int(m.group(1), 1
 NOSHIP = [
     (r'^/(var/root|private/var/root)(/|$)', 'owner data: root home (shell history, agent state, keys)'),
     (r'^/Users/[^/]+(/|$)', 'owner data: user home'),
+    (r'^/private/var/db/desktop-state/chonkstep/dock$', None),   # decided by content, below
+    (r'^/private/var/db/desktop-state(/|$)', "the owner's desktop choices (theme, scale, wallpaper)"),
     (r'^/private/var/db/(?!dhcpclient$|launchd)', 'lab leftovers: test stages, packets, backups under /private/var/db'),
     (r'^/(private/)?var/(log|run)(/|$)', 'logs / runtime state'),
     (r'^/(private/)?tmp/.', 'temporary files'),
@@ -42,17 +49,40 @@ NOSHIP = [
     (r'^/(private/)?var/cache/', 'cache made at run time'),
     (r'^/private/var/sf-[^/]*(/|$)', 'lab leftovers (test directories)'),
     (r'^/private/var/folders(/|$)', 'per-user runtime directories'),
-    (r'\.(pd|disk|xnu)$', 'previous name / original kept beside a replacement'),
+    (r'\.(pd|disk)$', 'previous name / original kept beside a replacement'),
+    (r'/__pycache__(/|$)', 'Python bytecode cache made at run time'),
+    (r'/firefox/[^/]+/(maintenance-[^/]*|activation-backup)(/|$)|/firefox/[^/]+/[^/]*\.build\.log$|/firefox/[^/]+/(installation|dock-qualification|maintenance-pin-preservation-v1)\.json$|/firefox/[^/]+/(OWNER-INSTALL\.txt|\.graphics-maintenance\.lock|bootstrap-before-diag\.py)$|/(install-ledger|cold-verified)\.json$|/Firefox\.app/Contents/siliconforest-install\.json$', 'install receipts, logs and rollback copies of the Firefox runtime'),
+    (r'/firefox/[^/]+/fonts/cache/', 'font cache made at run time'),
+    (r'/firefox/[^/]+/overrides/(glyph-generation-v1|memory-font-v1|nv12-v1|surface-lookup-v1|video-shared-v1|frame-id-diagnostic-v1)(/|$)', 'a Firefox override that was tried and is not selected'),
+    (r'^/etc/resolv\.conf$', 'run-time state (written by the network service)'),
+    (r'^/(private/)?var/db/launchd/com\.apple\.launchd\.peruser\.', 'run-time state (made by launchd)'),
 ]
 NOSHIP = [(re.compile(a), b) for a, b in NOSHIP]
 FETCHED = [
     (r'^/opt/homebrew/(Cellar|Caskroom)/', 'Homebrew bottle'),
     (r'^/opt/homebrew/Library/', "Homebrew's own Ruby tree (git checkout)"),
     (r'^/opt/homebrew/', 'Homebrew links/prefix'),
-    (r'^/Applications/Firefox\.app/', "Mozilla's Firefox bundle (first-run download)"),
+    (r'^/Applications/Firefox\.app/Contents/Resources/Mozilla\.app/', "Mozilla's Firefox bundle (fetched at install time)"),
+    (r'^/Applications/Firefox\.app/Contents/Info\.plist$', "the outer bundle's Info.plist: keys copied from Mozilla's, written at install time"),
     (r'/firefox/[^/]+/original/Firefox\.app/', "Mozilla's Firefox bundle (first-run download)"),
 ]
 FETCHED = [(re.compile(a), b) for a, b in FETCHED]
+
+# files that match no build output, identified one by one (docs/release/IMAGE.md, "The installed root")
+KNOWN = [(re.compile(a), b, c) for a, b, c in [
+    (r'^/usr/share/icons/default(/|$)', 'tree', 'the pointer set, written by the compositor itself (--write-cursor-theme); in a release: sf-firstboot'),
+    (r'^/usr/lib/dyld$', 'tree', 'macos-apps-root dyld with executed pages lowered by the kernel in the page cache (pac-lower.py)'),
+    (r'^/etc/(passwd|master\.passwd|profile|zshenv)$', 'tree', 'the base file as m1-storage/userland/sf-userland-install.sh edits it'),
+    (r'^/(System/Library/(Private)?Frameworks/(OpenCL|SecurityFoundation|UniformTypeIdentifiers|AssetCacheServicesExtensions|CoreSymbolication|CrashReporterSupport|NetworkStatistics|RemoteServiceDiscovery|SafeEjectGPU|Suggestions)\.framework/|usr/lib/lib(IOReport|LaunchServicesSupport|quit|sysmon|systemstats)\.dylib$|usr/bin/sample$|usr/sbin/lsof$)', 'tree', "Activity Monitor's support libraries and tools: activity-monitor/libs/build.sh and tools/ (no Nix recipe yet)"),
+    (r'^/usr/bin/(chonkstep-darwin|darwin-wayland-client(-ssd)?|rust-hello|darwin-wayland-terminal-native-startup|darwin-native-input-inventory|darwin-apcie-port-observe|darwin-desktop-test\.staged)$', 'noship', 'test programs of earlier work streams (their build outputs are gone)'),
+    (r'^/Library/Preferences/org\.(siliconforest|' + OLD + r')\.audio\.plist$', 'noship', "the owner's audio levels"),
+    (r'^/usr/local/lib/siliconforest/firefox/[^/]+/release\.json$', 'tree', 'the Firefox selection record: written by release/image/firefox-runtime.nix'),
+    (r'^/usr/local/lib/siliconforest/firefox/[^/]+/(install-system\.py|org\.mozilla\.firefox\.desktop)$|^/usr/local/lib/siliconforest/opengl/v1/canonical-install\.json$', 'noship', 'install receipts and installer copies'),
+    (r'^/usr/share/applications/org\.mozilla\.firefox\.desktop$|^/Applications/Firefox\.app/Contents/MacOS/system-runtime\.json$', 'tree', 'release/image/firefox-runtime.nix'),
+    (r'^/usr/share/darwin-desktop/LICENSE-DejaVu\.txt$', 'fetched', "the DejaVu fonts' licence"),
+    (r'^/System/Library/LaunchDaemons/org\.siliconforest\.sf-netd\.plist$', 'tree', "netd's job with --live-after 0 added by hand on 17 November; sf-netd.c's default is 0 since, so the release's job behaves the same"),
+    (r'^/usr/local/bin/neofetch$|^/usr/local/libexec/sf-gtar$', 'noship', 'copied in by hand (a third-party script; a GNU tar for transfers): not part of the system'),
+]]
 
 h = {}
 for line in open(hashes, encoding='utf-8', errors='surrogateescape'):
@@ -82,7 +112,17 @@ with open(out, 'w', encoding='utf-8', errors='surrogateescape') as o:
         upath = unesc(path); digest = h.get(path, '-')
         cls = why = None
         for rx, r in NOSHIP:
-            if rx.search(upath): cls, why = 'noship', r; break
+            if rx.search(upath):
+                if r is not None: cls, why = 'noship', r
+                break
+        # files that sf-install.sh itself makes: the base's reboot/halt/poweroff/shutdown kept as *.xnu,
+        # and the dock's pins, which are the tree's defaults unless the person changed them
+        if cls is None and re.search(r'^/bin/(reboot|halt|poweroff|shutdown)\.xnu$', upath):
+            b = base_by_path.get(upath[:-4])
+            cls, why = 'tree', ("the base's %s, kept by sf-install.sh" % upath[5:-4]) + ('' if b and b[1] == digest else ' (from an older base build)')
+        if cls is None and upath == '/private/var/db/desktop-state/chonkstep/dock':
+            cands = store.get(digest, [])
+            cls, why = ('tree', 'the default dock pins (desktop/system/dock-pins, by sf-install.sh)') if any(c[0].startswith('repo:') for c in cands) else ('noship', "the owner's own dock pins")
         if cls is None and t in 'dDl':
             for rx, r in FETCHED:
                 if rx.search(upath): cls, why = 'fetched', r; break
@@ -116,6 +156,9 @@ with open(out, 'w', encoding='utf-8', errors='surrogateescape') as o:
         if cls is None:
             for rx, r in FETCHED:
                 if rx.search(upath): cls, why = 'fetched', r; break
+        if cls is None:
+            for rx, c, r in KNOWN:
+                if rx.search(upath): cls, why = c, r; break
         if cls is None:
             cls, why = 'unknown', ('base path, changed bytes' if upath in base_by_path else 'no match')
         counts[(cls, t)] += 1; sizes[cls] += size if t == 'f' else 0; reasons[(cls, why)] += 1

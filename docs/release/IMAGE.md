@@ -65,35 +65,39 @@ Every entry of the M1's root, by class (18 November 2026, kernel 50, renamed use
 
 | Class | Entries | Of them files | Bytes in files |
 |---|---:|---:|---:|
-| built from this tree (a lab recipe's output, a tree file, or a directory or link an install made) | 12,320 | 11,019 | 549 MiB |
-| upstream base (same bytes as the base image, or an upstream PureDarwin package) | 10,488 | 9,674 | 220 MiB |
-| third-party, fetched (Homebrew bottles and Homebrew's own tree, Mozilla's Firefox, fonts) | 55,807 | 24,382 | 1,204 MiB |
-| must not ship | 153,927 | 129,391 | 15,502 MiB |
-| unknown | 212 | 212 | 16 MiB |
+| built from this tree (a lab recipe's output, a tree file, a file an install script of the tree makes, or a directory or link an install made) | 12,166 | 10,956 | 547 MiB |
+| upstream base (same bytes as the base image, or an upstream PureDarwin package) | 10,485 | 9,671 | 220 MiB |
+| third-party, fetched (Homebrew bottles and Homebrew's own tree, Mozilla's Firefox bundle, fonts) | 55,607 | 24,212 | 1,200 MiB |
+| must not ship | 154,496 | 129,839 | 15,524 MiB |
+| unknown | 0 | 0 | 0 |
 
 "Must not ship" is: the owner's data and his coding agent (`/var/root`, `/Users/sf`,
-`/usr/local/lib/claude-code`), test stages, packets and backups under `/private/var/db/sf*`
-(15 GB of the total), logs and run-time state, host keys, the remembered-network file,
-firmware from his machine (`/Library/Firmware`), Apple's Terminal and Activity Monitor,
-every previous copy kept beside a replacement (`*.before-*`, `*.old*`, `*.pre-*`, `*.next`),
-crash reports and caches.
+`/usr/local/lib/claude-code`), his desktop choices, dock pins and audio levels, test stages,
+packets and backups under `/private/var/db/sf*` (15 GB of the total), logs and run-time state,
+host keys, the remembered-network file, firmware from his machine (`/Library/Firmware`),
+Apple's Terminal and Activity Monitor, every previous copy kept beside a replacement
+(`*.before-*`, `*.old*`, `*.pre-*`, `*.next`), crash reports, caches, the Firefox runtime's
+install receipts, logs, rollback copies and the overrides that were tried and not selected,
+test programs of earlier streams whose build outputs are gone, and two tools copied in by hand.
 
-"Unknown" (212 files): install receipts and logs inside Firefox's runtime tree (130), files of
-the earlier desktop and test programs whose build outputs are gone (about 20: `chonkstep-darwin`,
-`darwin-wayland-client*`, `rust-hello`, `sample`), Activity Monitor's support libraries and
-framework stubs (about 15), `/usr/lib/dyld` (its bytes match no build: an open question since
-17 November), `/etc/passwd`, `master.passwd`, `profile`, `zshenv`, `resolv.conf` as edited by the
-installers and at run time, the cursor theme (`/usr/share/icons/default`, 85 files), `lsof`,
-`neofetch`, `sf-gtar`.
+The 212 files that matched no build output at first were identified one by one; the rules are
+in `release/image/tools/classify.py` (`KNOWN`). Among them: `/usr/lib/dyld` is macos-apps-root's
+dyld (36876aa6…) with one executed page rewritten by the kernel in the page cache (pointer
+authentication lowering; checked page by page with the rebuild stream's `pac-lower.py`); the
+cursor theme is written by the compositor itself (`--write-cursor-theme`; a release makes it at
+first start, below); Activity Monitor's support libraries and tools come from
+`integrations/siliconforest/activity-monitor/libs/build.sh` and `tools/`, which have no Nix
+recipe yet; netd's launchd job carries `--live-after 0`, added by hand on 17 November and since
+`sf-netd.c`'s default.
 
 ## What a release does not contain, and how each piece arrives
 
 | Piece | Why it is not in the release | How it arrives |
 |---|---|---|
 | Wi-Fi firmware, NVRAM, CLM, txcap (`/Library/Firmware/brcm`), the Touch Bar and video decoder firmware (`/Library/Firmware/apple`) | Apple's firmware, no redistribution right | the installer copies them from the target's own Asahi Linux firmware into the two (empty) directories the root ships with, before the root is written |
-| Mozilla's Firefox bundle | redistribution under Mozilla's terms is not settled (the trademark policy restricts a patched build under the Firefox name) | downloaded at first run from Mozilla; the runtime around it (`/usr/local/lib/siliconforest/firefox/160-system1`, without `original/`) is ours |
+| Mozilla's Firefox bundle (`/Applications/Firefox.app/Contents/Resources/Mozilla.app`) and the outer bundle's `Info.plist` (it copies keys of Mozilla's) | redistribution under Mozilla's terms is not settled (the trademark policy restricts a patched build under the Firefox name) | fetched at install time from Mozilla (`firefox/acquire.py`: the DMG release.json's `mozilla_sha512` names, Mozilla's SHA512SUMS); the runtime around it is ours and in the root (below) |
 | Terminal.app, Activity Monitor.app and anything taken from them | Apple's applications | the user copies them from their own macOS with a helper (INSTALL) |
-| Homebrew (`/opt/homebrew`: 73 kegs on the M1, plus the lab's overlay files inside some kegs) | each bottle's own licence; source offers for the GPL ones | poured at install time with `integrations/siliconforest/homebrew/hb_fetch.py` and `hb_pour.py` from a pinned formula list, owned by the account `sf` |
+| Homebrew (`/opt/homebrew`: 73 kegs on the M1, plus the lab's own builds inside some kegs) | each bottle's own licence; source offers for the GPL ones | poured at install time with `integrations/siliconforest/homebrew/hb_fetch.py` and `hb_pour.py` from a pinned formula list, owned by the account `sf`. Required, not optional: Firefox's launcher runs on Homebrew's `python@3.14` |
 | host keys | per machine | made at the first start of the SSH server (`sf-sshd`) |
 
 ## First start on another machine
@@ -106,7 +110,27 @@ installers and at run time, the cursor theme (`/usr/share/icons/default`, 85 fil
   `sf-netd` joins nothing until a network is joined once (`wifiutil`).
 - Firmware is looked up at `/Library/Firmware/brcm` and `/Library/Firmware/apple`.
 - The desktop session (`org.siliconforest.desktop`), the dock with its default pins and the
-  forest wallpaper, as `sf-install.sh` sets them.
+  forest wallpaper, as `sf-install.sh` sets them; DejaVu Sans (2.37, from nixpkgs, with its
+  licence) where the desktop reads it.
+- `org.siliconforest.firstboot` runs `/usr/libexec/sf-firstboot` at every start; it acts only
+  when its result is missing: today it writes the pointer set (`/usr/share/icons/default`)
+  with the compositor, as the owner's M1 has it.
+
+## Firefox's runtime
+
+`release/image/firefox-runtime.nix` lays out what `firefox/prepare-install.py --system-layout`
+and the install scripts made on the M1: the 13 providers of `release.json`'s `recipes`, built
+from those recipes with the recorded arguments (AppKit, Onyx2D and CoreText as `Frameworks/`,
+AppKit's `Versions/C` link), the three selected overrides (`network-v1`, `audio-clock-v1`,
+`video-clock-0172-v1`, their `Frameworks/` only), `release.json` written from
+`release/image/firefox-selection.json` (the choices; the records are recomputed), the launcher
+`Firefox.app/Contents/MacOS/firefox-sf` (`firefox/daily-launch.py`) with `system-runtime.json`,
+and the desktop entry. Fed with the build outputs the M1 carries, it gives 840 of the M1's
+entries byte for byte; the rest are the receipts, logs, rollback copies and unselected overrides
+it leaves out by design, `release.json`'s records (store paths) and two files of a later build
+in `video-clock-0172-v1`. The launcher's dry plan (`firefox-sf --sf-plan`) against this tree,
+run on the workstation in a private mount namespace, is the M1's plan exactly, except the
+per-process service name and the profile directory under the caller's home.
 
 ## The boot files and the target's identifiers
 

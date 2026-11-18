@@ -69,6 +69,14 @@ let
     firefox-clocked-providers = recipe "finch/firefox-media/clocked-providers.nix";
     firefox-clock-family = recipe "finch/firefox-media/clock-family.nix";
     firefox-sc-network = recipe "firefox/sc-network.nix";
+    firefox-runtime = import ./image/firefox-runtime.nix {
+      inherit pkgs;
+      overrides = {
+        "network-v1" = pieces.firefox-sc-network;
+        "audio-clock-v1" = pieces.firefox-clock-family;
+        "video-clock-0172-v1" = pieces.firefox-clocked-providers;
+      };
+    };
     system-tools = recipe "m1-storage/build-system-tools.nix";
     rename-commit = recipe "m1-storage/build-sf-rename-commit.nix";
     openssh = recipe "m1-storage/userland/build-openssh.nix";

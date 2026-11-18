@@ -28,6 +28,15 @@ to the release root filesystem's UUID through `release/boot-stages.nix`. Partiti
 identifiers and the write fence belong in installer-generated configuration. No
 build command installs boot files, modifies a disk, or contacts a Mac.
 
+The public stage 1 is a new build, not a byte reproduction of the owner's installed
+stub. Its embedded version tag ends in `siliconforest-stage1-public`; the historical
+installer recipe used `siliconforest-stage1-v1`. That tag alone changes the bytes;
+the public recipe also pins its compiler and image-conversion tools independently.
+The locally verified public image's SHA-256 starts `840fd72f`, while the historical
+installed-stub guard starts `44c1ef0b`. Keep that guard intact. The installer for a
+new machine must construct its stub from the matching release stage 1. No test
+here replaced the owner's stub or established hardware compatibility of this build.
+
 The release kernel derives from kernel 50. Its `SFM1SPIHID` member checks the same
 trackpad descriptor identity using its length and SHA-256, replacing an untracked
 reference header. Only the digest is public. This build has not been installed on
