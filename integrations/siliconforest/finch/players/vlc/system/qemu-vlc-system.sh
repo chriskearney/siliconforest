@@ -20,6 +20,7 @@ for d in /dev/disk0s1 /dev/disk1s1 /dev/disk2s1 /dev/disk3s1; do
     [ -b "$d" ] || continue
     if mount -t ext4 "$d" /opt/homebrew 2>/dev/null; then [ -d /opt/homebrew/Cellar ] && break; umount /opt/homebrew; fi
 done
+mkdir -p /private/var/db /private/tmp
 cd /var/root
 V=$T/vlc; R=/private/var/db/sfvlc-system; PY=/opt/homebrew/bin/python3
 PROGRAMS="/opt/homebrew/bin/node /usr/local/bin/claude /opt/homebrew/bin/python3 /opt/homebrew/bin/bash /opt/homebrew/bin/git /opt/homebrew/bin/vim /opt/homebrew/bin/nvim /opt/homebrew/bin/tmux"

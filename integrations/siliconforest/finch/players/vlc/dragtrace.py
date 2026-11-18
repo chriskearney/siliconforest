@@ -25,6 +25,8 @@ env = [e for e in extra if re.match(r'^[A-Z_][A-Z0-9_]*=', e)]; args = [e for e 
 with hold('VLC: %d corner drags of the playing window, recorded by the compositor, layer trace (%s)' % (ndrags, tag)):
     print(stop()); sh('rm -f ' + RC + ' ' + REC)
     print(launch(tag, 'SFVLC_HARDWARE=1', 'SFVLC_NOCATCH=1', 'SF_CGL_TRACE=1', 'SF_CAOGL_TRACE=2', *env, '--glconv=none', '--start-time=60', *args, *RCARGS, '/Users/sf/Movies/Big Buck Bunny (3 min).mp4')); time.sleep(7)
+    ww = [x for x in wins() if x['app'] == 'org.videolan.vlc' and x['mapped'] and x['title'] not in ('', 'Fullscreen Controls')]
+    if ww: clear_modifiers(ww[0]['id'])   # no modifier left held on the virtual seat
     for attempt in range(4):
         rect, corner = main()
         if abs(rect[2] - 1280) < 8 and abs(rect[3] - 813) < 8: break

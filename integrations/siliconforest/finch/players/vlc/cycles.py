@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
-"""12 launch-play-quit cycles as a person would: /Applications/VLC.app with a file (open -a), play, Command-Q."""
+"""12 launch-play-quit cycles: /Applications/VLC.app with a file (open -a), play, quit by TERM (15 s before KILL)."""
 import sys, time, re, json
 sys.path.insert(0, '' + __import__('os').path.dirname(__import__('os').path.abspath(__file__)) + '')
 from flow import *
@@ -27,11 +27,11 @@ for n in range(int(sys.argv[1]) if len(sys.argv) > 1 else 12):
         j1 = avd()
         quit_ok = False
         if w:
-            inj('target %d\n' % w[0]['id'] + keys('chord:cmd+q'))
-            for _ in range(20):
-                time.sleep(0.5)
-                if not mine().strip():
-                    quit_ok = True; break
+            clear_modifiers(w[0]['id'])
+        # quit by process, not by a synthetic Command-Q (which can leave Command held on the virtual seat): TERM, and
+        # KILL only after 15 s; clean when VLC ended on TERM
+        out = stop()
+        quit_ok = bool(re.search(r'KILL \[\]', out or '')) and not mine().strip()
         left = mine().strip()
         audio = sh('tail -n +%d /var/log/coreaudiod.log | grep -o "it wrote [0-9]* frames" | sort -t" " -k3 -n | tail -1' % (c0 + 1)).stdout.strip()
         # recorded, not pass/fail: the underruns coreaudiod counted in the sessions of this cycle

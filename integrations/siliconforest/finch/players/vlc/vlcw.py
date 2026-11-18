@@ -89,6 +89,15 @@ def lst(name='vlc-l'):
 WIN_RE = re.compile(r'^window (\d+) app_id="([^"]*)" title="([^"]*)" mapped=(\w+) .*?focused=(\w+) content=Rect \{ pos: Point \{ x: (-?\d+), y: (-?\d+) \}, size: Size \{ w: (\d+), h: (\d+) \} \}')
 
 
+def clear_modifiers(window_id):
+    """Key-down and key-up of every modifier, to one of our own windows: a synthetic Command-Q that closed its target
+    window left Command held on the virtual seat (the key-ups found no target), and the next key became a chord."""
+    lines = ['target %d' % window_id]
+    for code in ('e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7'):
+        lines += ['key %s down' % code, 'key %s up' % code]
+    return inj('\n'.join(lines))
+
+
 def wins(text=None):
     text = lst() if text is None else text
     out = []
