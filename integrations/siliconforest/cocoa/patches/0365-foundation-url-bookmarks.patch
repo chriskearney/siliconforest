@@ -1,0 +1,171 @@
+diff --git a/src/Frameworks/Foundation/URL.subproj/NSURL.m b/src/Frameworks/Foundation/URL.subproj/NSURL.m
+index 17c3b94..b59d78d 100644
+--- a/src/Frameworks/Foundation/URL.subproj/NSURL.m
++++ b/src/Frameworks/Foundation/URL.subproj/NSURL.m
+@@ -19,6 +19,10 @@
+ #import <Foundation/NSNumber.h>
+ #import <Foundation/NSError.h>
+ #import <Foundation/FoundationErrors.h>
++#import <Foundation/NSPropertyListSerialization.h>
++#import <Foundation/NSDate.h>
++#import <Foundation/NSPathUtilities.h>
++#include <string.h>
+ #include <sys/stat.h>
+ #include <CoreFoundation/CFURL.h>
+ #include <CoreFoundation/ForFoundationOnly.h>
+@@ -432,27 +436,143 @@ static void __NSCFURLBridgeInit(void) {
+     return YES;
+ }
+ 
+-// Bookmarks (file references that survive a move) need a file-ID service this system does not
+-// have: none can be made, none can be resolved.
++/* (0365) Bookmarks: data an application keeps to find a file again later (recent documents, a chosen folder).
++ * As on macOS the data is opaque to the application; ours is "SFBK" and a binary property list with the file's path
++ * (and its path relative to a given URL), its device and inode, and the resource values asked for. Resolving finds
++ * the file by its path (relative to the given URL first); if what is there now is another file (another inode), the
++ * URL is returned and the bookmark reported stale, as macOS does when the data should be made again. A file that
++ * is no longer at its path is not found: this system has no lookup of a file by its ID (macOS follows a move within
++ * the volume), so that resolution fails with NSFileNoSuchFileError. The sandbox options (security scope) are accepted
++ * and change nothing: nothing here is sandboxed. */
++static NSString *const sfBookmarkMagic = @"SFBK";
++
++static NSError *sfBookmarkError(NSInteger code, NSURL *url) {
++    NSDictionary *info = url ? [NSDictionary dictionaryWithObject:url forKey:NSURLErrorKey] : nil;
++    return [NSError errorWithDomain:NSCocoaErrorDomain code:code userInfo:info];
++}
++
++static NSDictionary *sfBookmarkRecord(NSData *data) {
++    if (![data isKindOfClass:[NSData class]] || [data length] < 5 || memcmp([data bytes], "SFBK", 4) != 0)
++        return nil;
++    NSData *plist = [data subdataWithRange:NSMakeRange(4, [data length] - 4)];
++    id record = [NSPropertyListSerialization propertyListWithData:plist options:NSPropertyListImmutable format:NULL error:NULL];
++    return ([record isKindOfClass:[NSDictionary class]] && [[record objectForKey:@"path"] isKindOfClass:[NSString class]]) ? record : nil;
++}
++
+ - (NSData *)bookmarkDataWithOptions:(NSUInteger)options includingResourceValuesForKeys:(NSArray *)keys relativeToURL:(NSURL *)relativeURL error:(NSError **)error {
+-    if (error != NULL)
+-        *error = [NSError errorWithDomain:NSCocoaErrorDomain code:3328 /* NSFeatureUnsupportedError */ userInfo:nil];
+-    return nil;
++    (void)options;
++    if (![self isFileURL]) {
++        if (error != NULL)
++            *error = sfBookmarkError(NSFileReadUnsupportedSchemeError, self);
++        return nil;
++    }
++    NSString *path = [[self path] stringByStandardizingPath];
++    struct stat st;
++    if (path == nil || stat([path fileSystemRepresentation], &st) != 0) {
++        if (error != NULL)
++            *error = sfBookmarkError(NSFileReadNoSuchFileError, self);
++        return nil;
++    }
++    NSMutableDictionary *record = [NSMutableDictionary dictionary];
++    [record setObject:[NSNumber numberWithInt:1] forKey:@"version"];
++    [record setObject:path forKey:@"path"];
++    [record setObject:[NSNumber numberWithLongLong:(long long)st.st_dev] forKey:@"device"];
++    [record setObject:[NSNumber numberWithUnsignedLongLong:(unsigned long long)st.st_ino] forKey:@"inode"];
++    [record setObject:[NSNumber numberWithBool:S_ISDIR(st.st_mode)] forKey:@"directory"];
++    NSString *base = [relativeURL isFileURL] ? [[[relativeURL path] stringByStandardizingPath] stringByAppendingString:@"/"] : nil;
++    if (base != nil && [path hasPrefix:base] && [path length] > [base length])
++        [record setObject:[path substringFromIndex:[base length]] forKey:@"relativePath"];
++    if ([keys count] > 0) {
++        NSMutableDictionary *values = [NSMutableDictionary dictionary];
++        for (NSString *key in keys) {
++            id value = nil;
++            // (only what a property list holds; a value that is an object of another kind is left out)
++            if ([key isKindOfClass:[NSString class]] && [self getResourceValue:&value forKey:key error:NULL] && value != nil &&
++                ([value isKindOfClass:[NSString class]] || [value isKindOfClass:[NSNumber class]] ||
++                 [value isKindOfClass:[NSDate class]] || [value isKindOfClass:[NSData class]]))
++                [values setObject:value forKey:key];
++        }
++        [record setObject:values forKey:@"resourceValues"];
++    }
++    NSData *plist = [NSPropertyListSerialization dataWithPropertyList:record format:NSPropertyListBinaryFormat_v1_0 options:0 error:NULL];
++    if (plist == nil) {
++        if (error != NULL)
++            *error = sfBookmarkError(NSFileWriteUnknownError, self);
++        return nil;
++    }
++    NSMutableData *data = [NSMutableData dataWithBytes:"SFBK" length:4];
++    [data appendData:plist];
++    return data;
+ }
++
+ + (NSData *)bookmarkDataWithContentsOfURL:(NSURL *)bookmarkFileURL error:(NSError **)error {
+-    if (error != NULL)
+-        *error = [NSError errorWithDomain:NSCocoaErrorDomain code:3328 userInfo:nil];
+-    return nil;
++    NSData *data = [NSData dataWithContentsOfURL:bookmarkFileURL options:0 error:error];
++    if (data == nil)
++        return nil;
++    if (sfBookmarkRecord(data) == nil) {
++        if (error != NULL)
++            *error = sfBookmarkError(NSFileReadCorruptFileError, bookmarkFileURL);
++        return nil;
++    }
++    return data;
+ }
++
+++ (BOOL)writeBookmarkData:(NSData *)bookmarkData toURL:(NSURL *)bookmarkFileURL options:(NSUInteger)options error:(NSError **)error {
++    (void)options;
++    if (sfBookmarkRecord(bookmarkData) == nil) {
++        if (error != NULL)
++            *error = sfBookmarkError(NSFileWriteUnknownError, bookmarkFileURL);
++        return NO;
++    }
++    return [bookmarkData writeToURL:bookmarkFileURL options:NSDataWritingAtomic error:error];
++}
++
++- (instancetype)initByResolvingBookmarkData:(NSData *)data options:(NSUInteger)options relativeToURL:(NSURL *)relativeURL bookmarkDataIsStale:(BOOL *)isStale error:(NSError **)error {
++    NSURL *url = [[self class] URLByResolvingBookmarkData:data options:options relativeToURL:relativeURL bookmarkDataIsStale:isStale error:error];
++    [self release];
++    return [url retain];
++}
++
+ + (instancetype)URLByResolvingBookmarkData:(NSData *)data options:(NSUInteger)options relativeToURL:(NSURL *)relativeURL bookmarkDataIsStale:(BOOL *)isStale error:(NSError **)error {
++    (void)options;
+     if (isStale != NULL)
+         *isStale = NO;
++    NSDictionary *record = sfBookmarkRecord(data);
++    if (record == nil) {
++        if (error != NULL)
++            *error = sfBookmarkError(NSFileReadCorruptFileError, nil);
++        return nil;
++    }
++    NSMutableArray *candidates = [NSMutableArray array];
++    NSString *relative = [record objectForKey:@"relativePath"];
++    if ([relativeURL isFileURL] && [relative isKindOfClass:[NSString class]])
++        [candidates addObject:[[relativeURL path] stringByAppendingPathComponent:relative]];
++    [candidates addObject:[record objectForKey:@"path"]];
++    for (NSString *path in candidates) {
++        struct stat st;
++        if (stat([path fileSystemRepresentation], &st) != 0)
++            continue;
++        if (isStale != NULL)
++            *isStale = (unsigned long long)st.st_ino != [[record objectForKey:@"inode"] unsignedLongLongValue] ||
++                       (long long)st.st_dev != [[record objectForKey:@"device"] longLongValue];
++        return [NSURL fileURLWithPath:path isDirectory:S_ISDIR(st.st_mode)];
++    }
+     if (error != NULL)
+-        *error = [NSError errorWithDomain:NSCocoaErrorDomain code:3328 userInfo:nil];
+-    return nil;
+-}
+-+ (NSDictionary *)resourceValuesForKeys:(NSArray *)keys fromBookmarkData:(NSData *)data {
++        *error = sfBookmarkError(NSFileNoSuchFileError, [NSURL fileURLWithPath:[record objectForKey:@"path"]]);
+     return nil;
+ }
+ 
+++ (NSDictionary *)resourceValuesForKeys:(NSArray *)keys fromBookmarkData:(NSData *)data {
++    NSDictionary *values = [sfBookmarkRecord(data) objectForKey:@"resourceValues"];
++    if (![values isKindOfClass:[NSDictionary class]])
++        return nil;
++    NSMutableDictionary *result = [NSMutableDictionary dictionary];
++    for (NSString *key in keys) {
++        id value = [values objectForKey:key];
++        if (value != nil)
++            [result setObject:value forKey:key];
++    }
++    return result;
++}
++
+ @end

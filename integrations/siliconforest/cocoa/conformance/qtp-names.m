@@ -1,4 +1,4 @@
-// qtp-names.m - the names Cocoa patches 0340-0362 and the framework wrappers add (first user: Apple's
+// qtp-names.m - the names Cocoa patches 0340-0366 and the framework wrappers add (first user: Apple's
 // QuickTime Player, docs/roadmap/issues/SF-AI-quicktime.md), checked without a window.
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
@@ -287,6 +287,54 @@ static void fullScreenStrip(void)
     check(mode([NSWindow class], selector, (1 << 10)) == 0, @"options without a menu-bar bit keep the strip");
 }
 
+/* NSURL bookmark data (libFoundation 0365) as macOS's API behaves: made for an existing file URL and resolved to it
+   again, not stale while the same file is there, stale when another file has taken its path, an error when nothing
+   is there; relative to a folder that moved; resource values kept; a bookmark file written and read back */
+static void bookmarks(NSString *dir)
+{
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *folder = [dir stringByAppendingPathComponent:@"bookmarks"], *path = [folder stringByAppendingPathComponent:@"film.mov"];
+    [fm createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:NULL];
+    [[@"one" dataUsingEncoding:NSUTF8StringEncoding] writeToFile:path atomically:NO];
+    NSURL *url = [NSURL fileURLWithPath:path];
+    NSError *error = nil;
+    BOOL stale = YES;
+    SEL make = @selector(bookmarkDataWithOptions:includingResourceValuesForKeys:relativeToURL:error:);
+    if (![url respondsToSelector:make]) {
+        check(NO, @"-[NSURL bookmarkDataWithOptions:includingResourceValuesForKeys:relativeToURL:error:] exists");
+        return;
+    }
+    NSData *data = [url bookmarkDataWithOptions:0 includingResourceValuesForKeys:[NSArray arrayWithObject:@"NSURLNameKey"] relativeToURL:nil error:&error];
+    check(data != nil && [data length] > 0, [NSString stringWithFormat:@"a file URL gives bookmark data (error %@)", error]);
+    NSURL *again = [NSURL URLByResolvingBookmarkData:data options:0 relativeToURL:nil bookmarkDataIsStale:&stale error:&error];
+    check([[again path] isEqual:path] && !stale, [NSString stringWithFormat:@"the bookmark resolves to the file, not stale (%@, stale %d)", [again path], stale]);
+    NSDictionary *values = [NSURL resourceValuesForKeys:[NSArray arrayWithObject:@"NSURLNameKey"] fromBookmarkData:data];
+    printf("QTPNAMES value bookmark-resource-values %s\n", [[values description] UTF8String]);
+    NSString *bookmarkFile = [dir stringByAppendingPathComponent:@"film.bookmark"];
+    check([NSURL writeBookmarkData:data toURL:[NSURL fileURLWithPath:bookmarkFile] options:0 error:&error] &&
+          [[NSURL bookmarkDataWithContentsOfURL:[NSURL fileURLWithPath:bookmarkFile] error:&error] isEqual:data], @"a bookmark file is written and read back");
+    // another file takes the path: found, stale
+    NSString *other = [folder stringByAppendingPathComponent:@"other.mov"];
+    [[@"two" dataUsingEncoding:NSUTF8StringEncoding] writeToFile:other atomically:NO];
+    rename([other fileSystemRepresentation], [path fileSystemRepresentation]);
+    again = [NSURL URLByResolvingBookmarkData:data options:0 relativeToURL:nil bookmarkDataIsStale:&stale error:&error];
+    check([[again path] isEqual:path] && stale, @"another file at the path: resolved, stale");
+    // relative to a folder that moved
+    NSURL *folderURL = [NSURL fileURLWithPath:folder isDirectory:YES];
+    NSData *relative = [url bookmarkDataWithOptions:0 includingResourceValuesForKeys:nil relativeToURL:folderURL error:&error];
+    NSString *moved = [dir stringByAppendingPathComponent:@"bookmarks-moved"];
+    rename([folder fileSystemRepresentation], [moved fileSystemRepresentation]);
+    again = [NSURL URLByResolvingBookmarkData:relative options:0 relativeToURL:[NSURL fileURLWithPath:moved isDirectory:YES] bookmarkDataIsStale:&stale error:&error];
+    check([[again path] isEqual:[moved stringByAppendingPathComponent:@"film.mov"]], [NSString stringWithFormat:@"relative to a folder that moved: found in the new folder (%@)", [again path]]);
+    // nothing there any more
+    error = nil;
+    again = [NSURL URLByResolvingBookmarkData:data options:0 relativeToURL:nil bookmarkDataIsStale:&stale error:&error];
+    check(again == nil && [[error domain] isEqual:NSCocoaErrorDomain] && [error code] == NSFileNoSuchFileError, [NSString stringWithFormat:@"no file at the path: nil and NSFileNoSuchFileError (%@)", error]);
+    error = nil;
+    check([[NSURL URLWithString:@"https://example.com/"] bookmarkDataWithOptions:0 includingResourceValuesForKeys:nil relativeToURL:nil error:&error] == nil && error != nil, @"a URL that is not a file's gives no bookmark and an error");
+    check([NSURL URLByResolvingBookmarkData:[NSData dataWithBytes:"junk" length:4] options:0 relativeToURL:nil bookmarkDataIsStale:&stale error:&error] == nil && error != nil, @"data that is not a bookmark resolves to nil with an error");
+}
+
 int main(void)
 {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
@@ -305,6 +353,7 @@ int main(void)
     paths();
     bundles();
     fullScreenStrip();
+    bookmarks(dir);
     [[NSFileManager defaultManager] removeItemAtPath:dir error:NULL];
     printf("QTPNAMES result failed=%d\n", failed);
     [pool release];
