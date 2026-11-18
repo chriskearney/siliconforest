@@ -53,7 +53,8 @@ in [
   { name = "mdnsd-quiet"; exclude = common; }
   { name = "wifipm"; exclude = common; }
   { name = "sf-backlight"; exclude = common; }
-  { name = "sysaudio"; exclude = common; }
+  # The Finch family owns AudioToolbox; sysaudio supplies CoreAudio/AudioUnit.
+  { name = "sysaudio"; exclude = common ++ [ "System/Library/Frameworks/AudioToolbox.framework/*" ]; }
   { name = "sfplay"; exclude = common; }
   { name = "system-tools"; exclude = common; }
   { name = "rename-commit"; exclude = common; optional = true; }

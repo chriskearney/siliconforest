@@ -63,7 +63,11 @@ let
     sf-backlight = recipe "m1-dcp/dcp-flip-test.nix";
     sysaudio = (recipe "m1-sound/sysaudio/build-sysaudio.nix").all;
     sfplay = recipe "m1-sound/build-sfplay.nix";
-    audiotoolbox = recipe "finch/AudioToolbox/install.nix";
+    audiotoolbox = import ./audio-family.nix {
+      inherit pkgs;
+      family = recipe "finch/AudioToolbox/install.nix";
+      provider = recipe "finch/AudioToolbox/units/build.nix";
+    };
     coremedia = recipe "finch/CoreMedia/build.nix";
     videotoolbox = recipe "finch/VideoToolbox/encoder/build.nix";
     avfaudio = recipe "finch/AVFAudio/engine/realtime.nix";
@@ -96,7 +100,13 @@ let
     rename-commit = recipe "m1-storage/build-sf-rename-commit.nix";
     openssh = recipe "m1-storage/userland/build-openssh.nix";
     ffmpeg-x264 = recipe "desktop/recording/build-ffmpeg-x264.nix";
-    sfvideo = recipe "m1-avd/player/build-sfvideo.nix" { };
+    # Match the installed hardware-decoder/GL variant and its local-bin layout.
+    sfvideo = pkgs.runCommand "siliconforest-sfvideo-release" { } ''
+      src=${recipe "m1-avd/build-sfvideo-sfavd.nix" { gl = true; }}
+      mkdir -p "$out/usr/local/bin" "$out/usr/local/lib"
+      cp "$src/usr/bin/sfvideo-gl" "$out/usr/local/bin/"
+      cp -R "$src/usr/local/lib/mesa-asahi-wl" "$out/usr/local/lib/"
+    '';
   };
   image = import ./image.nix {
     inherit pkgs pieces version;
@@ -113,6 +123,7 @@ in {
   packages = pieces // {
     source-manifest = pkgs.writeText "siliconforest-sources.json" (builtins.readFile ../sources.lock);
     base-source = base.renamed;
+    base-build-source = base.buildSource;
     rust-toolchain = desktop.rust;
     m1-kernel = recipe "m1-kernel50/build-kc.nix";
     boot-stage1 = boot.stage1;

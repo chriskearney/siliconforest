@@ -116,8 +116,8 @@ let
   '';
   layersJson = pkgs.writeText "layers.json" (builtins.toJSON layers);
   lateJson = pkgs.writeText "late-layers.json" (builtins.toJSON lateLayers);
-  # fixed per release (./identity.nix): two builds give the same bytes, and stage 2 is built
-  # for exactly this root (boot.stage2 = release/boot-stages.nix { rootUUID = identity.rootUUID; })
+  # Fixed per release (./identity.nix); stage 2 binds to exactly this root UUID.
+  # A fixed UUID alone does not establish bit-for-bit build reproducibility.
   fsUUID = identity.rootUUID;
   features = "has_journal ext_attr resize_inode dir_index filetype extent 64bit flex_bg metadata_csum_seed sparse_super large_file huge_file dir_nlink extra_isize metadata_csum";
 

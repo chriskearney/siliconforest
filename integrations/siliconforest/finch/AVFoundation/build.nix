@@ -33,6 +33,7 @@ in pkgs.stdenv.mkDerivation {
     ln -s A $fw/Versions/Current
     ln -s Versions/Current/AVFoundation $fw/AVFoundation
     ln -s Versions/Current/Headers $fw/Headers
+    ln -s Versions/Current/Resources $fw/Resources
     cp LICENSE* $fw/Versions/A/Resources/Licenses/
   '';
   dontFixup = true;

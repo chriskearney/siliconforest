@@ -41,15 +41,33 @@ let
     chmod -R u+w "$out/external/corecrypto"
     python3 ${renameTools}/sf_rename.py tree "$out"
   '';
+  # Preserve the locked generated tree above. This build-only overlay makes
+  # every invocation of upstream's real Mach-O linker zero N_OSO timestamps,
+  # including links that name native-ld directly rather than a compiler shim.
+  buildSource = pkgs.runCommand "siliconforest-${sourceName}-source" {
+    nativeBuildInputs = [ pkgs.python3 ];
+  } ''
+    cp -R ${renamed} "$out"
+    chmod -R u+w "$out"
+    python3 - "$out/nix/pkgs/toolchain/native-ld.nix" <<'PY'
+    from pathlib import Path
+    import sys
+    path = Path(sys.argv[1])
+    source = path.read_text()
+    needle = 'ulimit -s unlimited 2>/dev/null || true\n'
+    assert source.count(needle) == 1, 'native-ld wrapper layout changed'
+    path.write_text(source.replace(needle, 'export ZERO_AR_DATE=1\n' + needle))
+    PY
+  '';
   inputs = rootInputs // {
     corecrypto-src = renamed + "/external/corecrypto";
   } // pkgs.lib.optionalAttrs (sourceName != "upstream-cocoa") {
     sf-sb-key = renamed + "/nix/secureboot/no-key";
   };
-  pd = (import (renamed + "/flake.nix")).outputs (inputs // { self = pd; })
-    // { outPath = renamed; inherit inputs; };
+  pd = (import (buildSource + "/flake.nix")).outputs (inputs // { self = pd; })
+    // { outPath = buildSource; inherit inputs; };
 in {
-  inherit pd pkgs sources renamed renameTools;
+  inherit pd pkgs sources renamed renameTools buildSource;
   rev = if forkRev != null then forkRev
     else if sourceName == "upstream-cocoa" then lock.cocoaRename.expectedForkCommit
     else lock.baseRename.expectedForkCommit;
