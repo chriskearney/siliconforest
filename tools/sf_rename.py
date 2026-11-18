@@ -160,7 +160,7 @@ EXCEPT_FILES = {
     OLD_ROOT + 'm1-bringup/normal_image.py': 'hash-pinned host-side image tool; never edited (its PINS key "puredarwin" names upstream)',
     OLD_ROOT + 'rebase/pd.nix': 'kept by name: it selects the upstream PureDarwin revision (edited by hand for the fork revision)',
     'README.md': 'edited by hand: it says what is SiliconForest and what is upstream PureDarwin',
-    'LICENSE_STATUS.md': 'licence statement', 'tools/sf_rename.py': 'the rule table', 'tools/sf_rename_data.json': 'the vocabularies',
+    'LICENSE_STATUS.md': 'licence statement', 'LICENSING.md': 'licence statement: it names upstream PureDarwin', 'tools/sf_rename.py': 'the rule table', 'tools/sf_rename_data.json': 'the vocabularies',
     'docs/design/siliconforest-naming.md': 'the naming design: it lists the old names',
     'docs/design/siliconforest-naming-m1-install.md': 'the install plan: it describes the installed system by its old names',
     'tools/sf_rename_stage.py': 'the stage builder for the installed system: its example names an old path',
