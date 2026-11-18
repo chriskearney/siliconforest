@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 # The kernel collection of the QEMU desktop loop: upstream's arm64 `virt` collection (RELEASE
-# kernel by default) with the boot kexts rebuilt from a patched tree. The one patch makes
-# /dev/usb_hid_kbd appear for QEMU's USB keyboard (see sfhid-publish-keyboard.patch).
+# kernel by default) with boot kexts patched for the USB keyboard and virtio-net name.
+# ramfb-normal-memory.patch maps the platform firmware framebuffer as Normal non-cacheable
+# DRAM: Device attributes fault on unaligned memcpy stores when a terminal redraws.
 #   [SF_PD=pin] nix-build ... build-kc.nix [--argstr kernelConfig debug] --no-out-link   ->  <out>/kernel
 { kernelConfig ? "release" }:
 let
@@ -12,7 +13,7 @@ let
     src = pkgs.applyPatches {
       name = "siliconforest-qemu-dev-kexts-source";
       src = old.src;
-      patches = [ ./sfhid-publish-keyboard.patch ./virtio-net-name-interface.patch ];
+      patches = [ ./sfhid-publish-keyboard.patch ./virtio-net-name-interface.patch ./ramfb-normal-memory.patch ];
     };
   });
   kc = if kernelConfig == "debug" then p.kc-arm64-debug else p.kc-arm64;

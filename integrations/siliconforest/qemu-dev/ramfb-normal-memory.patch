@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 SiliconForest contributors
+# Applied only by qemu-dev/build-kc.nix; the M1 collection is unchanged.
+diff --git a/src/Kernel/Extensions/IOGOPFramebuffer/IOGOPFramebuffer.cpp b/src/Kernel/Extensions/IOGOPFramebuffer/IOGOPFramebuffer.cpp
+--- a/src/Kernel/Extensions/IOGOPFramebuffer/IOGOPFramebuffer.cpp
++++ b/src/Kernel/Extensions/IOGOPFramebuffer/IOGOPFramebuffer.cpp
+@@ -29,6 +29,7 @@
+ static uint8_t *gFb0Base;
+ static IODeviceMemory *gFb0Memory;
+ static IOMemoryMap *gFb0Map;
++static IOOptionBits gFb0CacheMode = kIOGOPFBMapCacheMode;
+ static size_t gFb0Size;
+ static thread_call_t gFb0RetryCall;
+ static IONotifier *gFb0BSDNotifier;
+@@ -153,7 +154,7 @@
+             return;
+         }
+
+-        gFb0Map = gFb0Memory->map(kIOMapAnywhere | kIOGOPFBMapCacheMode);
++        gFb0Map = gFb0Memory->map(kIOMapAnywhere | gFb0CacheMode);
+         if (!gFb0Map) {
+             DEBUG("failed to map /dev/fb0 physical range %p size=%lu\n",
+                   physicalBase, (unsigned long)size);
+@@ -497,6 +498,19 @@
+     height = bootDisplay.v_height;
+     pitch  = bootDisplay.v_rowBytes;
+     bpp    = 32;
++#if defined(__arm64__)
++    if (OSDynamicCast(IOPlatformDevice, provider) != NULL) {
++        /* QEMU ramfb is firmware-reserved DRAM, not a PCI device BAR.
++         * Match the boot console: Normal non-cacheable memory permits the
++         * unaligned SIMD stores emitted by memcpy for damaged rectangles.
++         * Device memory raises an ARM alignment fault on those stores.
++         * IOFramebufferUserClient uses this property for user VRAM maps;
++         * give /dev/fb0 the same attribute to avoid inconsistent aliases. */
++        setProperty("sf-vram-write-combine", kOSBooleanTrue);
++        gFb0CacheMode = kIOMapWriteCombineCache;
++        IOLog("IOGOP: platform firmware VRAM uses Normal non-cacheable mappings\n");
++    }
++#endif
+     fb0_publish((uint8_t *)fbBase, (size_t)pitch * height);
+
+     DEBUG("framebuffer: %dx%d @ %p\n", width, height, fbBase);
