@@ -33,15 +33,19 @@ for n in range(int(sys.argv[1]) if len(sys.argv) > 1 else 12):
                 if not mine().strip():
                     quit_ok = True; break
         left = mine().strip()
-        audio = sh('tail -n +%d /var/log/coreaudiod.log | grep -o "it wrote [0-9]* frames" | tail -1' % (c0 + 1)).stdout.strip()
+        audio = sh('tail -n +%d /var/log/coreaudiod.log | grep -o "it wrote [0-9]* frames" | sort -t" " -k3 -n | tail -1' % (c0 + 1)).stdout.strip()
+        # recorded, not pass/fail: the underruns coreaudiod counted in the sessions of this cycle
+        sessions = sh('tail -n +%d /var/log/coreaudiod.log | grep "Speakers: closed"' % (c0 + 1)).stdout.strip().splitlines()
+        underruns = [int(m) for l in sessions for m in re.findall(r'(\d+) underruns', l)]
         fails = sh("grep -c -e 'Failure' -e 'SFCATCH' -e 'Assertion' -e 'exception' /var/root/Library/Logs/vlc-sf.log").stdout.strip()
         row = dict(cycle=n + 1, open=r.stdout.strip(), started=bool(procs), window=bool(w), picture_mean=round(float(pic.mean()), 1),
                    picture_std=round(float(pic.std()), 1), decoder_jobs=j1 - j0, audio=audio, quit_clean=quit_ok, left=left,
-                   log_failures=fails, seconds=round(time.time() - t0, 1))
+                   log_failures=fails, audio_sessions=len(sessions), underruns=underruns, seconds=round(time.time() - t0, 1))
         print(json.dumps(row), flush=True); res.append(row)
         if left:
             print(stop())
     time.sleep(2)
 ok = [r for r in res if r['started'] and r['window'] and r['picture_std'] > 15 and r['decoder_jobs'] > 100 and r['quit_clean'] and r['log_failures'] in ('0', '')]
 print('cycles passed: %d of %d' % (len(ok), len(res)))
+print('coreaudiod underruns per cycle (recorded, not pass/fail):', [r['underruns'] for r in res])
 json.dump(res, open(str(REPO / 'runs/vlc') + '/' + 'cycles-%s.json' % time.strftime('%H%M'), 'w'), indent=1)

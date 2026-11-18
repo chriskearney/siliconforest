@@ -551,6 +551,11 @@
 #         macOS (VLC's NSOpenGLView output asserted it); a view wanting the best resolution gets a drawable in pixels
 #   0328  AppKit (VLC): the first layers-only frame after a window was resized draws the window whole (its backing store is
 #         new and empty: VLC's picture stood over the whole window, without menus and controls, during a corner drag)
+#   0329  QuartzCore (VLC): CAOpenGLLayer reads its picture back only from its own context: where the application's drawing
+#         left another context current, or none, the layer keeps its last picture (VLC keeps the context that was current
+#         before its draw in one variable for all its threads; when its video thread asked for the context during a draw
+#         on the main thread, that draw ended with no context current: black frames, about 0.1 s, during a corner drag).
+#         SF_CAOGL_TRACE=1 says when; SF_CAOGL_TRACE=2 also logs every render (time, thread, size, a sample of the picture)
 #   0304, 0305w (FXPERF2's FX-029 follow-ups, adopted by TERM11 unchanged; opt-in SFFX_GPU_DAMAGE=1): a layer-only
 #         flush with nothing drawn into the window's own backing store tells the window server so, which then skips its
 #         whole-backing-store compare (11 MB a present; ~10 % of Firefox's parent main thread on cnn.com)
@@ -833,6 +838,7 @@ let
     ./patches/0320-quartzcore-opaque-opengl-layer-ignores-alpha.patch
     ./patches/0321-quartzcore-layer-context-reclaims-its-root.patch
     ./patches/0326-quartzcore-opengl-layer-current-before-lock-and-keeps-its-picture.patch
+    ./patches/0329-quartzcore-opengl-layer-reads-back-from-its-own-context.patch
   ];
   quartzcore = pd."quartzcore-msm-arm64".override { src = quartzcoreSrc; };
   wp = "${pd."wayland-protocols"}/share/wayland-protocols";
