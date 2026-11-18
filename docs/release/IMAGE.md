@@ -207,9 +207,11 @@ carries (the local driver `runs/image/local.nix`, not committed: store paths). T
 build of `release/packages.nix` was not finished when this was written.
 
 - **Root image** builds; its own checks pass (the M1 root's exact ext4 feature line,
-  `e2fsck -fn` clean, both installers rc 0). `nix-build --check` rebuilt the root, the boot
-  files and the release files a second time to the same bytes (same machine, same inputs; a
-  build on another machine is CODEX-BUILD's from-clone check).
+  `e2fsck -fn` clean, both installers rc 0). With Homebrew, the Activity Monitor libraries and
+  the Firefox runtime in it, `nix-build --check` rebuilt the root, the boot files, the release
+  files and the root's own steps (the root tree, the Homebrew prefix, the Activity Monitor
+  libraries, the Firefox runtime, the tree's files) a second time to the same bytes (same
+  machine, same inputs; a build on another machine is CODEX-BUILD's from-clone check).
 - **Compared with the M1** (`compare.py`, the build with Homebrew, the Activity Monitor libraries,
   the Thai fonts and the Finch frameworks): 71,942 entries the same. 48 files differ in content,
   each explained: 20 files of an older build of the Cocoa root the M1 still carries, others of
@@ -231,20 +233,27 @@ build of `release/packages.nix` was not finished when this was written.
   `SHA256SUMS`. `sf_personalize.py` packs `sf/kernel.bin` from the real boot files with
   invented partition values; both records check; `boot.bin` is copied unchanged.
 - **QEMU** (`release/image/qemu/prepare-run.sh`, then `run-vnc.sh`; arm64 `virt`, TCG, four
-  vCPUs, host load 25 to 60): the kernel finds the root by the release's UUID and mounts it;
-  launchd starts the root's jobs, the SSH server makes its host key, `sf-firstboot` writes the
-  pointer set (83 cursors, its log); perl, zsh and ssh run. With the compositor patch
-  `wm-darwin-app-ready-deadline-env.patch` and the QEMU run's longer deadlines, the terminal
-  starts, reports ready and its window is on screen with the shell's prompt (pictures through
-  QEMU's VNC server, runs 9, 10 and 16: `runs/image/qemu/run16/shots`). The dock starts (its log),
-  but no picture shows it: the terminal fills the 800x600 screen. Typing is not shown: every run
-  in which keys reached the guest (through the emulated USB keyboard over VNC, or the autopilot's
-  synthetic records) and several without ended with the compositor killed by SIGBUS. A core dump
-  (run 16) places it in `wm_darwin::presenter::Scanout::write_damage`, writing into the
-  firmware framebuffer's mapping, which the dump reports unreadable: the QEMU graphics path
-  (IOGOPFramebuffer on ramfb), not a file of the root. It happens with the M1's own compositor
-  build as well, at 800x600 and 1024x768, with and without the kernel's framebuffer console.
-  Open, for the desktop's and the QEMU loop's owners.
+  vCPUs, a 1024x768 screen, host load 20 to 60): the kernel finds the root by the release's
+  UUID and mounts it; launchd starts the root's jobs, the SSH server makes its host key,
+  `sf-firstboot` writes the pointer set; perl, zsh and ssh run. The desktop comes up with the
+  forest wallpaper, the dock (launcher strip and instrument column) and the terminal; a
+  command typed on the emulated USB keyboard (through QEMU's VNC server) runs in the terminal
+  and its output is on screen (`uname -m` printed `arm64`), and the desktop and dock stay up
+  afterwards. Pictures: `runs/image/qemu/run20/shots/latest.png` (dock and terminal) and
+  `typed.png` (after typing), taken over VNC, not inside the guest. Three compositor/dock
+  patches made this work (`integrations/siliconforest/terminal-app/compositor/`):
+  - `wm-darwin-app-ready-deadline-env.patch`: the 25 s READY deadline and the autopilot's 15 s
+    wait can be set from the environment (defaults unchanged); the QEMU run sets them longer,
+    because the terminal takes about 27 s to start under emulation.
+  - `wm-darwin-gop-aligned-word-stores.patch`: the compositor died with SIGBUS in QEMU as soon
+    as a damaged rectangle started at an x not divisible by four pixels (typing does that). A
+    core dump showed memcpy's `stp q0, q1` to an address ending in 0x...b04 inside the IOGOP
+    framebuffer mapping, from `Scanout::write_damage`: 16-byte and unaligned vector stores fault
+    on that device memory. The damage path, `snapshot` and `restore` now use aligned word
+    accesses, as the full-frame path already did.
+  - `dock-dead-tile-font-loan.patch`: under emulation the dock evicts widgets that block its UI
+    thread, and drawing the evicted widget's dead tile borrowed the font system a second time
+    ("RefCell already borrowed"); the dock died. The loans now end before the dead tile is drawn.
 - **Firefox's runtime**: 840 entries byte for byte with the M1's; the launcher's dry plan equals
   the M1's. Firefox itself was not started (no Mozilla bundle, no Homebrew in the image).
 - Not done: an install on any machine; the from-clone build and its reproducibility.
