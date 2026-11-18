@@ -607,7 +607,7 @@
    "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
    "symbol": "__kLSSharedFileListItemBeforeFirst",
    "kind": "constant",
-   "note": "private name; value inferred; nothing in the system acts on it",
+   "note": "private name; the system's own kLSSharedFileListItemBeforeFirst marker, taken when the library loads (a marker of our own crashed LSSharedFileListInsertItemURL)",
    "provided_by": "QuickTime additions"
   },
   {

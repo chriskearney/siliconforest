@@ -621,7 +621,7 @@
 #         the file's path URL, -filePathURL, -isFileReferenceURL
 #   0354, 0355 libFoundation (QTP, applied by ../terminal-app/build-foundation.nix): to-many change notifications;
 #         NSFileManager URL forms, -setByAddingObjectsFromSet:, security scope (none), resource setting (refused),
-#         locale display names
+#         locale display names; 0359 libFoundation: -[NSError recoveryAttempter], -helpAnchor
 #   0353  AppKit (QTP): names a document window is made with: NSWindow's layer-hosting request and title-bar
 #         opacity (kept, answered, no effect here), -[NSDocument _windowTitleDisplayName], system-spacing anchors,
 #         -[NSWindow isModalPanel], NSMenu's names (_setMenuName:, _menusWithName:), -[NSMenuItem
@@ -635,6 +635,10 @@
 #         New Document button setting (no such button here), -[NSDocument _isDuplicate]/_originalDocumentURL (no Duplicate),
 #         NSMenuItem's identifier (and from nibs), NSDocument's restorable-state methods (nothing is restored here) and
 #         -unblockUserInteraction
+#   0358  AppKit (QTP): -[NSWindowController setDocument:] brings the window's title up to date, as on macOS (a window
+#         made in code kept an empty title); -[NSScreen devicePixelCounts]
+#   0360  AppKit (QTP): a document window's title is the document's display name, as on macOS (the application's
+#         name was appended: "movie.mov - QuickTime Player")
 #   0009  Security: SecItemCopyMatching writes its result on every path and answers
 #         errSecItemNotFound when nothing was found (Firefox crashed on the unwritten result)
 #   (0007 and 0008 are libSystem's sandbox profile compiler: ./build-libsystem-cocoa.nix)
@@ -760,6 +764,8 @@ let
     ./patches/0353-appkit-document-window-names.patch
     ./patches/0356-appkit-player-view-names.patch
     ./patches/0357-appkit-movie-window-names.patch
+    ./patches/0358-appkit-window-title-and-device-pixels.patch
+    ./patches/0360-appkit-document-window-title-is-the-name.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
     ./patches/0004-windowserver-server-decorations-and-scale.patch

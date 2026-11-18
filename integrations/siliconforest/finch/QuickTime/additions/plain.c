@@ -104,9 +104,17 @@ SF_STRING(kUTTypeAudiovisualContent, "public.audiovisual-content");
 SF_STRING(_kLSSharedFileListRecentDocumentItems, "com.apple.LSSharedFileList.RecentDocuments");
 SF_STRING(kLSSharedFileListApplicationRecentDocuments, "com.apple.LSSharedFileList.ApplicationRecentDocuments");
 SF_STRING(_kLSSharedFileListRecentItemsMaxAmount, "com.apple.LSSharedFileList.MaxAmount");
-/* A position marker, not an item: only its identity matters. */
+/* A position marker, not an item: only its identity matters, and it must be the one this system's
+ * LSSharedFileListInsertItemURL recognises (kLSSharedFileListItemBeforeFirst): a marker of our own was taken
+ * for an item and compared as a CoreFoundation object (QuickTime Player crashed adding a recent document).
+ * Set when the library loads; our own marker only if the system has none. */
 static const char sfBeforeFirst = 0;
-SF_EXPORT const void *const _kLSSharedFileListItemBeforeFirst = &sfBeforeFirst;
+SF_EXPORT const void *_kLSSharedFileListItemBeforeFirst = &sfBeforeFirst;
+__attribute__((constructor)) static void sfLinkBeforeFirst(void) {
+    const void *const *systemMarker = dlsym(RTLD_DEFAULT, "kLSSharedFileListItemBeforeFirst");
+    if (systemMarker != NULL && *systemMarker != NULL)
+        _kLSSharedFileListItemBeforeFirst = *systemMarker;
+}
 SF_EXPORT CFTypeRef LSSharedFileListCopyProperty(void *list, CFStringRef name) {
     (void)list; (void)name;
     SF_ABSENT("LSSharedFileListCopyProperty: shared file lists keep no properties here (NULL)");

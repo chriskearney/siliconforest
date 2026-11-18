@@ -41,6 +41,7 @@
 #   ../cocoa/patches/0355: NSFileManager's URL forms of remove, copy and directory contents, -[NSSet
 #     setByAddingObjectsFromSet:], security-scoped access (none here), -setResourceValue:forKey:error: (refused),
 #     NSLocale's display names for language, country and locale codes
+#   ../cocoa/patches/0359: -[NSError recoveryAttempter] and -helpAnchor (AppKit asks when it presents an error)
 # A file every Objective-C program loads: QEMU pass and the guarded procedure before it replaces
 # the disk root's; until then it is tried from a scratch prefix (DYLD_LIBRARY_PATH).
 #
@@ -49,7 +50,7 @@ let
   pd = (import ../rebase/pd.nix).pd;
 in pd.packages.x86_64-linux."foundation-arm64".overrideAttrs (old: {
   pname = "siliconforest-foundation-macos-apps";
-  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ../cocoa/patches/0347-foundation-url-resource-values.patch ../cocoa/patches/0348-foundation-bundle-without-a-path-is-nil.patch ../cocoa/patches/0349-foundation-path-with-components.patch ../cocoa/patches/0352-foundation-file-reference-urls-by-path.patch ../cocoa/patches/0354-foundation-to-many-change-notifications.patch ../cocoa/patches/0355-foundation-file-set-locale-names.patch ];
+  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ../cocoa/patches/0347-foundation-url-resource-values.patch ../cocoa/patches/0348-foundation-bundle-without-a-path-is-nil.patch ../cocoa/patches/0349-foundation-path-with-components.patch ../cocoa/patches/0352-foundation-file-reference-urls-by-path.patch ../cocoa/patches/0354-foundation-to-many-change-notifications.patch ../cocoa/patches/0355-foundation-file-set-locale-names.patch ../cocoa/patches/0359-foundation-error-recovery-attempter.patch ];
   patchFlags = [ "-p4" ];
   buildPhase = let
     r = builtins.replaceStrings
