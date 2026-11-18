@@ -24,7 +24,7 @@ REC = '/private/var/db/sfvlc/logs/%s.mov' % tag
 env = [e for e in extra if re.match(r'^[A-Z_][A-Z0-9_]*=', e)]; args = [e for e in extra if e not in env]
 with hold('VLC: %d corner drags of the playing window, recorded by the compositor, layer trace (%s)' % (ndrags, tag)):
     print(stop()); sh('rm -f ' + RC + ' ' + REC)
-    print(launch(tag, 'SFVLC_HARDWARE=1', 'SF_CGL_TRACE=1', 'SF_CAOGL_TRACE=2', *env, '--glconv=none', '--start-time=60', *args, *RCARGS, '/Users/sf/Movies/Big Buck Bunny (3 min).mp4')); time.sleep(7)
+    print(launch(tag, 'SFVLC_HARDWARE=1', 'SFVLC_NOCATCH=1', 'SF_CGL_TRACE=1', 'SF_CAOGL_TRACE=2', *env, '--glconv=none', '--start-time=60', *args, *RCARGS, '/Users/sf/Movies/Big Buck Bunny (3 min).mp4')); time.sleep(7)
     for attempt in range(4):
         rect, corner = main()
         if abs(rect[2] - 1280) < 8 and abs(rect[3] - 813) < 8: break

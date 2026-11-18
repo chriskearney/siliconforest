@@ -29,7 +29,7 @@ def run(tag, extra, ndrags=12):
 if __name__ == '__main__':
     with hold('VLC: 12 drags of the playing window (%s)' % tag):
         print(stop()); sh('rm -f ' + RC)
-        print(launch(tag, 'SFVLC_HARDWARE=1', 'SF_CGL_TRACE=1', 'SF_CAOGL_TRACE=1', *extra, '--glconv=none', *RCARGS, '/Users/sf/Movies/Big Buck Bunny (3 min).mp4')); time.sleep(7)
+        print(launch(tag, 'SFVLC_HARDWARE=1', 'SFVLC_NOCATCH=1', 'SF_CGL_TRACE=1', 'SF_CAOGL_TRACE=1', *extra, '--glconv=none', *RCARGS, '/Users/sf/Movies/Big Buck Bunny (3 min).mp4')); time.sleep(7)
         for attempt in range(4):
             rect, corner = main()
             if abs(rect[2] - 1280) < 8 and abs(rect[3] - 813) < 8:

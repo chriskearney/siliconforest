@@ -84,7 +84,9 @@ def stop():
     for r in m:
         try: os.kill(r[0], signal.SIGTERM)
         except ProcessLookupError: pass
-    end = time.time() + 5
+    # 15 s before KILL: VLC with its NSOpenGLView output takes 5-6 s to act on TERM, and a KILL during that
+    # teardown left a process stuck in exit once (SF-AH item 25)
+    end = time.time() + 15
     while time.time() < end and mine():
         time.sleep(0.2)
     left = mine()
