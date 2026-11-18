@@ -3,11 +3,7 @@
 let
   e = import ../environment.nix;
   inherit (e) pkgs p finch libsystem sdk cc ld;
-  skcms = pkgs.fetchzip {
-    url = "https://skia.googlesource.com/skia/+archive/29ed1e87a0a50f3d8347e988842d9d59e7573efa/modules/skcms.tar.gz";
-    stripRoot = false;
-    hash = "sha256-mr9aTKJyB5ifrKLHtVDtGplQQX1MruACCuVy0Gvd4lo=";
-  };
+  skcms = (import ../../../../release/fetch.nix { pkgs = pkgs; }) "skcms";
 in pkgs.stdenv.mkDerivation {
   name = "siliconforest-finch-ColorSync-arm64";
   src = finch;

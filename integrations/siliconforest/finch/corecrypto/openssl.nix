@@ -2,10 +2,7 @@
 # Finch's exact backend version. Keep private ML-KEM/ML-DSA headers with it.
 let
   e = import ../environment.nix;
-  src = e.pkgs.fetchurl {
-    url = "https://www.openssl.org/source/openssl-3.5.9.tar.gz";
-    sha256 = "16l5xgqp1ii4vffbr8ap2wqbn8jqrm6x6aflzdvhvw7fw815cgv0";
-  };
+  src = (import ../../../../release/fetch.nix { pkgs = e.pkgs; }) "openssl-finch";
 in (e.p.openssl-arm64.override { withThreads = true; }).overrideAttrs (old: {
   version = "3.5.9";
   inherit src;

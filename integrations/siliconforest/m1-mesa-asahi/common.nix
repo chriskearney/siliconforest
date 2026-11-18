@@ -8,11 +8,7 @@ in rec {
   p = pd.packages.x86_64-linux;
   mesaRev = "147a62f619001f5f2588c7417c2b1fac3b0d93ad";
   mesaVersion = "26.3.0-devel-147a62f6190";
-  mesaSrc = pkgs.fetchurl {
-    name = "mesa-147a62f6190.tar.gz";
-    url = "https://github.com/omacom/mesa/archive/${mesaRev}.tar.gz";
-    sha256 = "15b27d00ba2d857837001d357f189e64809b27937eba0dd722c9d28ec4ad0dcf";
-  };
+  mesaSrc = (import ../../../release/fetch.nix { pkgs = pkgs; }) "mesa-gl";
   pythonEnv = pkgs.python3.withPackages (ps: [ ps.mako ps.pyyaml ps.packaging ps.setuptools ]);
   triple = "arm64-apple-darwin20.4";
   sdkRoot = "${p.apple-sdk}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk";

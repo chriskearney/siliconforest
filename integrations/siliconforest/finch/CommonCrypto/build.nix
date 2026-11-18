@@ -4,10 +4,7 @@ let
   e = import ../environment.nix;
   inherit (e) pkgs p finch libsystem sdk cc ld;
   crypto = import ../corecrypto/build.nix;
-  source = pkgs.fetchzip {
-    url = "https://github.com/apple-oss-distributions/CommonCrypto/archive/refs/tags/CommonCrypto-600035.tar.gz";
-    sha256 = "0hvs59p10jfljsca8rgfh0bc4j1fm7b5xskzf6yxivdcmwpk187s";
-  };
+  source = (import ../../../../release/fetch.nix { pkgs = pkgs; }) "apple-commoncrypto-oss";
 in pkgs.stdenv.mkDerivation {
   name = "siliconforest-finch-commoncrypto-arm64";
   src = source;

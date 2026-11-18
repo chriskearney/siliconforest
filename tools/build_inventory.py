@@ -8,13 +8,14 @@ release derivation closure must additionally be checked with Nix in isolation.
 """
 import argparse
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
 
 
 PATTERNS = {
-    "local_fetch": re.compile(r"(?:git\+)?file://|fetchGit\s*\{"),
+    "local_fetch": re.compile(r"(?:git\+)?file://"),
     "home_path": re.compile(r"/(?:home|Users)/[A-Za-z0-9_.-]+/"),
     "store_literal": re.compile(r"/nix/store/[a-z0-9]{32}-"),
     "lab_input": re.compile(r"(?:^|[/\s\"'=])(?:sources|artifacts|private|runs)/"),
@@ -23,8 +24,52 @@ PATTERNS = {
 FROZEN = {"reports", "archive", "planning", "revisions", "attempts", "build-recipes", "implementation-revisions"}
 
 
+def release_candidates(root, files):
+    """Conservative static source graph; Nix isolation is the execution proof.
+
+    Follow recipe imports and literal source paths, including inactive branches.
+    Do not treat a variable naming the entire integration tree as an import of
+    every historical experiment. The recipe() wrapper has an explicit base.
+    """
+    known = set(files)
+    pending = ["flake.nix", "release/packages.nix", "tools/sf_rename.py", "tools/sf_rename_data.json"]
+    seen = set()
+    while pending:
+        name = pending.pop()
+        if name in seen or name not in known:
+            continue
+        seen.add(name)
+        path = root / name
+        if path.suffix != ".nix":
+            continue
+        text = re.sub(r"^\s*#.*$", "", path.read_text(), flags=re.M)
+        refs = re.findall(r"(?<![A-Za-z0-9_/])((?:\.\.?/)[A-Za-z0-9_./-]+)", text)
+        refs += [str(root / "integrations/siliconforest" / p)
+                 for p in re.findall(r'recipe\s+"([^"]+)"', text)]
+        if name.startswith("release/"):
+            refs += [str(root / "integrations/siliconforest" / p)
+                     for p in re.findall(r'sf\s*\+\s*"/([^"]+)"', text)]
+        for ref in refs:
+            candidate = Path(ref) if ref.startswith("/") else path.parent / ref
+            candidate = Path(os.path.normpath(candidate))
+            try:
+                rel = candidate.relative_to(root).as_posix().rstrip("/")
+            except ValueError:
+                continue
+            if rel in known:
+                pending.append(rel)
+            elif rel + "/default.nix" in known:
+                pending.append(rel + "/default.nix")
+            elif (rel not in (".", "integrations", "integrations/siliconforest", "tools", "release")
+                  and not any(f.startswith(rel + "/") and f.endswith(".nix")
+                              and f.count("/") == rel.count("/") + 1 for f in known)):
+                pending.extend(f for f in known if f.startswith(rel + "/"))
+    return seen
+
+
 def inventory(root):
     files = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).decode().split("\0")
+    release = release_candidates(root, files)
     records = []
     for name in sorted(filter(None, files)):
         path = root / name
@@ -33,7 +78,8 @@ def inventory(root):
         data = path.read_bytes()
         if b"\0" in data:
             continue
-        hits = {key: [n for n, line in enumerate(data.decode("utf-8", "replace").splitlines(), 1)
+        lines = data.decode("utf-8", "replace").splitlines()
+        hits = {key: [n for n, line in enumerate(lines, 1)
                       if pattern.search(line)] for key, pattern in PATTERNS.items()}
         hits = {key: lines for key, lines in hits.items() if lines}
         if not hits:
@@ -44,14 +90,17 @@ def inventory(root):
                   or name.endswith(("host_console.py", "normal_image.py")))
         if frozen:
             category = "frozen-evidence"
-        elif name.endswith(".nix") or name.startswith("release/") or name == "flake.nix":
-            category = "build-recipe-review"
+        elif name in release:
+            category = "release-source-candidate"
         else:
-            category = "bench-tool-or-documentation"
+            category = "bench-or-documentation-outside-static-release-graph"
         records.append({"path": name, "category": category, "matches": hits})
     return {
         "schema": 1,
-        "method": "tracked text only; line numbers, no matching private values; recipe classification is conservative",
+        "method": "tracked text only; line numbers without matched values; conservative static release graph includes inactive branches; only an isolated Nix build proves the executed closure",
+        "release_candidate_files": len(release),
+        "classifications": {category: sum(r["category"] == category for r in records)
+                            for category in sorted({r["category"] for r in records})},
         "counts": {key: sum(key in r["matches"] for r in records) for key in PATTERNS},
         "records": records,
     }

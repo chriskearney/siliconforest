@@ -50,7 +50,7 @@ let
     rename-commit = recipe "m1-storage/build-sf-rename-commit.nix";
     openssh = recipe "m1-storage/userland/build-openssh.nix";
     ffmpeg-x264 = recipe "desktop/recording/build-ffmpeg-x264.nix";
-    sfvideo = recipe "m1-avd/player/build-sfvideo.nix";
+    sfvideo = recipe "m1-avd/player/build-sfvideo.nix" { };
   };
 in {
   inherit pieces desktop;

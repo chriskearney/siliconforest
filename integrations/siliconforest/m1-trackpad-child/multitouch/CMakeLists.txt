@@ -4,7 +4,7 @@ add_kext_bundle(SFM1SPIHID.kext INFO_PLIST Info.plist KERNEL_PRIVATE
 set_property(TARGET SFM1SPIHID.kext PROPERTY OUTPUT_NAME SFM1SPIHID)
 target_sources(SFM1SPIHID.kext PRIVATE
     SFM1SPIHID.cpp SFM1KeyboardHW.cpp m1kbd_board.c m1kbd_pio.c m1kbd_hid.c
-    native_protocol/dl_spi_hid.c m1tp_enum.c SFM1SPITrackpad.cpp m1tp_child_policy.c descriptor_guard.c m1tp_trace.c
+    native_protocol/dl_spi_hid.c m1tp_enum.c SFM1SPITrackpad.cpp m1tp_child_policy.c m1tp_trace.c
     m1tp_mt.c m1tp_mt_selftest.c)
 target_include_directories(SFM1SPIHID.kext PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -19,3 +19,6 @@ target_compile_options(SFM1SPIHID.kext PRIVATE
 set_property(TARGET SFM1SPIHID.kext PROPERTY C_STANDARD 11)
 set_property(TARGET SFM1SPIHID.kext PROPERTY CXX_STANDARD 14)
 install(TARGETS SFM1SPIHID.kext DESTINATION System/Library/Extensions COMPONENT BaseSystem)
+
+# Public identity guard; kept separate from the transport source list.
+target_sources(SFM1SPIHID.kext PRIVATE descriptor_guard.c)

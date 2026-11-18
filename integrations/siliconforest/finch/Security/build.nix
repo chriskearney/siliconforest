@@ -5,10 +5,7 @@ let
   e = import ../environment.nix;
   inherit (e) pkgs p pd finch libsystem sdk cc ld;
   openssl = import ../corecrypto/openssl.nix;
-  publicSource = pkgs.fetchzip {
-    url = "https://github.com/apple-oss-distributions/Security/archive/refs/tags/Security-61901.101.4.tar.gz";
-    sha256 = "178y5851w0ynyrmyw98w0x6r1ysz35bgs0dcb2z0jfwgrv1bninn";
-  };
+  publicSource = (import ../../../../release/fetch.nix { pkgs = pkgs; }) "apple-security-oss";
   security = import ../../homebrew/build-security.nix;
 in pkgs.stdenv.mkDerivation {
   name = "siliconforest-finch-security-arm64";

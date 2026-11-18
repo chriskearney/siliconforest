@@ -3,18 +3,9 @@
 let
   e = import ../environment.nix;
   inherit (e) pkgs p finch libsystem sdk cc ld;
-  lzfse = pkgs.fetchurl {
-    url = "https://github.com/lzfse/lzfse/archive/refs/tags/lzfse-1.0.tar.gz";
-    sha256 = "cf85f373f09e9177c0b21dbfbb427efaedc02d035d2aade65eb58a3cbf9ad267";
-  };
-  lz4 = pkgs.fetchurl {
-    url = "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz";
-    sha256 = "537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b";
-  };
-  brotli = pkgs.fetchurl {
-    url = "https://github.com/google/brotli/archive/refs/tags/v1.1.0.tar.gz";
-    sha256 = "e720a6ca29428b803f4ad165371771f5398faba397edf6778837a18599ea13ff";
-  };
+  lzfse = (import ../../../../release/fetch.nix { pkgs = pkgs; }) "lzfse";
+  lz4 = (import ../../../../release/fetch.nix { pkgs = pkgs; }) "lz4";
+  brotli = (import ../../../../release/fetch.nix { pkgs = pkgs; }) "brotli";
   xz = p.xz-arm64;
   zlib = p.zlib-arm64;
 in pkgs.stdenv.mkDerivation {

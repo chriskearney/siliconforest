@@ -465,5 +465,88 @@
       "external/corecrypto": "corecrypto"
     },
     "expectedForkCommit": "cd001928e0223fd77a7850f09e43580b51bde239"
+  },
+  "auxiliarySources": {
+    "openssl-finch": {
+      "fetcher": "fetchurl",
+      "revision": "3.5.9",
+      "url": "https://www.openssl.org/source/openssl-3.5.9.tar.gz",
+      "sha256": "16l5xgqp1ii4vffbr8ap2wqbn8jqrm6x6aflzdvhvw7fw815cgv0"
+    },
+    "lzfse": {
+      "fetcher": "fetchurl",
+      "revision": "lzfse-1.0",
+      "url": "https://github.com/lzfse/lzfse/archive/refs/tags/lzfse-1.0.tar.gz",
+      "sha256": "cf85f373f09e9177c0b21dbfbb427efaedc02d035d2aade65eb58a3cbf9ad267"
+    },
+    "lz4": {
+      "fetcher": "fetchurl",
+      "revision": "v1.10.0",
+      "url": "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz",
+      "sha256": "537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b"
+    },
+    "brotli": {
+      "fetcher": "fetchurl",
+      "revision": "v1.1.0",
+      "url": "https://github.com/google/brotli/archive/refs/tags/v1.1.0.tar.gz",
+      "sha256": "e720a6ca29428b803f4ad165371771f5398faba397edf6778837a18599ea13ff"
+    },
+    "openh264": {
+      "fetcher": "fetchzip",
+      "revision": "v2.6.0",
+      "url": "https://codeload.github.com/cisco/openh264/tar.gz/refs/tags/v2.6.0",
+      "hash": "sha256-tf0lnxATCkoq+xRti6gK6J47HwioAYWnpEsLGSA5Xdg="
+    },
+    "apple-commoncrypto-oss": {
+      "fetcher": "fetchzip",
+      "revision": "CommonCrypto-600035",
+      "url": "https://github.com/apple-oss-distributions/CommonCrypto/archive/refs/tags/CommonCrypto-600035.tar.gz",
+      "sha256": "0hvs59p10jfljsca8rgfh0bc4j1fm7b5xskzf6yxivdcmwpk187s"
+    },
+    "apple-security-oss": {
+      "fetcher": "fetchzip",
+      "revision": "Security-61901.101.4",
+      "url": "https://github.com/apple-oss-distributions/Security/archive/refs/tags/Security-61901.101.4.tar.gz",
+      "sha256": "178y5851w0ynyrmyw98w0x6r1ysz35bgs0dcb2z0jfwgrv1bninn"
+    },
+    "skcms": {
+      "fetcher": "fetchzip",
+      "revision": "29ed1e87a0a50f3d8347e988842d9d59e7573efa",
+      "url": "https://skia.googlesource.com/skia/+archive/29ed1e87a0a50f3d8347e988842d9d59e7573efa/modules/skcms.tar.gz",
+      "hash": "sha256-mr9aTKJyB5ifrKLHtVDtGplQQX1MruACCuVy0Gvd4lo=",
+      "stripRoot": false
+    },
+    "mesa-gl": {
+      "fetcher": "fetchurl",
+      "revision": "147a62f619001f5f2588c7417c2b1fac3b0d93ad",
+      "name": "mesa-147a62f6190.tar.gz",
+      "url": "https://github.com/omacom/mesa/archive/147a62f619001f5f2588c7417c2b1fac3b0d93ad.tar.gz",
+      "sha256": "15b27d00ba2d857837001d357f189e64809b27937eba0dd722c9d28ec4ad0dcf"
+    },
+    "mesa-vulkan": {
+      "fetcher": "fetchurl",
+      "revision": "b7b03c5b3b8abe1e040d6056dc62c01b02d3639c",
+      "name": "mesa-b7b03c5b3b8.tar.gz",
+      "url": "https://github.com/omacom/mesa/archive/b7b03c5b3b8abe1e040d6056dc62c01b02d3639c.tar.gz",
+      "sha256": "0nyafwm6hv32fsssjil3kwlimlk67nd9af5mwk76q77naxxmlklj"
+    },
+    "darling-mslc": {
+      "fetcher": "fetchzip",
+      "revision": "6964bb3984e26de95bbca89b08f305a6c4ff3317",
+      "url": "https://github.com/darlinghq/mslc/archive/6964bb3984e26de95bbca89b08f305a6c4ff3317.tar.gz",
+      "sha256": "1s168b0zig0ak0k1k37bm57w7a6dzv08ywvg0xf12bjdxp0s3hri"
+    },
+    "darling-darling-metal": {
+      "fetcher": "fetchzip",
+      "revision": "57a8a2d34685f34424b961182e45c2ff2642f37f",
+      "url": "https://github.com/darlinghq/darling-metal/archive/57a8a2d34685f34424b961182e45c2ff2642f37f.tar.gz",
+      "sha256": "1c4kvd4vjbr0kkjj3v9b0g6r1gm520877i4vz6k5m40rr0wndvx7"
+    },
+    "darling-indium": {
+      "fetcher": "fetchzip",
+      "revision": "e3a1f2212bdadade0afe2e10728e7673f49d3c98",
+      "url": "https://github.com/darlinghq/indium/archive/e3a1f2212bdadade0afe2e10728e7673f49d3c98.tar.gz",
+      "sha256": "1q6fdq0fm0gh0ic2rnppg9i8wgmyp5nkk672g34z1c9wm07x37ix"
+    }
   }
 }

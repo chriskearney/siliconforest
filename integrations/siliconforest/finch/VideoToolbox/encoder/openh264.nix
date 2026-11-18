@@ -7,10 +7,7 @@ let
  cxx=p.libcxxDylib-arm64;
 in pkgs.stdenv.mkDerivation {
  pname="siliconforest-openh264-arm64";version="2.6.0";
- src=pkgs.fetchzip {
-  url="https://codeload.github.com/cisco/openh264/tar.gz/refs/tags/v2.6.0";
-  hash="sha256-tf0lnxATCkoq+xRti6gK6J47HwioAYWnpEsLGSA5Xdg=";
- };
+ src=(import ../../../../../release/fetch.nix { pkgs = pkgs; }) "openh264";
  nativeBuildInputs=[pkgs.gnumake pkgs.perl];
  dontConfigure=true;
  buildPhase=''
