@@ -14,6 +14,21 @@ spec.loader.exec_module(runner)
 
 
 class DesktopEvidence(unittest.TestCase):
+    def test_failed_session_ends_startup_wait_immediately(self):
+        serial = runner.Serial.__new__(runner.Serial)
+        serial.text = lambda: b'QDDESK_DESKTOP_RC=1\nQDDESK_END\n'
+        process = mock.Mock()
+        process.poll.return_value = None
+        with mock.patch.object(runner.time, 'sleep', side_effect=AssertionError('wait continued after session ended')):
+            self.assertIsNone(serial.wait(b'WMSCALE initial', runner.time.time() + 600,
+                                         process, stop=b'QDDESK_END'))
+
+    def test_startup_wait_retains_drawing_before_session_end(self):
+        serial = runner.Serial.__new__(runner.Serial)
+        serial.text = lambda: b'WMSCALE initial\nQDDESK_END\n'
+        self.assertIsNotNone(serial.wait(b'WMSCALE initial', runner.time.time() + 600,
+                                         mock.Mock(), stop=b'QDDESK_END'))
+
     def test_capture_pauses_before_querying_the_framebuffer(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.dict('os.environ', {'QD_NO_SHOTS': ''}):
             path = Path(directory) / 'desktop.png'

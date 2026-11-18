@@ -121,12 +121,16 @@ class Serial:
             time.sleep(0.02)
         self.s.setblocking(False)
 
-    def wait(self, pattern, deadline, proc, start=0):
+    def wait(self, pattern, deadline, proc, start=0, stop=None):
         pattern = re.compile(pattern) if isinstance(pattern, (bytes, str)) else pattern
+        stop = re.compile(stop) if isinstance(stop, (bytes, str)) else stop
         while True:
-            m = pattern.search(self.text(), start)
+            text = self.text()
+            m = pattern.search(text, start)
             if m:
                 return m
+            if stop is not None and stop.search(text, start):
+                return None
             if time.time() > deadline or proc.poll() is not None:
                 return None
             time.sleep(0.1)
@@ -253,7 +257,9 @@ def main():
         if a.input_seen:
             while not ser.wait(a.input_seen.encode(), time.time() + 0.5, proc) and time.time() < end_by and proc.poll() is None:
                 qmp.wake_input(a.pointer)
-        up = ser.wait(a.up.encode(), min(end_by, time.time() + 180), proc)
+        # Use the caller's total budget: a loaded TCG guest can draw after 180s.
+        # A session ending before it draws still stops this wait immediately.
+        up = ser.wait(a.up.encode(), end_by, proc, stop=a.end.encode())
         if up:
             mark('desktop')
             time.sleep(a.settle)
