@@ -561,6 +561,14 @@
 #         surfaces and makes that surface its contents, which the renderer binds without a copy; nothing is read back.
 #         Without GPU storage it reads back as before. (VLC's 1080p picture: ~40 ms a frame of read-back, image and
 #         per-pixel texture conversion on the render thread; the window showed ~24 of 30 pictures a second)
+#   0333w WindowServer (IOSURF): a damage present finds the base's changed rows in one pass with sfGPUBaseEqual's
+#         comparison (NEON under SFFX_GPU_VECTOR_COMPARE), not a whole compare and then memcmp row by row: VLC's control
+#         bar redrawn twice a second cost 18-57 ms under the window server's lock, and its video presents waited
+#   0334w WindowServer (IOSURF): SF_WS_CADENCE=1 (opt-in): a steady source's render-thread frames are held, once a frame
+#         before their first layer is handed over, to a fixed phase of the refreshes (SF_WS_CADENCE_PHASE ms after wsClock's
+#         refresh, 13: about the desk's flip, far from its latch) on the source's measured cadence (previous refresh +
+#         interval in refreshes while the frame is ready in time): VLC's 30 fps pictures 2 refreshes apart instead of 1 or 3
+#         when their commits drifted onto the desk's latch. =2 logs each frame
 #   0304, 0305w (FXPERF2's FX-029 follow-ups, adopted by TERM11 unchanged; opt-in SFFX_GPU_DAMAGE=1): a layer-only
 #         flush with nothing drawn into the window's own backing store tells the window server so, which then skips its
 #         whole-backing-store compare (11 MB a present; ~10 % of Firefox's parent main thread on cnn.com)
@@ -784,6 +792,8 @@ let
     ./patches/0166w-windowserver-momentum-capped-and-timed.patch
     ./patches/0173w-windowserver-pointer-enter-is-a-move.patch
     ./patches/0178w-windowserver-layers-presented-from-the-render-thread.patch
+    ./patches/0333w-windowserver-changed-rows-found-in-one-vector-pass.patch
+    ./patches/0334w-windowserver-steady-sources-committed-on-a-steady-cadence.patch
   ];
   authenticationServicesSrc = patchedDir "src/Frameworks/AuthenticationServices" [
     ./patches/0003-authenticationservices-web-session-browser-side.patch

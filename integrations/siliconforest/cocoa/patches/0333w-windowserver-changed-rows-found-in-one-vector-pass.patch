@@ -1,0 +1,31 @@
+--- a/src/Frameworks/WindowServer/sffx_gpu_present.h
++++ b/src/Frameworks/WindowServer/sffx_gpu_present.h
+@@ -19,7 +19,9 @@
+ static int sfGPUBaseEqual(const void *left,const void *right,size_t bytes){
+  const unsigned char *a=left,*b=right;size_t i=0;
+ #ifdef __aarch64__
+- if(getenv("SFFX_GPU_VECTOR_COMPARE")){
++ static int vector=-1; // (IOSURF) read once: it is asked once per row now
++ if(vector<0)vector=getenv("SFFX_GPU_VECTOR_COMPARE")!=NULL;
++ if(vector){
+   uint8x16_t x0=vdupq_n_u8(0),x1=x0,x2=x0,x3=x0;
+   for(;bytes-i>=64;i+=64){
+    x0=vorrq_u8(x0,veorq_u8(vld1q_u8(a+i),vld1q_u8(b+i)));
+@@ -232,10 +234,14 @@
+   if(cache){p->baseCache=cache;p->baseBytes=bytes;p->baseW=w;p->baseH=h;
+    sfGPU.glTexImage2D(0x0de1,0,0x8058,w,h,0,0x80e1,0x1401,base);memcpy(cache,base,bytes);p->baseUploadBytes+=bytes;}
+   int all[4]={0,0,w,h};sfGPUBoxUnion(p->damage,all);
+- }else if(maybeChanged&&!sfGPUBaseEqual(p->baseCache,base,bytes)){
++ }else if(maybeChanged){
++  // (IOSURF) the changed rows found in one pass, with the same comparison as sfGPUBaseEqual (NEON under
++  // SFFX_GPU_VECTOR_COMPARE): it was a whole-picture compare and then memcmp row by row from the top and the bottom.
++  // VLC's control bar redrawn at the window's bottom twice a second cost 18-57 ms of memcmp over 2556x1550 under the
++  // window server's lock, and the render thread's video presents waited behind it (a picture a refresh late)
+   const unsigned char *a=p->baseCache,*b=base;int r0=0,r1=h;
+-  while(r0<h&&!memcmp(a+r0*row,b+r0*row,row))r0++;
+-  while(r1>r0&&!memcmp(a+(r1-1)*row,b+(r1-1)*row,row))r1--;
++  while(r0<h&&sfGPUBaseEqual(a+r0*row,b+r0*row,row))r0++;
++  while(r1>r0&&sfGPUBaseEqual(a+(r1-1)*row,b+(r1-1)*row,row))r1--;
+   if(r1>r0){
+    sfGPU.glTexSubImage2D(0x0de1,0,0,r0,w,r1-r0,0x80e1,0x1401,b+r0*row);memcpy((unsigned char *)p->baseCache+r0*row,b+r0*row,(r1-r0)*row);
+    p->baseUploadBytes+=(r1-r0)*row;
