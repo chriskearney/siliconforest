@@ -90,8 +90,17 @@ def main():
         os.chdir(env.get('HOME', '/'))
     except OSError:
         os.chdir('/')
-    argv = [program] + manifest.get('arguments', []) + sys.argv[1:]
-    wrapper = env.pop('SFVLC_WRAP', None)      # a diagnostic wrapper (a crash catcher), for tests
+    # A wrapper runs VLC: SFVLC_WRAP (a diagnostic one, a crash catcher, for tests), else the release's "wrapper"
+    # (IOSURF: /private/var/db/sfvlc/iosurf/wrap puts the IOSurface/GPU-presentation frameworks first). Where the
+    # release's wrapper cannot be run, VLC starts without it and with "arguments_without_wrapper" instead.
+    wrapper = env.pop('SFVLC_WRAP', None)
+    arguments = manifest.get('arguments', [])
+    if not wrapper and manifest.get('wrapper'):
+        wrapper = manifest['wrapper']
+        if not os.access(wrapper, os.X_OK):
+            sys.stderr.write('vlc-sf: wrapper %s cannot be run: VLC starts without it\n' % wrapper)
+            wrapper, arguments = None, manifest.get('arguments_without_wrapper', arguments)
+    argv = [program] + arguments + sys.argv[1:]
     if wrapper:
         argv = [wrapper] + argv
     os.execve(argv[0], argv, env)
