@@ -95,3 +95,7 @@ does not establish an Apple Preview launch.
 [PersonNameComponents/README.md](PersonNameComponents/README.md) adds the Swift
 5.4 name-component overlay and its bridge to the retained NSPersonNameComponents
 class. The observed AppIntents stop after AttributedString is that bridge.
+
+The [P13 preparer](P13/README.md) builds a deterministic private packet and guard
+manifest locally, with execution explicitly disabled. Its audit separates
+observed loader/file evidence from predicted future dependency gaps.
