@@ -154,3 +154,14 @@ replaces String.appending with +. It does not change stored fields, equality,
 hash, or Codable keys. The header declaring the retained class's public
 names, the patch, preparation and probe are original MIT code. No Apple SDK
 header, proprietary implementation, or new Objective-C class is included.
+
+Scoped URLError bridge
+
+Pinned swift-foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a
+does not contain URLError. URLError.swift is original code compiled into that
+module, SHA-256 d5d362a99af119f4329e70f281e79454cb59858d9c4d39d29a6b973cb67535e9.
+It uses the Apache-2.0 WITH Swift-exception banner of the surrounding
+Foundation sources. The protocol stores the NSError returned by the failable
+domain/code/userInfo constructor. Code values are the retained NSURLSession
+constants. URLErrorProbe.swift and symbols.c are MIT OR Apache-2.0. No Apple
+SDK header or proprietary implementation is included.

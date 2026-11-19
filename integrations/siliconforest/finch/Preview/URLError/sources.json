@@ -1,0 +1,16 @@
+{
+  "pin": "c20150400269a6afffe5b3a9f9fa8bbd51d69e1a",
+  "pin_contains_url_error": false,
+  "license": "Apache-2.0 WITH Swift-exception",
+  "license_sha256": "2245a990b635558be210fb3eb4f8a6f7a49aebc0fefbf5859146a65ddc7ddcf3",
+  "files": {
+    "URLError.swift": "d5d362a99af119f4329e70f281e79454cb59858d9c4d39d29a6b973cb67535e9",
+    "URLErrorProbe.swift": "11bca6fbb9cf3a7f0c16d6b1a643fb872b83475d9ed60621b54c1bf7ae52edcf",
+    "symbols.c": "2870e639a102ece8417357a4c4ed4cdf70e6a76c687887ec6eade815b029988d"
+  },
+  "tested_library_sha256": "73e3f94b67eae0d46ac73600a26e68fdf9c31f566091ca85d5d98f43b1f3fea1",
+  "tested_probe_sha256": "4687927f96e50dccc754dc0e66ee4b84fb7334ec14696f39c7cb8525bf5e80e5",
+  "baseline_export_count": 5141,
+  "export_count": 5231,
+  "exports_lost": 0
+}

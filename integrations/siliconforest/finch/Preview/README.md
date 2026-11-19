@@ -99,3 +99,7 @@ class. The observed AppIntents stop after AttributedString is that bridge.
 The [P13 preparer](P13/README.md) builds a deterministic private packet and guard
 manifest locally, with execution explicitly disabled. Its audit separates
 observed loader/file evidence from predicted future dependency gaps.
+
+[URLError/README.md](URLError/README.md) adds the stored NSError bridge and
+URLError codes required by the AppIntents audit. The separate-client M1 probe
+passes with all 5,141 prior Foundation exports retained.
