@@ -218,3 +218,13 @@ module; currentTipUpdates is omitted. The P13 SwiftUI binding-subset
 source and its companion CGFloat.swift are module inputs only and are
 not linked into this image. build.py, probe.swift, and run_m1.py are
 original MIT code. No Apple SDK binary is copied into git.
+
+Scoped MapKit source
+---------------------
+Preview/MapKit/Geo.swift, MapKit.swift, probe.swift, and build.py are
+original MIT, Copyright 2026 Chris Kearney. They are not a Finch port.
+The land polygons are Natural Earth 1:110m, public domain, pinned outside
+git at runs/preview/retained/mapkit/ne_110m_land.geojson, SHA-256
+9e0729ee253ca7d7a5c4ae9395fb1902264c5377c52e224d13dd85010e2835d9.
+No Apple SDK binary is copied into git. The Linux compile did not emit
+_MapKit_SwiftUI.

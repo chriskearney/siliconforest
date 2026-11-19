@@ -128,3 +128,8 @@ missing seven are the Foundation predicate conformances, the predicate
 uses the real `@Observable` macro. The headless client calls configure,
 donate, a closure rule, invalidation, `MaxDisplayCount`, and both group
 priorities.
+
+[MapKit](MapKit/README.md) is the full renderer-dependent `_MapKit_SwiftUI`
+source: Web Mercator land and markers, `Marker<Label: View>`, and an
+`NSViewRepresentable` body. The Linux compile did not emit the framework.
+The P13 SwiftUI subset has no `Namespace` or `NSViewRepresentable`.
