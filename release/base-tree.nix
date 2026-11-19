@@ -2,7 +2,7 @@
 # Copyright (c) 2026 SiliconForest contributors
 # Evaluate upstream's flake with its own pinned dependency graph, after the
 # deterministic source rename. No local Git checkout or registry is consulted.
-{ sourceName ? "upstream-base", corecryptoName ? "corecrypto", forkRev ? null }:
+{ sourceName ? "upstream-base", corecryptoName ? "corecrypto", forkRev ? null, system ? "x86_64-linux" }:
 let
   lock = builtins.fromJSON (builtins.readFile ../sources.lock);
   sources = import ./sources.nix;
@@ -18,7 +18,7 @@ let
   rootInputs = builtins.mapAttrs (_: load)
     (pkgs.lib.filterAttrs (_: target: nodes.${target}.locked.type != "path") nodes.${lock.upstreamFlakeRoot}.inputs);
   nixpkgs = load nodes.${lock.upstreamFlakeRoot}.inputs.nixpkgs;
-  pkgs = import nixpkgs { system = "x86_64-linux"; };
+  pkgs = import nixpkgs { inherit system; };
   renameTools = builtins.path {
     path = ../tools;
     name = "siliconforest-rename-tools";
@@ -59,13 +59,21 @@ let
     path.write_text(source.replace(needle, 'export ZERO_AR_DATE=1\n' + needle))
     PY
   '';
+  prepared = if system == "aarch64-linux" && sourceName == "upstream-base" then
+    pkgs.applyPatches {
+      name = "siliconforest-aarch64-linux-build-source";
+      src = buildSource;
+      patches = [ ./patches/aarch64-linux-xnu-headers.patch ];
+      patchFlags = [ "-p1" "--fuzz=0" ];
+    }
+  else buildSource;
   inputs = rootInputs // {
     corecrypto-src = renamed + "/external/corecrypto";
   } // pkgs.lib.optionalAttrs (sourceName != "upstream-cocoa") {
     sf-sb-key = renamed + "/nix/secureboot/no-key";
   };
-  pd = (import (buildSource + "/flake.nix")).outputs (inputs // { self = pd; })
-    // { outPath = buildSource; inherit inputs; };
+  pd = (import (prepared + "/flake.nix")).outputs (inputs // { self = pd; })
+    // { outPath = prepared; inherit inputs; };
 in {
   inherit pd pkgs sources renamed renameTools buildSource;
   rev = if forkRev != null then forkRev
