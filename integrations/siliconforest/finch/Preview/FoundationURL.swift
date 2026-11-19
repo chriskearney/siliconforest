@@ -3,7 +3,6 @@
 // Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors.
 // Licensed under Apache License v2.0 with Runtime Library Exception.
 // Narrow NSURL-backed value/bridge for the existing open Foundation overlay.
-// It does not claim bookmark, resource-value, or security-scope support.
 @_exported import Foundation
 
 public struct URL: Equatable, Hashable, CustomStringConvertible, CustomDebugStringConvertible {
@@ -26,9 +25,19 @@ public struct URL: Equatable, Hashable, CustomStringConvertible, CustomDebugStri
 
     public var absoluteString: String { reference.absoluteString() ?? "" }
     public var path: String { reference.path() ?? "" }
+    public var lastPathComponent: String { reference.lastPathComponent() ?? "" }
+    public var pathExtension: String { reference.pathExtension() ?? "" }
     public var isFileURL: Bool { reference.isFileURL() }
     public var description: String { absoluteString }
     public var debugDescription: String { absoluteString }
+
+    public func appendingPathComponent(_ pathComponent: String) -> URL {
+        reference.appendingPathComponent(pathComponent).map(URL.init(reference:)) ?? self
+    }
+
+    public func appendingPathExtension(_ pathExtension: String) -> URL {
+        reference.appendingPathExtension(pathExtension).map(URL.init(reference:)) ?? self
+    }
 
     public static func ==(lhs: URL, rhs: URL) -> Bool {
         lhs.absoluteString == rhs.absoluteString
@@ -38,6 +47,32 @@ public struct URL: Equatable, Hashable, CustomStringConvertible, CustomDebugStri
     // No security-scoped grant service exists; never report acquiring a grant.
     public func startAccessingSecurityScopedResource() -> Bool { false }
     public func stopAccessingSecurityScopedResource() {}
+}
+
+extension URL: Codable {
+    private enum CodingKeys: Int, CodingKey {
+        case base
+        case relative
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let relative = try container.decode(String.self, forKey: .relative)
+        let base = try container.decodeIfPresent(URL.self, forKey: .base)
+        guard let reference = NSURL(string: relative, relativeTo: base?.reference) else {
+            throw DecodingError.dataCorruptedError(forKey: .relative, in: container,
+                                                   debugDescription: "Invalid URL string.")
+        }
+        self.init(reference: reference)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(reference.relativeString(), forKey: .relative)
+        if let base = reference.base() {
+            try container.encode(URL(reference: base), forKey: .base)
+        }
+    }
 }
 
 extension URL: _ObjectiveCBridgeable {

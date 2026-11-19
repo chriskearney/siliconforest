@@ -18,6 +18,17 @@ struct URLProbe {
         precondition(value.isFileURL && value.path == path)
         precondition(value._bridgeToObjectiveC() === reference)
         precondition(URL(string: "") == nil)
+        let base = URL(fileURLWithPath: "/tmp/Preview fixtures", isDirectory: true)
+        let pdf = base.appendingPathComponent("report draft").appendingPathExtension("pdf")
+        precondition(pdf.isFileURL && pdf.path == "/tmp/Preview fixtures/report draft.pdf")
+        precondition(pdf.lastPathComponent == "report draft.pdf" && pdf.pathExtension == "pdf")
+        precondition(pdf.absoluteString.hasSuffix("/report%20draft.pdf"))
+        let remote = URL(string: "https://example.invalid/preview/")!
+        let image = remote.appendingPathComponent("cover sheet").appendingPathExtension("png")
+        precondition(image.absoluteString == "https://example.invalid/preview/cover%20sheet.png")
+        precondition(image.lastPathComponent == "cover sheet.png" && image.pathExtension == "png")
+        let urlCoding: any Codable = pdf
+        precondition(urlCoding is URL)
         precondition(!value.startAccessingSecurityScopedResource())
         value.stopAccessingSecurityScopedResource()
         var values: Set<URL> = []
@@ -43,6 +54,6 @@ struct URLProbe {
         precondition(type(of: custom).errorDomain == "org.siliconforest.foundation-probe")
         precondition(custom._code == 19 && custom.errorUserInfo["code"] as? Int == 19)
         print("LocalizedError and CustomNSError dispatch=PASS")
-        print("URL bridge=PASS copies=10000 hash=PASS legacy-string-dictionary-date=PASS scope-acquired=false")
+        print("URL bridge, path operations, Codable conformance, and 10000 copies=PASS")
     }
 }
