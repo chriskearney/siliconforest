@@ -95,3 +95,18 @@ CoreFoundation string adapters and explicit unavailable ISO8601 date strategy.
 The original decoder/scanners/containers and Decodable dispatch remain real.
 JSONSupport.swift, prepare.py and probe.swift are original MIT code. No Data
 source edits, proprietary Apple implementation, headers or assets are included.
+
+
+Scoped Swift Foundation JSONEncoder and writer
+
+Same swift-foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a.
+Copyright (c) 2014-2023 Apple Inc. and the Swift project authors.
+Apache-2.0 WITH Swift-exception; LICENSES/Swift-Foundation.txt is copied beside
+prepared sources with the original per-file notices. JSONEncoder/sources.json
+records SHA-256s for JSONEncoder.swift, JSONWriter.swift and the mined
+_specializingCast helper in AttributedString/Collection Stdlib Defaults.swift.
+The patch supplies scoped Unicode lookup, checked array specialization, current
+UTF-8 key sorting and explicit date-format error boundaries. The real encoder
+containers, writer and Encodable dispatch remain. JSONEncoderSupport.swift
+retains the helper's upstream notice/license; prepare.py and probe.swift are MIT.
+No Data/decoder edits or proprietary implementation/headers/assets are included.

@@ -78,3 +78,7 @@ port preparation, passing cross-typechecks and exact native arm64 object exports
 The coherent module links with Grok's Data/syscall handoff. Its standalone M1
 decoder, unchanged UUID and URL/localization consumers pass with every prior
 export and artifact hash preserved. ISO8601 dates remain explicitly unavailable.
+
+[JSONEncoder/README.md](JSONEncoder/README.md) adds the real pinned encoder and
+writer to the same coherent Foundation. Separate-client encode/re-decode and
+unchanged decoder/UUID/URL M1 probes pass, preserving all 1,691 prior exports.
