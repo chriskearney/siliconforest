@@ -14,3 +14,8 @@ outside this wrapper.
 
 The native probe opens a PNG through a data provider, decodes its pixels,
 checks the source format and primary index, and reads two metadata keys.
+
+Image scaling draws into an 8-bit RGB bitmap with premultiplied alpha. It
+supports the integer option values 0 and 1, caps the destination
+allocation, and returns a newly owned image. The probe checks the scaled
+dimensions and reads a pixel from the destination image.
