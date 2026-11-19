@@ -38,3 +38,7 @@ execution remains paused while its backing-page PAC mutation is addressed.
 Do not deploy by overwriting the existing private app bundle, shared libraries,
 or QTP's runtime. App bytes and extracted interface evidence stay in ignored
 private staging; this directory contains only open source and observed names.
+
+The next narrow provider and its measured Swift build prerequisites are
+documented in [VISIONKIT.md](VISIONKIT.md). It is a separate static candidate;
+Recap's successful runtime proof does not qualify VisionKitCore.
