@@ -263,3 +263,13 @@ Tools used to build and study, not shipped
 ------------------------------------------
 Nix and nixpkgs (MIT), LLVM/clang (Apache-2.0 with LLVM exception), the Rust toolchain
 (MIT OR Apache-2.0), QEMU (GPL-2.0), Homebrew (BSD-2-Clause) as a compatibility test.
+
+Scoped Swift Foundation UUID interoperability
+--------------------------------------------
+integrations/siliconforest/finch/Preview/FoundationUUID.swift is derived from
+swiftlang/swift-foundation, swift-6.3.1-RELEASE, revision
+c20150400269a6afffe5b3a9f9fa8bbd51d69e1a, Sources/FoundationEssentials/UUID.swift.
+Copyright (c) 2022 Apple Inc. and the Swift project authors.
+Apache-2.0 WITH Swift-exception; full text: LICENSES/Swift-Foundation.txt.
+The scoped adapter calls the open libSystem UUID operations; see the Preview
+UUID.md and NOTICE for provenance, changes, runtime evidence and limitations.

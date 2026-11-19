@@ -60,3 +60,23 @@ implementation, private headers or extracted assets used.
 The existing open QTP QuickLook/QuickLookUI source is retained unchanged:
 Copyright (c) 2026 Chris Kearney and the SiliconForest contributors, MIT.
 Its thumbnail-absence API, time key and opener factory are preserved.
+
+
+Scoped Swift Foundation UUID value
+
+Copyright (c) 2022 Apple Inc. and the Swift project authors.
+Apache-2.0 WITH Swift-exception; full text LICENSES/Swift-Foundation.txt at the
+repository root and Swift-Foundation-LICENSE.txt beside built output licenses.
+swiftlang/swift-foundation swift-6.3.1-RELEASE,
+revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a:
+  Sources/FoundationEssentials/UUID.swift
+  SHA256 bc94e578e85471e675bfce1c3dbe6ecfc15d1f913bf9a416b19a4d3a7bb5cf22
+  LICENSE.md
+  SHA256 2245a990b635558be210fb3eb4f8a6f7a49aebc0fefbf5859146a65ddc7ddcf3
+Changes: retain UUID tuple/value, initializers, formatting, equality and hash;
+use the real open libSystem UUID operations through SFUUIDRuntime; validate
+the complete Swift string before C parsing. Omit Codable, reflection protocol,
+Comparable, generic random-generator and NSUUID bridge extensions. This is a
+coherent Foundation module rebuild, not type metadata aliases or a second module.
+The build/probe/check harness is original MIT code. No Apple proprietary source,
+SDK declarations or implementation bytes are included.

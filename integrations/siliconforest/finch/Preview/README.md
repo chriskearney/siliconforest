@@ -68,3 +68,7 @@ PerformanceAnalysis check and fresh-only extraction with literal link readback.
 
 [QUICKLOOK.md](QUICKLOOK.md) describes the scoped, M1-tested QuickLook
 reader and the exact existing API it preserves. Preview remains before UI.
+
+[UUID.md](UUID.md) describes the additive open Swift Foundation UUID slice,
+exact native import coverage and guarded standalone M1 proof. This candidate
+does not replace the coordinator's newer Foundation overlay or launch Preview.
