@@ -67,6 +67,15 @@ struct URLProbe {
                                                     bundle: .atURL(bundleURL))
             precondition(String(localized: localized) == "PDF page from the bundle")
         }
+        let allowedCharacters = CharacterSet(charactersIn: "a/é😀")
+        precondition(allowedCharacters.contains("é") && allowedCharacters.contains("😀"))
+        let raw = "a %/é😀"
+        precondition(raw[...].addingPercentEncoding(withAllowedCharacters: allowedCharacters) ==
+                     "a%20%25/%C3%A9%F0%9F%98%80")
+        precondition("".addingPercentEncoding(withAllowedCharacters: allowedCharacters) == "")
+        let existing = CharacterSet(charactersIn: "%2f")
+        precondition("%2f".addingPercentEncoding(withAllowedCharacters: existing) == "%2f")
+        print("Character set membership and UTF-8 URL encoding=PASS")
         print("LocalizedError and CustomNSError dispatch=PASS")
         print("Localization literal, interpolation, and current locale=PASS")
         print("URL bridge, path operations, Codable conformance, and 10000 copies=PASS")
