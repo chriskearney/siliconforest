@@ -73,6 +73,7 @@ let
     patches = [
       ./patches/cocoa-aarch64-linux-swift.patch
       ./patches/cocoa-aarch64-linux-mig-sdk.patch
+      ./patches/cocoa-aarch64-linux-cctools.patch
     ];
     patchFlags = [ "-p1" "--fuzz=0" ];
   }
