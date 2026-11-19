@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--under", action="append", default=[])
     parser.add_argument("--framework", default="RecapPerformanceTesting")
     parser.add_argument("--probe", default="recap-probe")
+    parser.add_argument("--framework-area", choices=("Frameworks", "PrivateFrameworks"), default="PrivateFrameworks")
     parser.add_argument("--class", dest="classes", action="append")
     parser.add_argument("--current", default="50.0")
     parser.add_argument("--symbol", action="append", default=[])
@@ -23,7 +24,7 @@ def main():
     import hb_macho
     from sf_gapscan import Root
 
-    install = f"/System/Library/PrivateFrameworks/{args.framework}.framework/Versions/A/{args.framework}"
+    install = f"/System/Library/{args.framework_area}/{args.framework}.framework/Versions/A/{args.framework}"
     root = Root(args.root, under=args.under)
     root.prefer = "arm64"
     output = {"scope": "static class-export and direct-import checks; no runtime execution", "images": []}

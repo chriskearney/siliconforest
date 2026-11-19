@@ -35,6 +35,7 @@ all bundle bytes and stopped before UI at successive missing providers.
 | Pinned source | Use and SiliconForest changes |
 |---|---|
 | `2d9b1bb1af57e14462e4621d194929188a8845b0:userland/RecapPerformanceTesting/RecapPerformanceTesting.m` | Runner properties and method shapes; parameter storage pattern. Replaced successful no-op execution with explicit unsupported errors/exceptions; added the imported activation parameter class. MIT OR Apache-2.0, notices and both license texts retained. |
+| `2d9b1bb1af57e14462e4621d194929188a8845b0:userland/CoreSpotlight/CSSearchableItem.m` | Attribute dictionaries, bounded field names/KVC and copy, custom-key validation/storage. Scoped to two model classes; typed common fields replace forwarding, unavailable archive operations reject explicitly. No index/query adoption. MIT OR Apache-2.0, notices and both license texts retained. |
 
 Do not deploy by overwriting the existing private app bundle, shared libraries,
 or QTP's runtime. App bytes and extracted interface evidence stay in ignored
@@ -57,3 +58,6 @@ The AnnotationKit standalone reader probe subsequently passed on M1, including
 actual rectangle pixels and NSError payloads. Unchanged Preview loaded it in P5;
 P6, with tested ImageCaptureCore, now stops at CorePDF before UI. See the
 AnnotationKit document for exact scope; no general annotation editor is claimed.
+
+[CORESPOTLIGHT.md](CORESPOTLIGHT.md) describes the scoped Finch attribute model
+and typed Swift initializer for the AppIntents build, with explicit UTType input.

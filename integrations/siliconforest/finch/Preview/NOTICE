@@ -27,3 +27,16 @@ No Apple implementation, framework binary, SDK declaration, extracted asset or
 application bytes are included in this provider. The cross-built probe has to
 run on a separately authorized compatible runtime before behavioral validation
 can be claimed. Building or exporting this output does not install it.
+
+
+CoreSpotlight attribute-only provider
+
+Copyright (c) 2026 The Finch Project contributors.
+MIT OR Apache-2.0; both complete licenses accompany built outputs.
+Finch revision 2d9b1bb1af57e14462e4621d194929188a8845b0:
+  userland/CoreSpotlight/CSSearchableItem.m
+Upstream SHA256: 2cc5a95bbb8e18a67cd95f3eeaefe953a172f3f5c9c2c8be9fd2910531940027
+Mined attribute/key storage only, not its index/query/service or whole framework.
+SiliconForest changes: typed common getters/setters, bounded KVC, synchronized
+field table, unavailable archives explicitly rejected; typed Swift UTType bridge.
+No Apple source, private headers, binary, or assets used.
