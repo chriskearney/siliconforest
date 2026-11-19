@@ -7,6 +7,7 @@
 #include <CoreGraphics/CGContext.h>
 #include <CoreGraphics/CGDataProvider.h>
 #include <CoreGraphics/CGImageSource.h>
+#include <CoreGraphics/CGImageDestination.h>
 
 CGImageRef CGImageCreateByScaling(CGImageRef, uint32_t, uint32_t, int32_t);
 CGImageRef CGImageCreateCopyWithAlphaInfo(CGImageRef, const void *, CGImageAlphaInfo);
@@ -57,6 +58,39 @@ static void testOpaqueCopy(void)
     CGImageRelease(input);
 }
 
+void CGImageDestinationAddAuxiliaryDataInfo(CGImageDestinationRef, CFStringRef, CFDictionaryRef);
+
+static void testDestinations(CGImageRef image)
+{
+    CFMutableDataRef bytes = CFDataCreateMutable(NULL, 0);
+    CGImageDestinationRef good = CGImageDestinationCreateWithData(bytes, CFSTR("public.png"), 1, NULL);
+    assert(good);
+    CGImageDestinationAddImage(good, image, NULL);
+    assert(CFDataGetLength(bytes) == 0);
+    assert(CGImageDestinationFinalize(good) && CFDataGetLength(bytes) > 0);
+    assert(!CGImageDestinationFinalize(good));
+    CGImageSourceRef decoded = CGImageSourceCreateWithData(bytes, NULL);
+    assert(decoded && CGImageSourceGetCount(decoded) == 1);
+    CGImageRef written = CGImageSourceCreateImageAtIndex(decoded, 0, NULL);
+    assert(written && CGImageGetWidth(written) == CGImageGetWidth(image));
+    CGImageRelease(written);
+    CGImageSourceRelease(decoded);
+    CFRelease(good);
+
+    CFIndex originalLength = CFDataGetLength(bytes);
+    CGImageDestinationRef pending = CGImageDestinationCreateWithData(bytes, CFSTR("public.png"), 1, NULL);
+    assert(pending);
+    CGImageDestinationAddImage(pending, image, NULL);
+    CFDictionaryRef auxiliary = CFDictionaryCreate(NULL, NULL, NULL, 0,
+        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CGImageDestinationAddAuxiliaryDataInfo(pending, CFSTR("kCGImageAuxiliaryDataTypeHDRGainMap"), auxiliary);
+    CFRelease(auxiliary);
+    assert(!CGImageDestinationFinalize(pending));
+    assert(CFDataGetLength(bytes) == originalLength);
+    CFRelease(pending);
+    CFRelease(bytes);
+}
+
 CGImageSourceRef CGImageSourceCreateWithDataProvider(CGDataProviderRef, CFDictionaryRef);
 CFArrayRef CGImageSourceCopyTypeIdentifiers(void);
 size_t CGImageSourceGetPrimaryImageIndex(CGImageSourceRef);
@@ -86,6 +120,7 @@ int main(int argc, char **argv)
     assert(CFEqual(CGImageSourceGetType(source), CFSTR("public.png")));
     CGImageRef image = CGImageSourceCreateImageAtIndex(source, 0, NULL);
     assert(image && CGImageGetWidth(image) && CGImageGetHeight(image));
+    testDestinations(image);
     CGImageRelease(image);
     CGImageSourceRelease(source);
     assert(CGImageSourceCreateWithDataProvider(NULL, NULL) == NULL);
@@ -97,6 +132,6 @@ int main(int argc, char **argv)
     assert(CFEqual(kCGImagePropertyPixelFormat, CFSTR("PixelFormat")));
     testScaling();
     testOpaqueCopy();
-    puts("ImageIO PASS for provider decode, source formats, metadata keys, bitmap scaling and opaque copies");
+    puts("ImageIO PASS for provider decode, source formats, metadata keys, scaling, opaque copies and deferred exports");
     return 0;
 }

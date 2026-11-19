@@ -19,13 +19,14 @@ in e.pkgs.runCommand "siliconforest-preview-imageio-arm64" {} ''
   framework="$out/System/Library/Frameworks/ImageIO.framework"
   mkdir -p "$framework/Versions/A" "$out/bin" "$out/share/licenses/Finch"
   compile=(
-    -O2 -isysroot "$sdk" -DXNU_PLATFORM_MacOSX=1
+    -O2 -fblocks -fno-objc-arc -isysroot "$sdk" -DXNU_PLATFORM_MacOSX=1
     -F${cocoa.appDeps.coregraphics}/System/Library/Frameworks
   )
   link=(
     --ld-path=${e.ld} -nostdlib -isysroot "$sdk" -L${e.libsystem}/usr/lib
-    -L${e.p.coreFoundation-arm64}/usr/lib
-    -framework CoreGraphics -lCoreFoundation -lSystem
+    -L${e.p.coreFoundation-arm64}/usr/lib -L${e.p.foundation-arm64}/usr/lib -L${e.p.libobjc-arm64}/usr/lib
+    -F${cocoa.appDeps.onyx2d}/System/Library/Frameworks
+    -framework CoreGraphics -framework Onyx2D -lFoundation -lCoreFoundation -lobjc -lSystem
     "-Wl,-dylib_file,/usr/lib/system/libdyld.dylib:${e.libsystem}/usr/lib/system/libdyld.dylib"
     -Wl,-platform_version,macos,26.5,26.5
   )
@@ -34,7 +35,7 @@ in e.pkgs.runCommand "siliconforest-preview-imageio-arm64" {} ''
     -Wl,-install_name,@loader_path/ImageIO.sf-under -o ImageIO.sf-under
   imageio=/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO
   build_image() {
-    ${e.cc} "''${compile[@]}" "''${link[@]}" -dynamiclib Keys.c ${./Sources.c} ${./ImageScaling.c} \
+    ${e.cc} "''${compile[@]}" "''${link[@]}" -dynamiclib Keys.c ${./Sources.c} ${./ImageScaling.c} ${./Destinations.m} \
       -Wl,-not_for_dyld_shared_cache -Wl,-reexport_library,"$PWD/ImageIO.sf-under" \
       -Wl,-compatibility_version,1 -Wl,-current_version,1 -Wl,-install_name,"$1" -o "$2"
   }
@@ -43,8 +44,8 @@ in e.pkgs.runCommand "siliconforest-preview-imageio-arm64" {} ''
   ln -s Versions/Current/ImageIO "$framework/ImageIO"
   # Bind the probe to the public framework request, just as a normal client does.
   build_image "$imageio" ImageIO-link-only
-  ${e.cc} "''${compile[@]}" "''${link[@]}" ${./probe.c} \
+  ${e.cc} "''${compile[@]}" ${./probe.c} "$PWD/ImageIO-link-only" "''${link[@]}" \
     -Wl,-dylib_file,@loader_path/ImageIO.sf-under:"$PWD/ImageIO.sf-under" \
-    "$PWD/ImageIO-link-only" -o "$out/bin/imageio-probe"
+    -o "$out/bin/imageio-probe"
   cp ${e.finch}/LICENSE-MIT ${e.finch}/LICENSE-APACHE "$out/share/licenses/Finch/"
 ''
