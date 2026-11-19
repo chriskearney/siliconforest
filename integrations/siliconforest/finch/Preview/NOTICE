@@ -124,3 +124,17 @@ the unavailable newer Objective-C bridge. The original value/Codable behavior
 is retained. CalendarValues.swift, its small open CF API declaration header,
 preparation and probe are original MIT code. No proprietary implementation,
 private Apple headers, assets or Data source edits are included.
+
+Scoped Swift AttributedString reader values
+------------------------------------------
+Swift Foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a,
+29 files recorded in AttributedString/sources.json. Original Apple/Swift project
+copyright notices remain; Apache-2.0 WITH Swift-exception, full text in
+LICENSES/Swift-Foundation.txt, copied beside prepared sources.
+Swift Collections revision c11818f3cae0780656baa430b49e7f163f08dffd,
+171 source digests and retained object hashes in AttributedString/collections.json.
+Copyright Apple Inc. and the Swift project authors; Apache-2.0 WITH Swift-exception,
+full text in LICENSES/Swift-Collections.txt, copied beside prepared sources.
+Compatibility patches retain original headers; original adapter/header/preparer
+and probe additions use their stated MIT license. No Apple app code/assets are
+tracked. See AttributedString/README.md for exact measured scope and omissions.

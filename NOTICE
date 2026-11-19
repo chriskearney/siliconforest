@@ -293,3 +293,10 @@ Copyright (c) 2014-2017 Apple Inc. and the Swift project authors, under that sam
 Apache-2.0 WITH Swift-exception license. The original per-file notice, complete
 license and source digest accompany the value slice. Its CoreFoundation adapter
 and tests are original MIT code; no closed Apple framework code is included.
+
+Scoped Swift AttributedString preparation
+Preview/AttributedString prepares 29 open swift-foundation files at the same
+c20150400269a6afffe5b3a9f9fa8bbd51d69e1a pin, preserving upstream notices under
+Apache-2.0 WITH Swift-exception (LICENSES/Swift-Foundation.txt). Real retained
+Swift Collections at c11818f3cae0780656baa430b49e7f163f08dffd supplies text storage;
+its notices and license are preserved in LICENSES/Swift-Collections.txt.

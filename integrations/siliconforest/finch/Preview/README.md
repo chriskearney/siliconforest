@@ -86,3 +86,8 @@ unchanged decoder/UUID/URL M1 probes pass, preserving all 1,691 prior exports.
 [DateComponents/README.md](DateComponents/README.md) adds the pinned real date
 component value with bounded CoreFoundation calendar conversion. Its M1 proof
 passes; the standalone AppIntents loader next reaches AttributedString metadata.
+
+The [AttributedString reader slice](AttributedString/README.md) prepares real open
+text/runs/attribute/Codable values over retained Swift Collections. Its native
+proof advances the standalone AppIntents loader to PersonNameComponents; it
+does not establish an Apple Preview launch.
