@@ -19,3 +19,8 @@ Image scaling draws into an 8-bit RGB bitmap with premultiplied alpha. It
 supports the integer option values 0 and 1, caps the destination
 allocation, and returns a newly owned image. The probe checks the scaled
 dimensions and reads a pixel from the destination image.
+
+The opaque-copy operation supports the null options argument and
+skip-last alpha format used by Preview. It recovers straight RGB from
+premultiplied samples before removing alpha. The probe checks that a
+translucent red source becomes opaque without darkening its color.
