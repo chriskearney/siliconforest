@@ -8,7 +8,9 @@ Private read and layout subset for the 17 C calls Preview imports from
 creator. Those stay in CoreGraphics, so a `CGPDFPageRef` is the retained
 Onyx page object.
 
-`build.nix` is the arm64 library. It is not installed into a shared prefix.
+`build.nix` builds the arm64 library for a private prefix. Use the retained
+Onyx2D provider from `../PDFKit/onyx-render.nix` in that process. It keeps
+indirect PDF objects alive across layout rebuilds and autorelease pool drains.
 
 ## What the calls do
 
