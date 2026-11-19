@@ -9,6 +9,7 @@
     "source": "/home/chrisk/src/darwin-lab/runs/preview/swiftui-wt/runs/swiftui/adapted/Sources/SwiftUICore/Layout/Edge/Edge.swift"
   },
   "finch_files": {
+    "userland/CoreGraphics/swift/CoreGraphics.swift": "81cfe89c4ad176e0acb91e4883f0cb20b67edab1877868e871d80a915ef7993a",
     "userland/SwiftUI/adapt.py": "35d69d64b7967632fd3f6520a8fff93d019da6499e3cdf3f5f9ee7aabd564df0",
     "userland/SwiftUI/build.sh": "bbc71a7c916e691e5230fa39da80b6c0cac02a6668464630b8b38c8bb928e96f",
     "userland/SwiftUI/demangle.cpp": "0f5ace951d4d8d389be216d761c34a8c25fb5d739f867cd890bde1930b41136e",

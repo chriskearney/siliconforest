@@ -95,3 +95,21 @@ coherent full CoreGraphics/QuartzCore module surface, real Observation and
 Synchronization, the tested open Combine and Accessibility providers, and the
 remaining actual imported framework interfaces. Module emission alone is not
 runtime behavior. The QTP fallback, P13 and all shared providers remain intact.
+
+## CoreGraphics geometry slice
+
+Source preparation also extracts the complete unchanged `CGPoint: Equatable`
+conformance from pinned Finch CoreGraphics, retaining its Swift project license
+header. Compile it as `CoreGraphics` with the real underlying geometry module,
+`-module-link-name swiftCoreGraphics`, and library evolution. It does not define
+new C types or replace their layout. The test client exercises generic witness
+dispatch, synthesized enum equality, signed zero, NaN/infinity, and size/alignment.
+A private native M1 client passed. This is a narrow geometry conformance, not a
+complete CoreGraphics overlay or renderer qualification. Exact commands, hashes
+and native receipt remain in the ignored `runs/swiftui/cg-primitives` handoff.
+
+The renderer accepts the coordinator's real Foundation `FormatStyle` and
+`DiscreteFormatStyle` module. Further confirmed source/client requirements
+include `Locale.language`, locale-aware capitalization, Date format styles and
+Duration time/units format styles. They remain separate provider work; the
+full renderer does not compile yet.

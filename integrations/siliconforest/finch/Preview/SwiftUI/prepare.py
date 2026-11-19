@@ -88,6 +88,16 @@ def main():
     (primitive / "ViewDebugProtocol.swift").write_text(debug[start:end] + "\n")
     shutil.copy2(HERE.parents[1] / "QuickTime/loader/SwiftUI.swift", primitive / "SwiftUI.swift")
     shutil.copy2(finch / "userland/swift/overlays/CoreFoundation/CGFloat.swift", primitive / "CGFloat.swift")
+    # Preserve the real nominal module and unchanged upstream equality body.
+    # The earlier compiler input exposed CGGeometry C declarations only.
+    geometry = output / "geometry"
+    geometry.mkdir()
+    cg = (finch / "userland/CoreGraphics/swift/CoreGraphics.swift").read_text()
+    start = cg.index("extension CGPoint : Equatable {")
+    end = cg.index("\nextension CGPoint : Codable", start)
+    license_header = cg[:cg.index("@_exported import CoreGraphics")]
+    (geometry / "CGPointEquatable.swift").write_text(
+        license_header + "@_exported import CoreGraphics\n" + cg[start:end])
     shutil.copy2(subtree / "demangle.cpp", output / "demangle.cpp")
     shutil.copy2(HERE / "backtrace_image_offsets.c", output / "backtrace_image_offsets.c")
     manifest = {str(p.relative_to(output)): sha(p) for p in sorted(output.rglob("*"))
