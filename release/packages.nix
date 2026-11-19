@@ -35,6 +35,7 @@ let
     else if file == toString ./base-tree.nix then args: import path (args // { inherit system; })
     else if pkgs.lib.hasPrefix "${toString sf}/homebrew/" file
       || file == toString (sf + "/m1-storage/userland/build-openssh.nix")
+      || file == toString ./image/activity-monitor.nix
     then builtins.scopedImport { import = importLegacy; } path
     else if pkgs.lib.hasPrefix "${toString sf}/" file
       || builtins.elem file (map toString [ ./desktop.nix ./image/firefox-runtime.nix ])
@@ -73,7 +74,7 @@ let
       pinned = (builtins.fromJSON (builtins.readFile ../sources.lock)).homebrew;
     in assert pinned == builtins.fromJSON (builtins.readFile ./image/homebrew.lock.json);
       import ./image/homebrew.nix { inherit pkgs; };
-    activity-monitor = import ./image/activity-monitor.nix {
+    activity-monitor = importRecipe ./image/activity-monitor.nix {
       inherit pkgs;
       linkRoot = image.rootTree;
     };
