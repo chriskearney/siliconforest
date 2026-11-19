@@ -1,0 +1,235 @@
+--- a/Sources/Compute/Attribute/AttributeType.swift
++++ b/Sources/Compute/Attribute/AttributeType.swift
+@@ -8,8 +8,11 @@
+ 
+ extension String {
+ 
+-    static func _describing<Subject>(_ subject: UnsafeRawPointer, of type: Subject.Type) -> String {
+-        return String(describing: subject.assumingMemoryBound(to: Subject.self).pointee)
++    static func _describing(_ subject: UnsafeRawPointer, of type: Any.Type) -> String {
++        func describe<Subject>(_ type: Subject.Type) -> String {
++            String(describing: subject.assumingMemoryBound(to: Subject.self).pointee)
++        }
++        return _openExistential(type, do: describe)
+     }
+ 
+ }
+@@ -38,16 +41,16 @@
+             if let selfType = attributeType.pointee.self_id.type
+                 as? any CustomStringConvertible.Type
+             {
+-                description = String._describing(body, of: selfType)
++description = String._describing(body, of: selfType)
+             } else {
+                 description = attributeType.pointee.self_id.description
+             }
+-            return Unmanaged<CFString>.passRetained(description as CFString).autorelease()
++            return Unmanaged<CFString>.passRetained(description.cfString).autorelease()
+         }
+         vtable.pointee.value_description = { attributeType, value in
+             let valueType = attributeType.pointee.value_id.type
+             let description = String._describing(value, of: valueType)
+-            return Unmanaged<CFString>.passRetained(description as CFString).autorelease()
++            return Unmanaged<CFString>.passRetained(description.cfString).autorelease()
+         }
+         #else
+         vtable.pointee.copy_self_description = { attributeType, body in
+@@ -55,7 +58,7 @@
+             if let selfType = attributeType.pointee.self_id.type
+                 as? any CustomStringConvertible.Type
+             {
+-                description = String._describing(body, of: selfType)
++description = String._describing(body, of: selfType)
+             } else {
+                 description = attributeType.pointee.self_id.description
+             }
+--- a/Sources/Compute/Graph/Graph.swift
++++ b/Sources/Compute/Graph/Graph.swift
+@@ -162,7 +162,7 @@
+             eventID: eventID,
+             eventArgCount: eventArgs.count,
+             eventArgs: eventArgs,
+-            data: data as CFData?,
++            data: data.map { $0.cfData },
+             flags: flags
+         )
+         #else
+@@ -202,18 +202,22 @@
+     }
+ 
+     public func archiveJSON(name: String?) {
+-        Graph.archiveJSON(name: name?.cString(using: .utf8))
++        if let name {
++            name.withCString { Graph.archiveJSON(name: $0) }
++        } else {
++            Graph.archiveJSON(name: nil as UnsafePointer<CChar>?)
++        }
+     }
+ 
+     public func graphvizDescription(includeValues: Bool) -> String {
+-        let options: NSDictionary = [
+-            DescriptionOption.format: "graph/dot",
+-            DescriptionOption.includeValues: includeValues,
+-        ]
+-        guard let description = Graph.description(self, options: options) as? String else {
+-            preconditionFailure()
+-        }
+-        return description
++        let options = NSMutableDictionary<NSObject, AnyObject>()!
++        options.setObject("graph/dot".withCString { NSString(utf8String: $0)! }, forKey: DescriptionOption.format.rawValue)
++        options.setObject(NSNumber(bool: includeValues), forKey: DescriptionOption.includeValues.rawValue)
++        guard let description = Graph.description(self, options: unsafeBitCast(options, to: CFDictionary.self)),
++              CFGetTypeID(description) == CFStringGetTypeID() else {
++            preconditionFailure("Compute graph description unavailable or not a CFString")
++        }
++        return String(unsafeBitCast(description, to: CFString.self))
+     }
+ 
+     public static func printStack(maxFrames: Int) {
+@@ -221,14 +225,14 @@
+     }
+ 
+     public static func stackDescription(maxFrames: Int) -> String {
+-        let options: NSDictionary = [
+-            DescriptionOption.format: "stack/text",
+-            DescriptionOption.maxFrames: maxFrames,
+-        ]
+-        guard let description = Graph.description(nil, options: options) as? String else {
++        let options = NSMutableDictionary<NSObject, AnyObject>()!
++        options.setObject("stack/text".withCString { NSString(utf8String: $0)! }, forKey: DescriptionOption.format.rawValue)
++        options.setObject(NSNumber(integer: maxFrames), forKey: DescriptionOption.maxFrames.rawValue)
++        guard let description = Graph.description(nil, options: unsafeBitCast(options, to: CFDictionary.self)),
++              CFGetTypeID(description) == CFStringGetTypeID() else {
+             return ""
+         }
+-        return description
++        return String(unsafeBitCast(description, to: CFString.self))
+     }
+ }
+ #endif
+--- a/Sources/Compute/Runtime/Metadata.swift
++++ b/Sources/Compute/Runtime/Metadata.swift
+@@ -43,7 +43,7 @@
+ 
+     public var description: String {
+         #if os(iOS) || os(macOS)
+-        return __IAGTypeDescription(self) as String
++        return String(__IAGTypeDescription(self))
+         #else
+         return String(__IAGTypeCopyDescription(self))
+         #endif
+--- a/Sources/Compute/Utility/FoundationExtensions/Data+CFData.swift
++++ b/Sources/Compute/Utility/FoundationExtensions/Data+CFData.swift
+@@ -1,6 +1,5 @@
+ import Foundation
+ 
+-#if !canImport(Darwin)
+ extension Data {
+     @usableFromInline
+     var cfData: CFData {
+@@ -14,4 +13,3 @@
+         
+     }
+ }
+-#endif
+--- a/Sources/Compute/Utility/FoundationExtensions/String+CFString.swift
++++ b/Sources/Compute/Utility/FoundationExtensions/String+CFString.swift
+@@ -21,12 +21,11 @@
+     }
+ 
+     var cfString: CFString {
+-        guard let cString = self.cString(using: .utf8),
+-            let cfString = CFStringCreateWithCString(nil, cString, CFStringBuiltInEncodings.UTF8.rawValue)
+-        else {
+-            let utf8 = Array(self.utf8)
+-            return CFStringCreateWithBytes(nil, utf8, utf8.count, CFStringBuiltInEncodings.UTF8.rawValue, false)
+-        }
+-        return cfString
++        let bytes = Array(utf8)
++        guard let result = bytes.withUnsafeBufferPointer({ buffer in
++            CFStringCreateWithBytes(nil, buffer.baseAddress, buffer.count,
++                                    CFStringBuiltInEncodings.UTF8.rawValue, false)
++        }) else { preconditionFailure("Compute UTF-8 CFString allocation failed") }
++        return result
+     }
+ }
+--- a/Sources/ComputeCxx/Graph/Graph.mm
++++ b/Sources/ComputeCxx/Graph/Graph.mm
+@@ -1,3 +1,7 @@
++#include <zlib.h>
++#include <climits>
++#include <cerrno>
++#include <cstring>
+ #include "Graph.h"
+ 
+ #if TARGET_OS_MAC
+@@ -1155,11 +1159,32 @@
+     if ([[path pathExtension] isEqualToString:@"iag-gzon"]) {
+         // Disassembly writes compressed data directly using gzwrite instead of
+         // creating an intermediate NSData object
+-        data = [data compressedDataUsingAlgorithm:NSDataCompressionAlgorithmZlib error:&error];
+         if (!data) {
+-            fprintf(stdout, "Unable to write to \"%s\": %s\n", [path UTF8String], [[error description] UTF8String]);
++            fprintf(stderr, "Unable to serialize graph data for %s\n", [path UTF8String]);
+             return;
+         }
++        gzFile output = gzopen([path fileSystemRepresentation], "wb");
++        if (!output) {
++            fprintf(stderr, "Unable to open graph archive %s: %s\n", [path UTF8String], strerror(errno));
++            return;
++        }
++        const unsigned char *bytes = static_cast<const unsigned char *>([data bytes]);
++        NSUInteger remaining = [data length];
++        bool failed = false;
++        while (remaining) {
++            unsigned count = remaining > INT_MAX ? INT_MAX : static_cast<unsigned>(remaining);
++            int written = gzwrite(output, bytes, count);
++            if (written <= 0) { failed = true; break; }
++            remaining -= static_cast<NSUInteger>(written);
++            bytes += written;
++        }
++        if (gzclose(output) != Z_OK) failed = true;
++        if (failed) {
++            fprintf(stderr, "Unable to write complete graph archive %s\n", [path UTF8String]);
++            return;
++        }
++        fprintf(stdout, "Wrote graph data to \"%s\".\n", [path UTF8String]);
++        return;
+     }
+ 
+     if (![data writeToFile:path options:0 error:&error]) {
+--- a/Sources/ComputeCxx/Graph/TraceRecorder.cpp
++++ b/Sources/ComputeCxx/Graph/TraceRecorder.cpp
+@@ -7,6 +7,7 @@
+ #include <uuid/uuid.h>
+ #if TARGET_OS_MAC && TARGET_OS_OSX
+ #include <mach/mach_vm.h>
++#include <mach/mach.h>
+ #endif
+ #include <ptrauth.h>
+ #include <ranges>
+--- /dev/null
++++ b/Sources/ComputeCxx/Swift/SwiftFunction.h
+@@ -0,0 +1,22 @@
++// SPDX-License-Identifier: MIT
++// Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
++#pragma once
++#if __has_include(<ptrauth.h>)
++#include <ptrauth.h>
++#endif
++
++namespace IAG::swift {
++// Finch's retained patch applies this operation inline in AttributeType::update
++// and ClosureFunction. Its other callback sites name this missing helper.
++// Swift closure pointers can carry a Swift discriminator; the C++ callback call
++// sites use their ordinary function-pointer representation.
++template <class Function> inline Function function(Function pointer) {
++#if __has_feature(ptrauth_calls)
++    return reinterpret_cast<Function>(ptrauth_sign_unauthenticated(
++        ptrauth_strip(reinterpret_cast<void *>(pointer), ptrauth_key_function_pointer),
++        ptrauth_key_function_pointer, 0));
++#else
++    return pointer;
++#endif
++}
++} // namespace IAG::swift

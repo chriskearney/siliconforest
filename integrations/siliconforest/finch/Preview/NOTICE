@@ -228,3 +228,19 @@ git at runs/preview/retained/mapkit/ne_110m_land.geojson, SHA-256
 9e0729ee253ca7d7a5c4ae9395fb1902264c5377c52e224d13dd85010e2835d9.
 No Apple SDK binary is copied into git. The Linux compile did not emit
 _MapKit_SwiftUI.
+
+SwiftUI source preparation and Linux graph slice
+
+OpenSwiftUI aefa4e6edc9c37a992a0cf9c6cf317fb670ed305,
+OpenAttributeGraph 46f2e1b832fa9626bd88f62ba34ba0b799b5206c,
+OpenCoreGraphics df5ab4c4dcd0afc8fde978f6a0ad5228bb8aee17,
+OpenRenderBox 4b0e86bcf926426fbbf2186d4dde17280a40cafb,
+and Compute 0.6.0 ef29bc336a16cee2091eb30b0a3aef606d2163d9 are MIT projects.
+Finch's retained adaptations are MIT OR Apache-2.0. Swift's runtime headers and
+CompilerPlugin source retain their Apache-2.0-with-runtime-exception notices.
+Exact source pins and the per-file Finch hashes are in SwiftUI/sources.json.
+The open libc backtrace_image_offsets implementation retains its original APSL
+copyright and license notice in SwiftUI/backtrace_image_offsets.c. It is used
+only in the private graph candidate; no shared system library is installed.
+Diagnostic-only header declarations are not runtime providers or support claims.
+Native graph, observation and Edge evidence is scoped in SwiftUI/README.md.

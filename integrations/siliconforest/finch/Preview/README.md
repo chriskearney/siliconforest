@@ -133,3 +133,13 @@ priorities.
 source: Web Mercator land and markers, `Marker<Label: View>`, and an
 `NSViewRepresentable` body. The Linux compile did not emit the framework.
 The P13 SwiftUI subset has no `Namespace` or `NSViewRepresentable`.
+
+### Linux SwiftUI graph/source lane
+
+`SwiftUI/README.md` records the pinned OpenSwiftUI/Finch source preparation,
+scoped observation and Accessibility corrections, and the Linux Swift 6.3.3
+Compute/OAG graph proof on M1. Graph updates, metadata and body destruction,
+canonical Observation collection and real Edge values are verified separately.
+Full SwiftUI layout/popover and the unmodified Preview UI remain unproven by
+this lane. Temporary diagnostic headers are explicitly excluded from provider
+qualification. No app launch, shared install or active-prefix change is added.
