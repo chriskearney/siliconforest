@@ -79,7 +79,8 @@ let
   }
   else buildSource;
   inputs = rootInputs // {
-    corecrypto-src = renamed + "/external/corecrypto";
+    # An aarch64 Linux host needs corecrypto f577aafe, which the base tree pins: corecrypto-pin plus its aarch64 Linux host case.
+    corecrypto-src = (if cocoaAarch64 then (import ./base-tree.nix { inherit system; }).renamed else renamed) + "/external/corecrypto";
   } // pkgs.lib.optionalAttrs (sourceName != "upstream-cocoa") {
     sf-sb-key = renamed + "/nix/secureboot/no-key";
   } // pkgs.lib.optionalAttrs cocoaAarch64 {
