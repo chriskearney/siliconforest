@@ -124,8 +124,8 @@ arithmetic. It does not launch AppIntents.
 image `/System/Library/Frameworks/TipKit.framework/Versions/A/TipKit`.
 Forty of Preview's forty-two TipKit imports are real exports. The predicate
 conformances and the event `Rule` initializer are in the trie. The linked
-Foundation is the tested p9 image, and the predicate probe has not been
-run on the M1. `SwiftUI.View.popoverTip` stays absent. `TipGroup.currentTip`
+Foundation is the tested p9 image. M1 PID 7552 ran the predicate comparison
+rules against that image. `SwiftUI.View.popoverTip` stays absent. `TipGroup.currentTip`
 uses the real `@Observable` macro. The headless client calls configure,
 donate, a closure rule, a `Comparison` of two `Value`s, invalidation,
 `MaxDisplayCount`, and both group priorities.

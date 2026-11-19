@@ -1,5 +1,5 @@
 {
-  "status": "predicate exports emitted locally; probe not run on M1; not published",
+  "status": "predicate image proved on M1; not published",
   "branch": "preview-tipkit",
   "worktree": "runs/preview/tipkit-wt",
   "install_name": "/System/Library/Frameworks/TipKit.framework/Versions/A/TipKit",
@@ -16,7 +16,15 @@
     "path": "runs/preview/retained/tipkit/build/tipkit-probe",
     "sha256": "90110ff25d96c6ea9842addbb2164a58dac903bd731df7bd061133e7d7f39e2e",
     "size": 125337,
-    "m1": "not run"
+    "m1": {
+      "receipt": "runs/preview/retained/tipkit/evidence/tipkit-20261119T165446Z.json",
+      "sha256": "3dd8d459a14795279e07ef7889f35ad3dc39180083bae63e042d5f74cb62028f",
+      "remote": "/private/var/db/sfpreview-tipkit/tipkit-20261119T165446Z",
+      "pid": 7552,
+      "returncode": 0,
+      "signals": [],
+      "seconds": 0.28968587500276044
+    }
   },
   "foundation": {
     "linked_dylib_sha256": "aa7de512b8f76a22d9f9484455b5fccd35af9b99f5d0e9c943b54bfaefd530c0",
@@ -58,10 +66,34 @@
     "compositor": 125,
     "owner_guard": "active=0"
   },
+  "predicate_receipt": {
+    "path": "runs/preview/retained/tipkit/evidence/tipkit-20261119T165446Z.json",
+    "sha256": "3dd8d459a14795279e07ef7889f35ad3dc39180083bae63e042d5f74cb62028f",
+    "remote": "/private/var/db/sfpreview-tipkit/tipkit-20261119T165446Z",
+    "pid": 7552,
+    "returncode": 0,
+    "signals": [],
+    "loaded_tipkit": "6c9b27caeacb2d5d17464111c696ce61f67f5e17030841604d2c18de3a3b5d31",
+    "loaded_foundation": "aa7de512b8f76a22d9f9484455b5fccd35af9b99f5d0e9c943b54bfaefd530c0",
+    "loaded_libswiftos": "85612fb27c269f6146064c6d8776180bfa4d7c32cd3e994773f85362c588513c",
+    "protected_foundation": "94a07b510d116a7cfb4f302708f1a3ee7286d4be9c94037b77db13dc48959c2f",
+    "compositor": 125,
+    "owner_guard": "active=0",
+    "assertions": [
+      "configured twice without throwing",
+      "two donations stay pending until the parameter is true, then available",
+      "ordered group is nil before that and OpenTip after tipClosed",
+      "firstAvailable is OpenTip, then RuleTip, then OpenTip",
+      "MaxDisplayCount invalidates after one noteDisplayed",
+      "Comparison Value(1) < Value(2) is available",
+      "Comparison Value(2) < Value(1) stays pending"
+    ]
+  },
   "open": [
-    "The five predicate symbols are in this Linux image. The probe that evaluates Comparison of two Values was compiled and linked, and it was not run on the M1. Do not cite PID 5410 for predicate behavior.",
-    "Runtime must load p9 libswiftFoundation aa7de512 and libswiftos. P13 2de8e8fc has no PredicateExpressions. QTP and the active Foundation image were not replaced.",
-    "popoverTip stays absent. P13 SwiftUI has no Binding, PopoverAttachmentAnchor, or Edge. NotEqual, DonationFilter, DonatedWithin, and the parameter Rule initializer are not in this image. try? maps a thrown PredicateError, including undefinedVariable, to false.",
-    "Preview was not relaunched. TipViews.swift and tipkit-test.swift were not compiled. currentTipUpdates was not compiled. The closure Rule initializer remains and is not the predicate initializer."
+    "PID 7552 is the predicate image. PID 5410 is the earlier closure-rule image 8f543749 and does not cover these rules.",
+    "Runtime loaded scratch p9 libswiftFoundation aa7de512 and libswiftos. P13 2de8e8fc was not on the search path. QTP Foundation and the active Foundation image were not replaced.",
+    "popoverTip stays absent. The SwiftUI image this probe loaded has no Binding and no PopoverAttachmentAnchor. The swiftui-wt image exports Edge and still has neither Binding nor PopoverAttachmentAnchor.",
+    "NotEqual, DonationFilter, DonatedWithin, and the parameter Rule initializer are not in this image. The probe did not evaluate a key path. try? maps a thrown PredicateError, including undefinedVariable, to false.",
+    "Preview was not relaunched. TipViews.swift and tipkit-test.swift were not compiled. currentTipUpdates was not compiled."
   ]
 }

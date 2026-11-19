@@ -33,7 +33,11 @@ not replace the QTP or active Foundation images.
 The Linux image is `6c9b27caeacb2d5d17464111c696ce61f67f5e17030841604d2c18de3a3b5d31`
 (360115 bytes). The linked probe is
 `90110ff25d96c6ea9842addbb2164a58dac903bd731df7bd061133e7d7f39e2e`
-(125337 bytes). The probe has not been run on the M1. Receipt
+(125337 bytes). M1 receipt
+`runs/preview/retained/tipkit/evidence/tipkit-20261119T165446Z.json`
+(SHA-256 `3dd8d459a14795279e07ef7889f35ad3dc39180083bae63e042d5f74cb62028f`)
+records PID 7552, exit 0, no signal. dyld loaded that TipKit image and p9
+`libswiftFoundation` from the private scratch. Receipt
 `tipkit-20261119T154704Z` (PID 5410) covers the earlier closure-rule image
 `8f54374985fb961c2e060f444e74080928309deae9b27217916123cf9fc2510f` only.
 
