@@ -1,0 +1,63 @@
+{
+  "revision": "c20150400269a6afffe5b3a9f9fa8bbd51d69e1a",
+  "source": "Sources/FoundationEssentials/URL/URL.swift",
+  "sha256": "bc9e4412abd68c9a90ebbfb0128ef2964eaae0f58358cab4f2c37ab8ddb7ef24",
+  "mined_declarations": [
+    "public init()",
+    "fileprivate init(keys:",
+    "func contains(_ key:",
+    "func _get<T>",
+    "func _get(_ key: URLResourceKey) -> Bool?",
+    "func _get(_ key: URLResourceKey) -> Int?",
+    "private mutating func _set(_ key: URLResourceKey, newValue: __owned Any?)",
+    "private mutating func _set(_ key: URLResourceKey, newValue: String?)",
+    "private mutating func _set(_ key: URLResourceKey, newValue: Bool?)",
+    "public var allValues:",
+    "public var name:",
+    "public var localizedName:",
+    "public var isRegularFile:",
+    "public var isDirectory:",
+    "public var isSymbolicLink:",
+    "public var isPackage:",
+    "public var typeIdentifier:",
+    "public var fileSize:"
+  ],
+  "new_adapters": [
+    "URL.resourceValues calls privately linked reader with explicit NSError propagation",
+    "Clang typed NSURLResourceKey ABI and static key spellings",
+    "No newer writer, bookmark, security or volume APIs claimed"
+  ],
+  "adaptations": [
+    "NSNumber.integerValue preserves native Int width instead of the retained C intValue (Int32)",
+    "NSNumber(bool:) importer initializer spelling",
+    "Scope to named reader fields; preserve two actual dictionaries, requested-key storage, optional values and copy semantics"
+  ],
+  "finch_revision": "2d9b1bb1af57e14462e4621d194929188a8845b0",
+  "finch_files": {
+    "userland/swift/overlays/UniformTypeIdentifiers/UTType.swift": "31769af26b13edfe6f777411491043fc36e87e7b3c2ce17f7057528f3b05a65a",
+    "userland/Foundation/NSURLResources.m": "0964f2319ca00956001a8edd023fb403e99e051665b795681e6eb82596dbeb8d",
+    "userland/UniformTypeIdentifiers/UTType.m": "02473bb566cd21715380a4c97eb1fdf0b3c499c79462d0fb43cc8613978b9c6b",
+    "LICENSE-MIT": "c424293cddce1e30b523eebebc629b56d31834687782f39fe9adef7ce19fef49",
+    "LICENSE-APACHE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  "base_uti_adapter": {
+    "retained_tested_base_source": "/nix/store/dzd3mp5avd0kchxwb8dyn6pr24pvqr95-UTType.swift",
+    "retained_base_source_sha256": "3861f995068b49e59a55c0ccbee8ce4b3ad7bb1e6ea4cec5d9c8a5232382be04",
+    "retained_tested_library": "/home/chrisk/src/darwin-lab/runs/preview/retained/runtime-intents/foundation-reexport/packet/lib/libswiftUniformTypeIdentifiers.dylib",
+    "pin": "2d9b1bb1af57e14462e4621d194929188a8845b0",
+    "path": "userland/swift/overlays/UniformTypeIdentifiers/UTType.swift",
+    "sha256": "31769af26b13edfe6f777411491043fc36e87e7b3c2ce17f7057528f3b05a65a",
+    "mined_declaration": "extension URLResourceValues / contentType getter",
+    "base_source_unchanged": true
+  },
+  "prepared_files": {
+    "URLResourceValuesReader.swift": "e29458e6bc216f7a34bc777f9c3e769ea301dd7d89e46b02c003616c6e8077c7",
+    "ContentType.swift": "7e5d01c7812162c6ecfb07cc4a2f45109f259a0df5644712fa1330091d781001",
+    "UTType-base.swift": "3861f995068b49e59a55c0ccbee8ce4b3ad7bb1e6ea4cec5d9c8a5232382be04",
+    "SFURLResourceReader.h": "23e365f8a39d1bea88a624fe832fbe698222d1a059c9a9619c12fdfe2f38bd9a",
+    "SFURLResourceReader.m": "1b7d89c1a8d0f824e1cfce5451361827a65eaafeb54bcb9cb0196a18618132f5",
+    "UTTypeBridge.h": "c7519dd756eb090accc203c51df0d2e59189a0dc45561f2db8331da573c2d020",
+    "probe.swift": "89aa40fd00653e58985d33329f70b40936d19053f780c5d379d534875c853c7c",
+    "exports-probe.c": "349cc33bf3e69fac9dcb4c5869ad0c0d20ef51d35c3efbe7198f1353a688d70e"
+  }
+}

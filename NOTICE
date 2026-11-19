@@ -300,3 +300,8 @@ c20150400269a6afffe5b3a9f9fa8bbd51d69e1a pin, preserving upstream notices under
 Apache-2.0 WITH Swift-exception (LICENSES/Swift-Foundation.txt). Real retained
 Swift Collections at c11818f3cae0780656baa430b49e7f163f08dffd supplies text storage;
 its notices and license are preserved in LICENSES/Swift-Collections.txt.
+
+Preview URL resource reader values additionally mine the same pinned Swift
+Foundation URL.swift and Finch 2d9b1bb1af57e14462e4621d194929188a8845b0 UTI getter.
+Upstream copyright/license notices remain in the adapted files; exact provenance
+and full-license preparation are recorded in Preview/URLResourceValues.

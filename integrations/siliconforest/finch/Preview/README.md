@@ -109,3 +109,8 @@ passes with all 5,141 prior Foundation exports retained.
 PersonNameComponents Foundation. The separate-client M1 probe passes with
 all 5,292 combined exports retained. The getter is the new AppIntents
 binding. Library evolution also emits the property descriptor.
+
+The [URL resource reader](URLResourceValues/README.md) adds pinned value storage
+and a real retained-NSURL/content-type adapter, with the exact Swift getter and
+prior exports verified natively. Directory package metadata remains explicitly
+unsupported; this is independent of the AppIntents CoreGraphics loader gate.

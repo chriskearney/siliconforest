@@ -179,3 +179,19 @@ onto the Finch NSError keys, then calls the real NSError method. An embedded
 NSError uses that object. DescriptionProbe.swift and symbols.c are
 MIT OR Apache-2.0. No Apple SDK header or proprietary implementation is
 included.
+
+Scoped URL resource values and content type reader
+-------------------------------------------------
+URLResourceValues/URLResourceValuesReader.swift mines selected real value
+storage/getter/setter declarations from swift-foundation
+c20150400269a6afffe5b3a9f9fa8bbd51d69e1a, URL/URL.swift, preserving Apple/Swift
+copyright and Apache-2.0 WITH Swift-exception; full LICENSES/Swift-Foundation.txt.
+URLResourceValues/ContentType.swift retains the Finch getter at
+2d9b1bb1af57e14462e4621d194929188a8845b0 under MIT OR Apache-2.0.
+The retained tested UTType adapter and public-name bridge keep their MIT notice.
+Original private C reader/header, preparation helper and probes are MIT.
+URLResourceValues/sources.json records exact pinned sources, mined declarations,
+reviewed adaptations and prior adapter hashes. Preparation copies full upstream
+Finch MIT/Apache and Swift Foundation licenses. No Apple implementation or assets
+are tracked; the existing retained open NSURL/UTType providers supply runtime
+metadata. See the reader README for actual native proof and unsupported bounds.
