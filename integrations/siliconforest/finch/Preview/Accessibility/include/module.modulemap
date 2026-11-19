@@ -1,0 +1,5 @@
+module Accessibility [system] {
+  header "Accessibility/Accessibility.h"
+  export *
+  link framework "Accessibility"
+}
