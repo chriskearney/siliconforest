@@ -123,6 +123,24 @@
       "version": "1.98.1",
       "sha256": "fa3ff450172a16c026944030230c5069947af93c728d9179971d44e5e0cfb561"
     },
+    "rustc-1.98.1-aarch64-unknown-linux-gnu": {
+      "type": "file",
+      "url": "https://static.rust-lang.org/dist/rustc-1.98.1-aarch64-unknown-linux-gnu.tar.xz",
+      "version": "1.98.1",
+      "sha256": "89fb83041993b48816514815606f53a5264729b8b449671a6b291e6f0ae74f40"
+    },
+    "cargo-1.98.1-aarch64-unknown-linux-gnu": {
+      "type": "file",
+      "url": "https://static.rust-lang.org/dist/cargo-1.98.1-aarch64-unknown-linux-gnu.tar.xz",
+      "version": "1.98.1",
+      "sha256": "c09425a7f300af148c0bdfded0e7d5f1fe7c075b2b9674e8935afa769297b2f6"
+    },
+    "rust-std-1.98.1-aarch64-unknown-linux-gnu": {
+      "type": "file",
+      "url": "https://static.rust-lang.org/dist/rust-std-1.98.1-aarch64-unknown-linux-gnu.tar.xz",
+      "version": "1.98.1",
+      "sha256": "9bf796a6ec5b004813ebd0b650775a7c6a4f3aae97ad362ae294798dca4f3b23"
+    },
     "rust-std-1.98.1-aarch64-apple-darwin": {
       "type": "file",
       "url": "https://static.rust-lang.org/dist/rust-std-1.98.1-aarch64-apple-darwin.tar.xz",

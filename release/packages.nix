@@ -4,6 +4,11 @@
 let
   inherit (base) pkgs;
   sf = ../integrations/siliconforest;
+  sourceManifest = builtins.readFile ../sources.lock;
+  # The x86_64 source manifest excludes archives used only by the aarch64 Linux host.
+  nativeHostArchive = "\n    \"[^\"]+-(aarch64-unknown-linux-gnu|ubuntu24[.]04-aarch64)\": [{][^}]*[}],";
+  x86SourceManifest = builtins.concatStringsSep "" (builtins.filter builtins.isString
+    (builtins.split nativeHostArchive sourceManifest));
   p = base.pd.packages.x86_64-linux;
   desktop = import ./desktop.nix { inherit base; };
   boot = import ./boot-stages.nix { inherit base; };
@@ -121,7 +126,8 @@ let
 in {
   inherit pieces desktop image;
   packages = pieces // {
-    source-manifest = pkgs.writeText "siliconforest-sources.json" (builtins.readFile ../sources.lock);
+    source-manifest = pkgs.writeText "siliconforest-sources.json"
+      (if pkgs.stdenv.buildPlatform.system == "x86_64-linux" then x86SourceManifest else sourceManifest);
     base-source = base.renamed;
     base-build-source = base.buildSource;
     rust-toolchain = desktop.rust;
