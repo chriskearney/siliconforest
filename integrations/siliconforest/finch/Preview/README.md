@@ -82,3 +82,7 @@ export and artifact hash preserved. ISO8601 dates remain explicitly unavailable.
 [JSONEncoder/README.md](JSONEncoder/README.md) adds the real pinned encoder and
 writer to the same coherent Foundation. Separate-client encode/re-decode and
 unchanged decoder/UUID/URL M1 probes pass, preserving all 1,691 prior exports.
+
+[DateComponents/README.md](DateComponents/README.md) adds the pinned real date
+component value with bounded CoreFoundation calendar conversion. Its M1 proof
+passes; the standalone AppIntents loader next reaches AttributedString metadata.

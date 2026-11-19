@@ -1,0 +1,7 @@
+{
+  "revision": "c20150400269a6afffe5b3a9f9fa8bbd51d69e1a",
+  "license": "Apache-2.0 WITH Swift-exception",
+  "files": {
+    "Calendar/DateComponents.swift": "e42d1b344ef44042619d49b8c2b31a8c6d0e1687730e468f40a8e4d38dd59566"
+  }
+}

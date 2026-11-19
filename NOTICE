@@ -287,3 +287,9 @@ AttributedString/Collection Stdlib Defaults.swift. Copyright (c) 2014-2023 Apple
 Inc. and the Swift project authors; same license and full text as above.
 JSONEncoder/sources.json records the exact inputs; compatibility.patch records
 the scoped changes. No Data or decoder source changes are included.
+
+Preview/DateComponents prepares the same pin's Calendar/DateComponents.swift,
+Copyright (c) 2014-2017 Apple Inc. and the Swift project authors, under that same
+Apache-2.0 WITH Swift-exception license. The original per-file notice, complete
+license and source digest accompany the value slice. Its CoreFoundation adapter
+and tests are original MIT code; no closed Apple framework code is included.

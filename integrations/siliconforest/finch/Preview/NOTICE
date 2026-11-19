@@ -110,3 +110,17 @@ UTF-8 key sorting and explicit date-format error boundaries. The real encoder
 containers, writer and Encodable dispatch remain. JSONEncoderSupport.swift
 retains the helper's upstream notice/license; prepare.py and probe.swift are MIT.
 No Data/decoder edits or proprietary implementation/headers/assets are included.
+
+
+Scoped DateComponents value
+
+swift-foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a,
+Sources/FoundationEssentials/Calendar/DateComponents.swift.
+Copyright (c) 2014-2017 Apple Inc. and the Swift project authors.
+Apache-2.0 WITH Swift-exception; full LICENSES/Swift-Foundation.txt is copied
+beside prepared sources. DateComponents/sources.json records the source digest.
+Changes normalize the leap-month hash to match existing equality and exclude
+the unavailable newer Objective-C bridge. The original value/Codable behavior
+is retained. CalendarValues.swift, its small open CF API declaration header,
+preparation and probe are original MIT code. No proprietary implementation,
+private Apple headers, assets or Data source edits are included.
