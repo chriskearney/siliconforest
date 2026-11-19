@@ -1,0 +1,69 @@
+--- a/IndexSet.swift
++++ b/IndexSet.swift
+@@ -150 +150 @@
+-        return _handle.map { $0.count }
++        return _handle.map { $0.count() }
+@@ -247 +247 @@
+-        return _handle.map { _toOptional($0.firstIndex) }
++        return _handle.map { _toOptional($0.firstIndex()) }
+@@ -252 +252 @@
+-        return _handle.map { _toOptional($0.lastIndex) }
++        return _handle.map { _toOptional($0.lastIndex()) }
+@@ -312 +312,3 @@
+-        return _handle.map { $0.countOfIndexes(in: _toNSRange(range)) }
++        return rangeView.reduce(0) { count, extent in
++            count + extent.clamped(to: range).count
++        }
+@@ -338 +340 @@
+-        return _handle.map { $0.contains(indexSet) }
++        return indexSet.rangeView.allSatisfy { contains(integersIn: $0) }
+@@ -343 +345 @@
+-        return _handle.map { $0.intersects(in: _toNSRange(range)) }
++        return rangeView.contains { $0.overlaps(range) }
+@@ -535,3 +537,5 @@
+-        _applyMutation { $0.add(integer) }
+-        // TODO: figure out how to return the truth here
+-        return (true, integer)
++        let inserted = !contains(integer)
++        if inserted {
++            _applyMutation { $0.add(UInt(integer)) }
++        }
++        return (inserted, integer)
+@@ -543,3 +547 @@
+-        _applyMutation { $0.add(integer) }
+-        // TODO: figure out how to return the truth here
+-        return integer
++        return insert(integer).inserted ? nil : integer
+@@ -554 +556 @@
+-        _applyMutation { $0.remove(integer) }
++        if result != nil { _applyMutation { $0.remove(UInt(integer)) } }
+@@ -595,17 +597,4 @@
+-        let r : NSRange = _toNSRange(range)
+-        return try _handle.map {
+-            var error: Error?
+-            let result = $0.indexes(in: r, options: [], passingTest: { (i, stop) -> Bool in
+-                do {
+-                    let include = try includeInteger(i)
+-                    return include
+-                } catch let e {
+-                    error = e
+-                    stop.pointee = true
+-                    return false
+-                }
+-            })
+-            if let e = error {
+-                throw e
+-            } else {
+-                return result
++        var result = IndexSet()
++        for extent in rangeView {
++            for index in extent.clamped(to: range) where try includeInteger(index) {
++                result.insert(index)
+@@ -613,0 +603 @@
++        return result
+@@ -633 +623 @@
+-        _applyMutation { $0.shiftIndexesStarting(at: integer, by: delta) }
++        _applyMutation { $0.shiftIndexesStarting(at: UInt(integer), by: delta) }
+@@ -762 +752 @@
+-        return lhs._handle.map { $0.isEqual(to: rhs) }
++        return lhs._handle.map { $0.isEqual(to: rhs.reference) }
