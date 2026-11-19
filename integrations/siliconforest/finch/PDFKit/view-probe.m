@@ -66,13 +66,25 @@ int main(int argc, char **argv) {
             return 6;
         }
 
+        PDFPage *first = [document pageAtIndex:0];
         PDFPage *middle = [document pageAtIndex:1];
         PDFPage *last = [document pageAtIndex:2];
-        BOOL okay = checkPage(view, [document pageAtIndex:0], context, pixels, 0);
-        [view goToNextPage:nil];
-        okay = checkPage(view, middle, context, pixels, 1) && okay;
-        [view goToLastPage:nil];
-        okay = checkPage(view, last, context, pixels, 2) && okay;
+        BOOL okay = YES;
+        @autoreleasepool {
+            okay = checkPage(view, first, context, pixels, 0);
+        }
+        @autoreleasepool {
+            [view goToNextPage:nil];
+            okay = checkPage(view, middle, context, pixels, 1) && okay;
+        }
+        @autoreleasepool {
+            [view goToLastPage:nil];
+            okay = checkPage(view, last, context, pixels, 2) && okay;
+        }
+        @autoreleasepool {
+            [view goToPage:first];
+            okay = checkPage(view, first, context, pixels, 0) && okay;
+        }
         CGContextRelease(context);
         if (!okay) return 7;
 
