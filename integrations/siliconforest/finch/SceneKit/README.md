@@ -18,15 +18,9 @@ nesting and an animation duration. `SCNView` stores a scene pointer, a point
 of view, a scene time, and the camera-control flag. None of this parses a
 scene file or draws geometry.
 
-`build.nix` takes `appkit` and `coregraphics`. The defaults are the cached
-retained PDFKit outputs, not the package AppKit attribute:
+The build uses the project's retained arm64 AppKit and CoreGraphics inputs.
 
-```
-appkit = /nix/store/cx4yvkwbcm6xdicdj43d5srxkwvcjajs-puredarwin-appkit-0.1
-coregraphics = /nix/store/jrcb39irvzmh95cd8wwiabsvsjxy5k58-puredarwin-coregraphics-0.1
-```
-
-The other link and header paths are the same cached toolchain recorded in
+The scratch build used the cached toolchain recorded in
 `runs/preview/retained/scenekit/scratch/build.sh`. That scratch command
 produced the dylib whose sha256 is
 `7162ac608c4f1b1aad1c4d98fc1c28adc742ea1b9af58216930d261eb923a3a3`
@@ -43,6 +37,5 @@ scene_nil=1 renderer_nil=1 duration=1.5 camera=SCNCamera
 failures=0
 ```
 
-P11 mapped those dylib bytes. This is not a 3D scene load or a Preview UI pass.
-The pinned Nix derivation records that command and has not been substituted
-for the scratch binary.
+P11 mapped those dylib bytes during Preview's dependency loading. The 3D
+scene parser and renderer remain unavailable.
