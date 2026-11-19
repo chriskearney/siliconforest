@@ -131,6 +131,31 @@ size_t CGImageSourceGetPrimaryImageIndex(CGImageSourceRef);
 extern const CFStringRef kCGImagePropertyPNGDictionary;
 extern const CFStringRef kCGImagePropertyPixelFormat;
 
+typedef struct CGImageMetadata *CGMutableImageMetadataRef;
+typedef const struct CGImageMetadata *CGImageMetadataRef;
+typedef const struct CGImageMetadataTag *CGImageMetadataTagRef;
+CGMutableImageMetadataRef CGImageMetadataCreateMutable(void);
+bool CGImageMetadataSetValueMatchingImageProperty(CGMutableImageMetadataRef, CFStringRef, CFStringRef, CFTypeRef);
+CGImageMetadataTagRef CGImageMetadataCopyTagWithPath(CGImageMetadataRef, CGImageMetadataTagRef, CFStringRef);
+CFTypeRef CGImageMetadataTagCopyValue(CGImageMetadataTagRef);
+
+static void testImageMetadata(void)
+{
+    CGMutableImageMetadataRef metadata = CGImageMetadataCreateMutable();
+    assert(metadata);
+    const void *words[] = {CFSTR("mountains"), CFSTR("night")};
+    CFArrayRef keywords = CFArrayCreate(NULL, words, 2, &kCFTypeArrayCallBacks);
+    assert(CGImageMetadataSetValueMatchingImageProperty(metadata, CFSTR("{IPTC}"), CFSTR("Keywords"), keywords));
+    CGImageMetadataTagRef tag = CGImageMetadataCopyTagWithPath(metadata, NULL, CFSTR("dc:subject"));
+    CFTypeRef value = tag ? CGImageMetadataTagCopyValue(tag) : NULL;
+    assert(value && CFEqual(value, keywords));
+    assert(!CGImageMetadataSetValueMatchingImageProperty(metadata, CFSTR("{IPTC}"), CFSTR("Unknown"), keywords));
+    CFRelease(value);
+    CFRelease(tag);
+    CFRelease(keywords);
+    CFRelease(metadata);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -154,6 +179,7 @@ int main(int argc, char **argv)
     CGImageRef image = CGImageSourceCreateImageAtIndex(source, 0, NULL);
     assert(image && CGImageGetWidth(image) && CGImageGetHeight(image));
     testDestinationFormats();
+    testImageMetadata();
     testCopyImageSource(source, data);
     CFRelease(data);
     testDestinations(image);
