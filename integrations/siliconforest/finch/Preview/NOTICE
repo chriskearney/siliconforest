@@ -205,3 +205,16 @@ Copyright (c) 2014-2017 Apple Inc. and the Swift project authors.
 Apache-2.0 WITH Swift-exception; the file keeps its notice. The validated
 object CGFloat.o is linked, not recompiled. probe.c, link.py, and run_m1.py
 are original MIT code. No Apple SDK binary is copied into git.
+
+Scoped TipKit
+-------------
+TipKit/TipKit.swift is a scoped derivative of Finch revision
+2d9b1bb1af57e14462e4621d194929188a8845b0, userland/TipKit/TipKit.swift,
+SHA-256 8f972e83bb877fbc9664a74f38b0760a94112dc8bb8cb9f7c25dafa38e05405f.
+Copyright (c) 2026 The Finch Project contributors.
+MIT OR Apache-2.0. TipViews.swift is not compiled. TipGroup.currentTip
+uses the Swift host ObservationMacros plugin and the Darwin Observation
+module; currentTipUpdates is omitted. The P13 SwiftUI binding-subset
+source and its companion CGFloat.swift are module inputs only and are
+not linked into this image. build.py, probe.swift, and run_m1.py are
+original MIT code. No Apple SDK binary is copied into git.

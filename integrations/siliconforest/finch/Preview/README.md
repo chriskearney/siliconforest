@@ -119,3 +119,12 @@ unsupported; this is independent of the AppIntents CoreGraphics loader gate.
 CGFloat object on `libswiftCoreFoundation`. The public install name and the
 eight live exports stay, and the separate-client M1 probe calls the dylib
 arithmetic. It does not launch AppIntents.
+
+[TipKit](TipKit/README.md) is a scoped Finch store for the missing Preview
+image `/System/Library/Frameworks/TipKit.framework/Versions/A/TipKit`.
+Thirty-five of Preview's forty-two TipKit imports are real exports. The
+missing seven are the Foundation predicate conformances, the predicate
+`Rule` initializer, and `SwiftUI.View.popoverTip`. `TipGroup.currentTip`
+uses the real `@Observable` macro. The headless client calls configure,
+donate, a closure rule, invalidation, `MaxDisplayCount`, and both group
+priorities.

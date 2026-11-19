@@ -1,0 +1,56 @@
+{
+  "status": "local commit ready for coordinator integration; not published",
+  "branch": "preview-tipkit",
+  "worktree": "runs/preview/tipkit-wt",
+  "install_name": "/System/Library/Frameworks/TipKit.framework/Versions/A/TipKit",
+  "compatibility_version": "1.0.0",
+  "current_version": "1.0.0",
+  "preview_imports": 42,
+  "present_exports": 35,
+  "provider": {
+    "path": "runs/preview/retained/tipkit/build/TipKit",
+    "sha256": "8f54374985fb961c2e060f444e74080928309deae9b27217916123cf9fc2510f",
+    "size": 334563
+  },
+  "probe": {
+    "path": "runs/preview/retained/tipkit/build/tipkit-probe",
+    "sha256": "16f270919c93c6f5ab0cc309054873bdd4ade845a83e0f1043fb115dfa9656ec",
+    "size": 116345
+  },
+  "source_sha256": {
+    "TipKit.swift": "edcc8831d0e3a1433f0bd9ad1e822c5a9260ea7dc555576e3b65dfc967a5f866",
+    "probe.swift": "c7633d362d26dee35e7b227f185809ae3bddc04f43f2f8c2203a1d481b2effa6"
+  },
+  "finch": "2d9b1bb1af57e14462e4621d194929188a8845b0",
+  "observation_dylib_sha256": "5504789018d67debc27820a9e439810f7041ddafa1f7d8bc9e4037f57517bc37",
+  "missing_groups": {
+    "foundation_predicate_conformances": [
+      "_$s10Foundation20PredicateExpressionsO10ComparisonVy_xq_G6TipKit05EventB10ExpressionA2gHRzAgHR_rlMc",
+      "_$s10Foundation20PredicateExpressionsO5ValueVy_xG6TipKit05EventB10ExpressionAGMc",
+      "_$s10Foundation20PredicateExpressionsO7KeyPathVy_xq_G6TipKit05EventB10ExpressionA2gHRzrlMc",
+      "_$s10Foundation20PredicateExpressionsO8VariableVy_xG6TipKit05EventB10ExpressionAGMc"
+    ],
+    "predicate_rule_initializer": [
+      "_$s6TipKit4TipsO4RuleVyAeC5EventVy_xG_AA0E19PredicateExpression_pSb6Output10Foundation0fG0PRts_XPAK0F11ExpressionsO8VariableVy_AHGXEtcSeRzSERzs8SendableRzlufC"
+    ],
+    "swiftui_popover_tip": [
+      "_$s7SwiftUI4ViewP6TipKitE07popoverD0_11isPresented16attachmentAnchor9arrowEdge6actionQrAD0D0_pSg_AA7BindingVySbGSgAA017PopoverAttachmentJ0OAA0L0OSgyAD4TipsO6ActionVctF",
+      "_$s7SwiftUI4ViewP6TipKitE07popoverD0_11isPresented16attachmentAnchor9arrowEdge6actionQrAD0D0_pSg_AA7BindingVySbGSgAA017PopoverAttachmentJ0OAA0L0OSgyAD4TipsO6ActionVctFQOMQ"
+    ]
+  },
+  "receipt": {
+    "path": "runs/preview/retained/tipkit/evidence/tipkit-20261119T154704Z.json",
+    "sha256": "821bce3c0ce186efeac6ecfe3612bc3a0132345238f3099bd40e5c06421dd483",
+    "remote": "/private/var/db/sfpreview-tipkit/tipkit-20261119T154704Z",
+    "pid": 5410,
+    "returncode": 0,
+    "protected_foundation": "94a07b510d116a7cfb4f302708f1a3ee7286d4be9c94037b77db13dc48959c2f",
+    "compositor": 125,
+    "owner_guard": "active=0"
+  },
+  "open": [
+    "Coordinator owns P14. The seven names above stay absent: P13 libswiftFoundation has no PredicateExpressions, and P13 SwiftUI has no Binding, PopoverAttachmentAnchor, or Edge.",
+    "Preview was not relaunched. An earlier scratch without libswiftos exited -6; the recorded pass loads libswiftos and libswiftObservation from that scratch.",
+    "TipViews.swift and tipkit-test.swift were not compiled. currentTipUpdates was not compiled. The closure Rule initializer is not the predicate initializer."
+  ]
+}
