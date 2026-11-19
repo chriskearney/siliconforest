@@ -32,9 +32,10 @@ red, green, and blue center pixels, searches for a word on the second page,
 and requests a thumbnail. Set the optional second argument of the view probe
 to the private staged dylib path.
 
-Both probes build as arm64 Mach-O executables with Nix. Native builds of those
-probe sources passed against the macOS 27.2.1 PDFKit on the M6. Independent
-Poppler output agrees on the three page labels and color patches.
+The document, view and Preview support probes build as arm64 Mach-O executables
+with Nix. Native builds of the document and view probes passed against the
+macOS 27.2.1 PDFKit on the M6. Independent Poppler output agrees on the three
+page labels and color patches.
 
 The retained M1 CoreGraphics opens the three-page fixture and draws its text.
 It leaves the expected rectangle pixels white because the Onyx2D PDF scanner
@@ -50,8 +51,9 @@ fall back to MediaBox, and missing bleed, trim, and art boxes fall back
 to the effective CropBox. The drawing transform uses the same resolved box.
 This recipe supports reading. Regenerating edited documents requires a writer.
 
-The retained build passed the document and view probes on the M1 with private
-SFCGPDFRead and Onyx2D providers. A separate PaperKit integration probe opened
-the three-page fixture through PaperViewController and repeated the page
-navigation, pixel, text search, and thumbnail checks. Preview launch and
-on-screen behavior still need their own verification.
+The retained build passed all three probes on the M1 with private SFCGPDFRead
+and Onyx2D providers. The Preview support probe checks annotation addition,
+content changes, removal, and the read-only PDF encryption controls.
+A separate PaperKit integration probe opened the three-page fixture through
+PaperViewController and repeated the page navigation, pixel, text search,
+and thumbnail checks. Preview's on-screen behavior still needs verification.
