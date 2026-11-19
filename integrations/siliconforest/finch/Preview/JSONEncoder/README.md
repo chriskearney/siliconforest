@@ -87,3 +87,7 @@ and compositor remained unchanged. Receipt:
 `runs/preview/app-private/evidence/jsonencoder-exports-20261119T063412Z.json`.
 This checks actual M1 symbol resolution; it does not call every exported API.
 The export probe keeps Swift/Objective-C metadata mapped until its process exits.
+
+[ERROR-BRIDGE.md](ERROR-BRIDGE.md) records the subsequent real NSError runtime
+lookup fix, its six passing M1 probes and the next observed DateComponents gate.
+The original encoder artifact above is preserved; the relink has a separate digest.
