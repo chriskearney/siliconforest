@@ -91,3 +91,7 @@ The [AttributedString reader slice](AttributedString/README.md) prepares real op
 text/runs/attribute/Codable values over retained Swift Collections. Its native
 proof advances the standalone AppIntents loader to PersonNameComponents; it
 does not establish an Apple Preview launch.
+
+[PersonNameComponents/README.md](PersonNameComponents/README.md) adds the Swift
+5.4 name-component overlay and its bridge to the retained NSPersonNameComponents
+class. The observed AppIntents stop after AttributedString is that bridge.

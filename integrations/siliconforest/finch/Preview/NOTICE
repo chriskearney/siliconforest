@@ -138,3 +138,19 @@ full text in LICENSES/Swift-Collections.txt, copied beside prepared sources.
 Compatibility patches retain original headers; original adapter/header/preparer
 and probe additions use their stated MIT license. No Apple app code/assets are
 tracked. See AttributedString/README.md for exact measured scope and omissions.
+
+Scoped PersonNameComponents bridge
+
+The pinned swift-foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a
+does not contain PersonNameComponents. The Swift 5.4 Darwin overlay, carried by
+Finch revision 2d9b1bb1af57e14462e4621d194929188a8845b0 at
+userland/Foundation/swift/Darwin/PersonNameComponents.swift, is copied unchanged
+into this tree. SHA-256 e9308ddc957b9f834e2f28a4ff3f48db52e96a6bc6641a47a9aafe1bcda2b121.
+Copyright (c) 2014-2017 Apple Inc. and the Swift project authors.
+Apache-2.0 WITH Swift-exception; the file keeps its notice. Finch's one-line
+provenance comment stays. compatibility.patch, applied only when compiling,
+makes the phonetic accessors call the existing bridge methods explicitly and
+replaces String.appending with +. It does not change stored fields, equality,
+hash, or Codable keys. The header declaring the retained class's public
+names, the patch, preparation and probe are original MIT code. No Apple SDK
+header, proprietary implementation, or new Objective-C class is included.

@@ -1,0 +1,15 @@
+{
+  "pin": "c20150400269a6afffe5b3a9f9fa8bbd51d69e1a",
+  "pin_contains_person_name_components": false,
+  "license": "Apache-2.0 WITH Swift-exception",
+  "files": {
+    "PersonNameComponents.swift": "e9308ddc957b9f834e2f28a4ff3f48db52e96a6bc6641a47a9aafe1bcda2b121",
+    "compatibility.patch": "8ae62b28359d6a62291070465255bc5f666acc658b937dfcc093037a19b4a653"
+  },
+  "compatibility_patch": "Phonetic accessors call the existing bridge methods explicitly. description uses + instead of appending. No storage, equality, hash, or Codable key change.",
+  "provenance": {
+    "finch_revision": "2d9b1bb1af57e14462e4621d194929188a8845b0",
+    "path": "userland/Foundation/swift/Darwin/PersonNameComponents.swift",
+    "origin": "Swift 5.4 Darwin overlay stdlib/public/Darwin/Foundation/PersonNameComponents.swift"
+  }
+}
