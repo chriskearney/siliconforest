@@ -44,5 +44,14 @@ Onyx2D loaded from a private prefix, a direct CoreGraphics probe on the M1
 produced the expected red, green, and blue center pixels. The system Onyx2D
 framework was untouched.
 
-A SiliconForest PDFKit runtime pass, on-screen view behavior, printing,
-editing, and Preview app integration are still pending.
+The `read.nix` build takes a retained `SFCGPDFRead` derivation as `cgpdf`.
+It keeps drawing in CoreGraphics and Onyx2D. Missing CropBox entries
+fall back to MediaBox, and missing bleed, trim, and art boxes fall back
+to the effective CropBox. The drawing transform uses the same resolved box.
+This recipe supports reading. Regenerating edited documents requires a writer.
+
+The retained build passed the document and view probes on the M1 with private
+SFCGPDFRead and Onyx2D providers. A separate PaperKit integration probe opened
+the three-page fixture through PaperViewController and repeated the page
+navigation, pixel, text search, and thumbnail checks. Preview launch and
+on-screen behavior still need their own verification.

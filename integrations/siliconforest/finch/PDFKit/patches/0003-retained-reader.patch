@@ -1,0 +1,85 @@
+--- a/userland/PDFKit/PDFKit.m
++++ b/userland/PDFKit/PDFKit.m
+@@ -1342,76 +1342,14 @@
+ - (void)dealloc { [_fdocument release]; [_franges release]; [_fcolor release]; [super dealloc]; }
+ @end
+ 
+-static CFDataRef PDFDataForRect(CGRect rect)
+-{
+-    return CFDataCreate(kCFAllocatorDefault, (const UInt8 *)&rect, sizeof(rect));
+-}
+-
+-static CFDictionaryRef PDFCreateOutlineDictionary(PDFOutline *outline, PDFDocument *document)
+-{
+-    if (!outline) return NULL;
+-    CFMutableDictionaryRef result = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+-    if (outline.label) CFDictionarySetValue(result, kCGPDFOutlineTitle, (CFStringRef)outline.label);
+-    if ([outline.action isKindOfClass:[PDFActionURL class]]) {
+-        NSURL *url = [(PDFActionURL *)outline.action URL]; if (url) CFDictionarySetValue(result, kCGPDFOutlineDestination, (CFURLRef)url);
+-    } else if (outline.destination.page) {
+-        long page = (long)[document indexForPage:outline.destination.page] + 1;
+-        CFNumberRef number = CFNumberCreate(kCFAllocatorDefault, kCFNumberLongType, &page);
+-        if (number) { CFDictionarySetValue(result, kCGPDFOutlineDestination, number); CFRelease(number); }
+-    }
+-    if (outline.numberOfChildren) {
+-        CFMutableArrayRef children = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+-        for (NSUInteger i = 0; i < outline.numberOfChildren; i++) {
+-            CFDictionaryRef child = PDFCreateOutlineDictionary([outline childAtIndex:i], document);
+-            if (child) { CFArrayAppendValue(children, child); CFRelease(child); }
+-        }
+-        CFDictionarySetValue(result, kCGPDFOutlineChildren, children); CFRelease(children);
+-    }
+-    return result;
+-}
+-
+-static NSDictionary *PDFCGContextAttributes(NSDictionary *attributes)
+-{
+-    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+-    NSDictionary *mapping = @{ PDFDocumentTitleAttribute: (id)kCGPDFContextTitle,
+-                                PDFDocumentAuthorAttribute: (id)kCGPDFContextAuthor,
+-                                PDFDocumentSubjectAttribute: (id)kCGPDFContextSubject,
+-                                PDFDocumentCreatorAttribute: (id)kCGPDFContextCreator,
+-                                PDFDocumentKeywordsAttribute: (id)kCGPDFContextKeywords };
+-    for (NSString *key in mapping) if ([attributes objectForKey:key]) [result setObject:[attributes objectForKey:key] forKey:[mapping objectForKey:key]];
+-    return result;
+-}
+-
++/* The retained reader has no writer for generated or edited pages. */
+ static NSData *PDFCreateDataForPages(NSArray *pages, NSDictionary *attributes, PDFOutline *outline, PDFDocument *document)
+ {
+-    for (PDFPage *page in pages) if ([page _hasUnsupportedAnnotations]) return nil;
+-    CFMutableDataRef output = CFDataCreateMutable(kCFAllocatorDefault, 0);
+-    CGDataConsumerRef consumer = CGDataConsumerCreateWithCFData(output);
+-    NSDictionary *contextAttributes = PDFCGContextAttributes(attributes ?: @{});
+-    CGContextRef context = CGPDFContextCreate(consumer, NULL, (CFDictionaryRef)contextAttributes);
+-    CGDataConsumerRelease(consumer);
+-    if (!context) { CFRelease(output); return nil; }
+-    CFDictionaryRef outlineDictionary = PDFCreateOutlineDictionary(outline, document);
+-    if (outlineDictionary) { CGPDFContextSetOutline(context, outlineDictionary); CFRelease(outlineDictionary); }
+-    for (PDFPage *page in pages) {
+-        CGRect media = [page boundsForBox:kPDFDisplayBoxMediaBox];
+-        CFMutableDictionaryRef pageInfo = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+-        CFDataRef boxData = PDFDataForRect(media);
+-        if (boxData) { CFDictionarySetValue(pageInfo, kCGPDFContextMediaBox, boxData); CFRelease(boxData); }
+-        CGPDFContextBeginPage(context, pageInfo);
+-        CFRelease(pageInfo);
+-        for (PDFAnnotation *annotation in page.annotations) {
+-            NSURL *url = [(PDFActionURL *)annotation.action URL];
+-            if (url) CGPDFContextSetURLForRect(context, (CFURLRef)url, annotation.bounds);
+-        }
+-        [page drawWithBox:kPDFDisplayBoxMediaBox toContext:context];
+-        CGPDFContextEndPage(context);
+-    }
+-    CGPDFContextClose(context);
+-    CGContextRelease(context);
+-    NSData *data = [[NSData alloc] initWithBytes:CFDataGetBytePtr(output) length:(NSUInteger)CFDataGetLength(output)];
+-    CFRelease(output);
+-    return [data autorelease];
++    (void)pages;
++    (void)attributes;
++    (void)outline;
++    (void)document;
++    return nil;
+ }
+ 
+ static PDFOutline *PDFOutlineFromDictionary(CFDictionaryRef dictionary, PDFDocument *document, PDFOutline *parent, BOOL root)

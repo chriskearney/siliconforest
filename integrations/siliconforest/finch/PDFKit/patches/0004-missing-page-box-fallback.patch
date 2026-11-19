@@ -1,0 +1,52 @@
+--- a/userland/PDFKit/PDFKit.m
++++ b/userland/PDFKit/PDFKit.m
+@@ -133,11 +133,21 @@
+     return boxes[box];
+ }
+ 
+-static CGRect PDFRectForCGPDFBox(CGPDFPageRef page, PDFDisplayBox box)
+-{
+-    if (!page)
+-        return CGRectZero;
+-    return CGPDFPageGetBoxRect(page, PDFBoxForDisplayBox(box));
++static CGRect PDFRectForCGPDFBox(CGPDFPageRef page, PDFDisplayBox box, CGPDFBox *resolvedBox)
++{
++    CGPDFBox cgBox = PDFBoxForDisplayBox(box);
++    CGRect rect = CGPDFPageGetBoxRect(page, cgBox);
++    if (CGRectIsEmpty(rect) && cgBox != kCGPDFMediaBox && cgBox != kCGPDFCropBox) {
++        cgBox = kCGPDFCropBox;
++        rect = CGPDFPageGetBoxRect(page, cgBox);
++    }
++    if (CGRectIsEmpty(rect) && cgBox == kCGPDFCropBox) {
++        cgBox = kCGPDFMediaBox;
++        rect = CGPDFPageGetBoxRect(page, cgBox);
++    }
++    if (resolvedBox)
++        *resolvedBox = cgBox;
++    return rect;
+ }
+ 
+ static BOOL PDFCharacterIsWord(NSString *string, NSUInteger index)
+@@ -993,7 +1003,7 @@
+ {
+     if (box < kPDFDisplayBoxMediaBox || box > kPDFDisplayBoxArtBox) [NSException raise:NSRangeException format:@"Invalid PDF display box %ld", (long)box];
+     if (_fboxSet[box]) return _fboxes[box];
+-    if (_fpageRef) return PDFRectForCGPDFBox(_fpageRef, box);
++    if (_fpageRef) return PDFRectForCGPDFBox(_fpageRef, box, NULL);
+     if (box == kPDFDisplayBoxMediaBox) return _fboxes[box];
+     return _fboxes[0];
+ }
+@@ -1031,8 +1041,11 @@
+ }
+ - (CGAffineTransform)transformForBox:(PDFDisplayBox)box
+ {
+-    CGRect rect = [self boundsForBox:box];
+-    return _fpageRef ? CGPDFPageGetDrawingTransform(_fpageRef, PDFBoxForDisplayBox(box), rect, (int)_frotation, true) : CGAffineTransformIdentity;
++    if (!_fpageRef)
++        return CGAffineTransformIdentity;
++    CGPDFBox resolvedBox;
++    PDFRectForCGPDFBox(_fpageRef, box, &resolvedBox);
++    return CGPDFPageGetDrawingTransform(_fpageRef, resolvedBox, [self boundsForBox:box], (int)_frotation, true);
+ }
+ - (void)transformContext:(CGContextRef)context forBox:(PDFDisplayBox)box
+ {
