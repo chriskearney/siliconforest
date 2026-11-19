@@ -103,3 +103,9 @@ observed loader/file evidence from predicted future dependency gaps.
 [URLError/README.md](URLError/README.md) adds the stored NSError bridge and
 URLError codes required by the AppIntents audit. The separate-client M1 probe
 passes with all 5,141 prior Foundation exports retained.
+
+[ErrorDescription/README.md](ErrorDescription/README.md) adds the
+`Error.localizedDescription` getter on the combined URLError and
+PersonNameComponents Foundation. The separate-client M1 probe passes with
+all 5,292 combined exports retained. The getter is the new AppIntents
+binding. Library evolution also emits the property descriptor.

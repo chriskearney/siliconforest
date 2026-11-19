@@ -165,3 +165,17 @@ Foundation sources. The protocol stores the NSError returned by the failable
 domain/code/userInfo constructor. Code values are the retained NSURLSession
 constants. URLErrorProbe.swift and symbols.c are MIT OR Apache-2.0. No Apple
 SDK header or proprietary implementation is included.
+
+
+Scoped Error.localizedDescription
+
+Pinned swift-foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a
+keeps a one-line localizedDescription inside CocoaError.swift. That file is
+left uncompiled. LocalizedDescription.swift is original code for this module,
+SHA-256 5eb0d0ed84585eb2dcbac0c7c7bcd192f1ab2b7ff3f11d75bb82d148420d17ed.
+It uses the Apache-2.0 WITH Swift-exception banner of the surrounding
+Foundation sources. The getter copies LocalizedError and CustomNSError fields
+onto the Finch NSError keys, then calls the real NSError method. An embedded
+NSError uses that object. DescriptionProbe.swift and symbols.c are
+MIT OR Apache-2.0. No Apple SDK header or proprietary implementation is
+included.
