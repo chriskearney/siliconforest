@@ -1,0 +1,24 @@
+{
+  "license": "MIT OR Apache-2.0",
+  "retained_reference": "sources/finch/userland/CoreGraphics/CGGeometry.c CGRectStandardize",
+  "files": {
+    "CGRectStandardize.c": "1d6b3c442a5c57b9bb521cb34b87ea70c9796d3f37bb438494e3147df1c5d2ff",
+    "probe.c": "ae9fdee1383c339616c446ad8721de0cd9098a51f11155303c509a8eb6dc75f4"
+  },
+  "active_wrapper_sha256": "657c570788d1f1c936a266b30597ad3c59e6dc11f85e503125c7726e939ad6c0",
+  "active_under_sha256": "d7f137d1a64de511b669f3dcf88194fb12d3a32ff6ccd27d24676e4d7167077b",
+  "baseline_under_exports": 600,
+  "baseline_wrapper_exports": 15,
+  "tested_under_sha256": "5736fda613cc8bfe627c8100b1a51b791a8bc0407168784d1881042fb0e93d97",
+  "tested_base_sha256": "b5ddd6fffbcf678987b1932ff42f5e6306ac24792b312c23d5307fe67059d4cc",
+  "tested_probe_sha256": "e254178f016a21f1a37a99021d3bdb1c68fe0cf1d3323f47a1804921cbb6fd82",
+  "exports_lost": 0,
+  "exports_gained": ["_CGRectStandardize"],
+  "appintents_imports": [
+    "_CGRectEqualToRect",
+    "_CGRectIntersection",
+    "_CGRectIsEmpty",
+    "_CGRectStandardize",
+    "_CGRectUnion"
+  ]
+}
