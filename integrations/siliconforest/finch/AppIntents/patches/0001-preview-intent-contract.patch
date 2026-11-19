@@ -1,0 +1,82 @@
+--- a/userland/AppIntents/AppIntents.swift
++++ b/userland/AppIntents/AppIntents.swift
+@@ -1534,6 +1534,8 @@
+     private let storedDynamicOptionsProvider: Any?
+     private let storedEntityQuery: Any?
+     private var value: Value?
++    private var storedDoubleControlStyle: DoubleControlStyle?
++    private var storedDoubleRange: (lowerBound: Double, upperBound: Double)?
+ 
+     public enum ValueState {
+         case unset
+@@ -1573,6 +1575,11 @@
+ 
+     public final var projectedValue: IntentParameter<Value> { self }
+ 
++    public final func requestValue(_ dialog: IntentDialog? = nil) async throws -> Value.ValueType {
++        AppIntentsSystemServices.recordUnavailable("IntentParameter.requestValue")
++        throw AppIntentError(customDescription: "Requesting input requires the unavailable intent input service.")
++    }
++
+     fileprivate var urlRepresentationValue: Any? {
+         if let value { return value }
+         if let value = defaultValue as? Value { return value }
+@@ -1602,6 +1609,29 @@
+ 
+ extension IntentParameter: AnyIntentValue {}
+ 
++extension IntentParameter {
++    public enum DoubleControlStyle: Hashable {
++        case stepper, field, slider
++    }
++}
++
++extension IntentParameter where Value.ValueType == Double {
++    public final var controlStyle: DoubleControlStyle? { storedDoubleControlStyle }
++    public final var inclusiveRange: (lowerBound: Double, upperBound: Double)? { storedDoubleRange }
++
++    public convenience init(description: LocalizedStringResource? = nil,
++                            default defaultValue: _const Value.UnwrappedType? = nil,
++                            controlStyle: _const DoubleControlStyle = .stepper,
++                            inclusiveRange: _const (lowerBound: Double, upperBound: Double)? = nil,
++                            requestValueDialog: IntentDialog? = nil,
++                            inputConnectionBehavior: _const InputConnectionBehavior = .default) {
++        self.init(title: "", description: description, defaultValue: defaultValue,
++                  requestValueDialog: requestValueDialog, inputConnectionBehavior: inputConnectionBehavior)
++        storedDoubleControlStyle = controlStyle
++        storedDoubleRange = inclusiveRange
++    }
++}
++
+ extension IntentParameter where Value.ValueType == String {
+     public final var inputOptions: String.IntentInputOptions? { storedInputOptions }
+ 
+@@ -2317,6 +2347,20 @@
+         whenCondition = when()
+         otherwiseCondition = otherwise()
+     }
++
++    @_disfavoredOverload
++    public init<ValueType, Parameter>(_ keyPath: KeyPath<Intent, Parameter>, _ comparisonOperator: EquatableComparisonOperator,
++                                      _ value: ValueType.ValueType,
++                                      @ParameterSummaryBuilder<Intent> _ when: () -> WhenCondition,
++                                      @ParameterSummaryBuilder<Intent> otherwise: () -> Otherwise)
++    where ValueType: ExpressibleByNilLiteral, ValueType == Parameter.Value, Parameter: AnyIntentValue,
++          ValueType.ValueType: Equatable {
++        comparedKeyPath = keyPath
++        self.comparisonOperator = comparisonOperator
++        comparedValue = value
++        whenCondition = when()
++        otherwiseCondition = otherwise()
++    }
+ }
+ 
+ extension ParameterSummaryWhenCondition: CustomReflectable {
+@@ -2723,6 +2767,7 @@
+ }
+ 
+ extension _AssistantIntentsProvider {
++    public static var negativePhrases: [_AssistantIntent.NegativeAssistantIntentPhrases] { [] }
+     public static var uniqueEntities: [_AssistantUniqueEntityExample] { [] }
+ }
+ 
