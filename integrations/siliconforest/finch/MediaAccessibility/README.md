@@ -25,3 +25,9 @@ options, preserving existing pixels/metadata. The report and both failures
 remain in ignored `runs/sffinch/ma-stage-v{1,2}/candidate.json`; the identical
 Linux-built native probe is in `m5-ma-v1-reference.json`. No image created or
 rewritten on the Mac was copied back.
+
+The image-source and mutable-metadata caption functions share the URL
+functions' metadata path. On M1, `media-accessibility-probe --metadata` passed
+caption storage, clearing the tag value, invalid-metadata error reporting,
+and uncaptioned-source lookup. The test uses an uncaptioned PNG and leaves the
+file unchanged. File caption persistence still depends on ImageIO XMP support.

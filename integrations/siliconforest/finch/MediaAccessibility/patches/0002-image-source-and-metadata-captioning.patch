@@ -1,0 +1,80 @@
+--- a/userland/MediaAccessibility/MediaAccessibility.m
++++ b/userland/MediaAccessibility/MediaAccessibility.m
+@@ -370,7 +370,9 @@
+ }
+ 
++static CFStringRef const MACaptionPath = CFSTR("Iptc4xmpExt:ArtworkContentDescription");
++
+ CFStringRef MAImageCaptioningCopyMetadataTagPath(void)
+ {
+-    return CFRetain(CFSTR("Iptc4xmpExt:ArtworkContentDescription"));
++    return CFRetain(MACaptionPath);
+ }
+ 
+@@ -378,6 +380,5 @@
+ {
+     if (!metadata) return NULL;
+-    CGImageMetadataTagRef tag = CGImageMetadataCopyTagWithPath(metadata, NULL,
+-        CFSTR("Iptc4xmpExt:ArtworkContentDescription"));
++    CGImageMetadataTagRef tag = CGImageMetadataCopyTagWithPath(metadata, NULL, MACaptionPath);
+     if (!tag) return NULL;
+     CFTypeRef value = CGImageMetadataTagCopyValue(tag);
+@@ -390,4 +391,14 @@
+ }
+ 
++CFStringRef MAImageCaptioningCopyCaptionWithSource(CGImageSourceRef source, CFErrorRef *error)
++{
++    if (error) *error = NULL;
++    if (!source) return NULL;
++    CGImageMetadataRef metadata = CGImageSourceCopyMetadataAtIndex(source, 0, NULL);
++    CFStringRef caption = MACopyCaptionFromMetadata(metadata);
++    if (metadata) CFRelease(metadata);
++    return caption;
++}
++
+ CFStringRef MAImageCaptioningCopyCaption(CFURLRef url, CFErrorRef *error)
+ {
+@@ -396,9 +407,24 @@
+     CGImageSourceRef source = CGImageSourceCreateWithURL(url, NULL);
+     if (!source) return NULL;
+-    CGImageMetadataRef metadata = CGImageSourceCopyMetadataAtIndex(source, 0, NULL);
+-    CFStringRef caption = MACopyCaptionFromMetadata(metadata);
+-    if (metadata) CFRelease(metadata);
++    CFStringRef caption = MAImageCaptioningCopyCaptionWithSource(source, error);
+     CFRelease(source);
+     return caption;
++}
++
++bool MAImageCaptioningSetCaptionIntoMetadata(CGMutableImageMetadataRef metadata,
++    CFStringRef caption, CFErrorRef *error)
++{
++    if (error) *error = NULL;
++    if (metadata && (!caption || CFGetTypeID(caption) == CFStringGetTypeID())) {
++        CGImageMetadataTagRef tag = CGImageMetadataTagCreate(CFSTR("http://iptc.org/std/Iptc4xmpExt/2008-02-29/"),
++            CFSTR("Iptc4xmpExt"), CFSTR("ArtworkContentDescription"), kCGImageMetadataTypeString, caption ?: CFSTR(""));
++        if (tag) {
++            bool ok = CGImageMetadataSetTagWithPath(metadata, NULL, MACaptionPath, tag);
++            CFRelease(tag);
++            if (ok) return true;
++        }
++    }
++    if (error) *error = CFErrorCreate(kCFAllocatorDefault, CFSTR("com.apple.media.accessibility"), 0, NULL);
++    return false;
+ }
+ 
+@@ -430,8 +456,5 @@
+     CGImageMetadataRef metadata = CGImageSourceCopyMetadataAtIndex(source, 0, NULL);
+     CGMutableImageMetadataRef writable = metadata ? CGImageMetadataCreateMutableCopy(metadata) : CGImageMetadataCreateMutable();
+-    CGImageMetadataTagRef tag = CGImageMetadataTagCreate(CFSTR("http://iptc.org/std/Iptc4xmpExt/2008-02-29/"),
+-        CFSTR("Iptc4xmpExt"), CFSTR("ArtworkContentDescription"), kCGImageMetadataTypeString, caption);
+-    ok = ok && destination && writable && tag &&
+-        CGImageMetadataSetTagWithPath(writable, NULL, CFSTR("Iptc4xmpExt:ArtworkContentDescription"), tag);
++    ok = ok && destination && MAImageCaptioningSetCaptionIntoMetadata(writable, caption, NULL);
+     if (ok) {
+         CFStringRef metadataKey = kCGImageDestinationMetadata;
+@@ -458,5 +481,4 @@
+     }
+     if (!ok && temporary[0]) unlink(temporary);
+-    if (tag) CFRelease(tag);
+     if (writable) CFRelease(writable);
+     if (metadata) CFRelease(metadata);
