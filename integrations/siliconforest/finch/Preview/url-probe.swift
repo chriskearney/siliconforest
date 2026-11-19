@@ -53,7 +53,22 @@ struct URLProbe {
         precondition(localized.recoverySuggestion == nil && localized.helpAnchor == nil)
         precondition(type(of: custom).errorDomain == "org.siliconforest.foundation-probe")
         precondition(custom._code == 19 && custom.errorUserInfo["code"] as? Int == 19)
+        let plain: LocalizedStringResource = "Open PDF"
+        precondition(String(localized: plain) == "Open PDF")
+        let name = "Résumé.pdf"
+        let count = 2
+        let message: LocalizedStringResource = "100% done: \(name), \(count, specifier: "%lld") pages"
+        precondition(message.key == "100%% done: %@, %lld pages")
+        precondition(String(localized: message) == "100% done: Résumé.pdf, 2 pages")
+        precondition(!Locale.current.identifier.isEmpty)
+        if CommandLine.arguments.count == 2 {
+            let bundleURL = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+            let localized = LocalizedStringResource("PDF page", defaultValue: "PDF page",
+                                                    bundle: .atURL(bundleURL))
+            precondition(String(localized: localized) == "PDF page from the bundle")
+        }
         print("LocalizedError and CustomNSError dispatch=PASS")
+        print("Localization literal, interpolation, and current locale=PASS")
         print("URL bridge, path operations, Codable conformance, and 10000 copies=PASS")
     }
 }

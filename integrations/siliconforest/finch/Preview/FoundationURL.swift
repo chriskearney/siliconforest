@@ -5,8 +5,9 @@
 // Narrow NSURL-backed value/bridge for the existing open Foundation overlay.
 @_exported import Foundation
 
-public struct URL: Equatable, Hashable, CustomStringConvertible, CustomDebugStringConvertible {
-    private var reference: NSURL
+public struct URL: Equatable, Hashable, CustomStringConvertible, CustomDebugStringConvertible, @unchecked Sendable {
+    // NSURL holds an immutable URL.
+    private let reference: NSURL
 
     private init(reference: NSURL) { self.reference = reference }
 

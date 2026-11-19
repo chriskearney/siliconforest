@@ -33,6 +33,7 @@ in e.pkgs.runCommand "siliconforest-preview-foundation-url-arm64" {} ''
   cp ${../../terminal-app/swift/SFBridging.swift} foundation/SFBridging.swift
   cp ${./FoundationURL.swift} foundation/FoundationURL.swift
   cp ${./FoundationErrors.swift} foundation/FoundationErrors.swift
+  cp ${./FoundationLocalization.swift} foundation/FoundationLocalization.swift
   cp ${swift54}/stdlib/public/SwiftShims/*OverlayShims.h ${swift54}/stdlib/public/SwiftShims/NS*Shims.h \
     ${swift54}/stdlib/public/SwiftShims/FoundationShimSupport.h ${swift54}/stdlib/public/SwiftShims/CFCharacterSetShims.h \
     ${swift54}/stdlib/public/SwiftShims/CFHashingShims.h ovshims/
@@ -63,6 +64,7 @@ in e.pkgs.runCommand "siliconforest-preview-foundation-url-arm64" {} ''
   mkdir -p $out/share/Source $out/share/Licenses
   cp foundation/* $out/share/Source/
   cp ${swift54}/LICENSE.txt $out/share/Licenses/Swift-LICENSE.txt
+  cp ${e.finch}/LICENSE-MIT ${e.finch}/LICENSE-APACHE $out/share/Licenses/
   mkdir -p $out/bin
   ${e.p.swift-toolchain}/bin/swiftc -target arm64-apple-macosx26.5 -sdk $out/compiler-sdk \
     -resource-dir ${cross}/resource -I$out/usr/lib/swift -I${runtime.dev}/usr/lib/swift \
