@@ -82,7 +82,7 @@ let
     sf-swift-host-source = sources."swift-6.3.3-ubuntu24.04-aarch64";
   };
   pd = (import (prepared + "/flake.nix")).outputs (inputs // { self = pd; })
-    // { outPath = prepared; inherit inputs; };
+    // { outPath = prepared; inherit inputs; buildSystem = system; buildPkgs = pkgs; };
 in {
   inherit pd pkgs sources renamed renameTools buildSource;
   rev = if forkRev != null then forkRev

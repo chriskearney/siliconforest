@@ -24,7 +24,7 @@ let
   r = import ../../rebase/pd.nix;
   inherit (r) pd pkgs;
   lib = pkgs.lib;
-  p = pd.packages.x86_64-linux;
+  p = pd.packages.${pd.buildSystem};
   libSystem = import ../../libsystem-default/build-libsystem.nix;
   audiotoolbox = (import ../../m1-sound/sysaudio/build-sysaudio.nix).audiotoolbox;
   tc = p.arm64-cross-toolchain;
