@@ -74,18 +74,40 @@ _$s10Foundation11JSONDecoderCACycfc
 _$s10Foundation11JSONDecoderCMa
 ```
 
-The first combined emit exposed Data's missing Objective-C error bridge. After
-Grok supplied that bridge and the C declaration fixes, a frozen exact-byte
-snapshot of all Swift inputs successfully emitted the coherent Foundation
-object and module (`emit-frozen.log`, `inputs-v1.json`). The real link then
-stopped at exactly `_fgetattrlist`, called from Data's file-writing path. Grok
-owns that syscall/error boundary. No undefined-symbol bypass was used. Object
-and module emission do not establish a linked dylib or runtime compatibility.
+The first combined emit exposed Data's missing Objective-C error bridge. Grok
+supplied the real bridge, C declarations and an actual `fgetattrlist` syscall
+wrapper. The kernel's existing syscall supplies the result/errno; it does not
+fabricate metadata. A frozen exact-byte snapshot of all Swift inputs then
+emitted and linked the coherent Foundation object, module and dylib. No
+undefined-symbol bypass was used. `inputs-v2.json`, `emit-frozen-v2.log` and
+`linked-static.json` record the build and preservation of all 474 prior exports
+(1,691 total), all three required imports and valid thin arm64 signatures.
 
 `probe.swift` exercises actual synthesized/custom Decodable, retained decoder
 lifetime, scalar/nested values, large integer boundaries, Unicode escapes,
 UTF-16, base64, JSON5, detailed failure paths and the explicit ISO date error.
-Its combined-source typecheck passed; it has not run yet. It must compile again
-as a separate client after the coherent Foundation module is emitted, followed
-by guarded standalone M1 proof with hashes and export preservation. No app
-launch, shared install or Preview UI result is claimed.
+It compiled and linked as a separate client of the emitted Foundation module.
+
+## Standalone M1 proof
+
+Exact private library:
+`runs/preview/app-private/jsondecoder/build/libswiftFoundation.dylib`.
+SHA-256:
+`d023b8918bedf87a6a50352a0bc622ba5f38863017582bb81759bc613fab569a`.
+The new client is `build/jsondecoder-probe`, SHA-256:
+`7b2367d3ea2ccb359f91d9e03dee240d2a871e035a8c88243934ad2c3ce12d70`.
+
+On M1 the real decoder probe (PID 2466) exited 0, exercising the cases above,
+including the explicit unavailable ISO date strategy. The unchanged UUID probe
+(PID 2467) and combined URL/localization/CharacterSet consumer (PID 2468) also
+exited 0. Every loader receipt selects the new private Swift Foundation.
+All six packet files and the protected QTP Objective-C Foundation digest remained
+unchanged. Execution held `gui.lock`, passed the documented owner-idle guard
+before and after, and kept compositor PID 125 unchanged. It used strict existing
+SSH credentials/host pin, an owned prefix/HOME and bounded CLI processes.
+
+Receipt: `runs/preview/app-private/evidence/jsondecoder-20261119T062108Z.json`.
+The runtime scratch is `/private/var/db/sfpreview-app/jsondecoder-20261119T062108Z`.
+No Preview/AppIntents launch, window/input action, shared install or active
+app-prefix change occurred. This qualifies the tested decoder cases and legacy
+consumers; it does not establish complete JSONDecoder coverage or Preview UI.

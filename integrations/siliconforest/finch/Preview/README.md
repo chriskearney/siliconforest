@@ -75,5 +75,6 @@ does not replace the coordinator's newer Foundation overlay or launch Preview.
 
 [JSONDecoder/README.md](JSONDecoder/README.md) records the real pinned decoder
 port preparation, passing cross-typechecks and exact native arm64 object exports.
-The coherent module emits; linking/runtime qualification awaits Data's
-`fgetattrlist` boundary.
+The coherent module links with Grok's Data/syscall handoff. Its standalone M1
+decoder, unchanged UUID and URL/localization consumers pass with every prior
+export and artifact hash preserved. ISO8601 dates remain explicitly unavailable.
