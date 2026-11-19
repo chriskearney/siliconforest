@@ -35,7 +35,7 @@ in e.pkgs.runCommand "siliconforest-preview-imageio-arm64" {} ''
     -Wl,-install_name,@loader_path/ImageIO.sf-under -o ImageIO.sf-under
   imageio=/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO
   build_image() {
-    ${e.cc} "''${compile[@]}" "''${link[@]}" -dynamiclib Keys.c ${./Sources.c} ${./ImageScaling.c} ${./Destinations.m} \
+    ${e.cc} "''${compile[@]}" "''${link[@]}" -dynamiclib Keys.c ${./Sources.m} ${./ImageScaling.c} ${./Destinations.m} \
       -Wl,-not_for_dyld_shared_cache -Wl,-reexport_library,"$PWD/ImageIO.sf-under" \
       -Wl,-compatibility_version,1 -Wl,-current_version,1 -Wl,-install_name,"$1" -o "$2"
   }

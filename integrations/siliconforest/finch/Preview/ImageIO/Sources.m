@@ -1,7 +1,34 @@
 // SPDX-License-Identifier: MIT
+#import <Foundation/Foundation.h>
+#import <objc/runtime.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CGDataProvider.h>
 #include <CoreGraphics/CGImageSource.h>
+
+@interface O2ImageSource : NSObject
++ (id)newImageSourceWithData:(CFDataRef)data options:(CFDictionaryRef)options;
+@end
+
+static char sourceDataKey;
+
+CGImageSourceRef CGImageSourceCreateWithData(CFDataRef data, CFDictionaryRef options)
+{
+    if (!data)
+        return NULL;
+    NSData *snapshot = [(NSData *)data copy];
+    id source = [O2ImageSource newImageSourceWithData:(CFDataRef)snapshot options:options];
+    if (source)
+        objc_setAssociatedObject(source, &sourceDataKey, snapshot, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [snapshot release];
+    return (CGImageSourceRef)source;
+}
+
+// Borrow the exact immutable bytes passed to the decoder for this source.
+__attribute__((visibility("hidden")))
+NSData *SFPreviewImageSourceData(CGImageSourceRef source)
+{
+    return objc_getAssociatedObject((id)source, &sourceDataKey);
+}
 
 CGImageSourceRef CGImageSourceCreateWithDataProvider(CGDataProviderRef provider, CFDictionaryRef options)
 {

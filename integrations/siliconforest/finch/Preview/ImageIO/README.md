@@ -30,3 +30,10 @@ URL. Unsupported auxiliary data and separate metadata cause finalization
 to fail with the buffered destination unchanged. The probe encodes,
 reopens, and decodes a PNG and checks that a gain-map request produces
 no output.
+
+The format query describes the PNG writer's alpha support and the TIFF
+writer's alpha and multipage support. Sources created with data or a data
+provider retain the input snapshot. A destination can copy that snapshot
+verbatim when the type and frame count match, all frames decode, and no
+metadata or encoding edits were requested. The probe checks byte equality
+and confirms that a mismatched type leaves the output unchanged.

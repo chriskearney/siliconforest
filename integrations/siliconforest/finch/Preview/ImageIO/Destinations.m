@@ -10,6 +10,7 @@ extern void O2ImageDestinationAddImage(CGImageDestinationRef, CGImageRef, CFDict
 extern bool O2ImageDestinationFinalize(CGImageDestinationRef);
 extern CGDataConsumerRef O2DataConsumerRetain(CGDataConsumerRef);
 extern size_t O2DataConsumerPutBytes(CGDataConsumerRef, const void *, size_t);
+__attribute__((visibility("hidden"))) NSData *SFPreviewImageSourceData(CGImageSourceRef);
 
 @interface SFPreviewImageFrame : NSObject {
 @public
@@ -207,6 +208,51 @@ void CGImageDestinationAddImageAndMetadata(CGImageDestinationRef destination, CG
         CGImageDestinationAddImage(destination, image, options);
 }
 
+static bool publishData(SFPreviewImageDestination *own, NSData *encoded)
+{
+    if (own->data) {
+        [own->data appendData:encoded];
+        return true;
+    }
+    if (own->url)
+        return [encoded writeToURL:own->url atomically:YES];
+    const void *bytes = [encoded bytes];
+    size_t size = [encoded length];
+    return O2DataConsumerPutBytes(own->consumer, bytes, size) == size;
+}
+
+bool CGImageDestinationCopyImageSource(CGImageDestinationRef destination, CGImageSourceRef source,
+                                        CFDictionaryRef options, CFErrorRef *error)
+{
+    if (error)
+        *error = NULL;
+    SFPreviewImageDestination *own = ownDestination(destination);
+    NSData *encoded = source ? SFPreviewImageSourceData(source) : nil;
+    CFStringRef format = encoded ? CGImageSourceGetType(source) : NULL;
+    if (!own || own->finalized || own->unsupported || [own->frames count] ||
+        [own->properties count] || (options && CFDictionaryGetCount(options)) || ![encoded length] ||
+        !format || !CFEqual(format, (CFStringRef)own->type) ||
+        CGImageSourceGetCount(source) != own->count) {
+        if (error)
+            *error = CFErrorCreate(NULL, CFSTR("org.siliconforest.ImageIO"), 1, NULL);
+        return false;
+    }
+    for (size_t index = 0; index < own->count; index++) {
+        CGImageRef image = CGImageSourceCreateImageAtIndex(source, index, NULL);
+        if (!image) {
+            if (error)
+                *error = CFErrorCreate(NULL, CFSTR("org.siliconforest.ImageIO"), 2, NULL);
+            return false;
+        }
+        CGImageRelease(image);
+    }
+    own->finalized = YES;
+    bool complete = publishData(own, encoded);
+    if (!complete && error)
+        *error = CFErrorCreate(NULL, CFSTR("org.siliconforest.ImageIO"), 3, NULL);
+    return complete;
+}
+
 bool CGImageDestinationFinalize(CGImageDestinationRef destination)
 {
     if (!destination)
@@ -240,13 +286,5 @@ bool CGImageDestinationFinalize(CGImageDestinationRef destination)
     if (!complete || [encoded length] == 0)
         return false;
 
-    if (own->data) {
-        [own->data appendData:encoded];
-        return true;
-    }
-    if (own->url)
-        return [encoded writeToURL:own->url atomically:YES];
-    const void *bytes = [encoded bytes];
-    size_t size = [encoded length];
-    return O2DataConsumerPutBytes(own->consumer, bytes, size) == size;
+    return publishData(own, encoded);
 }

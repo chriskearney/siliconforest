@@ -61,6 +61,7 @@ static void testOpaqueCopy(void)
 void CGImageDestinationAddAuxiliaryDataInfo(CGImageDestinationRef, CFStringRef, CFDictionaryRef);
 
 CFArrayRef CGImageDestinationCopyImageFormats(CFStringRef);
+bool CGImageDestinationCopyImageSource(CGImageDestinationRef, CGImageSourceRef, CFDictionaryRef, CFErrorRef *);
 
 static void testDestinationFormats(void)
 {
@@ -73,6 +74,24 @@ static void testDestinationFormats(void)
     assert(CGImageDestinationCopyImageFormats(CFSTR("public.jpeg")) == NULL);
     CFRelease(tiff);
     CFRelease(png);
+}
+
+static void testCopyImageSource(CGImageSourceRef source, CFDataRef original)
+{
+    CFMutableDataRef bytes = CFDataCreateMutable(NULL, 0);
+    CGImageDestinationRef copy = CGImageDestinationCreateWithData(bytes, CFSTR("public.png"), 1, NULL);
+    CFErrorRef error = NULL;
+    assert(copy && CGImageDestinationCopyImageSource(copy, source, NULL, &error));
+    assert(error == NULL && CFEqual(bytes, original));
+    assert(!CGImageDestinationFinalize(copy));
+    CFRelease(copy);
+
+    CGImageDestinationRef different = CGImageDestinationCreateWithData(bytes, CFSTR("public.tiff"), 1, NULL);
+    assert(different && !CGImageDestinationCopyImageSource(different, source, NULL, &error));
+    assert(error && CFEqual(bytes, original));
+    CFRelease(error);
+    CFRelease(different);
+    CFRelease(bytes);
 }
 
 static void testDestinations(CGImageRef image)
@@ -126,7 +145,6 @@ int main(int argc, char **argv)
     free(bytes);
     assert(data);
     CGDataProviderRef provider = CGDataProviderCreateWithCFData(data);
-    CFRelease(data);
     assert(provider);
     CGImageSourceRef source = CGImageSourceCreateWithDataProvider(provider, NULL);
     CGDataProviderRelease(provider);
@@ -136,6 +154,8 @@ int main(int argc, char **argv)
     CGImageRef image = CGImageSourceCreateImageAtIndex(source, 0, NULL);
     assert(image && CGImageGetWidth(image) && CGImageGetHeight(image));
     testDestinationFormats();
+    testCopyImageSource(source, data);
+    CFRelease(data);
     testDestinations(image);
     CGImageRelease(image);
     CGImageSourceRelease(source);
