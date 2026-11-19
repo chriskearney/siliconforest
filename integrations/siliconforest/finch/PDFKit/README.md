@@ -44,7 +44,7 @@ Onyx2D loaded from a private prefix, a direct CoreGraphics probe on the M1
 produced the expected red, green, and blue center pixels. The system Onyx2D
 framework was untouched.
 
-The `read.nix` build takes a retained `SFCGPDFRead` derivation as `cgpdf`.
+The `read.nix` build uses the retained `SFCGPDFRead` derivation by default.
 It keeps drawing in CoreGraphics and Onyx2D. Missing CropBox entries
 fall back to MediaBox, and missing bleed, trim, and art boxes fall back
 to the effective CropBox. The drawing transform uses the same resolved box.

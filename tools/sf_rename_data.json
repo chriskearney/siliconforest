@@ -234,6 +234,7 @@
 "pd-xpc-dev"
 ],
 "lower_false": [
+    "pdfdoc",
 "pd02",
 "pdac",
 "pdaemon",

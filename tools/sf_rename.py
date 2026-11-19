@@ -70,7 +70,8 @@ DOUBLE = {'PD_SF_': 'SF_', 'pd_sf_': 'sf_'}
 CAMEL_PREFIX = r'(?:lib|[kgstl])?'
 CAPS_PREFIX = r'(?:lib|k|(?<=-)l)?'          # libPDGOP.a, kPDGPU_Present, -lPDGOP
 LIB_PREFIX = r'(?:lib|(?<=-)l)?'             # libpdavd.a, -lpdavd, libpd_virgl_shim
-CAMEL_KEEP = re.compile(  # Apple's PDFKit API and plurals of PDE/PDEV/PDU: not ours
+CAMEL_KEEP = re.compile(  # PDF types and Finch's PDF helpers, plus plurals of PDE/PDEV/PDU
+    r'^PDF(?:BoxForDisplayBox|CharacterIsWord|CGContextAttributes|CreateDataForPages|CreateOutlineDictionary|DataForRect|DocEncoding)$|'
     r'^(?:lib|[kgstl])?PD(?:F(?:Access|Action|Allows|Annotation|AreaOfInterest|Border|Destination|Display|Document|'
     r'EdgeInsets|InterpolationQuality|Kit|NoArea|Outline|Page|Point|'
     r'Print|Rect|Representation|Selection|Size|Thumbnail|View|Operation|s$)|EVs$|Es$|Us$|Fs$)')
