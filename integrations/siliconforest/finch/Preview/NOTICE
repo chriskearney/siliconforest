@@ -212,7 +212,10 @@ TipKit/TipKit.swift is a scoped derivative of Finch revision
 2d9b1bb1af57e14462e4621d194929188a8845b0, userland/TipKit/TipKit.swift,
 SHA-256 8f972e83bb877fbc9664a74f38b0760a94112dc8bb8cb9f7c25dafa38e05405f.
 Copyright (c) 2026 The Finch Project contributors.
-MIT OR Apache-2.0. TipViews.swift is not compiled. TipGroup.currentTip
+MIT OR Apache-2.0. TipViews.swift is not compiled. The event predicate
+rule and the EventPredicateExpression conformances follow Finch's empty
+extensions and are compiled against the tested p9 Foundation module.
+NotEqual is not declared. popoverTip is not compiled. TipGroup.currentTip
 uses the Swift host ObservationMacros plugin and the Darwin Observation
 module; currentTipUpdates is omitted. The P13 SwiftUI binding-subset
 source and its companion CGFloat.swift are module inputs only and are

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Headless client for the scoped TipKit provider. It calls configure, donate,
-// parameter storage, a closure rule, invalidation, and MaxDisplayCount.
-// It does not call predicate expressions or popoverTip.
+// parameter storage, a closure rule, invalidation, MaxDisplayCount, and a
+// Comparison of two Values through the event Rule initializer.
+// It does not call popoverTip or a key-path expression.
 
 import Foundation
 import SwiftUI
@@ -25,6 +26,32 @@ struct CapTip: Tip {
 struct OpenTip: Tip {
     var title: Text { Text(verbatim: "Open") }
     var rules: [Tips.Rule] { Tips.Rule { true } }
+}
+
+struct PredTrueTip: Tip {
+    static let event = Tips.Event<Tips.EmptyDonation>(id: "pred-true")
+    var title: Text { Text(verbatim: "Pred true") }
+    var rules: [Tips.Rule] {
+        Tips.Rule(PredTrueTip.event) { _ in
+            PredicateExpressions.Comparison(
+                lhs: PredicateExpressions.Value(1),
+                rhs: PredicateExpressions.Value(2),
+                op: .lessThan)
+        }
+    }
+}
+
+struct PredFalseTip: Tip {
+    static let event = Tips.Event<Tips.EmptyDonation>(id: "pred-false")
+    var title: Text { Text(verbatim: "Pred false") }
+    var rules: [Tips.Rule] {
+        Tips.Rule(PredFalseTip.event) { _ in
+            PredicateExpressions.Comparison(
+                lhs: PredicateExpressions.Value(2),
+                rhs: PredicateExpressions.Value(1),
+                op: .lessThan)
+        }
+    }
 }
 
 final class NoteCount {
@@ -85,6 +112,10 @@ struct TipKitProbe {
         guard rule.actions.count == 1, cap.options.count == 1 else {
             fail("counts \(rule.actions.count) \(cap.options.count)")
         }
+        let predTrue = PredTrueTip()
+        let predFalse = PredFalseTip()
+        guard predTrue.status == .available else { fail("pred-true \(predTrue.status)") }
+        guard predFalse.status == .pending else { fail("pred-false \(predFalse.status)") }
         guard notes.value >= 6 else { fail("notify \(notes.value)") }
         let file = root.appendingPathComponent("FinchTipKit.json")
         guard let raw = try? Data(contentsOf: file),
@@ -102,6 +133,8 @@ struct TipKitProbe {
         print("group ordered")
         print("notify \(notes.value)")
         print("file keys \(decoded.count)")
+        print("predicate comparison true")
+        print("predicate comparison false")
         print("tipkit-scoped-behavior-passed")
     }
 

@@ -9,9 +9,14 @@
 // compound rules, MaxDisplayCount, MaxDisplayDuration, invalidation, and the
 // Tip requirements that name SwiftUI.Text and SwiftUI.Image.
 //
-// Not in this image, because P13 does not provide the types:
-//   Foundation.PredicateExpressions and the four EventPredicateExpression
-//   conformances, the predicate Rule initializer, and SwiftUI.View.popoverTip.
+// Predicate rules compile against the tested p9 Foundation module
+// (libswiftFoundation aa7de512, swiftmodule 8ad0dda8). That image supplies
+// PredicateExpressions. The four EventPredicateExpression conformances and
+// the event Rule initializer are real TipKit symbols. Equal conforms too;
+// p9 has no NotEqual, so that Finch conformance is not declared.
+// A thrown predicate error, including undefinedVariable, becomes false
+// because the rule uses try?. SwiftUI.View.popoverTip is still absent:
+// this build does not use the M6 SwiftUI runtime.
 // TipViews.swift is not compiled. CloudKit is accepted and ignored, as in Finch.
 // displayFrequency is stored and not read by status(), as in Finch.
 // Group containers throw: this Foundation has no containerURL.
@@ -358,6 +363,39 @@ extension Tips {
     }
 }
 
+@available(macOS 14, iOS 17, tvOS 17, watchOS 10, *)
+public protocol EventPredicateExpression<Output>: PredicateExpression {}
+
+@available(macOS 14, iOS 17, tvOS 17, watchOS 10, *)
+extension PredicateExpressions.Comparison: EventPredicateExpression
+    where LHS: EventPredicateExpression, RHS: EventPredicateExpression {}
+
+@available(macOS 14, iOS 17, tvOS 17, watchOS 10, *)
+extension PredicateExpressions.KeyPath: EventPredicateExpression
+    where Root: EventPredicateExpression {}
+
+@available(macOS 14, iOS 17, tvOS 17, watchOS 10, *)
+extension PredicateExpressions.Value: EventPredicateExpression {}
+
+@available(macOS 14, iOS 17, tvOS 17, watchOS 10, *)
+extension PredicateExpressions.Variable: EventPredicateExpression {}
+
+@available(macOS 14, iOS 17, tvOS 17, watchOS 10, *)
+extension PredicateExpressions.Equal: EventPredicateExpression
+    where LHS: EventPredicateExpression, RHS: EventPredicateExpression {}
+
+struct _TipExpression: @unchecked Sendable {
+    let evaluateBindings: (PredicateBindings) throws -> Bool
+
+    init(_ expression: any EventPredicateExpression<Bool>) {
+        evaluateBindings = { try expression.evaluate($0) }
+    }
+
+    func evaluate(_ bindings: PredicateBindings) throws -> Bool {
+        try evaluateBindings(bindings)
+    }
+}
+
 extension Tips {
     public struct Rule: Sendable {
         public enum CompoundOperation: Sendable, Hashable {
@@ -374,10 +412,22 @@ extension Tips {
             }
         }
 
-        /// Scoped stand-in for the predicate initializer Preview names.
-        /// That initializer needs Foundation.PredicateExpressions, which the
-        /// P13 Foundation overlay does not export. This closure is evaluated
-        /// by status(); it is not the Apple mangled Rule initializer.
+        /// Event predicate rule. The closure result is evaluated by status()
+        /// against the donated event. try? maps a thrown PredicateError,
+        /// including undefinedVariable, to false.
+        @available(macOS 14, iOS 17, tvOS 17, watchOS 10, *)
+        public init<Donation>(
+            _ event: Event<Donation>,
+            _ eventBuilder: (PredicateExpressions.Variable<Event<Donation>>) -> any EventPredicateExpression<Bool>
+        ) where Donation: Decodable, Donation: Encodable, Donation: Sendable {
+            let variable = PredicateExpressions.Variable<Event<Donation>>()
+            let expression = _TipExpression(eventBuilder(variable))
+            check = {
+                (try? expression.evaluate(PredicateBindings((variable, event)))) ?? false
+            }
+        }
+
+        /// Closure rule. This is not the predicate initializer Preview imports.
         public init(_ check: @escaping @Sendable () -> Bool) {
             self.check = check
         }

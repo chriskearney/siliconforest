@@ -1,17 +1,22 @@
 {
   "install_name": "/System/Library/Frameworks/TipKit.framework/Versions/A/TipKit",
   "preview_imports": 42,
-  "present_exports": 35,
+  "present_exports": 40,
+  "predicate_foundation": {
+    "dylib": "runs/preview/predicate-wt/runs/predicate/build/libswiftFoundation.dylib",
+    "dylib_sha256": "aa7de512b8f76a22d9f9484455b5fccd35af9b99f5d0e9c943b54bfaefd530c0",
+    "swiftmodule_sha256": "8ad0dda8f4e565a44588e308cdf9f84c4e9c0eb3f6586d0768b95fc6072647e8",
+    "p13_dylib_not_linked": "2de8e8fc00a7acd6b1633add2db6cf13c9a7f6892d0c34250665bdd69921f0d6"
+  },
+  "predicate_exports": [
+    "_$s10Foundation20PredicateExpressionsO10ComparisonVy_xq_G6TipKit05EventB10ExpressionA2gHRzAgHR_rlMc",
+    "_$s10Foundation20PredicateExpressionsO5ValueVy_xG6TipKit05EventB10ExpressionAGMc",
+    "_$s10Foundation20PredicateExpressionsO7KeyPathVy_xq_G6TipKit05EventB10ExpressionA2gHRzrlMc",
+    "_$s10Foundation20PredicateExpressionsO8VariableVy_xG6TipKit05EventB10ExpressionAGMc",
+    "_$s6TipKit4TipsO4RuleVyAeC5EventVy_xG_AA0E19PredicateExpression_pSb6Output10Foundation0fG0PRts_XPAK0F11ExpressionsO8VariableVy_AHGXEtcSeRzSERzs8SendableRzlufC"
+  ],
+  "extra_equal_conformance": "_$s10Foundation20PredicateExpressionsO5EqualVy_xq_G6TipKit05EventB10ExpressionA2gHRzAgHR_rlMc",
   "missing_groups": {
-    "foundation_predicate_conformances": [
-      "_$s10Foundation20PredicateExpressionsO10ComparisonVy_xq_G6TipKit05EventB10ExpressionA2gHRzAgHR_rlMc",
-      "_$s10Foundation20PredicateExpressionsO5ValueVy_xG6TipKit05EventB10ExpressionAGMc",
-      "_$s10Foundation20PredicateExpressionsO7KeyPathVy_xq_G6TipKit05EventB10ExpressionA2gHRzrlMc",
-      "_$s10Foundation20PredicateExpressionsO8VariableVy_xG6TipKit05EventB10ExpressionAGMc"
-    ],
-    "predicate_rule_initializer": [
-      "_$s6TipKit4TipsO4RuleVyAeC5EventVy_xG_AA0E19PredicateExpression_pSb6Output10Foundation0fG0PRts_XPAK0F11ExpressionsO8VariableVy_AHGXEtcSeRzSERzs8SendableRzlufC"
-    ],
     "swiftui_popover_tip": [
       "_$s7SwiftUI4ViewP6TipKitE07popoverD0_11isPresented16attachmentAnchor9arrowEdge6actionQrAD0D0_pSg_AA7BindingVySbGSgAA017PopoverAttachmentJ0OAA0L0OSgyAD4TipsO6ActionVctF",
       "_$s7SwiftUI4ViewP6TipKitE07popoverD0_11isPresented16attachmentAnchor9arrowEdge6actionQrAD0D0_pSg_AA7BindingVySbGSgAA017PopoverAttachmentJ0OAA0L0OSgyAD4TipsO6ActionVctFQOMQ"

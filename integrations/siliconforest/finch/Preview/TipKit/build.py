@@ -33,7 +33,10 @@ SCR = LAB / "runs/preview/app-private/url-resource-values"
 SWIFTUI_SRC = LAB / "runs/qtp/closure/prefix/System/Library/Frameworks/SwiftUI.framework/Versions/A/Resources/Source/c0skbmlfgqf09kvj73iq8d5spfmrv1sb-SwiftUI.swift"
 CGFLOAT_SRC = LAB / "runs/qtp/closure/prefix/System/Library/Frameworks/SwiftUI.framework/Versions/A/Resources/Source/CGFloat.swift"
 SWIFTUI_DYLIB = LAB / "runs/qtp/closure/prefix/System/Library/Frameworks/SwiftUI.framework/Versions/A/SwiftUI"
-LIBSWIFT_FOUNDATION = SCR / "build/libswiftFoundation.dylib"
+LIBSWIFT_FOUNDATION_P13 = SCR / "build/libswiftFoundation.dylib"
+PREDICATE_BUILD = LAB / "runs/preview/predicate-wt/runs/predicate/build"
+LIBSWIFT_FOUNDATION = PREDICATE_BUILD / "libswiftFoundation.dylib"
+FOUNDATION_SWIFTMODULE = PREDICATE_BUILD / "Foundation.swiftmodule/arm64-apple-macos.swiftmodule"
 AUDIT = LAB / "runs/preview/app-private/p13/projected-audit.json"
 INSTALL = "/System/Library/Frameworks/TipKit.framework/Versions/A/TipKit"
 OBSERVATION = Path("/nix/store/jj285a5nvzzk36bxc6spdx67km16l7p7-siliconforest-preview-observation-arm64/usr/lib/swift")
@@ -43,8 +46,21 @@ PINS = {
     SWIFTUI_SRC: "022a0fb0537cf3133f7542efa2e7cbffa6f366b18c85e24d5d0c6094f47c04c6",
     CGFLOAT_SRC: "61d4b0b7bac4c0695b0a485a3d70bb18f5009920e0ebb740b9acb7c0ae47fe28",
     SWIFTUI_DYLIB: "366e2f883d17af3ac94fe8f37d3b53f24adad02c5fa49f95b0653ff0991d9e1a",
-    LIBSWIFT_FOUNDATION: "2de8e8fc00a7acd6b1633add2db6cf13c9a7f6892d0c34250665bdd69921f0d6",
+    LIBSWIFT_FOUNDATION_P13: "2de8e8fc00a7acd6b1633add2db6cf13c9a7f6892d0c34250665bdd69921f0d6",
+    LIBSWIFT_FOUNDATION: "aa7de512b8f76a22d9f9484455b5fccd35af9b99f5d0e9c943b54bfaefd530c0",
+    FOUNDATION_SWIFTMODULE: "8ad0dda8f4e565a44588e308cdf9f84c4e9c0eb3f6586d0768b95fc6072647e8",
 }
+PREDICATE_EXPORTS = [
+    "_$s10Foundation20PredicateExpressionsO10ComparisonVy_xq_G6TipKit05EventB10ExpressionA2gHRzAgHR_rlMc",
+    "_$s10Foundation20PredicateExpressionsO5ValueVy_xG6TipKit05EventB10ExpressionAGMc",
+    "_$s10Foundation20PredicateExpressionsO7KeyPathVy_xq_G6TipKit05EventB10ExpressionA2gHRzrlMc",
+    "_$s10Foundation20PredicateExpressionsO8VariableVy_xG6TipKit05EventB10ExpressionAGMc",
+    "_$s6TipKit4TipsO4RuleVyAeC5EventVy_xG_AA0E19PredicateExpression_pSb6Output10Foundation0fG0PRts_XPAK0F11ExpressionsO8VariableVy_AHGXEtcSeRzSERzs8SendableRzlufC",
+]
+POPOVER_EXPORTS = [
+    "_$s7SwiftUI4ViewP6TipKitE07popoverD0_11isPresented16attachmentAnchor9arrowEdge6actionQrAD0D0_pSg_AA7BindingVySbGSgAA017PopoverAttachmentJ0OAA0L0OSgyAD4TipsO6ActionVctF",
+    "_$s7SwiftUI4ViewP6TipKitE07popoverD0_11isPresented16attachmentAnchor9arrowEdge6actionQrAD0D0_pSg_AA7BindingVySbGSgAA017PopoverAttachmentJ0OAA0L0OSgyAD4TipsO6ActionVctFQOMQ",
+]
 sys.path.insert(0, str(LAB / "runs/preview/tipkit-wt/integrations/siliconforest/homebrew"))
 from hb_macho import load  # noqa: E402
 
@@ -66,7 +82,7 @@ def common():
     return [
         SWIFTC, "-target", "arm64-apple-macosx26.5", "-sdk", str(SDK),
         "-resource-dir", str(RESOURCE),
-        "-I", str(OUT), "-I", str(SCR / "build"),
+        "-I", str(OUT), "-I", str(PREDICATE_BUILD), "-I", str(SCR / "build"),
         "-I", str(SDK.parent / "usr/lib/swift"), "-I", str(DEV),
         "-Xcc", f"-fmodule-map-file={DEV}/shims/module.modulemap",
         "-Xcc", f"-fmodule-map-file={SCR}/overlay/cross.modulemap",
@@ -202,14 +218,16 @@ def main():
     exported, image = names(OUT / "TipKit")
     present = [name for name in expected if name in exported]
     absent = [name for name in expected if name not in exported]
-    if len(present) != 35 or len(absent) != 7:
-        raise SystemExit(f"export coverage {len(present)} present {len(absent)} absent")
-    for name in absent:
-        if "Predicate" not in name and "popoverD" not in name:
-            raise SystemExit("unexpected absent symbol " + name)
+    if set(absent) != set(POPOVER_EXPORTS):
+        raise SystemExit(
+            f"export coverage {len(present)} present {len(absent)} absent: " + " ".join(absent)
+        )
+    for name in PREDICATE_EXPORTS:
+        if name not in exported:
+            raise SystemExit("missing predicate symbol " + name)
     for name in exported:
-        if "popoverD" in name or "PredicateExpressions" in name:
-            raise SystemExit("fabricated symbol " + name)
+        if "popoverD" in name:
+            raise SystemExit("fabricated popover " + name)
     if image.dylibs[0]["name"] != "/usr/lib/swift/libswiftFoundation.dylib":
         raise SystemExit("TipKit load list changed")
     loads = [item["name"] for item in image.dylibs]

@@ -122,12 +122,13 @@ arithmetic. It does not launch AppIntents.
 
 [TipKit](TipKit/README.md) is a scoped Finch store for the missing Preview
 image `/System/Library/Frameworks/TipKit.framework/Versions/A/TipKit`.
-Thirty-five of Preview's forty-two TipKit imports are real exports. The
-missing seven are the Foundation predicate conformances, the predicate
-`Rule` initializer, and `SwiftUI.View.popoverTip`. `TipGroup.currentTip`
+Forty of Preview's forty-two TipKit imports are real exports. The predicate
+conformances and the event `Rule` initializer are in the trie. The linked
+Foundation is the tested p9 image, and the predicate probe has not been
+run on the M1. `SwiftUI.View.popoverTip` stays absent. `TipGroup.currentTip`
 uses the real `@Observable` macro. The headless client calls configure,
-donate, a closure rule, invalidation, `MaxDisplayCount`, and both group
-priorities.
+donate, a closure rule, a `Comparison` of two `Value`s, invalidation,
+`MaxDisplayCount`, and both group priorities.
 
 [MapKit](MapKit/README.md) is the full renderer-dependent `_MapKit_SwiftUI`
 source: Web Mercator land and markers, `Marker<Label: View>`, and an

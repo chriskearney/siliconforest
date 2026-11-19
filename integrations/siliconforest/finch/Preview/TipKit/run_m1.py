@@ -21,7 +21,7 @@ PROTECTED = "94a07b510d116a7cfb4f302708f1a3ee7286d4be9c94037b77db13dc48959c2f"
 FILES = {
     "bin/tipkit-probe": BUILD / "tipkit-probe",
     "prefix/System/Library/Frameworks/TipKit.framework/Versions/A/TipKit": BUILD / "TipKit",
-    "lib/libswiftFoundation.dylib": LAB / "runs/preview/app-private/url-resource-values/build/libswiftFoundation.dylib",
+    "lib/libswiftFoundation.dylib": LAB / "runs/preview/predicate-wt/runs/predicate/build/libswiftFoundation.dylib",
     "lib/libswiftCoreFoundation.dylib": LAB / "runs/preview/retained/cgfloat-corefoundation/build/libswiftCoreFoundation.dylib",
     "lib/libswiftCoreFoundationBase.dylib": LAB / "runs/preview/retained/cgfloat-corefoundation/build/libswiftCoreFoundationBase.dylib",
     "lib/libswiftSwiftOnoneSupport.dylib": Path("/nix/store/1xx6zwsdr41ws0v28156nkmzkbh1y3h7-siliconforest-swift-runtime-6.3.3/usr/lib/swift/libswiftSwiftOnoneSupport.dylib"),
@@ -46,6 +46,8 @@ REQUIRED = [
     "cap invalidated",
     "actions 1",
     "group ordered",
+    "predicate comparison true",
+    "predicate comparison false",
     "tipkit-scoped-behavior-passed",
 ]
 
