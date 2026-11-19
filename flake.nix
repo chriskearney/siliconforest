@@ -14,7 +14,7 @@
     in {
       packages.x86_64-linux = x86;
       packages.aarch64-linux = {
-        inherit (arm) base-source qemu-base qemu-runner source-manifest;
+        inherit (arm) base-source qemu-base qemu-image qemu-proof-image qemu-runner source-manifest;
       };
       apps.x86_64-linux.qemu = qemuApp x86;
       apps.x86_64-linux.qemu-vnc = {
