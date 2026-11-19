@@ -1,0 +1,31 @@
+{
+  "license": "Apache-2.0 WITH Runtime Library Exception",
+  "probe_license": "MIT OR Apache-2.0",
+  "predicate_expression_sha256": "0be562e4693cfd0c146755304f3b2a7f4f46a2991da9b9a14cda0ed40530a69b",
+  "patched_predicate_expression_sha256": "0233f2fe3a541f76fb3251aca920081fbad25dd575ecd082111868dcdbefb7af",
+  "pins": {
+    "Predicate.swift": "31bca153fcba59bcc647f0a31f2f1b692b221a59c99be2723b45599c17187e09",
+    "PredicateExpression.swift": "0be562e4693cfd0c146755304f3b2a7f4f46a2991da9b9a14cda0ed40530a69b",
+    "PredicateBindings.swift": "4ab45125303958a1d8302287fb9209316c729780e3908f497d904f31f5e69f39",
+    "KeyPath+Inspection.swift": "f223ddbb650c3e38959e0b46c359bb84ccc854807205c6a190b6bdaec1a5857b",
+    "Expressions/Comparison.swift": "8eb83ae4743007515447df3ff94d41fbafb8683b0c12849d411c966d2bb46d47",
+    "Expressions/Equality.swift": "b7beeb9b108ecc97b9cabd5ae983fd335b3bb76349628b795fded25cbc50e2ec",
+    "Expressions/StringComparison.swift": "5afb897b10cf432d66172b2708946b00d2e5273c57266f86fa09871602656c76",
+    "FoundationInternationalization/Predicate/LocalizedString.swift": "c54331efd18d88c13d4d72f6487fd999084c05bf8a61dfdabe0b65a92832108c"
+  },
+  "files": {
+    "PredicateString.swift": "b95241a1871db41e35b370c95367728b7a9a25ae20c4fb703e0375a6cffb9655",
+    "PredicateDebugString.swift": "07dda3a31b4164744b6a8b776e111ba19961c16fb431828e75281ebdbde5d295",
+    "probe.swift": "208dcadce49b0520ff29065de34ddc294a1ec7a6127b6cd828f03614a8d6d2ae",
+    "predicate-error-equality.patch": "07dbdbab227d907c5a3afd5483d95bb602deb3e6931196df1b0eb287c0af97d3"
+  },
+  "baseline_foundation_sha256": "2de8e8fc00a7acd6b1633add2db6cf13c9a7f6892d0c34250665bdd69921f0d6",
+  "tested_library_sha256": "aa7de512b8f76a22d9f9484455b5fccd35af9b99f5d0e9c943b54bfaefd530c0",
+  "tested_probe_sha256": "afa243781fce76b2f1974a7d45c4da8bdbe4bf72e7b2e18e2e05a9c3c51772f5",
+  "baseline_exports": 5362,
+  "export_count": 5627,
+  "exports_lost": 0,
+  "exports_gained": 265,
+  "supersedes_library_sha256": "10eba5cdcf47c5aa23320b9f103240808f44c1c6d43b46d07da7407c118e12cd",
+  "receipt": "runs/preview/predicate-wt/runs/predicate/evidence/predicate-20261119T162302Z.json"
+}

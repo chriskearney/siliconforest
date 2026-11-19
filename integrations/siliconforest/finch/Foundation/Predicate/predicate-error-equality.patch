@@ -1,0 +1,14 @@
+--- a/PredicateExpression.swift
++++ b/PredicateExpression.swift
+@@ -56,7 +56,10 @@ public struct PredicateError: Error, Hashable, CustomDebugStringConvertible {
+     public static func ==(lhs: Self, rhs: Self) -> Bool {
+         switch lhs._error {
+         case .undefinedVariable:
+-            return rhs == .undefinedVariable
++            if case .undefinedVariable = rhs._error {
++                return true
++            }
++            return false
+         case .forceCastFailure(_):
+             if case .forceCastFailure(_) = rhs._error {
+                 return true
