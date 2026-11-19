@@ -2,6 +2,13 @@
 // Synthetic value/bridge/lifetime checks only. No file is opened or written.
 import Foundation
 
+private struct ProbeError: LocalizedError, CustomNSError {
+    static var errorDomain: String { "org.siliconforest.foundation-probe" }
+    var errorCode: Int { 19 }
+    var errorDescription: String? { "test error" }
+    var errorUserInfo: [String: Any] { ["code": errorCode] }
+}
+
 @main
 struct URLProbe {
     static func main() {
@@ -28,6 +35,14 @@ struct URLProbe {
         precondition((text as String) == "legacy string")
         let date = Date(timeIntervalSinceReferenceDate: 123)
         precondition((date as NSDate).timeIntervalSinceReferenceDate() == 123)
+        let error = ProbeError()
+        let localized: any LocalizedError = error
+        let custom: any CustomNSError = error
+        precondition(localized.errorDescription == "test error")
+        precondition(localized.recoverySuggestion == nil && localized.helpAnchor == nil)
+        precondition(type(of: custom).errorDomain == "org.siliconforest.foundation-probe")
+        precondition(custom._code == 19 && custom.errorUserInfo["code"] as? Int == 19)
+        print("LocalizedError and CustomNSError dispatch=PASS")
         print("URL bridge=PASS copies=10000 hash=PASS legacy-string-dictionary-date=PASS scope-acquired=false")
     }
 }

@@ -32,6 +32,7 @@ in e.pkgs.runCommand "siliconforest-preview-foundation-url-arm64" {} ''
   cp ${overlay}/Foundation/NSString.swift ${overlay}/Foundation/NSDictionary.swift foundation/
   cp ${../../terminal-app/swift/SFBridging.swift} foundation/SFBridging.swift
   cp ${./FoundationURL.swift} foundation/FoundationURL.swift
+  cp ${./FoundationErrors.swift} foundation/FoundationErrors.swift
   cp ${swift54}/stdlib/public/SwiftShims/*OverlayShims.h ${swift54}/stdlib/public/SwiftShims/NS*Shims.h \
     ${swift54}/stdlib/public/SwiftShims/FoundationShimSupport.h ${swift54}/stdlib/public/SwiftShims/CFCharacterSetShims.h \
     ${swift54}/stdlib/public/SwiftShims/CFHashingShims.h ovshims/
