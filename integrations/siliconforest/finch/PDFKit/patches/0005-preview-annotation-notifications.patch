@@ -1,0 +1,67 @@
+--- a/userland/PDFKit/PDFKit.m
++++ b/userland/PDFKit/PDFKit.m
+@@ -666,6 +666,21 @@
+ }
+ - (void)dealloc { [_fdash release]; [super dealloc]; }
+ @end
++
++extern NSString *const PDFAnnotationPropertiesChangedNotification;
++extern NSString *const PDFViewAnnotationsDidChangeNotification;
++
++static void PDFPostAnnotationPropertyChange(PDFAnnotation *annotation, NSString *key) {
++    NSString *name = [key hasPrefix:@"/"] ? key : [@"/" stringByAppendingString:key];
++    [[NSNotificationCenter defaultCenter] postNotificationName:PDFAnnotationPropertiesChangedNotification
++                                                        object:nil userInfo:@{@"annotation": annotation, @"key": name}];
++}
++
++static void PDFPostPageAnnotationChange(PDFPage *page, PDFAnnotation *annotation, NSUInteger changeType) {
++    [[NSNotificationCenter defaultCenter] postNotificationName:PDFViewAnnotationsDidChangeNotification
++                                                        object:nil userInfo:@{@"annotation": annotation, @"page": page,
++                                                                              @"changeType": @(changeType)}];
++}
+ 
+ @implementation PDFAnnotation {
+ @public
+@@ -793,7 +808,15 @@
+     [_fvalues removeObjectForKey:PDFAnnotationKeyColor]; _fchanged = YES; [_fpage _markDirty];
+ }
+ - (NSString *)contents { return [_fvalues objectForKey:PDFAnnotationKeyContents]; }
+-- (void)setContents:(NSString *)contents { if (contents) [_fvalues setObject:contents forKey:PDFAnnotationKeyContents]; else [_fvalues removeObjectForKey:PDFAnnotationKeyContents]; _funsupportedForURLRewrite = YES; _fchanged = YES; [_fpage _markDirty]; }
++- (void)setContents:(NSString *)contents
++{
++    if (contents) [_fvalues setObject:contents forKey:PDFAnnotationKeyContents];
++    else [_fvalues removeObjectForKey:PDFAnnotationKeyContents];
++    _funsupportedForURLRewrite = YES;
++    _fchanged = YES;
++    [_fpage _markDirty];
++    PDFPostAnnotationPropertyChange(self, PDFAnnotationKeyContents);
++}
+ - (PDFAction *)action { return _faction; }
+ - (void)setAction:(PDFAction *)action { if (_faction != action) { [_faction release]; _faction = [action retain]; } if (![action isKindOfClass:[PDFActionURL class]] || ![(PDFActionURL *)action URL]) _funsupportedForURLRewrite = YES; _fchanged = YES; [_fpage _markDirty]; }
+ - (BOOL)hasAppearanceStream { return [_fvalues objectForKey:PDFAnnotationKeyAppearanceDictionary] != nil; }
+@@ -1017,11 +1040,23 @@
+ {
+     if (!annotation) return;
+     if (annotation.page && annotation.page != self) [annotation.page removeAnnotation:annotation];
+-    if (![_fannotations containsObject:annotation]) { [_fannotations addObject:annotation]; annotation.page = self; [self _markDirty]; }
++    if (![_fannotations containsObject:annotation]) {
++        [_fannotations addObject:annotation];
++        annotation.page = self;
++        [self _markDirty];
++        PDFPostPageAnnotationChange(self, annotation, 0);
++    }
+ }
+ - (void)removeAnnotation:(PDFAnnotation *)annotation
+ {
+-    if ([_fannotations containsObject:annotation]) { [_fannotations removeObject:annotation]; annotation.page = nil; [self _markDirty]; }
++    if ([_fannotations containsObject:annotation]) {
++        [annotation retain];
++        [_fannotations removeObject:annotation];
++        annotation.page = nil;
++        [self _markDirty];
++        PDFPostPageAnnotationChange(self, annotation, 2);
++        [annotation release];
++    }
+ }
+ - (PDFAnnotation *)annotationAtPoint:(PDFPoint)point
+ {

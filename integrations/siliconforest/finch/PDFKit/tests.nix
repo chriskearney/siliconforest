@@ -14,10 +14,12 @@ in pkgs.stdenv.mkDerivation {
     linkFlags="--ld-path=${ld} -nostdlib -isysroot ${sdk} -L${libsystem}/usr/lib -L${libsystem}/usr/lib/system -L${p.foundation-arm64}/usr/lib -L${p.coreFoundation-arm64}/usr/lib -L${p.libobjc-arm64}/usr/lib -L${p.coregraphics-arm64}/usr/lib -L${p.coretext-arm64}/usr/lib -lCoreGraphics -lCoreText -lFoundation -lCoreFoundation -lobjc -lSystem -Wl,-dylib_file,/usr/lib/system/libdyld.dylib:${libsystem}/usr/lib/system/libdyld.dylib -Wl,-platform_version,macos,26.5,26.5"
     ${cc} $CF -c ${./probe.m} -o document.o
     ${cc} $CF -c ${./view-probe.m} -o view.o
+    ${cc} $CF -c ${./preview-support-probe.m} -o preview-support.o
+    ${cc} preview-support.o $linkFlags -o pdfkit-preview-support-probe
     ${cc} document.o $linkFlags -o pdfkit-document-probe
     ${cc} view.o $linkFlags -o pdfkit-view-probe
   '';
-  installPhase = ''mkdir -p $out/bin; cp pdfkit-{document,view}-probe $out/bin/'';
+  installPhase = ''mkdir -p $out/bin; cp pdfkit-{document,view,preview-support}-probe $out/bin/'';
   dontFixup = true;
   dontStrip = true;
 }
