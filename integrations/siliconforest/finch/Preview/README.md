@@ -61,3 +61,6 @@ AnnotationKit document for exact scope; no general annotation editor is claimed.
 
 [CORESPOTLIGHT.md](CORESPOTLIGHT.md) describes the scoped Finch attribute model
 and typed Swift initializer for the AppIntents build, with explicit UTType input.
+
+[TRANSPORT.md](TRANSPORT.md) records the native PAX long-link failure, exact
+PerformanceAnalysis check and fresh-only extraction with literal link readback.
