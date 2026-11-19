@@ -195,3 +195,13 @@ reviewed adaptations and prior adapter hashes. Preparation copies full upstream
 Finch MIT/Apache and Swift Foundation licenses. No Apple implementation or assets
 are tracked; the existing retained open NSURL/UTType providers supply runtime
 metadata. See the reader README for actual native proof and unsupported bounds.
+
+Scoped Swift CGFloat metadata
+-----------------------------
+Finch revision 2d9b1bb1af57e14462e4621d194929188a8845b0,
+userland/swift/overlays/CoreFoundation/CGFloat.swift, is copied unchanged.
+SHA-256 61d4b0b7bac4c0695b0a485a3d70bb18f5009920e0ebb740b9acb7c0ae47fe28.
+Copyright (c) 2014-2017 Apple Inc. and the Swift project authors.
+Apache-2.0 WITH Swift-exception; the file keeps its notice. The validated
+object CGFloat.o is linked, not recompiled. probe.c, link.py, and run_m1.py
+are original MIT code. No Apple SDK binary is copied into git.

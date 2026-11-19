@@ -114,3 +114,8 @@ The [URL resource reader](URLResourceValues/README.md) adds pinned value storage
 and a real retained-NSURL/content-type adapter, with the exact Swift getter and
 prior exports verified natively. Directory package metadata remains explicitly
 unsupported; this is independent of the AppIntents CoreGraphics loader gate.
+
+[CoreFoundation CGFloat](CoreFoundationCGFloat/README.md) puts the validated
+CGFloat object on `libswiftCoreFoundation`. The public install name and the
+eight live exports stay, and the separate-client M1 probe calls the dylib
+arithmetic. It does not launch AppIntents.

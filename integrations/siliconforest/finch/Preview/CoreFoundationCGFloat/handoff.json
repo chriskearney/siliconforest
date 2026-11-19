@@ -1,0 +1,49 @@
+{
+  "status": "local commit ready for coordinator integration; not published",
+  "branch": "preview-swift-cgfloat",
+  "worktree": "runs/preview/cgfloat-wt",
+  "symbol": "_$s12CoreGraphics7CGFloatVMn",
+  "provider": "/usr/lib/swift/libswiftCoreFoundation.dylib",
+  "same_provider_import_count": 1,
+  "wrapper": {
+    "path": "runs/preview/retained/cgfloat-corefoundation/build/libswiftCoreFoundation.dylib",
+    "sha256": "7820e51640271633dac225b525ecf8cadbde76528b35f86cef2764698172a226",
+    "size": 117017,
+    "install_name": "/usr/lib/swift/libswiftCoreFoundation.dylib",
+    "uuid": "089ACAD8-694E-3356-BD01-E0B11CFE20CD",
+    "timestamp": 1,
+    "current_version": 0,
+    "compatibility_version": 65536,
+    "export_trie": 150,
+    "preserved_reexports": 8,
+    "lost": 0
+  },
+  "base": {
+    "path": "runs/preview/retained/cgfloat-corefoundation/build/libswiftCoreFoundationBase.dylib",
+    "sha256": "28a7d56fe2ff1ed48d8a09a5485c7cb0a68a5faf33f67bc55b84a2039c0e1e81",
+    "size": 51705,
+    "install_name": "/usr/lib/swift/libswiftCoreFoundationBase.dylib",
+    "uuid": "24560DFE-A6D3-3B95-B19B-FDB809705F24",
+    "runtime_sha256": "5cc34db69a4d67170cf5ab4dee8f0ec857ec64c9ff365ee2d0b4c67d03813f1e",
+    "difference": "install-name bytes inside the existing LC_ID_DYLIB slot only"
+  },
+  "object_sha256": "8c55d9502164710e6192c3f720abb67869b2f3aa8bb4f49d86f00a96e7747ffb",
+  "source_sha256": "61d4b0b7bac4c0695b0a485a3d70bb18f5009920e0ebb740b9acb7c0ae47fe28",
+  "finch": "2d9b1bb1af57e14462e4621d194929188a8845b0",
+  "probe_sha256": "06d4bedd321ab1d2a43db3cbd11ffe87018a75d8fbaa92b9cb7c0440f7292e2",
+  "receipt": {
+    "path": "runs/preview/retained/cgfloat-corefoundation/evidence/cgfloat-20261119T144703Z.json",
+    "sha256": "1d96a83e69ff40471de259c6c11cc582c77b6c8fe123bfcd044b438dc724a68c",
+    "remote": "/private/var/db/sfpreview-cgfloat/cgfloat-20261119T144703Z",
+    "cgfloat_pid": 4834,
+    "regression_pids": "4835-4847",
+    "protected_foundation": "94a07b510d116a7cfb4f302708f1a3ee7286d4be9c94037b77db13dc48959c2f",
+    "compositor": 125,
+    "owner_guard": "active=0"
+  },
+  "open": [
+    "Coordinator integrates both dylibs. The base leaf must stay libswiftCoreFoundationBase.dylib.",
+    "AppIntents was not relaunched.",
+    "The earlier static probe.o constant-folded CGFloat arithmetic to a print."
+  ]
+}
