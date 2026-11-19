@@ -40,3 +40,23 @@ Mined attribute/key storage only, not its index/query/service or whole framework
 SiliconForest changes: typed common getters/setters, bounded KVC, synchronized
 field table, unavailable archives explicitly rejected; typed Swift UTType bridge.
 No Apple source, private headers, binary, or assets used.
+
+
+Scoped QuickLook reader
+
+Copyright (c) 2026 The Finch Project contributors.
+MIT OR Apache-2.0; both complete licenses accompany built outputs.
+Finch revision 2d9b1bb1af57e14462e4621d194929188a8845b0:
+  userland/QuickLook/QuickLook.m
+  SHA256 4dccdce307cf2bee3d3425e7a39cc84aa19f5e13e3aacfc333935b181e955a47
+  userland/QuickLook/QuickLookUI.m
+  SHA256 74b0ad6fd4d6a0def58120450f8563bdaa4964e5852516cd89c2d4fd25f81e77
+Mined three display-state constants and the preview item/model/view lifetime
+pattern only. No wholesale panel/generator framework adoption. SiliconForest
+uses actual loaded/page data and retained PDFKit/image rendering, validates
+page/zoom bounds, and preserves explicit unsupported service behavior. No Apple
+implementation, private headers or extracted assets used.
+
+The existing open QTP QuickLook/QuickLookUI source is retained unchanged:
+Copyright (c) 2026 Chris Kearney and the SiliconForest contributors, MIT.
+Its thumbnail-absence API, time key and opener factory are preserved.

@@ -36,6 +36,7 @@ all bundle bytes and stopped before UI at successive missing providers.
 |---|---|
 | `2d9b1bb1af57e14462e4621d194929188a8845b0:userland/RecapPerformanceTesting/RecapPerformanceTesting.m` | Runner properties and method shapes; parameter storage pattern. Replaced successful no-op execution with explicit unsupported errors/exceptions; added the imported activation parameter class. MIT OR Apache-2.0, notices and both license texts retained. |
 | `2d9b1bb1af57e14462e4621d194929188a8845b0:userland/CoreSpotlight/CSSearchableItem.m` | Attribute dictionaries, bounded field names/KVC and copy, custom-key validation/storage. Scoped to two model classes; typed common fields replace forwarding, unavailable archive operations reject explicitly. No index/query adoption. MIT OR Apache-2.0, notices and both license texts retained. |
+| `2d9b1bb1af57e14462e4621d194929188a8845b0:userland/QuickLook/{QuickLook.m,QuickLookUI.m}` | Three data keys and scoped item/model/view lifetime; actual image/PDF loaded state, draw and bounds. No panel/generator or fake loaded/page success. Existing QTP absence API retained. MIT OR Apache-2.0, both Finch licenses and original QTP MIT notice retained. |
 
 Do not deploy by overwriting the existing private app bundle, shared libraries,
 or QTP's runtime. App bytes and extracted interface evidence stay in ignored
@@ -64,3 +65,6 @@ and typed Swift initializer for the AppIntents build, with explicit UTType input
 
 [TRANSPORT.md](TRANSPORT.md) records the native PAX long-link failure, exact
 PerformanceAnalysis check and fresh-only extraction with literal link readback.
+
+[QUICKLOOK.md](QUICKLOOK.md) describes the scoped, M1-tested QuickLook
+reader and the exact existing API it preserves. Preview remains before UI.
