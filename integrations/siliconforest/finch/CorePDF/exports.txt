@@ -1,0 +1,17 @@
+_CGPDFLayoutGetCharacterBounds
+_CGPDFLayoutGetRootNode
+_CGPDFNodeGetBounds
+_CGPDFNodeGetChild
+_CGPDFNodeGetChildCount
+_CGPDFNodeGetRotation
+_CGPDFNodeGetTextRange
+_CGPDFNodeGetType
+_CGPDFNodeGetZ
+_CGPDFNodeRelease
+_CGPDFNodeRetain
+_CGPDFPageGetLayout
+_CGPDFPageRemoveLayout
+_CGPDFSelectionCreateInRect
+_CGPDFSelectionGetNumberOfTextRanges
+_CGPDFSelectionGetTextRange
+_CGPDFSelectionRelease
