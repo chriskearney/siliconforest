@@ -2,11 +2,13 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CGBitmapContext.h>
 #include <CoreGraphics/CGContext.h>
 #include <CoreGraphics/CGDataProvider.h>
 #include <CoreGraphics/CGImageSource.h>
+#include <CoreGraphics/CGPDFDocument.h>
 #include <CoreGraphics/CGImageDestination.h>
 
 CGImageRef CGImageCreateByScaling(CGImageRef, uint32_t, uint32_t, int32_t);
@@ -126,6 +128,7 @@ static void testDestinations(CGImageRef image)
 }
 
 CGImageSourceRef CGImageSourceCreateWithDataProvider(CGDataProviderRef, CFDictionaryRef);
+CFDictionaryRef CGImageSourceCopyProperties(CGImageSourceRef, CFDictionaryRef);
 CFArrayRef CGImageSourceCopyTypeIdentifiers(void);
 size_t CGImageSourceGetPrimaryImageIndex(CGImageSourceRef);
 extern const CFStringRef kCGImagePropertyPNGDictionary;
@@ -156,9 +159,55 @@ static void testImageMetadata(void)
     CFRelease(metadata);
 }
 
+static void testSourceProperties(const char *path, CFIndex expectedBytes)
+{
+    CFURLRef url = CFURLCreateFromFileSystemRepresentation(NULL, (const UInt8 *)path, strlen(path), false);
+    assert(url);
+    CGImageSourceRef source = CGImageSourceCreateWithURL(url, NULL);
+    CFRelease(url);
+    assert(source);
+    CFDictionaryRef properties = CGImageSourceCopyProperties(source, NULL);
+    assert(properties);
+    CFNumberRef fileSize = CFDictionaryGetValue(properties, CFSTR("FileSize"));
+    CFIndex value = 0;
+    assert(fileSize && CFNumberGetValue(fileSize, kCFNumberCFIndexType, &value) && value == expectedBytes);
+    CFDictionaryRef contents = CFDictionaryGetValue(properties, CFSTR("{FileContents}"));
+    assert(contents && CFGetTypeID(contents) == CFDictionaryGetTypeID());
+    CFArrayRef frames = CFDictionaryGetValue(contents, CFSTR("Images"));
+    assert(frames && CFArrayGetCount(frames) == 1);
+    assert(CFGetTypeID(CFArrayGetValueAtIndex(frames, 0)) == CFDictionaryGetTypeID());
+    CFRelease(properties);
+    CGImageSourceRelease(source);
+    assert(CGImageSourceCopyProperties(NULL, NULL) == NULL);
+}
+
+CFDataRef OFDCreatePDFDataFromURL(CFURLRef, CFDictionaryRef);
+
+static void testOFD(const char *path)
+{
+    CFURLRef url = CFURLCreateFromFileSystemRepresentation(NULL, (const UInt8 *)path, strlen(path), false);
+    assert(url);
+    CFDataRef pdf = OFDCreatePDFDataFromURL(url, NULL);
+    CFRelease(url);
+    assert(pdf);
+    CGDataProviderRef provider = CGDataProviderCreateWithCFData(pdf);
+    CGPDFDocumentRef document = CGPDFDocumentCreateWithProvider(provider);
+    assert(document && CGPDFDocumentGetNumberOfPages(document) == 2);
+    for (size_t page = 1; page <= 2; page++) {
+        CGRect media = CGPDFPageGetBoxRect(CGPDFDocumentGetPage(document, page), kCGPDFMediaBox);
+        assert(media.size.width > 169 && media.size.width < 171);
+        assert(media.size.height > 113 && media.size.height < 114);
+    }
+    CGPDFDocumentRelease(document);
+    CGDataProviderRelease(provider);
+    CFRelease(pdf);
+}
+
 int main(int argc, char **argv)
 {
-    assert(argc == 2);
+    assert(argc == 2 || argc == 3);
+    if (argc == 3)
+        testOFD(argv[2]);
     FILE *file = fopen(argv[1], "rb");
     assert(file && fseek(file, 0, SEEK_END) == 0);
     long length = ftell(file);
@@ -180,6 +229,7 @@ int main(int argc, char **argv)
     assert(image && CGImageGetWidth(image) && CGImageGetHeight(image));
     testDestinationFormats();
     testImageMetadata();
+    testSourceProperties(argv[1], length);
     testCopyImageSource(source, data);
     CFRelease(data);
     testDestinations(image);

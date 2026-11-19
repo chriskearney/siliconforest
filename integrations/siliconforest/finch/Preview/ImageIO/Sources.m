@@ -44,6 +44,37 @@ CGImageSourceRef CGImageSourceCreateWithDataProvider(CGDataProviderRef provider,
     return source;
 }
 
+CGImageSourceRef CGImageSourceCreateWithURL(CFURLRef url, CFDictionaryRef options)
+{
+    if (!url)
+        return NULL;
+    NSData *data = [[NSData alloc] initWithContentsOfURL:(NSURL *)url];
+    CGImageSourceRef source = CGImageSourceCreateWithData((CFDataRef)data, options);
+    [data release];
+    return source;
+}
+
+CFDictionaryRef CGImageSourceCopyProperties(CGImageSourceRef source, CFDictionaryRef options)
+{
+    if (!source || !CGImageSourceGetType(source))
+        return NULL;
+
+    NSMutableArray *frames = [NSMutableArray array];
+    size_t count = CGImageSourceGetCount(source);
+    for (size_t index = 0; index < count; index++) {
+        NSDictionary *properties = (NSDictionary *)CGImageSourceCopyPropertiesAtIndex(source, index, options);
+        [frames addObject:properties ?: @{}];
+        [properties release];
+    }
+
+    NSDictionary *contents = @{@"Images": [[frames copy] autorelease]};
+    NSData *data = SFPreviewImageSourceData(source);
+    NSMutableDictionary *properties = [NSMutableDictionary dictionaryWithObject:contents forKey:@"{FileContents}"];
+    if (data)
+        [properties setObject:@([data length]) forKey:@"FileSize"];
+    return (CFDictionaryRef)[properties copy];
+}
+
 CFArrayRef CGImageSourceCopyTypeIdentifiers(void)
 {
     // The codecs registered by +[O2ImageSource newImageSourceWithDataProvider:options:].

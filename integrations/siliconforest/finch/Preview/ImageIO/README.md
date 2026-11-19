@@ -37,3 +37,17 @@ provider retain the input snapshot. A destination can copy that snapshot
 verbatim when the type and frame count match, all frames decode, and no
 metadata or encoding edits were requested. The probe checks byte equality
 and confirms that a mismatched type leaves the output unchanged.
+
+The container properties query returns the byte size for sources opened
+by this wrapper and a frame-ordered array built from the existing Onyx2D
+property dictionaries. The IPTC keyword setter stores the values in the
+metadata model's Dublin Core subject tag.
+
+For Open Fixed-layout Document (OFD) import, place `sf-ofd-to-pdf` beside
+the ImageIO binary in `Versions/A`. Build it with `build-ofd.sh` from a
+checkout of [zc310/ofd](https://github.com/zc310/ofd) at the script's pinned
+revision and Go 1.27.1. The helper uses the upstream OFD reader and PDF
+writer. It runs as a child process with bounded input, output, and
+execution time. Conversion takes a local file URL and returns owned PDF
+data on success. Missing helpers and unsuccessful conversions return
+null. The native probe accepts an optional two-page OFD fixture.
