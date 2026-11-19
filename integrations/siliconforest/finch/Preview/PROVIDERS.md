@@ -6,10 +6,11 @@ arm64e load/import inventory, p0's actual dyld log, and a subsequent read-only
 M1 path/export audit using p0's framework/library search directories. Private evidence lives outside this directory under
 `runs/preview/app-private/evidence/`. No app code or extracted assets are here.
 
-Only Recap has an observed runtime loader error. The following priorities use
-mandatory main-executable load-command order and providers absent from that
-live path scan. Dependencies of a new provider could stop loading earlier.
-This is not a prediction of the exact next dyld error or a UI-support claim.
+Actual bounded M1 launches P1–P4 passed the tested private Recap,
+VisionKitCore and PaperKit providers and then the ModelIO load identity carrier
+(zero implemented APIs). P4 stops at AnnotationKit, before UI. The table keeps
+the original inventory order; it is not a UI-support or full dependency claim.
+Later providers are selected from the actual next dyld/runtime stop.
 
 | Order | Mandatory absent provider | Direct imports | Required next work |
 |---|---|---:|---|
@@ -41,6 +42,13 @@ missing-symbol totals for existing framework wrappers are still not validated
 gaps. SwiftUI is present and its exact effective export coverage needs further
 audit. Provider existence alone does not prove symbol or ABI compatibility.
 
-Preview execution stays paused on the live kernel. These priorities do not
-authorize staging providers on the M1, shared installs, or restoring its p0
-bundle. The coordinator owns the isolated kernel COW candidate.
+The coordinator's kernel effective-protection COW fix passed its original
+arm64e integrity probe. Subsequent bounded Preview launches retained all 174
+bundle file hashes, with repeated original executable/slice hashes and off-box
+byte comparisons. Kernel work and general PDF integration remain coordinator
+owned. Framework candidates are staged only in owned private prefixes after
+standalone verification; never overwrite QTP's runtime or install globally.
+
+[ANNOTATIONKIT.md](ANNOTATIONKIT.md) describes the original reader model,
+overlay and explicit unsupported operations. Runtime probe/app receipts remain
+private; a static export check alone does not establish app UI support.

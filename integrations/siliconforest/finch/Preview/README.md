@@ -26,8 +26,9 @@ four error callbacks and zero success completions. Probe and provider SHA256
 digests were unchanged before/after execution. This used an individually owned
 scratch prefix and HOME with the existing private Foundation provider. There
 was no GUI/session access or global install. This validates the recorded
-failure behavior, not Apple's complete private ABI or Preview UI. Preview
-execution remains paused while its backing-page PAC mutation is addressed.
+failure behavior, not Apple's complete private ABI or Preview UI. The coordinator subsequently fixed the backing-page PAC mutation and
+verified the original arm64e integrity probe; fresh P1–P4 app launches retained
+all bundle bytes and stopped before UI at successive missing providers.
 
 ## Taken from Finch
 
@@ -48,3 +49,11 @@ measured M1 results and remaining limits. Preview's latest observed loader stop
 was ModelIO at that checkpoint. A subsequent zero-API load-contract carrier
 ([MODELIO.md](MODELIO.md)) advanced the actual stop to AnnotationKit. Application
 bytes remain unchanged; no Preview UI is claimed yet.
+
+[ANNOTATIONKIT.md](ANNOTATIONKIT.md) describes the next original reader model
+and overlay candidate, its semantic probe and explicit capability limits.
+
+The AnnotationKit standalone reader probe subsequently passed on M1, including
+actual rectangle pixels and NSError payloads. Unchanged Preview loaded it in P5;
+P6, with tested ImageCaptureCore, now stops at CorePDF before UI. See the
+AnnotationKit document for exact scope; no general annotation editor is claimed.
