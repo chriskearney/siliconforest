@@ -138,7 +138,9 @@ in {
     qemu-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; };
     qemu-proof-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; proof = true; };
     default = image.release;
-    qemu-base = recipe "qemu-dev/build-image.nix" { };
+    # x86_64-linux keeps the recipe's own source, ../rebase/pd.nix, and with it the SF_PD check
+    qemu-base = recipe "qemu-dev/build-image.nix"
+      (if pkgs.stdenv.hostPlatform.system == "aarch64-linux" then { source = base; } else { });
     qemu-runner = import ./qemu-runner.nix { inherit pkgs; };
     qemu-smoke-image = import ./qemu-smoke.nix { inherit base; };
     root-base = p.image-arm64-virt-minimal-release;
