@@ -60,6 +60,21 @@ static void testOpaqueCopy(void)
 
 void CGImageDestinationAddAuxiliaryDataInfo(CGImageDestinationRef, CFStringRef, CFDictionaryRef);
 
+CFArrayRef CGImageDestinationCopyImageFormats(CFStringRef);
+
+static void testDestinationFormats(void)
+{
+    CFArrayRef png = CGImageDestinationCopyImageFormats(CFSTR("public.png"));
+    CFArrayRef tiff = CGImageDestinationCopyImageFormats(CFSTR("public.tiff"));
+    assert(png && tiff);
+    assert(CFArrayGetCount(png) == 1 && CFArrayGetCount(tiff) == 2);
+    assert(CFArrayContainsValue(png, CFRangeMake(0, 1), CFSTR("kCGImageDestinationCanAlpha")));
+    assert(CFArrayContainsValue(tiff, CFRangeMake(0, 2), CFSTR("kCGImageDestinationCanMultiPage")));
+    assert(CGImageDestinationCopyImageFormats(CFSTR("public.jpeg")) == NULL);
+    CFRelease(tiff);
+    CFRelease(png);
+}
+
 static void testDestinations(CGImageRef image)
 {
     CFMutableDataRef bytes = CFDataCreateMutable(NULL, 0);
@@ -120,6 +135,7 @@ int main(int argc, char **argv)
     assert(CFEqual(CGImageSourceGetType(source), CFSTR("public.png")));
     CGImageRef image = CGImageSourceCreateImageAtIndex(source, 0, NULL);
     assert(image && CGImageGetWidth(image) && CGImageGetHeight(image));
+    testDestinationFormats();
     testDestinations(image);
     CGImageRelease(image);
     CGImageSourceRelease(source);

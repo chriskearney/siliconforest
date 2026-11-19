@@ -109,6 +109,24 @@ CFArrayRef CGImageDestinationCopyTypeIdentifiers(void)
     return CFArrayCreate(NULL, formats, sizeof(formats) / sizeof(formats[0]), &kCFTypeArrayCallBacks);
 }
 
+CFArrayRef CGImageDestinationCopyImageFormats(CFStringRef type)
+{
+    if (!type)
+        return NULL;
+    const void *capabilities[] = {
+        CFSTR("kCGImageDestinationCanAlpha"),
+        CFSTR("kCGImageDestinationCanMultiPage"),
+    };
+    CFIndex count = 0;
+    if (CFEqual(type, CFSTR("public.tiff")))
+        count = 2;
+    else if (CFEqual(type, CFSTR("public.png")))
+        count = 1;
+    else
+        return NULL;
+    return CFArrayCreate(NULL, capabilities, count, &kCFTypeArrayCallBacks);
+}
+
 void CGImageDestinationSetProperties(CGImageDestinationRef destination, CFDictionaryRef properties)
 {
     if (!destination)
