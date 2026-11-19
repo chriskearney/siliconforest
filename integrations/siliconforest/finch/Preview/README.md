@@ -45,4 +45,6 @@ Recap's successful runtime proof does not qualify VisionKitCore.
 
 [PAPERKIT.md](PAPERKIT.md) describes the next view adapter, private URL overlay,
 measured M1 results and remaining limits. Preview's latest observed loader stop
-is ModelIO; its application bytes remain unchanged and no UI is claimed yet.
+was ModelIO at that checkpoint. A subsequent zero-API load-contract carrier
+([MODELIO.md](MODELIO.md)) advanced the actual stop to AnnotationKit. Application
+bytes remain unchanged; no Preview UI is claimed yet.
