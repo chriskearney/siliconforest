@@ -884,6 +884,7 @@ let
     ./patches/0343-quartzcore-text-layer.patch
     ./patches/0344-quartzcore-keyframe-animation.patch
     ./patches/0345-quartzcore-constraint-layout-manager.patch
+    ./patches/0369-quartzcore-layer-contents-types.patch
   ];
   quartzcore = pd."quartzcore-msm-arm64".override { src = quartzcoreSrc; };
   wp = "${pd."wayland-protocols"}/share/wayland-protocols";

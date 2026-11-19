@@ -1,0 +1,71 @@
+--- a/src/Frameworks/QuartzCore/CABase.h
++++ b/src/Frameworks/QuartzCore/CABase.h
+@@ -1,5 +1,6 @@
+ #import <CoreFoundation/CoreFoundation.h>
+
+ #define CA_EXPORT extern
++#define CA_EXTERN CA_EXPORT
+
+ CA_EXPORT CFTimeInterval CACurrentMediaTime(void);
+--- a/src/Frameworks/QuartzCore/CALayer.h
++++ b/src/Frameworks/QuartzCore/CALayer.h
+@@ -5,7 +5,7 @@
+ #import <QuartzCore/CAAction.h>
+ #import <OpenGL/OpenGL.h>
+
+-@class CAAnimation, CALayerContext;
++@class CAAnimation, CALayerContext, CALayer;
+
+ enum {
+     kCALayerNotSizable = 0x00,
+@@ -38,9 +38,23 @@
+ CA_EXPORT CADynamicRange const CADynamicRangeConstrainedHigh;
+ CA_EXPORT CADynamicRange const CADynamicRangeHigh;
+
+-CA_EXPORT NSString *const kCAFilterLinear;
+-CA_EXPORT NSString *const kCAFilterNearest;
+-CA_EXPORT NSString *const kCAFilterTrilinear;
++typedef NSString *CALayerContentsFilter NS_TYPED_ENUM;
++typedef NSString *CALayerContentsFormat NS_TYPED_ENUM;
++
++CA_EXPORT CALayerContentsFilter const kCAFilterLinear;
++CA_EXPORT CALayerContentsFilter const kCAFilterNearest;
++CA_EXPORT CALayerContentsFilter const kCAFilterTrilinear;
++CA_EXPORT CALayerContentsFilter const kCAFilterBox;
++CA_EXPORT CALayerContentsFilter const kCAFilterPlusL;
++
++@protocol CALayerDelegate <NSObject>
++@optional
++- (void)displayLayer:(CALayer *)layer;
++- (void)drawLayer:(CALayer *)layer inContext:(CGContextRef)context;
++- (void)layerWillDraw:(CALayer *)layer;
++- (void)layoutSublayersOfLayer:(CALayer *)layer;
++- (id<CAAction>)actionForLayer:(CALayer *)layer forKey:(NSString *)event;
++@end
+
+ // how contents sit in the bounds (contentsGravity)
+ CA_EXPORT NSString *const kCAGravityCenter;
+@@ -132,8 +146,8 @@
+ @property CATransform3D transform;
+ @property CATransform3D sublayerTransform;
+
+-@property(copy) NSString *minificationFilter;
+-@property(copy) NSString *magnificationFilter;
++@property(copy) CALayerContentsFilter minificationFilter;
++@property(copy) CALayerContentsFilter magnificationFilter;
+ // backing pixels per point, stored only, the renderer draws at 1
+ @property CGFloat contentsScale;
+ // rasterizing is a caching hint, PD's renderer draws the layer tree every frame either way
+--- a/src/Frameworks/QuartzCore/CALayer.m
++++ b/src/Frameworks/QuartzCore/CALayer.m
+@@ -54,5 +54,10 @@
+ NSString * const kCAGravityResizeAspect=@"resizeAspect";
+ NSString * const kCAGravityResizeAspectFill=@"resizeAspectFill";
+ NSString * const kCAFilterTrilinear=@"trilinear";
++CALayerContentsFilter const kCAFilterBox = @"box";
++CALayerContentsFilter const kCAFilterPlusL = @"plusL";
++CALayerContentsFormat const kCAContentsFormatAutomatic = @"Automatic";
++CALayerContentsFormat const kCAContentsFormatA8 = @"A8";
++NSString *const kCACornerCurveContinuous = @"continuous";
+
+ @implementation CALayer
