@@ -1,0 +1,134 @@
+--- CoreTransferable.swift
++++ CoreTransferable.swift
+@@ -8,8 +8,12 @@
+
+ import Combine
+ import Foundation
++import Darwin
+ import UniformTypeIdentifiers
+
++extension JSONEncoder: @retroactive TopLevelEncoder {}
++extension JSONDecoder: @retroactive TopLevelDecoder {}
++
+ // MARK: - The protocols
+
+ @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
+@@ -76,7 +80,7 @@
+     func item(from data: Data) async throws -> Item {
+         if let importsData { return try await importsData(data) }
+         if let importsFile {
+-            let url = temporaryFile(type: contentType)
++            let url = try temporaryFile(type: contentType)
+             try data.write(to: url)
+             return try await importsFile(ReceivedTransferredFile(file: url, isOriginalFile: false))
+         }
+@@ -96,14 +100,30 @@
+     }
+ }
+
+-func temporaryFile(type: UTType, name: String? = nil) -> URL {
+-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("CoreTransferable-\(UUID().uuidString)")
+-    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+-    var file = dir.appendingPathComponent(name ?? "Item")
+-    if file.pathExtension.isEmpty, let ext = type.preferredFilenameExtension {
+-        file.appendPathExtension(ext)
++private func temporaryTransferDirectory() throws -> URL {
++    let root = getenv("TMPDIR").map { String(cString: $0) } ?? "/tmp"
++    let template = URL(fileURLWithPath: root).appendingPathComponent("CoreTransferable-XXXXXXXX")
++    var path = Array(template.path.utf8CString)
++    guard path.withUnsafeMutableBufferPointer({ mkdtemp($0.baseAddress) }) != nil else {
++        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: nil)
++    }
++    let directory = path.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
++    return URL(fileURLWithPath: directory, isDirectory: true)
++}
++
++private func temporaryFile(type: UTType) throws -> URL {
++    let file = try temporaryTransferDirectory().appendingPathComponent("Item")
++    guard let ext = type.preferredFilenameExtension, !ext.contains("/"), !ext.contains("\0") else {
++        return file
++    }
++    return file.appendingPathExtension(ext)
++}
++
++private func copyTransferFile(from source: URL, to destination: URL) throws {
++    let flags = UInt32(COPYFILE_DATA | COPYFILE_EXCL | COPYFILE_NOFOLLOW)
++    guard copyfile(source.path, destination.path, nil, flags) == 0 else {
++        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: nil)
+     }
+-    return file
+ }
+
+ /// Representations that list their entries directly.
+@@ -541,22 +561,30 @@
+             throw TransferError.notExportable(contentType)
+         }
+         let name = e.suggestedFileName?(self) ?? "Item"
++        guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.contains("\0") else {
++            throw NSError(domain: NSCocoaErrorDomain, code: 514, userInfo: nil)
++        }
+         var dest = destinationDirectory.appendingPathComponent(name)
+-        if dest.pathExtension.isEmpty, let ext = e.contentType.preferredFilenameExtension {
+-            dest.appendPathExtension(ext)
++        if dest.pathExtension.isEmpty, let ext = e.contentType.preferredFilenameExtension,
++           !ext.contains("/"), !ext.contains("\0") {
++            dest = dest.appendingPathExtension(ext)
+         }
+         if let exportsFile = e.exportsFile {
+             let sent = try await exportsFile(self)
+-            try FileManager.default.copyItem(at: sent.file, to: dest)
++            try copyTransferFile(from: sent.file, to: dest)
+         } else {
+-            try await e.data(of: self).write(to: dest)
++            let directory = try temporaryTransferDirectory()
++            defer { try? FileManager.default.removeItem(atPath: directory.path) }
++            let staging = directory.appendingPathComponent("Item")
++            try await e.data(of: self).write(to: staging)
++            try copyTransferFile(from: staging, to: dest)
+         }
+         return dest
+     }
+
+     public func withExportedFile<Result>(contentType: UTType?, fileHandler: (URL) async throws -> Result) async throws -> Result {
+-        let dir = temporaryFile(type: .data).deletingLastPathComponent()
+-        defer { try? FileManager.default.removeItem(at: dir) }
++        let dir = try temporaryTransferDirectory()
++        defer { try? FileManager.default.removeItem(atPath: dir.path) }
+         return try await fileHandler(try await export(to: dir, contentType: contentType))
+     }
+
+@@ -600,8 +628,8 @@
+ @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
+ extension String: Transferable {
+     public static var transferRepresentation: some TransferRepresentation {
+-        DataRepresentation(contentType: .utf8PlainText, exporting: { Data($0.utf8) }, importing: { data in
+-            guard let s = String(data: data, encoding: .utf8) else { throw CocoaError(.fileReadInapplicableStringEncoding) }
++        DataRepresentation(contentType: UTType("public.utf8-plain-text")!, exporting: { Data($0.utf8) }, importing: { data in
++            guard let s = String(validating: data, as: UTF8.self) else { throw NSError(domain: NSCocoaErrorDomain, code: 261, userInfo: nil) }
+             return s
+         })
+     }
+@@ -610,10 +638,10 @@
+ @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
+ extension URL: Transferable {
+     public static var transferRepresentation: some TransferRepresentation {
+-        DataRepresentation(contentType: .url, exporting: { url in
++        DataRepresentation(contentType: UTType("public.url")!, exporting: { url in
+             Data((url.isFileURL ? url.absoluteString : url.absoluteString).utf8)
+         }, importing: { data in
+-            guard let s = String(data: data, encoding: .utf8), let url = URL(string: s) else { throw CocoaError(.fileReadCorruptFile) }
++            guard let s = String(validating: data, as: UTF8.self), let url = URL(string: s) else { throw NSError(domain: NSCocoaErrorDomain, code: 259, userInfo: nil) }
+             return url
+         })
+     }
+@@ -624,8 +652,8 @@
+     /// Its text, as plain text (rich text formats need the text system, above Foundation).
+     @available(iOS 16.1, macOS 13.0, tvOS 16.1, watchOS 9.1, *)
+     public static var transferRepresentation: some TransferRepresentation {
+-        DataRepresentation(contentType: .utf8PlainText, exporting: { Data(String($0.characters).utf8) }, importing: { data in
+-            guard let s = String(data: data, encoding: .utf8) else { throw CocoaError(.fileReadInapplicableStringEncoding) }
++        DataRepresentation(contentType: UTType("public.utf8-plain-text")!, exporting: { Data(String($0.characters).utf8) }, importing: { data in
++            guard let s = String(validating: data, as: UTF8.self) else { throw NSError(domain: NSCocoaErrorDomain, code: 261, userInfo: nil) }
+             return AttributedString(s)
+         })
+     }
