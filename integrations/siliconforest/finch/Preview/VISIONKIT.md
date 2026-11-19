@@ -29,9 +29,11 @@ The static check validates all class/metaclass exports and the C entry point,
 install name and versions, signatures, and provider/probe direct bindings
 against the open build providers. The thin arm64 probe exercises nil-image
 request storage and explicit failures; it does not validate real-image retain
-lifetime or the complete private ABI. It has not been run on the M1. No new
-provider has been staged or executed there during the coordinator's kernel
-hold. A static PASS is not Preview UI acceptance.
+lifetime or the complete private ABI. After the coordinator's kernel guard
+passed, its standalone M1 probe exited zero: one analysis error, one removal
+error, zero progress, with unchanged provider/probe hashes. The next actual
+Preview launch loaded it and stopped at PaperKit. No provider was staged or
+executed during the kernel hold. Neither result is Preview UI acceptance.
 
 ## Swift provider audit
 

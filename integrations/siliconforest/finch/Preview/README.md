@@ -42,3 +42,7 @@ private staging; this directory contains only open source and observed names.
 The next narrow provider and its measured Swift build prerequisites are
 documented in [VISIONKIT.md](VISIONKIT.md). It is a separate static candidate;
 Recap's successful runtime proof does not qualify VisionKitCore.
+
+[PAPERKIT.md](PAPERKIT.md) describes the next view adapter, private URL overlay,
+measured M1 results and remaining limits. Preview's latest observed loader stop
+is ModelIO; its application bytes remain unchanged and no UI is claimed yet.
