@@ -70,7 +70,10 @@ let
   else if cocoaAarch64 then pkgs.applyPatches {
     name = "siliconforest-cocoa-aarch64-linux-source";
     src = buildSource;
-    patches = [ ./patches/cocoa-aarch64-linux-swift.patch ];
+    patches = [
+      ./patches/cocoa-aarch64-linux-swift.patch
+      ./patches/cocoa-aarch64-linux-mig-sdk.patch
+    ];
     patchFlags = [ "-p1" "--fuzz=0" ];
   }
   else buildSource;
