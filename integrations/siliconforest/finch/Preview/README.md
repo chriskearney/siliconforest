@@ -72,3 +72,8 @@ reader and the exact existing API it preserves. Preview remains before UI.
 [UUID.md](UUID.md) describes the additive open Swift Foundation UUID slice,
 exact native import coverage and guarded standalone M1 proof. This candidate
 does not replace the coordinator's newer Foundation overlay or launch Preview.
+
+[JSONDecoder/README.md](JSONDecoder/README.md) records the real pinned decoder
+port preparation, passing cross-typechecks and exact native arm64 object exports.
+The coherent module emits; linking/runtime qualification awaits Data's
+`fgetattrlist` boundary.

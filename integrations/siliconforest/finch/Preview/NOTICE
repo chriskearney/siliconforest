@@ -80,3 +80,18 @@ Comparable, generic random-generator and NSUUID bridge extensions. This is a
 coherent Foundation module rebuild, not type metadata aliases or a second module.
 The build/probe/check harness is original MIT code. No Apple proprietary source,
 SDK declarations or implementation bytes are included.
+
+
+Scoped Swift Foundation JSONDecoder preparation
+
+swiftlang/swift-foundation swift-6.3.1-RELEASE,
+revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a.
+Copyright (c) 2014-2024 Apple Inc. and the Swift project authors; exact original
+per-file notices remain in the prepared sources. Apache-2.0 WITH Swift-exception.
+The full license is LICENSES/Swift-Foundation.txt; preparation copies it beside
+the derived files. JSONDecoder/sources.json records all 13 paths and SHA-256s.
+JSONDecoder/compatibility.patch scopes the original pure-Swift Decimal branch,
+CoreFoundation string adapters and explicit unavailable ISO8601 date strategy.
+The original decoder/scanners/containers and Decodable dispatch remain real.
+JSONSupport.swift, prepare.py and probe.swift are original MIT code. No Data
+source edits, proprietary Apple implementation, headers or assets are included.

@@ -273,3 +273,10 @@ Copyright (c) 2022 Apple Inc. and the Swift project authors.
 Apache-2.0 WITH Swift-exception; full text: LICENSES/Swift-Foundation.txt.
 The scoped adapter calls the open libSystem UUID operations; see the Preview
 UUID.md and NOTICE for provenance, changes, runtime evidence and limitations.
+
+The scoped JSONDecoder preparation in the same Preview directory uses 13
+FoundationEssentials JSON, Codable utility, lock and Decimal files from that
+same revision, Copyright (c) 2014-2024 Apple Inc. and the Swift project authors.
+The exact source paths and SHA-256 digests are in Preview/JSONDecoder/sources.json;
+compatibility.patch records adaptations without editing the open Data sources.
+The same Apache-2.0 WITH Swift-exception license applies to those derived files.
