@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=TextEdit
+Comment=Apple's TextEdit (the unmodified bundle): opened with the TextEdit overlay in front of Preview's
+TryExec=/private/var/db/sftextedit/TextEdit.app/Contents/MacOS/TextEdit
+Exec=/usr/bin/sf-open-textedit
+Icon=/private/var/db/sftextedit/TextEdit.app
+Categories=Utility;TextEditor;
+StartupWMClass=com.apple.TextEdit
