@@ -1,0 +1,20 @@
+--- a/src/Frameworks/AppKit/NSWindow.m
++++ b/src/Frameworks/AppKit/NSWindow.m
+@@ -1137,9 +1137,15 @@
+        newFrame.size.height = MAX(NSHeight(newFrame), [self minSize].height);
+     }
+ 
++    // (CHONK1) a maximum of zero (or less) on an axis is no maximum: AWT gives every window the
++    // maximum Java has not set yet (0x0) when it makes it, and sets the real one only when the
++    // window is shown, so its first setFrame: made it 0x0 (ChonkCraft opened as an empty window
++    // whose content was 0x-22). macOS keeps the frame asked for in that case
+     if (NSEqualSizes([self maxSize], NSMakeSize(FLT_MAX, FLT_MAX)) == NO) {
+-       newFrame.size.width = MIN(NSWidth(newFrame), [self maxSize].width);
+-       newFrame.size.height = MIN(NSHeight(newFrame), [self maxSize].height);
++       if ([self maxSize].width > 0)
++          newFrame.size.width = MIN(NSWidth(newFrame), [self maxSize].width);
++       if ([self maxSize].height > 0)
++          newFrame.size.height = MIN(NSHeight(newFrame), [self maxSize].height);
+     }
+ 
+     BOOL didSize=NSEqualSizes(newFrame.size,_frame.size)?NO:YES;

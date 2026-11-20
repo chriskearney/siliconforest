@@ -657,6 +657,9 @@
 #         NSMutableAttributedString are also answered by Foundation's bridged attributed strings (a mutable one is an
 #         NSAttributedString object): -setBaseWritingDirection:range: on a string built with -appendAttributedString:
 #         raised "unrecognized selector" (QuickTime Player's Open Recent titles)
+#   0370  AppKit (CHONK1; every application, through the guarded install only): a maximum size of zero on an axis
+#         does not constrain -setFrame:. AWT sets every new window maximum to 0x0 until it is shown, so the first
+#         frame Java gave a window collapsed it to 0x0 (ChonkCraft: an empty window, content 0x-22)
 #   0363  Onyx2D (QTP2; every application, through the guarded install only): an opaque image drawn on the device at
 #         its own size (within two pixels) is copied a row at a time instead of resampled and blended pixel by pixel
 #         (QuickTime Player's picture cost 150 ms a draw: two pictures a second); O2_NO_IMAGE_FAST_PATH=1 turns it off,
@@ -792,6 +795,7 @@ let
     ./patches/0364-appkit-about-panel-nib-loaded-when-shown.patch
     ./patches/0366-appkit-open-recent-menus-filled-when-shown.patch
     ./patches/0367-appkit-mutable-attributed-string-methods-on-bridged-strings.patch
+    ./patches/0370-appkit-zero-maximum-size-is-no-maximum.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
