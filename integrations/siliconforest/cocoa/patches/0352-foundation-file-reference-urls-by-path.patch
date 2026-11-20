@@ -1,0 +1,32 @@
+diff --git a/src/Frameworks/Foundation/URL.subproj/NSURL.m b/src/Frameworks/Foundation/URL.subproj/NSURL.m
+index 43bec3f..f816a3f 100644
+--- a/src/Frameworks/Foundation/URL.subproj/NSURL.m
++++ b/src/Frameworks/Foundation/URL.subproj/NSURL.m
+@@ -313,6 +313,27 @@ static void __NSCFURLBridgeInit(void) {
+ 
+ @implementation NSURL (NSMacOSSDKAdditions)
+ 
++// (QTP) File reference URLs (file:///.file/id=...) do not exist on this system: a file is named by its path.
++// -fileReferenceURL answers a file URL of the same file's path, nil when the receiver is not a file URL or the
++// file does not exist (as on macOS); it refers to the file by path, so it does not follow a move, and
++// -isFileReferenceURL says so. First caller: Apple's QuickTime Player when it reads a movie.
++- (NSURL *)fileReferenceURL {
++    if (![self isFileURL])
++        return nil;
++    NSString *path = [self path];
++    if ([path length] == 0 || ![[NSFileManager defaultManager] fileExistsAtPath:path])
++        return nil;
++    return [[self absoluteURL] standardizedURL];
++}
++
++- (NSURL *)filePathURL {
++    return [self isFileURL] ? [[self absoluteURL] standardizedURL] : nil;
++}
++
++- (BOOL)isFileReferenceURL {
++    return NO;
++}
++
+ - (NSURL *)URLByResolvingSymlinksInPath {
+     if (![self isFileURL])
+         return self;

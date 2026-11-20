@@ -1,0 +1,267 @@
+diff --git a/src/Frameworks/QuartzCore/CATextLayer.h b/src/Frameworks/QuartzCore/CATextLayer.h
+new file mode 100644
+index 0000000..f42dac5
+--- /dev/null
++++ b/src/Frameworks/QuartzCore/CATextLayer.h
+@@ -0,0 +1,39 @@
++// CATextLayer.h - a layer that draws a string. SPDX-License-Identifier: MIT
++// Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
++#import <QuartzCore/CALayer.h>
++
++typedef NSString *CATextLayerTruncationMode;
++typedef NSString *CATextLayerAlignmentMode;
++
++CA_EXPORT CATextLayerTruncationMode const kCATruncationNone;
++CA_EXPORT CATextLayerTruncationMode const kCATruncationStart;
++CA_EXPORT CATextLayerTruncationMode const kCATruncationEnd;
++CA_EXPORT CATextLayerTruncationMode const kCATruncationMiddle;
++
++CA_EXPORT CATextLayerAlignmentMode const kCAAlignmentNatural;
++CA_EXPORT CATextLayerAlignmentMode const kCAAlignmentLeft;
++CA_EXPORT CATextLayerAlignmentMode const kCAAlignmentRight;
++CA_EXPORT CATextLayerAlignmentMode const kCAAlignmentCenter;
++CA_EXPORT CATextLayerAlignmentMode const kCAAlignmentJustified;
++
++@interface CATextLayer : CALayer {
++    id _string;
++    CFTypeRef _font;
++    CGFloat _fontSize;
++    CGColorRef _foregroundColor;
++    BOOL _wrapped;
++    BOOL _allowsFontSubpixelQuantization;
++    NSString *_truncationMode;
++    NSString *_alignmentMode;
++}
++// an NSString, drawn in font, fontSize and foregroundColor, or an NSAttributedString, drawn with its own attributes
++@property(copy) id string;
++// a CTFontRef, a CGFontRef or the name of a font (an NSString); its size is fontSize
++@property CFTypeRef font;
++@property CGFloat fontSize;
++@property CGColorRef foregroundColor;
++@property(getter=isWrapped) BOOL wrapped;
++@property(copy) CATextLayerTruncationMode truncationMode;
++@property(copy) CATextLayerAlignmentMode alignmentMode;
++@property BOOL allowsFontSubpixelQuantization;
++@end
+diff --git a/src/Frameworks/QuartzCore/CATextLayer.m b/src/Frameworks/QuartzCore/CATextLayer.m
+new file mode 100644
+index 0000000..155513c
+--- /dev/null
++++ b/src/Frameworks/QuartzCore/CATextLayer.m
+@@ -0,0 +1,204 @@
++// CATextLayer.m - see the header. SPDX-License-Identifier: MIT
++// Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
++//
++// Written from the public CATextLayer documentation. The layer draws its text in -drawInContext:, which
++// CALayer's -display (CALayer.m) turns into the contents at the layer's scale: a line laid out by CoreText
++// from the top of the bounds, or, when wrapped, a frame of lines filling the bounds; a line too wide for an
++// unwrapped layer is cut at the start, the end or the middle with an ellipsis. Natural and justified
++// alignment are drawn as left aligned. Defaults as documented: Helvetica, 36 points, opaque white.
++#import <QuartzCore/CATextLayer.h>
++#import <Foundation/Foundation.h>
++#import <CoreText/CoreText.h>
++
++CATextLayerTruncationMode const kCATruncationNone = @"none";
++CATextLayerTruncationMode const kCATruncationStart = @"start";
++CATextLayerTruncationMode const kCATruncationEnd = @"end";
++CATextLayerTruncationMode const kCATruncationMiddle = @"middle";
++
++CATextLayerAlignmentMode const kCAAlignmentNatural = @"natural";
++CATextLayerAlignmentMode const kCAAlignmentLeft = @"left";
++CATextLayerAlignmentMode const kCAAlignmentRight = @"right";
++CATextLayerAlignmentMode const kCAAlignmentCenter = @"center";
++CATextLayerAlignmentMode const kCAAlignmentJustified = @"justified";
++
++@implementation CATextLayer
++
++-init {
++   if((self=[super init])==nil)
++    return nil;
++   _fontSize=36;
++   CGFloat white[4]={1,1,1,1};
++   CGColorSpaceRef space=CGColorSpaceCreateDeviceRGB();
++   _foregroundColor=CGColorCreate(space,white);
++   CGColorSpaceRelease(space);
++   _truncationMode=[kCATruncationNone copy];
++   _alignmentMode=[kCAAlignmentNatural copy];
++   // the text is laid out in the bounds: drawn again when they change size
++   [self setNeedsDisplayOnBoundsChange:YES];
++   return self;
++}
++
++-(void)dealloc {
++   [_string release];
++   if(_font!=NULL)
++    CFRelease(_font);
++   CGColorRelease(_foregroundColor);
++   [_truncationMode release];
++   [_alignmentMode release];
++   [super dealloc];
++}
++
++-string { return _string; }
++-(void)setString:value {
++   value=[value copy];
++   [_string release];
++   _string=value;
++   [self setNeedsDisplay];
++}
++
++-(CFTypeRef)font { return _font; }
++-(void)setFont:(CFTypeRef)value {
++   if(value!=NULL)
++    CFRetain(value);
++   if(_font!=NULL)
++    CFRelease(_font);
++   _font=value;
++   [self setNeedsDisplay];
++}
++
++-(CGFloat)fontSize { return _fontSize; }
++-(void)setFontSize:(CGFloat)value {
++   _fontSize=value;
++   [self setNeedsDisplay];
++}
++
++-(CGColorRef)foregroundColor { return _foregroundColor; }
++-(void)setForegroundColor:(CGColorRef)value {
++   CGColorRetain(value);
++   CGColorRelease(_foregroundColor);
++   _foregroundColor=value;
++   [self setNeedsDisplay];
++}
++
++-(BOOL)isWrapped { return _wrapped; }
++-(void)setWrapped:(BOOL)value {
++   _wrapped=value;
++   [self setNeedsDisplay];
++}
++
++-(NSString *)truncationMode { return _truncationMode; }
++-(void)setTruncationMode:(NSString *)value {
++   value=[value copy];
++   [_truncationMode release];
++   _truncationMode=value;
++   [self setNeedsDisplay];
++}
++
++-(NSString *)alignmentMode { return _alignmentMode; }
++-(void)setAlignmentMode:(NSString *)value {
++   value=[value copy];
++   [_alignmentMode release];
++   _alignmentMode=value;
++   [self setNeedsDisplay];
++}
++
++-(BOOL)allowsFontSubpixelQuantization { return _allowsFontSubpixelQuantization; }
++-(void)setAllowsFontSubpixelQuantization:(BOOL)value { _allowsFontSubpixelQuantization=value; }
++
++// the font property as a CTFont of fontSize (Helvetica when it names nothing usable). On this system a CTFont
++// is CoreText's KTFont and a CGFont is Onyx2D's O2Font, both Objective-C objects: asked by class, which is safe
++// for any object (a CGFont has no CF type identifier here)
++static CTFontRef createFontOfLayer(CFTypeRef font,CGFloat size){
++   id object=(id)font;
++   if(object!=nil){
++    if([object isKindOfClass:[NSString class]])
++     return CTFontCreateWithName((CFStringRef)object,size,NULL);
++    Class ctFont=NSClassFromString(@"KTFont"),cgFont=NSClassFromString(@"O2Font");
++    if(ctFont!=Nil && [object isKindOfClass:ctFont])
++     return CTFontCreateCopyWithAttributes((CTFontRef)object,size,NULL,NULL);
++    if(cgFont!=Nil && [object isKindOfClass:cgFont])
++     return CTFontCreateWithGraphicsFont((CGFontRef)object,size,NULL,NULL);
++   }
++   return CTFontCreateWithName(CFSTR("Helvetica"),size,NULL);
++}
++
++-(CFAttributedStringRef)_sfcaCreateAttributedString CF_RETURNS_RETAINED {
++   if(_string==nil)
++    return NULL;
++   if([_string isKindOfClass:[NSAttributedString class]])
++    return CFAttributedStringCreateCopy(NULL,(CFAttributedStringRef)_string);
++   NSString *text=[_string isKindOfClass:[NSString class]] ? _string : [_string description];
++   CTFontRef font=createFontOfLayer(_font,_fontSize);
++   NSMutableDictionary *attributes=[NSMutableDictionary dictionary];
++   if(font!=NULL)
++    [attributes setObject:(id)font forKey:(NSString *)kCTFontAttributeName];
++   if(_foregroundColor!=NULL)
++    [attributes setObject:(id)_foregroundColor forKey:(NSString *)kCTForegroundColorAttributeName];
++   CFAttributedStringRef result=CFAttributedStringCreate(NULL,(CFStringRef)text,(CFDictionaryRef)attributes);
++   if(font!=NULL)
++    CFRelease(font);
++   return result;
++}
++
++static CGFloat flushFactor(NSString *alignment){
++   if([alignment isEqualToString:kCAAlignmentRight])
++    return 1;
++   if([alignment isEqualToString:kCAAlignmentCenter])
++    return 0.5;
++   return 0;
++}
++
++-(void)drawInContext:(CGContextRef)context {
++   CFAttributedStringRef text=[self _sfcaCreateAttributedString];
++   CGRect bounds=[self bounds];
++
++   if(text==NULL)
++    return;
++   CGContextSaveGState(context);
++   CGContextSetTextMatrix(context,CGAffineTransformIdentity);
++   if(_wrapped){
++    CTFramesetterRef setter=CTFramesetterCreateWithAttributedString(text);
++    CGMutablePathRef path=CGPathCreateMutable();
++    CGPathAddRect(path,NULL,bounds);
++    CTFrameRef frame=setter ? CTFramesetterCreateFrame(setter,CFRangeMake(0,0),path,NULL) : NULL;
++    if(frame!=NULL){
++     CTFrameDraw(frame,context);
++     CFRelease(frame);
++    }
++    CGPathRelease(path);
++    if(setter!=NULL)
++     CFRelease(setter);
++   }
++   else {
++    CTLineRef line=CTLineCreateWithAttributedString(text);
++    CGFloat   ascent=0,descent=0,leading=0;
++    double    width=line ? CTLineGetTypographicBounds(line,&ascent,&descent,&leading) : 0;
++
++    if(line!=NULL && width>bounds.size.width && ![_truncationMode isEqualToString:kCATruncationNone]){
++     CTLineTruncationType type=[_truncationMode isEqualToString:kCATruncationStart] ? kCTLineTruncationStart :
++                               [_truncationMode isEqualToString:kCATruncationMiddle] ? kCTLineTruncationMiddle : kCTLineTruncationEnd;
++     CFDictionaryRef tokenAttributes=CFAttributedStringGetLength(text)>0 ? CFAttributedStringGetAttributes(text,0,NULL) : NULL;
++     CFAttributedStringRef tokenText=CFAttributedStringCreate(NULL,CFSTR("…"),tokenAttributes);
++     CTLineRef token=CTLineCreateWithAttributedString(tokenText);
++     CTLineRef truncated=CTLineCreateTruncatedLine(line,bounds.size.width,type,token);
++     if(truncated!=NULL){
++      CFRelease(line);
++      line=truncated;
++     }
++     if(token!=NULL)
++      CFRelease(token);
++     CFRelease(tokenText);
++    }
++    if(line!=NULL){
++     double offset=CTLineGetPenOffsetForFlush(line,flushFactor(_alignmentMode),bounds.size.width);
++     // the first line's top at the top of the bounds
++     CGContextSetTextPosition(context,bounds.origin.x+offset,CGRectGetMaxY(bounds)-ascent);
++     CTLineDraw(line,context);
++     CFRelease(line);
++    }
++   }
++   CGContextRestoreGState(context);
++   CFRelease(text);
++}
++
++@end
+diff --git a/src/Frameworks/QuartzCore/CoreAnimation.h b/src/Frameworks/QuartzCore/CoreAnimation.h
+index f71deb6..9c0e92f 100644
+--- a/src/Frameworks/QuartzCore/CoreAnimation.h
++++ b/src/Frameworks/QuartzCore/CoreAnimation.h
+@@ -1,6 +1,7 @@
+ #import <QuartzCore/CAAnimation.h>
+ #import <QuartzCore/CALayer.h>
+ #import <QuartzCore/CAShapeLayer.h>
++#import <QuartzCore/CATextLayer.h>
+ #import <QuartzCore/CARenderer.h>
+ #import <QuartzCore/CAMediaTimingFunction.h>
+ #import <QuartzCore/CATransaction.h>

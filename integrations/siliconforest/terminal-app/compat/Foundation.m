@@ -194,3 +194,67 @@ NSDictionary *_NSDictionaryOfVariableBindings(NSString *commaSeparatedKeys, id f
 - (void)suspendExecution { }
 - (void)resumeExecutionWithResult:(id)result { }
 @end
+
+// ---- (QTP) NSFileCoordinator, for applications that coordinate their file access (first: Apple's QuickTime Player)
+/* File coordination. With no other process presenting files and no coordination service,
+ * coordinating an access is running it: the accessor is called at once with the same URL.
+ * Presenters are kept so that adding and removing them balances. */
+@interface NSFileCoordinator : NSObject {
+    id _sfPresenter;
+    NSString *_sfPurpose;
+}
+@end
+@implementation NSFileCoordinator
+static NSMutableArray *sfPresenters;
++ (void)addFilePresenter:(id)presenter {
+    @synchronized([NSFileCoordinator class]) {
+        if (!sfPresenters) sfPresenters = [[NSMutableArray alloc] init];
+        if (presenter && [sfPresenters indexOfObjectIdenticalTo:presenter] == NSNotFound) [sfPresenters addObject:presenter];
+    }
+}
++ (void)removeFilePresenter:(id)presenter {
+    @synchronized([NSFileCoordinator class]) {
+        if (presenter) [sfPresenters removeObjectIdenticalTo:presenter];
+    }
+}
++ (NSArray *)filePresenters {
+    @synchronized([NSFileCoordinator class]) {
+        return sfPresenters ? [NSArray arrayWithArray:sfPresenters] : [NSArray array];
+    }
+}
+- (id)initWithFilePresenter:(id)presenter {
+    if ((self = [super init])) _sfPresenter = [presenter retain];
+    return self;
+}
+- (NSString *)purposeIdentifier {
+    if (!_sfPurpose) _sfPurpose = [[[NSProcessInfo processInfo] globallyUniqueString] copy];
+    return _sfPurpose;
+}
+- (void)setPurposeIdentifier:(NSString *)purpose {
+    [_sfPurpose release];
+    _sfPurpose = [purpose copy];
+}
+- (void)coordinateReadingItemAtURL:(NSURL *)url options:(NSUInteger)options error:(NSError **)error byAccessor:(void (^)(NSURL *))reader {
+    (void)options;
+    if (error) *error = nil;
+    if (reader) reader(url);
+}
+- (void)coordinateWritingItemAtURL:(NSURL *)url options:(NSUInteger)options error:(NSError **)error byAccessor:(void (^)(NSURL *))writer {
+    (void)options;
+    if (error) *error = nil;
+    if (writer) writer(url);
+}
+- (void)coordinateReadingItemAtURL:(NSURL *)readURL options:(NSUInteger)readOptions writingItemAtURL:(NSURL *)writeURL options:(NSUInteger)writeOptions
+                             error:(NSError **)error byAccessor:(void (^)(NSURL *, NSURL *))accessor {
+    (void)readOptions; (void)writeOptions;
+    if (error) *error = nil;
+    if (accessor) accessor(readURL, writeURL);
+}
+- (void)cancel {
+}
+- (void)dealloc {
+    [_sfPresenter release];
+    [_sfPurpose release];
+    [super dealloc];
+}
+@end

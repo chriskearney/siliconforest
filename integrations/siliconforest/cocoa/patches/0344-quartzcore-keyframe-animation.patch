@@ -1,0 +1,248 @@
+diff --git a/src/Frameworks/QuartzCore/CAKeyframeAnimation.h b/src/Frameworks/QuartzCore/CAKeyframeAnimation.h
+new file mode 100644
+index 0000000..0659ee3
+--- /dev/null
++++ b/src/Frameworks/QuartzCore/CAKeyframeAnimation.h
+@@ -0,0 +1,36 @@
++// CAKeyframeAnimation.h - a property animated through a series of values. SPDX-License-Identifier: MIT
++// Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
++// CAAnimation.h declares the animation classes in order (CAPropertyAnimation at its end); not imported by it
++#import <QuartzCore/CAAnimation.h>
++#import <CoreGraphics/CoreGraphics.h>
++
++typedef NSString *CAAnimationCalculationMode;
++typedef NSString *CAAnimationRotationMode;
++
++CA_EXPORT CAAnimationCalculationMode const kCAAnimationLinear;
++CA_EXPORT CAAnimationCalculationMode const kCAAnimationDiscrete;
++CA_EXPORT CAAnimationCalculationMode const kCAAnimationPaced;
++CA_EXPORT CAAnimationCalculationMode const kCAAnimationCubic;
++CA_EXPORT CAAnimationCalculationMode const kCAAnimationCubicPaced;
++CA_EXPORT CAAnimationRotationMode const kCAAnimationRotateAuto;
++CA_EXPORT CAAnimationRotationMode const kCAAnimationRotateAutoReverse;
++
++@interface CAKeyframeAnimation : CAPropertyAnimation {
++    NSArray *_values;
++    NSArray *_keyTimes;
++    NSArray *_timingFunctions;
++    NSString *_calculationMode;
++    NSString *_rotationMode;
++    NSArray *_tensionValues, *_continuityValues, *_biasValues;
++    CGPathRef _path;
++}
++@property(copy) NSArray *values;
++@property(copy) NSArray *keyTimes;
++@property(copy) NSArray *timingFunctions;
++@property(copy) CAAnimationCalculationMode calculationMode;
++@property(copy) CAAnimationRotationMode rotationMode;
++@property(copy) NSArray *tensionValues;
++@property(copy) NSArray *continuityValues;
++@property(copy) NSArray *biasValues;
++@property CGPathRef path;
++@end
+diff --git a/src/Frameworks/QuartzCore/CAKeyframeAnimation.m b/src/Frameworks/QuartzCore/CAKeyframeAnimation.m
+new file mode 100644
+index 0000000..94787e9
+--- /dev/null
++++ b/src/Frameworks/QuartzCore/CAKeyframeAnimation.m
+@@ -0,0 +1,64 @@
++// CAKeyframeAnimation.m - see the header. SPDX-License-Identifier: MIT
++// Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
++//
++// Written from the public CAKeyframeAnimation documentation. CARenderer.m interpolates it for the keys it
++// animates (opacity, position, anchor point, bounds): linear between the two neighbouring values at keyTimes (or
++// evenly spaced), each segment through its own timing function, or holding each value (discrete). Paced and cubic
++// modes are drawn as linear and a path is not followed: an animation with a path and no values leaves the layer at
++// its model value.
++#import <QuartzCore/CAKeyframeAnimation.h>
++
++CAAnimationCalculationMode const kCAAnimationLinear = @"linear";
++CAAnimationCalculationMode const kCAAnimationDiscrete = @"discrete";
++CAAnimationCalculationMode const kCAAnimationPaced = @"paced";
++CAAnimationCalculationMode const kCAAnimationCubic = @"cubic";
++CAAnimationCalculationMode const kCAAnimationCubicPaced = @"cubicPaced";
++CAAnimationRotationMode const kCAAnimationRotateAuto = @"auto";
++CAAnimationRotationMode const kCAAnimationRotateAutoReverse = @"autoReverse";
++
++@implementation CAKeyframeAnimation
++
++-init {
++   if((self=[super init])==nil)
++    return nil;
++   _calculationMode=[kCAAnimationLinear copy];
++   return self;
++}
++
++-(void)dealloc {
++   [_values release];
++   [_keyTimes release];
++   [_timingFunctions release];
++   [_calculationMode release];
++   [_rotationMode release];
++   [_tensionValues release];
++   [_continuityValues release];
++   [_biasValues release];
++   CGPathRelease(_path);
++   [super dealloc];
++}
++
++#define SF_COPY_PROPERTY(type, getter, setter, ivar) \
++   -(type)getter { return ivar; } \
++   -(void)setter:(type)value { value=[value copy]; [ivar release]; ivar=value; }
++
++SF_COPY_PROPERTY(NSArray *, values, setValues, _values)
++SF_COPY_PROPERTY(NSArray *, keyTimes, setKeyTimes, _keyTimes)
++SF_COPY_PROPERTY(NSArray *, timingFunctions, setTimingFunctions, _timingFunctions)
++SF_COPY_PROPERTY(NSString *, calculationMode, setCalculationMode, _calculationMode)
++SF_COPY_PROPERTY(NSString *, rotationMode, setRotationMode, _rotationMode)
++SF_COPY_PROPERTY(NSArray *, tensionValues, setTensionValues, _tensionValues)
++SF_COPY_PROPERTY(NSArray *, continuityValues, setContinuityValues, _continuityValues)
++SF_COPY_PROPERTY(NSArray *, biasValues, setBiasValues, _biasValues)
++
++-(CGPathRef)path {
++   return _path;
++}
++
++-(void)setPath:(CGPathRef)value {
++   CGPathRetain(value);
++   CGPathRelease(_path);
++   _path=value;
++}
++
++@end
+diff --git a/src/Frameworks/QuartzCore/CARenderer.m b/src/Frameworks/QuartzCore/CARenderer.m
+index 4ca8b82..ab446a1 100644
+--- a/src/Frameworks/QuartzCore/CARenderer.m
++++ b/src/Frameworks/QuartzCore/CARenderer.m
+@@ -4,6 +4,7 @@
+ #import <QuartzCore/CALayer.h>
+ #import <QuartzCore/CAShapeLayer.h>
+ #import <QuartzCore/CAAnimation.h>
++#import <QuartzCore/CAKeyframeAnimation.h>
+ #import <QuartzCore/CAMediaTimingFunction.h>
+ #import <CoreVideo/CoreVideo.h>
+ #import <OpenGL/OpenGL.h>
+@@ -118,6 +119,53 @@ static float mediaTimingScale(CAAnimation *animation,CFTimeInterval currentTime)
+    return applyMediaTimingFunction(function,zeroToOne);
+ }
+ 
++// (QTP) when the i-th keyframe falls, from keyTimes or evenly spaced
++static double keyTimeAt(NSArray *keyTimes,BOOL useKeyTimes,NSUInteger i,NSUInteger last){
++   if(useKeyTimes && i<[keyTimes count])
++    return [[keyTimes objectAtIndex:i] doubleValue];
++   return last>0 ? (double)i/(double)last : 0;
++}
++
++// (QTP) a keyframe animation at this time: the two neighbouring values and the fraction between them
++static BOOL keyframeSegment(CAKeyframeAnimation *animation,CFTimeInterval currentTime,id *from,id *to,double *fraction){
++   NSArray   *values=[animation values];
++   NSUInteger count=[values count];
++   CFTimeInterval duration=[animation duration];
++   double     progress=duration>0 ? (currentTime-[animation beginTime])/duration : 1;
++
++   if(count==0)
++    return NO;
++   if(progress<0)
++    progress=0;
++   if(progress>1)
++    progress=1;
++   // the whole animation's pacing (none: linear, as documented for keyframe animations)
++   if([animation timingFunction]!=nil)
++    progress=applyMediaTimingFunction([animation timingFunction],progress);
++
++   NSArray *keyTimes=[animation keyTimes];
++   BOOL     discrete=[[animation calculationMode] isEqualToString:kCAAnimationDiscrete];
++   NSUInteger last=discrete ? count : count-1;
++   BOOL     useKeyTimes=[keyTimes count]>=count;
++   NSUInteger i=0;
++   while(i+1<count && keyTimeAt(keyTimes,useKeyTimes,i+1,last)<=progress)
++    i++;
++   if(discrete || i+1>=count){
++    *from=*to=[values objectAtIndex:i];
++    *fraction=0;
++    return YES;
++   }
++   double start=keyTimeAt(keyTimes,useKeyTimes,i,last),end=keyTimeAt(keyTimes,useKeyTimes,i+1,last);
++   double local=end>start ? (progress-start)/(end-start) : 1;
++   NSArray *functions=[animation timingFunctions];
++   if(i<[functions count])
++    local=applyMediaTimingFunction([functions objectAtIndex:i],local);
++   *from=[values objectAtIndex:i];
++   *to=[values objectAtIndex:i+1];
++   *fraction=local;
++   return YES;
++}
++
+ // (FXPERF2) the keys the renderer interpolates; a layer nothing animates is read through its properties (KVC boxed
+ // each value, structs through an NSInvocation: a large part of the renderer's time in Firefox's parent)
+ static NSString *const sfcaKeyAnchorPoint=@"anchorPoint",*const sfcaKeyPosition=@"position",*const sfcaKeyBounds=@"bounds",
+@@ -150,8 +198,14 @@ static float interpolateFloatInLayerKey(CALayer *layer,NSString *key,CFTimeInter
+         
+     return resultFloat;
+    }
+-   
+-   return 0;
++   if([animation isKindOfClass:[CAKeyframeAnimation class]]){
++    id from,to;
++    double fraction;
++    if(keyframeSegment((CAKeyframeAnimation *)animation,currentTime,&from,&to,&fraction))
++     return [from floatValue]+([to floatValue]-[from floatValue])*fraction;
++   }
++   // (QTP) an animation this renderer cannot interpolate leaves the layer at its model value (it was drawn at 0)
++   return key==sfcaKeyOpacity ? layer.opacity : [[layer valueForKey:key] floatValue];
+ }
+ 
+ static CGPoint interpolatePointInLayerKey(CALayer *layer,NSString *key,CFTimeInterval currentTime){
+@@ -184,8 +238,20 @@ static CGPoint interpolatePointInLayerKey(CALayer *layer,NSString *key,CFTimeInt
+         
+     return resultPoint;
+    }
+-   
+-   return CGPointMake(0,0);
++   if([animation isKindOfClass:[CAKeyframeAnimation class]]){
++    id from,to;
++    double fraction;
++    if(keyframeSegment((CAKeyframeAnimation *)animation,currentTime,&from,&to,&fraction)){
++     CGPoint a=[from pointValue],b=[to pointValue];
++     return CGPointMake(a.x+(b.x-a.x)*fraction,a.y+(b.y-a.y)*fraction);
++    }
++   }
++   // (QTP) an animation this renderer cannot interpolate leaves the layer at its model value (it was drawn at 0,0)
++   if(key==sfcaKeyAnchorPoint)
++    return layer.anchorPoint;
++   if(key==sfcaKeyPosition)
++    return layer.position;
++   return [[layer valueForKey:key] pointValue];
+ }
+ 
+ static CGRect interpolateRectInLayerKey(CALayer *layer,NSString *key,CFTimeInterval currentTime){
+@@ -220,8 +286,17 @@ static CGRect interpolateRectInLayerKey(CALayer *layer,NSString *key,CFTimeInter
+         
+     return resultRect;
+    }
+-   
+-   return CGRectMake(0,0,0,0);
++   if([animation isKindOfClass:[CAKeyframeAnimation class]]){
++    id from,to;
++    double fraction;
++    if(keyframeSegment((CAKeyframeAnimation *)animation,currentTime,&from,&to,&fraction)){
++     CGRect a=[from rectValue],b=[to rectValue];
++     return CGRectMake(a.origin.x+(b.origin.x-a.origin.x)*fraction,a.origin.y+(b.origin.y-a.origin.y)*fraction,
++                       a.size.width+(b.size.width-a.size.width)*fraction,a.size.height+(b.size.height-a.size.height)*fraction);
++    }
++   }
++   // (QTP) an animation this renderer cannot interpolate leaves the layer at its model value (it was drawn empty)
++   return key==sfcaKeyBounds ? layer.bounds : [[layer valueForKey:key] rectValue];
+ }
+ 
+ static GLint interpolationFromName(NSString *name){
+diff --git a/src/Frameworks/QuartzCore/CoreAnimation.h b/src/Frameworks/QuartzCore/CoreAnimation.h
+index 9c0e92f..dcb03e9 100644
+--- a/src/Frameworks/QuartzCore/CoreAnimation.h
++++ b/src/Frameworks/QuartzCore/CoreAnimation.h
+@@ -1,4 +1,5 @@
+ #import <QuartzCore/CAAnimation.h>
++#import <QuartzCore/CAKeyframeAnimation.h>
+ #import <QuartzCore/CALayer.h>
+ #import <QuartzCore/CAShapeLayer.h>
+ #import <QuartzCore/CATextLayer.h>

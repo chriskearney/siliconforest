@@ -1,0 +1,56 @@
+{
+ "comment": "The symbols QuickTime Player 10.5 (1252.3, from macOS 26.5.2) binds from the libraries built by ../loader.nix, by install name: names only, read from the binary's import table. loader-check.nix requires every one of them to be exported. Quartz is linked but nothing is bound from it.",
+ "/System/Library/Frameworks/SwiftUI.framework/Versions/A/SwiftUI": [
+  "_$s4Body7SwiftUI4ViewPTl",
+  "_$s7SwiftUI12_FrameLayoutV5width6height9alignmentAC12CoreGraphics7CGFloatVSg_AjA9AlignmentVtcfC",
+  "_$s7SwiftUI12_FrameLayoutVAA12ViewModifierAAWP",
+  "_$s7SwiftUI12_FrameLayoutVMn",
+  "_$s7SwiftUI15ModifiedContentVMn",
+  "_$s7SwiftUI15ModifiedContentVyxq_GAA4ViewA2aERzAA0E8ModifierR_rlMc",
+  "_$s7SwiftUI18LocalizedStringKeyV13stringLiteralACSS_tcfC",
+  "_$s7SwiftUI19_ConditionalContentV7StorageOMn",
+  "_$s7SwiftUI19_ConditionalContentVA2A4ViewRzAaDR_rlE7storageACyxq_GAC7StorageOyxq__G_tcfC",
+  "_$s7SwiftUI19_ConditionalContentVMn",
+  "_$s7SwiftUI19_ConditionalContentVyxq_GAA4ViewA2aERzAaER_rlMc",
+  "_$s7SwiftUI4TextVAA4ViewAAWP",
+  "_$s7SwiftUI4TextVMn",
+  "_$s7SwiftUI4TextVN",
+  "_$s7SwiftUI4TextV_9tableName6bundle7commentAcA18LocalizedStringKeyV_SSSgSo8NSBundleCSgs06StaticI0VSgtcfC",
+  "_$s7SwiftUI4ViewMp",
+  "_$s7SwiftUI4ViewP05_makeC04view6inputsAA01_C7OutputsVAA11_GraphValueVyxG_AA01_C6InputsVtFZTq",
+  "_$s7SwiftUI4ViewP05_makeC4List4view6inputsAA01_cE7OutputsVAA11_GraphValueVyxG_AA01_cE6InputsVtFZTq",
+  "_$s7SwiftUI4ViewP14_viewListCount6inputsSiSgAA01_ceF6InputsV_tFZTq",
+  "_$s7SwiftUI4ViewP4BodyAC_AaBTn",
+  "_$s7SwiftUI4ViewP4body4BodyQzvgTq",
+  "_$s7SwiftUI4ViewPAAE05_makeC04view6inputsAA01_C7OutputsVAA11_GraphValueVyxG_AA01_C6InputsVtFZ",
+  "_$s7SwiftUI4ViewPAAE05_makeC4List4view6inputsAA01_cE7OutputsVAA11_GraphValueVyxG_AA01_cE6InputsVtFZ",
+  "_$s7SwiftUI4ViewPAAE14_viewListCount6inputsSiSgAA01_ceF6InputsV_tFZ",
+  "_$s7SwiftUI5ImageV10systemNameACSS_tcfC",
+  "_$s7SwiftUI5ImageV12ResizingModeO7stretchyA2EmFWC",
+  "_$s7SwiftUI5ImageV12ResizingModeOMa",
+  "_$s7SwiftUI5ImageV9resizable9capInsets12resizingModeAcA04EdgeF0V_AC08ResizingH0OtF",
+  "_$s7SwiftUI5ImageVAA4ViewAAWP",
+  "_$s7SwiftUI5ImageVMn",
+  "_$s7SwiftUI6ButtonV6action5labelACyxGyyc_xyXEtcfC",
+  "_$s7SwiftUI6ButtonVMn",
+  "_$s7SwiftUI6ButtonVyxGAA4ViewAAMc",
+  "_$s7SwiftUI9AlignmentV6centerACvgZ"
+ ],
+ "/System/Library/Frameworks/DeveloperToolsSupport.framework/Versions/A/DeveloperToolsSupport": [
+  "_$s21DeveloperToolsSupport13ImageResourceV4name6bundleACSS_So8NSBundleCtcfC",
+  "_$s21DeveloperToolsSupport13ImageResourceVMa"
+ ],
+ "/usr/lib/swift/libswiftos.dylib": [
+  "_$s2os6LoggerV9subsystem8categoryACSS_SStcfC",
+  "_$s2os6LoggerVMa"
+ ],
+ "/System/Library/Frameworks/QuickLook.framework/Versions/A/QuickLook": [
+  "_QLSeamlessOpeningDisplayStateTimeKey",
+  "_QLThumbnailImageCreate",
+  "_kQLThumbnailOptionIconModeKey"
+ ],
+ "/System/Library/Frameworks/QuickLookUI.framework/Versions/A/QuickLookUI": [
+  "_OBJC_CLASS_$_QLSeamlessDocumentOpener"
+ ],
+ "/System/Library/Frameworks/Quartz.framework/Versions/A/Quartz": []
+}

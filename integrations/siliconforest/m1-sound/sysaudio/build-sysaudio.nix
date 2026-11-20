@@ -5,7 +5,8 @@
 #                 SFAppleSound when there is no IOAudioEngine): ./coreaudiod-dev-backend-tip.patch
 #                 at the tip, ./coreaudiod-dev-backend.patch at the pin (the same change; upstream's
 #                 capture and device-interest additions moved the context)
-#   audiotoolbox  the tree's CoreAudio, AudioToolbox and AudioUnit frameworks, unchanged
+#   audiotoolbox  the tree's CoreAudio (with ../../cocoa/patches/0346: block-based property listeners),
+#                 AudioToolbox and AudioUnit frameworks
 #   pcmplay       the tree's test player, unchanged
 #   tools         ./user: sftone (a tone through an AudioQueue) and sfvolume (the volume keys' command)
 #   all           the four joined as one root
@@ -35,8 +36,18 @@ let
 in rec {
   audiotoolbox = pkgs.callPackage "${src}/nix/pkgs/apple/audiotoolbox.nix" (common // {
     src = "${src}/src/Frameworks/AudioToolbox";
-    coreAudioSrc = "${src}/src/Frameworks/CoreAudio";
+    coreAudioSrc = coreAudioSrc;
   });
+
+  # the tree's CoreAudio with ../../cocoa/patches/0346 (block-based property listeners; first user: Apple's
+  # QuickTime Player, docs/roadmap/issues/SF-AI-quicktime.md)
+  coreAudioSrc = pkgs.runCommand "siliconforest-coreaudio-src" { nativeBuildInputs = [ pkgs.patch ]; } ''
+    mkdir -p tree/src/Frameworks
+    cp -r ${src}/src/Frameworks/CoreAudio tree/src/Frameworks/
+    chmod -R u+w tree
+    (cd tree && patch -p1 --no-backup-if-mismatch < ${../../cocoa/patches/0346-coreaudio-property-listener-blocks.patch})
+    cp -r tree/src/Frameworks/CoreAudio $out
+  '';
 
   pcmplay = pkgs.callPackage "${src}/nix/pkgs/apple/pcmplay.nix" (common // {
     inherit audiotoolbox;

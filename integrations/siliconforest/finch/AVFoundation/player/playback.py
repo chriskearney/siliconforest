@@ -81,7 +81,19 @@ change('''    if (_frate > 0 && CMTIME_IS_NUMERIC(d) && CMTimeCompare(now, d) >=
 change('''    BOOL _fshownAny;
     NSDictionary *_fattributes;''','''    BOOL _fshownAny;
     __weak AVPlayerItem *_sfShownItem;
+    CGSize _sfPixelSize, _sfShownPixelSize;
     NSDictionary *_fattributes;''')
+# (QTP2) the size in device pixels the picture is shown at, from the view that hosts the layer: pictures are made at
+# that size (drawn at their own size they are copied, not resampled); a new size shows the current picture again
+change('''    CGImageRef im = [item _finchCopyImageAtTime:item.currentTime sampleIndex:&index];
+    if (!im)
+        return;
+    if (!_fshownAny || index != _fshown) {''','''    [[item _siliconForestMedia] setOutputPixelSize:_sfPixelSize];
+    CGImageRef im = [item _finchCopyImageAtTime:item.currentTime sampleIndex:&index];
+    if (!im)
+        return;
+    if (!_fshownAny || index != _fshown || !CGSizeEqualToSize(_sfShownPixelSize, _sfPixelSize)) {
+        _sfShownPixelSize = _sfPixelSize;''')
 change('''    AVPlayerItem *item = _fplayer.currentItem;
     if (!item || item.status != AVPlayerItemStatusReadyToPlay)
         return;''','''    AVPlayerItem *item = _fplayer.currentItem;
@@ -92,7 +104,7 @@ change('''    AVPlayerItem *item = _fplayer.currentItem;
     if (!item || item.status != AVPlayerItemStatusReadyToPlay)
         return;''')
 # Expose actual rendered-frame count for our test, not an Apple API/capability.
-change('- (BOOL)isReadyForDisplay { return _fready; }','- (BOOL)isReadyForDisplay { return _fready; }\n- (NSUInteger)sfDisplayedFrameIndex { return _fshown; }')
+change('- (BOOL)isReadyForDisplay { return _fready; }','- (BOOL)isReadyForDisplay { return _fready; }\n- (NSUInteger)sfDisplayedFrameIndex { return _fshown; }\n- (void)sfSetDisplayPixelSize:(CGSize)size { _sfPixelSize = size; }')
 for name in ['canPlayFastForward','canPlaySlowForward','canPlayReverse','canPlaySlowReverse','canPlayFastReverse']:
  change('- (BOOL)'+name+' { return _floaded; }','- (BOOL)'+name+' { return _floaded && _fstatus == AVPlayerItemStatusReadyToPlay && !_sfMedia; }')
 p.write_text(s)

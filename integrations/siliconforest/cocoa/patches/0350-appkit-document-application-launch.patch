@@ -1,0 +1,57 @@
+diff --git a/src/Frameworks/AppKit/NSApplication.m b/src/Frameworks/AppKit/NSApplication.m
+index e8b94db..09c3a9a 100644
+--- a/src/Frameworks/AppKit/NSApplication.m
++++ b/src/Frameworks/AppKit/NSApplication.m
+@@ -1684,6 +1684,19 @@ static BOOL sfIsMenuAgent(void)
+                for (NSString *aFile in openFiles) {
+                   opened |= [_delegate application: self openFile: aFile];
+                }
++            } else if ([[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleDocumentTypes"] count] > 0) {
++               // (QTP) as on macOS: files the delegate does not take are opened by the document controller
++               // (Apple's QuickTime Player has no delegate method for them; the files were dropped)
++               NSDocumentController *controller=[NSDocumentController sharedDocumentController];
++
++               for (NSString *aFile in openFiles) {
++                  NSError *error=nil;
++
++                  if ([controller openDocumentWithContentsOfURL:[NSURL fileURLWithPath:aFile] display:YES error:&error] != nil)
++                     opened = YES;
++                  else if (error != nil)
++                     [controller presentError:error];
++               }
+             }
+          }
+       }
+@@ -1751,10 +1764,32 @@ static BOOL sfIsMenuAgent(void)
+    [pool release];
+ }
+ 
++/* (QTP) As on macOS since 10.8: a document application that keeps its documents in iCloud
++ * (NSUbiquitousContainers in its Info.plist) shows the Open panel where another opens an untitled
++ * document, at launch and when it is reopened without windows; the default
++ * NSShowAppCentricOpenPanelInsteadOfUntitledFile turns it off (NO) or on (YES). The delegate's
++ * -applicationShouldOpenUntitledFile: is not asked for the panel: Apple's QuickTime Player answers NO
++ * and shows it. */
++static BOOL sfShowsOpenPanelInsteadOfUntitled(void) {
++   id value=[[NSUserDefaults standardUserDefaults] objectForKey:@"NSShowAppCentricOpenPanelInsteadOfUntitledFile"];
++
++   if(value!=nil && [value respondsToSelector:@selector(boolValue)])
++    return [value boolValue];
++   return [[[NSBundle mainBundle] infoDictionary] objectForKey:@"NSUbiquitousContainers"]!=nil;
++}
++
+ // what launch and a reopen with no windows do: ask the delegate, then fall back to a new document
+ -(void)_openUntitledFile:(NSDocumentController *)controller {
+    BOOL needsUntitled=YES;
+ 
++   if(controller!=nil && sfShowsOpenPanelInsteadOfUntitled()){
++    // not at once: launch finishes first (-applicationDidFinishLaunching: builds the menus); the panel runs
++    // modally here, so none is started while one is up
++    if([self modalWindow]==nil)
++     [controller performSelector:@selector(openDocument:) withObject:self afterDelay:0];
++    return;
++   }
++
+ 
+    if(needsUntitled && _delegate &&
+       [_delegate respondsToSelector: @selector(applicationShouldOpenUntitledFile:)]) {

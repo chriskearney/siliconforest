@@ -27,6 +27,8 @@ in pkgs.stdenv.mkDerivation {
   ${cc} $CF -c ${./SFCaptureInputItem.m} -o objects/SFCaptureInputItem.o
   ${cc} $CF -c ${./SFUnavailableCaptureView.m} -o objects/SFUnavailableCaptureView.o
   ${cc} $CF -c ${./SFPlayerController.m} -o objects/SFPlayerController.o
+  ${cc} $CF -c ${./SFQuickTimePlayerView.m} -o objects/SFQuickTimePlayerView.o
+  ${cc} $CF -c ${./SFQuickTimeControls.m} -o objects/SFQuickTimeControls.o
   ${cc} $CF -c ${./ranges.c} -o objects/ranges.o
   ${cc} $CF -c ${./values.m} -o objects/values.o
   ${cc} -dynamiclib objects/*.o --ld-path=${ld} -nostdlib -isysroot ${sdk} -L${libsystem}/usr/lib -L${p.foundation-arm64}/usr/lib -L${p.coreFoundation-arm64}/usr/lib -L${p.libobjc-arm64}/usr/lib -L${p.coregraphics-arm64}/usr/lib -F${cm}/System/Library/Frameworks -framework CoreMedia -F${player}/System/Library/Frameworks -F${avaudio}/System/Library/Frameworks -framework AVFoundation -Wl,-dylib_file,@loader_path/AVFoundation.pd:${player}/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation.pd -L${a.appDeps.appkit}/usr/lib -L${a.appDeps.quartzcore}/usr/lib -lAppKit -lQuartzCore -lFoundation -lCoreFoundation -lCoreGraphics -lobjc -lSystem -Wl,-dylib_file,/usr/lib/system/libdyld.dylib:${libsystem}/usr/lib/system/libdyld.dylib -Wl,-platform_version,macos,26.5,26.5 -install_name /System/Library/Frameworks/AVKit.framework/Versions/A/AVKit -o AVKit

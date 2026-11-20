@@ -597,6 +597,70 @@
 #         Monitor send neither)
 #   The five frameworks below are compiled with -O2 (upstream's recipes compile without -O: every
 #   drawing, text and event path ran unoptimised); -fno-strict-aliasing for old code that casts.
+#   0340-0347 (QTP, names macOS applications import that are not QuickTime Player's alone; first user: Apple's
+#         QuickTime Player, docs/roadmap/issues/SF-AI-quicktime.md). 0340 AppKit: the enabled, hidden, title and tool
+#         tip binding names, the text styles and +[NSFont preferredFontForTextStyle:options:] (sizes from Apple's
+#         macOS text-style table), NSClickGestureRecognizer (configuration only, as the other recognisers); 0341 AppKit:
+#         NSFileWrapper's URL interface over its path one, and a recycled child wrapper is no longer over-released;
+#         0342 CoreGraphics: CGGetDisplaysWithPoint, CGGetDisplaysWithRect; 0343 QuartzCore: CATextLayer (CoreText,
+#         wrapping, truncation, alignment); 0344 QuartzCore: CAKeyframeAnimation and its interpolation in the
+#         renderer, and an animation the renderer cannot interpolate leaves the model value (it drew 0); 0345
+#         QuartzCore: CAConstraint, CAConstraintLayoutManager, CALayer's layoutManager (autoresizing only without one).
+#         0346 (CoreAudio, applied by ../m1-sound/sysaudio/build-sysaudio.nix) block-based property listeners; 0347
+#         (libFoundation, applied by ../terminal-app/build-foundation.nix) more URL resource values; 0348 (libFoundation,
+#         the same) a bundle without a path is nil; 0349 (libFoundation, the same) +[NSString pathWithComponents:].
+#         The URL key names and NSFileCoordinator are in the framework wrappers (../terminal-app/compat).
+#   0350  AppKit (QTP): a document application's launch as on macOS: one that keeps its documents in iCloud
+#         shows the Open panel instead of an untitled document (NSShowAppCentricOpenPanelInsteadOfUntitledFile),
+#         and files named at launch that the delegate does not take are opened by the document controller
+#   0351  AppKit (QTP): document types named by uniform type identifier (LSItemContentTypes, conformance through
+#         CoreServices' table); the document controller asks -typeForContentsOfURL:error: and makes documents with
+#         -initWithContentsOfURL:ofType:error:, and has the block form of -openDocumentWithContentsOfURL:display:;
+#         -_autosaveDirectoryURLCreateIfNecessary: (where autosaved untitled documents are kept)
+#   0352  libFoundation (QTP, applied by ../terminal-app/build-foundation.nix): -[NSURL fileReferenceURL] answered by
+#         the file's path URL, -filePathURL, -isFileReferenceURL
+#   0354, 0355 libFoundation (QTP, applied by ../terminal-app/build-foundation.nix): to-many change notifications;
+#         NSFileManager URL forms, -setByAddingObjectsFromSet:, security scope (none), resource setting (refused),
+#         locale display names; 0359 libFoundation: -[NSError recoveryAttempter], -helpAnchor; 0361 libFoundation:
+#         NSIntersectionRect of an unbounded rectangle and a finite one, as on macOS
+#   0353  AppKit (QTP): names a document window is made with: NSWindow's layer-hosting request and title-bar
+#         opacity (kept, answered, no effect here), -[NSDocument _windowTitleDisplayName], system-spacing anchors,
+#         -[NSWindow isModalPanel], NSMenu's names (_setMenuName:, _menusWithName:), -[NSMenuItem
+#         _matchesKeyEquivalent:modifierMask:], the light and medium system fonts, -[NSWindow _borderView] (its title bar
+#         has no versions button here)
+#   0356  AppKit (QTP): -[NSWindow titlebarHeight] (the menu strip's row here), symbol images by private name and at a
+#         configuration (our few drawings), +[NSParagraphStyle defaultWritingDirectionForLanguage:],
+#         -[NSMutableAttributedString setBaseWritingDirection:range:], NSView's layer coordinate conversions (identity)
+#   0357  AppKit (QTP): -[NSApplication gestureEventMask] (kept; every gesture arrives), -[NSTextField
+#         maximumNumberOfLines], accessibility value descriptions (kept), the diagonal resize cursors, the Open panel's
+#         New Document button setting (no such button here), -[NSDocument _isDuplicate]/_originalDocumentURL (no Duplicate),
+#         NSMenuItem's identifier (and from nibs), NSDocument's restorable-state methods (nothing is restored here) and
+#         -unblockUserInteraction
+#   0358  AppKit (QTP): -[NSWindowController setDocument:] brings the window's title up to date, as on macOS (a window
+#         made in code kept an empty title); -[NSScreen devicePixelCounts]
+#   0360  AppKit (QTP): a document window's title is the document's display name, as on macOS (the application's
+#         name was appended: "movie.mov - QuickTime Player")
+#   0362  AppKit (QTP; for every application, through the guarded install only): in full screen the menu strip
+#         auto-hides as macOS's menu bar does - it lies over the content and slides in while the pointer is at the
+#         top edge or over it; NSApplicationPresentationHideMenuBar hides it, options without a menu-bar bit keep it
+#   0364  AppKit (QTP2; every application, through the guarded install only): the About panel as macOS's: its nib (this
+#         framework's own, now installed with the resources) loaded when it is shown and let go when it closes
+#         (-loadNib, -unloadNib:), the options kept and applied each time, the copyrightView and _optionsDictionary
+#         instance variables (QuickTime Player replaces -showInfoPanel: and -windowWillClose: and reads them by offset)
+#   0366  AppKit (QTP2; document applications, through the guarded install only): the Open Recent menus as macOS's
+#         document controller keeps them: a menu named _NSRecentDocumentsMenu is emptied and filled by the shared
+#         controller each time it shows (-[NSMenu update] -> -_depopulateOpenRecentMenu:, -_populateOpenRecentMenu:
+#         includingIcons: from -recentDocumentURLs); -_installOpenRecentMenus at the end of launching; +[NSMenu
+#         _menusWithName:]. QuickTime Player overrides the three (its menu showed only "Clear Menu"); (0365,
+#         libFoundation: NSURL bookmarks, ../terminal-app/build-foundation.nix)
+#   0367  AppKit (QTP2; every application, through the guarded install only): the methods AppKit adds to
+#         NSMutableAttributedString are also answered by Foundation's bridged attributed strings (a mutable one is an
+#         NSAttributedString object): -setBaseWritingDirection:range: on a string built with -appendAttributedString:
+#         raised "unrecognized selector" (QuickTime Player's Open Recent titles)
+#   0363  Onyx2D (QTP2; every application, through the guarded install only): an opaque image drawn on the device at
+#         its own size (within two pixels) is copied a row at a time instead of resampled and blended pixel by pixel
+#         (QuickTime Player's picture cost 150 ms a draw: two pictures a second); O2_NO_IMAGE_FAST_PATH=1 turns it off,
+#         O2_IMAGE_TRACE=1 says why an image was resampled
 #   0009  Security: SecItemCopyMatching writes its result on every path and answers
 #         errSecItemNotFound when nothing was found (Firefox crashed on the unwritten result)
 #   (0007 and 0008 are libSystem's sandbox profile compiler: ./build-libsystem-cocoa.nix)
@@ -715,6 +779,19 @@ let
     ./patches/0176-appkit-clipboard-offered-data-follows-writes.patch
     ./patches/0177-appkit-clipboard-write-not-replaced-before-its-offer.patch
     ./patches/0178a-appkit-gpu-layers-presented-from-the-render-thread.patch
+    ./patches/0340-appkit-binding-and-text-style-names.patch
+    ./patches/0341-appkit-file-wrapper-url-interface.patch
+    ./patches/0350-appkit-document-application-launch.patch
+    ./patches/0351-appkit-document-types-by-identifier.patch
+    ./patches/0353-appkit-document-window-names.patch
+    ./patches/0356-appkit-player-view-names.patch
+    ./patches/0357-appkit-movie-window-names.patch
+    ./patches/0358-appkit-window-title-and-device-pixels.patch
+    ./patches/0360-appkit-document-window-title-is-the-name.patch
+    ./patches/0362-appkit-full-screen-menu-strip-auto-hides.patch
+    ./patches/0364-appkit-about-panel-nib-loaded-when-shown.patch
+    ./patches/0366-appkit-open-recent-menus-filled-when-shown.patch
+    ./patches/0367-appkit-mutable-attributed-string-methods-on-bridged-strings.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
@@ -762,6 +839,7 @@ let
     ./patches/0217-graphics-font-keeps-fontconfig-collection-face-index.patch
     ./patches/0146-onyx2d-glyph-cache-knows-a-reused-face.patch
     ./patches/0154-onyx2d-font-files-mapped-once.patch
+    ./patches/0363-onyx2d-images-at-device-pixels-copied.patch
   ];
   # upstream's framework recipes name no optimisation level: their compile lines get one here
   optimised = d: d.overrideAttrs (old: {
@@ -782,6 +860,7 @@ let
     ./patches/0109-coregraphics-imageio-thumbnail-metadata.patch
     ./patches/0118-coregraphics-icc-and-indexed-color-spaces.patch
     ./patches/0135-coregraphics-display-fade-opengl-acceleration.patch
+    ./patches/0342-coregraphics-displays-with-point-and-rect.patch
   ];
   coregraphics = optimised (pd."coregraphics-arm64".override { src = coregraphicsSrc; });
   # QuartzCore: upstream's recipe (not optimised, as installed; its library is the root's QuartzCore.pd, beside the
@@ -801,6 +880,9 @@ let
     ./patches/0300-quartzcore-damage-only-frames.patch
     ./patches/0306-quartzcore-video-planes-uploaded-as-red-green.patch
     ./patches/0178-quartzcore-layer-tree-rendered-on-a-render-thread.patch
+    ./patches/0343-quartzcore-text-layer.patch
+    ./patches/0344-quartzcore-keyframe-animation.patch
+    ./patches/0345-quartzcore-constraint-layout-manager.patch
   ];
   quartzcore = pd."quartzcore-msm-arm64".override { src = quartzcoreSrc; };
   wp = "${pd."wayland-protocols"}/share/wayland-protocols";
@@ -826,7 +908,19 @@ let
   }));
   # (0110) against the libFoundation the root has (NSIndexPath is in it), not upstream's
   foundation = import ../terminal-app/build-foundation.nix;
-  appkit = optimised (pd."appkit-msm-arm64".override { src = appkitSrc; inherit windowserver foundation; });
+  # (0364) the About panel's nib, this framework's own (Cocotron's NSSystemInfoPanel, MIT), installed with its resources:
+  # upstream's recipe installs only the string tables, so every application's About panel failed to load
+  appkit = (optimised (pd."appkit-msm-arm64".override { src = appkitSrc; inherit windowserver foundation; })).overrideAttrs (old: {
+    postInstall = (old.postInstall or "") + ''
+      for l in "$src"/NSSystemInfoPanel/*.lproj; do
+        d="$out/System/Library/Frameworks/AppKit.framework/Versions/A/Resources/$(basename "$l")/NSSystemInfoPanel.nib"
+        mkdir -p "$d"
+        for f in keyedobjects.nib classes.nib info.nib; do
+          if [ -e "$l/NSSystemInfoPanel.nib/$f" ]; then install -m644 "$l/NSSystemInfoPanel.nib/$f" "$d/"; fi
+        done
+      done
+    '';
+  });
   # Security for arm64 (upstream's build) with SecItemCopyMatching's result defined on every path
   security = pd."security-arm64".overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./patches/0009-security-secitemcopymatching-defined-result.patch ];

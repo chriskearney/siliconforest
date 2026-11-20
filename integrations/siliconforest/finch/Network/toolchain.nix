@@ -34,7 +34,13 @@ framework module CoreFoundation [extern_c] [system] {
 }
 MAP
   # Generate the same public Darwin module used to build PD's Swift overlays.
+  # sf_pthread_sched.h defines XNU_KERNEL_PRIVATE and must stay out of that module, as it did under
+  # its old name (the generator's name pattern predates the rename; ../../rebase/swift-darwin-module.nix
+  # has the whole story). With it in, the Darwin module does not build and nothing can import Foundation.
+  mv $out/sdk/usr/include/sf_pthread_sched.h $TMPDIR/sf_pthread_sched.h.aside
   sh ${overlays}/gen-darwin-modulemap.sh $out/sdk ${hostSwift}/bin/clang arm64-apple-macosx13.0
+  mv $TMPDIR/sf_pthread_sched.h.aside $out/sdk/usr/include/sf_pthread_sched.h
+  if grep -q sf_pthread_sched $out/sdk/usr/include/module.modulemap; then echo "sf_pthread_sched.h is in the Darwin module"; exit 1; fi
   ln -s ${modules}/usr/lib/swift $out/resource/macosx
   ln -s ${modules}/usr/lib/swift/shims $out/resource/shims
   ln -s ${hostSwift}/lib/swift/clang $out/resource/clang

@@ -1,0 +1,135 @@
+diff --git a/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.m b/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.m
+index dc737b0..db875ce 100755
+--- a/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.m
++++ b/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.m
+@@ -53,6 +53,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+     _tag=[keyed decodeIntForKey:@"NSTag"];
+     _hidden = [keyed decodeBoolForKey:@"NSIsHidden"];
+     _image = [[coder decodeObjectForKey:@"NSImage"] retain];
++    // (QTP) the item's user-interface identifier, as Interface Builder stores it
++    if([keyed containsValueForKey:@"NSMenuItemIdentifier"])
++     [self setIdentifier:[keyed decodeObjectForKey:@"NSMenuItemIdentifier"]];
+    if([keyed decodeBoolForKey:@"NSIsSeparator"]){
+      [_title release];
+      _title=nil;
+@@ -184,6 +187,18 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+    return _keyEquivalentModifierMask;
+ }
+ 
++// (QTP) NSUserInterfaceItemIdentification (macOS 10.7): an application finds its items by it (Apple's QuickTime
++// Player does when it builds its window)
++static char SFMenuItemIdentifierKey;
++
++-(NSString *)identifier {
++   return objc_getAssociatedObject(self,&SFMenuItemIdentifierKey);
++}
++
++-(void)setIdentifier:(NSString *)identifier {
++   objc_setAssociatedObject(self,&SFMenuItemIdentifierKey,identifier,OBJC_ASSOCIATION_COPY);
++}
++
+ // (QTP) whether this item's key equivalent is that key with those modifiers (private on macOS; Apple's QuickTime
+ // Player asks from its menu delegate): an upper-case equivalent carries Shift; only the device-independent bits count
+ -(BOOL)_matchesKeyEquivalent:(NSString *)key modifierMask:(NSUInteger)mask {
+diff --git a/src/Frameworks/AppKit/NSModernAppKit.m b/src/Frameworks/AppKit/NSModernAppKit.m
+index 62b8e90..575caea 100644
+--- a/src/Frameworks/AppKit/NSModernAppKit.m
++++ b/src/Frameworks/AppKit/NSModernAppKit.m
+@@ -1072,3 +1072,97 @@ static char SFHideAnchorKey;
+ - (NSSize)convertSizeFromLayer:(NSSize)size { return size; }
+ 
+ @end
++
++/* (QTP) More names Apple's QuickTime Player sends while it opens a movie and builds its window. */
++#import <AppKit/NSCursor.h>
++#import <AppKit/NSTextField.h>
++#import <AppKit/NSOpenPanel.h>
++#import <AppKit/NSDocument.h>
++
++static char SFGestureMaskKey, SFMaximumLinesKey, SFValueDescriptionKey, SFNewDocumentButtonKey;
++
++@implementation NSApplication (SFGestureEventMask)
++
++// (private on macOS) which gesture events the application takes; every gesture reaches it here: the mask is kept
++- (NSEventMask)gestureEventMask
++{
++    NSNumber *mask = objc_getAssociatedObject(self, &SFGestureMaskKey);
++    return mask ? (NSEventMask)[mask unsignedLongLongValue] : (NSEventMask)~0ULL;
++}
++
++- (void)setGestureEventMask:(NSEventMask)mask
++{
++    objc_setAssociatedObject(self, &SFGestureMaskKey, [NSNumber numberWithUnsignedLongLong:mask], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++}
++
++@end
++
++@implementation NSTextField (SFMaximumLines)
++
++// (macOS 10.11) the most lines the field shows (0: no limit); kept, and a single line turns wrapping off
++- (NSInteger)maximumNumberOfLines
++{
++    return [objc_getAssociatedObject(self, &SFMaximumLinesKey) integerValue];
++}
++
++- (void)setMaximumNumberOfLines:(NSInteger)lines
++{
++    objc_setAssociatedObject(self, &SFMaximumLinesKey, [NSNumber numberWithInteger:lines], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++    if (lines == 1)
++        [[self cell] setWraps:NO];
++    [self setNeedsDisplay:YES];
++}
++
++@end
++
++// (macOS 10.10 accessibility) a description of an element's value: kept and answered, for views and cells
++#define SF_VALUE_DESCRIPTION(CLASS) \
++@implementation CLASS (SFAccessibilityValueDescription) \
++- (NSString *)accessibilityValueDescription { return objc_getAssociatedObject(self, &SFValueDescriptionKey); } \
++- (void)setAccessibilityValueDescription:(NSString *)description \
++{ objc_setAssociatedObject(self, &SFValueDescriptionKey, description, OBJC_ASSOCIATION_COPY_NONATOMIC); } \
++@end
++SF_VALUE_DESCRIPTION(NSView)
++SF_VALUE_DESCRIPTION(NSCell)
++
++@interface NSCursor (SFWindowResizeShapes)
+++ (NSCursor *)_windowResizeCursorForEdges:(int)edges;
++@end
++
++@implementation NSCursor (SFDiagonalResize)
++
++// (private on macOS) the diagonal window-resize shapes
+++ (NSCursor *)_windowResizeNorthEastSouthWestCursor { return [self _windowResizeCursorForEdges:9]; }
+++ (NSCursor *)_windowResizeNorthWestSouthEastCursor { return [self _windowResizeCursorForEdges:5]; }
++
++@end
++
++@implementation NSOpenPanel (SFNewDocumentButton)
++
++// (private on macOS) the "New Document" button of the Open panel an iCloud application shows at launch; this
++// panel has no such button, so the setting is kept and changes nothing
++- (void)_setShowNewDocumentButton:(BOOL)flag
++{
++    objc_setAssociatedObject(self, &SFNewDocumentButtonKey, [NSNumber numberWithBool:flag], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++}
++
++@end
++
++@implementation NSDocument (SFDuplicates)
++
++// (private on macOS) documents made by Duplicate: there is no Duplicate here, so none is one and none has an original
++- (BOOL)_isDuplicate { return NO; }
++- (NSURL *)_originalDocumentURL { return nil; }
++
++// (macOS 10.7) a document's part in window restoration, as NSResponder has it: this AppKit restores no windows, so
++// nothing is saved; a subclass's -encodeRestorableStateWithCoder: calls super and finds it here
++- (void)invalidateRestorableState { }
++- (void)encodeRestorableStateWithCoder:(NSCoder *)coder { (void)coder; }
++- (void)restoreStateWithCoder:(NSCoder *)coder { (void)coder; }
+++ (NSArray *)restorableStateKeyPaths { return [NSArray array]; }
++
++// (macOS 10.7) the end of the part of an asynchronous save during which the user must wait: saving here does not
++// hold the user back, so there is nothing to end
++- (void)unblockUserInteraction { }
++
++@end

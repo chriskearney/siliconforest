@@ -1,0 +1,51 @@
+diff --git a/src/Frameworks/Foundation/URL.subproj/NSURL.m b/src/Frameworks/Foundation/URL.subproj/NSURL.m
+index a4b224b..43bec3f 100644
+--- a/src/Frameworks/Foundation/URL.subproj/NSURL.m
++++ b/src/Frameworks/Foundation/URL.subproj/NSURL.m
+@@ -7,6 +7,10 @@
+  */
+ 
+ #import <Foundation/NSFileManager.h>
++// (QTP) for the volume and file-identity resource values
++#include <sys/stat.h>
++#include <sys/param.h>
++#include <sys/mount.h>
+ #import <Foundation/NSData.h>
+ #import <Foundation/NSDictionary.h>
+ #import <Foundation/NSString.h>
+@@ -347,6 +351,35 @@ static void __NSCFURLBridgeInit(void) {
+         answer = [attributes objectForKey:NSFileSize];
+     else if ([key isEqualToString:@"NSURLContentModificationDateKey"])
+         answer = [attributes objectForKey:NSFileModificationDate];
++    // (QTP) more of the keys macOS applications ask for; an effective icon is AppKit's business and stays nil
++    else if ([key isEqualToString:@"NSURLParentDirectoryURLKey"]) {
++        NSString *parent = [path stringByDeletingLastPathComponent];
++        if ([parent length] > 0 && ![path isEqualToString:@"/"])
++            answer = [NSURL fileURLWithPath:parent isDirectory:YES];
++    }
++    else if ([key isEqualToString:@"NSURLHasHiddenExtensionKey"])
++        answer = [NSNumber numberWithBool:NO];      // no Finder flags are kept here
++    else if ([key isEqualToString:@"NSURLFileResourceIdentifierKey"]) {
++        struct stat st;
++        if (lstat([path fileSystemRepresentation], &st) == 0) {
++            uint64_t identity[2] = { (uint64_t)st.st_dev, (uint64_t)st.st_ino };
++            answer = [NSData dataWithBytes:identity length:sizeof identity];  // equal for the same file
++        }
++    }
++    else if ([key isEqualToString:@"NSURLIsVolumeKey"] || [key isEqualToString:@"NSURLVolumeNameKey"] ||
++             [key isEqualToString:@"NSURLVolumeIsReadOnlyKey"]) {
++        struct statfs fs;
++        if (statfs([path fileSystemRepresentation], &fs) == 0) {
++            NSString *mountPoint = [NSString stringWithUTF8String:fs.f_mntonname];
++            if ([key isEqualToString:@"NSURLIsVolumeKey"])
++                answer = [NSNumber numberWithBool:[[path stringByStandardizingPath] isEqualToString:mountPoint]];
++            else if ([key isEqualToString:@"NSURLVolumeIsReadOnlyKey"])
++                answer = [NSNumber numberWithBool:(fs.f_flags & MNT_RDONLY) != 0];
++            else    // the mount point's name; the root's is its device's (no volume label is kept here)
++                answer = [mountPoint isEqualToString:@"/"] ? [[NSString stringWithUTF8String:fs.f_mntfromname] lastPathComponent]
++                                                         : [mountPoint lastPathComponent];
++        }
++    }
+     if (value != NULL)
+         *value = answer;
+     return YES;

@@ -1,0 +1,224 @@
+diff --git a/src/Frameworks/AppKit/NSThemeFrame.m b/src/Frameworks/AppKit/NSThemeFrame.m
+index 89488fe..fd490db 100755
+--- a/src/Frameworks/AppKit/NSThemeFrame.m
++++ b/src/Frameworks/AppKit/NSThemeFrame.m
+@@ -558,7 +558,9 @@ static void drawWindowControl(O2Context *context, CGRect rect,
+     CGFloat stripHeight=NSHeight([menuStrip frame]);
+ 
+     [menuStrip setFrame:NSMakeRect(NSMinX(contentFrame),NSMaxY(contentFrame)-stripHeight,NSWidth(contentFrame),stripHeight)];
+-    contentFrame.size.height-=stripHeight;
++    // (QTP) in full screen it may lie over the top of the content instead of above it
++    if(![[self window] _sfMenuStripOverlays])
++     contentFrame.size.height-=stripHeight;
+    }
+    if(tabBar!=nil){
+     CGFloat barHeight=NSHeight([tabBar frame]);
+diff --git a/src/Frameworks/AppKit/NSWindow-Private.h b/src/Frameworks/AppKit/NSWindow-Private.h
+index 0666182..fd69ed7 100755
+--- a/src/Frameworks/AppKit/NSWindow-Private.h
++++ b/src/Frameworks/AppKit/NSWindow-Private.h
+@@ -60,4 +60,8 @@ APPKIT_EXPORT BOOL NSWindowFrameIsDrawnByServer(unsigned styleMask);
+ - (NSView *)_sfMenuStripView;
+ - (void)_sfUpdateMenuStrip;
+ - (BOOL)_sfMenuStripTakesKeyEvent:(NSEvent *)event;
+++ (int)_sfMenuStripFullScreenModeForOptions:(NSUInteger)options;
++- (int)_sfMenuStripFullScreenMode;
++- (BOOL)_sfMenuStripOverlays;
++- (void)_sfMenuStripFullScreenChanged;
+ @end
+diff --git a/src/Frameworks/AppKit/NSWindow.m b/src/Frameworks/AppKit/NSWindow.m
+index 2766c3a..5eebd06 100755
+--- a/src/Frameworks/AppKit/NSWindow.m
++++ b/src/Frameworks/AppKit/NSWindow.m
+@@ -1930,8 +1930,9 @@ extern NSRect _NSBackingAlignedWindowRect(NSRect rect,CGFloat sx,CGFloat sy,NSAl
+ 
+    if([_toolbar _view]!=nil && ![[_toolbar _view] isHidden])
+     result.size.height+=[[_toolbar _view] frame].size.height;
+-   // the menu strip (NSWindowMenuStrip.m) is part of the frame, like the title bar
+-   if(_menuView!=nil)
++   // the menu strip (NSWindowMenuStrip.m) is part of the frame, like the title bar (in full screen it may lie over
++   // the content instead)
++   if(_menuView!=nil && ![self _sfMenuStripOverlays])
+     result.size.height+=NSHeight([_menuView frame]);
+    // the tab bar too (NSWindowTabbing.m)
+    result.size.height+=[self _sfTabBarHeight];
+@@ -1944,7 +1945,7 @@ extern NSRect _NSBackingAlignedWindowRect(NSRect rect,CGFloat sx,CGFloat sy,NSAl
+ 
+    if([_toolbar _view]!=nil && ![[_toolbar _view] isHidden])
+     result.size.height-=[[_toolbar _view] frame].size.height;
+-   if(_menuView!=nil)
++   if(_menuView!=nil && ![self _sfMenuStripOverlays])
+     result.size.height-=NSHeight([_menuView frame]);
+    result.size.height-=[self _sfTabBarHeight];
+ 
+@@ -3391,6 +3392,7 @@ static void sfSetFullScreenAsked(NSWindow *window,int asked) {
+     }
+     else {
+      [self setFrame:[[self screen] frame] display:YES];
++     [self _sfMenuStripFullScreenChanged];
+      [center postNotificationName:NSWindowDidEnterFullScreenNotification object:self];
+     }
+    }
+@@ -3403,6 +3405,7 @@ static void sfSetFullScreenAsked(NSWindow *window,int asked) {
+      [self performSelector:@selector(_sfFullScreenUnanswered) withObject:nil afterDelay:1.0];
+     }
+     else {
++     [self _sfMenuStripFullScreenChanged];
+      if(saved!=nil)
+       [self setFrame:[saved rectValue] display:YES];
+      [center postNotificationName:NSWindowDidExitFullScreenNotification object:self];
+@@ -3441,6 +3444,7 @@ static void sfSetFullScreenAsked(NSWindow *window,int asked) {
+      _styleMask|=NSFullScreenWindowMask;
+     }
+     sfSetFullScreenAsked(self,0);
++    [self _sfMenuStripFullScreenChanged];
+     [center postNotificationName:NSWindowDidEnterFullScreenNotification object:self];
+    }
+    else {
+@@ -3450,6 +3454,7 @@ static void sfSetFullScreenAsked(NSWindow *window,int asked) {
+      objc_setAssociatedObject(self,&fullScreenFrameKey,nil,OBJC_ASSOCIATION_RETAIN);
+     }
+     sfSetFullScreenAsked(self,0);
++    [self _sfMenuStripFullScreenChanged];
+     [center postNotificationName:NSWindowDidExitFullScreenNotification object:self];
+    }
+    [_backgroundView setNeedsDisplay:YES];
+diff --git a/src/Frameworks/AppKit/NSWindowMenuStrip.m b/src/Frameworks/AppKit/NSWindowMenuStrip.m
+index 102c493..af20223 100644
+--- a/src/Frameworks/AppKit/NSWindowMenuStrip.m
++++ b/src/Frameworks/AppKit/NSWindowMenuStrip.m
+@@ -31,6 +31,10 @@
+ #import <Foundation/NSUserDefaults.h>
+ #import <Foundation/NSBundle.h>
+ #import <Foundation/NSProcessInfo.h>
++#import <AppKit/NSModernAppKit.h>
++#import <Foundation/NSTimer.h>
++#include <objc/runtime.h>
++#include <objc/message.h>
+ #include <stdlib.h>
+ 
+ @interface NSAppearance (SFDark)
+@@ -156,6 +160,14 @@ static int sfMenuStripsEnabled = -1;
+         !(styleMask & NSTitledWindowMask) || !NSWindowFrameIsDrawnByServer(styleMask) ||
+         [self isSubclassOfClass:[NSPanel class]])
+         return 0;
++    // (QTP) in full screen the strip lies over the content unless the application keeps it (no window to ask here)
++    if (styleMask & NSFullScreenWindowMask) {
++        NSUInteger application = [NSApp respondsToSelector:@selector(presentationOptions)] ? [NSApp presentationOptions] : 0;
++        if (!(application & (NSApplicationPresentationAutoHideMenuBar | NSApplicationPresentationHideMenuBar)))
++            application |= NSApplicationPresentationAutoHideMenuBar;
++        if ([self _sfMenuStripFullScreenModeForOptions:application] != 0)
++            return 0;
++    }
+     for (NSWindow *window in [NSApp windows]) {
+         NSView *strip = [window _sfMenuStripView];
+         if (strip != nil)
+@@ -196,6 +208,97 @@ static int sfMenuStripsEnabled = -1;
+     return NSWindowFrameIsDrawnByServer(_styleMask);
+ }
+ 
++/* (QTP) In full screen, as macOS's menu bar: the strip hides, lies over the top of the content and slides in
++ * while the pointer is at the screen's top edge (or over the strip), unless the presentation options keep it
++ * (no menu-bar option) or hide it for good (NSApplicationPresentationHideMenuBar). The options are the
++ * application's when it set menu-bar options itself, else the window delegate's answer to
++ * -window:willUseFullScreenPresentationOptions: for macOS's default (full screen, auto-hide menu bar and Dock).
++ * 0: the strip stays as it is outside full screen; 1: it auto-hides; 2: it is hidden. */
+++ (int)_sfMenuStripFullScreenModeForOptions:(NSUInteger)options
++{
++    if (options & NSApplicationPresentationHideMenuBar)
++        return 2;
++    if (options & NSApplicationPresentationAutoHideMenuBar)
++        return 1;
++    return 0;
++}
++
++static NSUInteger sfFullScreenOptions(NSWindow *window)
++{
++    NSUInteger menuBits = NSApplicationPresentationAutoHideMenuBar | NSApplicationPresentationHideMenuBar;
++    NSUInteger application = [NSApp respondsToSelector:@selector(presentationOptions)] ? [NSApp presentationOptions] : 0;
++    NSUInteger options = NSApplicationPresentationFullScreen | NSApplicationPresentationAutoHideMenuBar | NSApplicationPresentationAutoHideDock;
++    id delegate = [window delegate];
++
++    if (application & menuBits)
++        return application;
++    if ([delegate respondsToSelector:@selector(window:willUseFullScreenPresentationOptions:)])
++        options = ((NSUInteger (*)(id, SEL, id, NSUInteger))objc_msgSend)(delegate, @selector(window:willUseFullScreenPresentationOptions:), window, options);
++    return options;
++}
++
++- (int)_sfMenuStripFullScreenMode
++{
++    if (!(_styleMask & NSFullScreenWindowMask))
++        return 0;
++    return [NSWindow _sfMenuStripFullScreenModeForOptions:sfFullScreenOptions(self)];
++}
++
++- (BOOL)_sfMenuStripOverlays
++{
++    return _menuView != nil && [self _sfMenuStripFullScreenMode] != 0;
++}
++
++static char sfStripTimerKey;
++
++/* while the strip auto-hides: the pointer decides, read ten times a second (no mouse-moved events needed) */
++- (void)_sfMenuStripFollowPointer:(NSTimer *)timer
++{
++    (void)timer;
++    if (_menuView == nil || [self _sfMenuStripFullScreenMode] != 1) {
++        [self _sfMenuStripFullScreenChanged];
++        return;
++    }
++    NSPoint pointer = [NSEvent mouseLocation];
++    NSRect frame = [self frame];
++    CGFloat stripHeight = NSHeight([_menuView frame]);
++    BOOL inside = pointer.x >= NSMinX(frame) && pointer.x <= NSMaxX(frame);
++    BOOL atTop = inside && pointer.y >= NSMaxY(frame) - 3;
++    BOOL overStrip = inside && ![_menuView isHidden] && pointer.y >= NSMaxY(frame) - stripHeight - 6;
++    BOOL show = atTop || overStrip;
++
++    if (show == [_menuView isHidden]) {
++        [_menuView setHidden:!show];
++        [_backgroundView setNeedsDisplayInRect:[_menuView frame]];
++    }
++}
++
++/* full screen entered or left, or its options changed: the strip's place and visibility */
++- (void)_sfMenuStripFullScreenChanged
++{
++    NSTimer *timer = objc_getAssociatedObject(self, &sfStripTimerKey);
++    int mode = _menuView != nil ? [self _sfMenuStripFullScreenMode] : 0;
++
++    if (mode != 1 && timer != nil) {
++        [timer invalidate];
++        objc_setAssociatedObject(self, &sfStripTimerKey, nil, OBJC_ASSOCIATION_RETAIN);
++    }
++    if (mode == 1 && timer == nil) {
++        timer = [NSTimer scheduledTimerWithTimeInterval:0.1 target:self selector:@selector(_sfMenuStripFollowPointer:) userInfo:nil repeats:YES];
++        objc_setAssociatedObject(self, &sfStripTimerKey, timer, OBJC_ASSOCIATION_RETAIN);
++    }
++    [_menuView setHidden:mode != 0];
++    if (mode == 1 && [[_backgroundView subviews] lastObject] != _menuView) {
++        // over the content: the frontmost of the frame's views
++        [_menuView retain];
++        [_menuView removeFromSuperview];
++        [_backgroundView addSubview:_menuView];
++        [_menuView release];
++    }
++    [_backgroundView resizeSubviewsWithOldSize:[_backgroundView frame].size];
++    [_backgroundView setNeedsDisplay:YES];
++}
++
+ - (NSView *)_sfMenuStripView
+ {
+     return _menuView;
+@@ -231,6 +334,10 @@ static int sfMenuStripsEnabled = -1;
+         _menuView = strip;
+         [_backgroundView addSubview:strip];
+         [strip _sfRefresh];
++        if ([self _sfMenuStripOverlays]) {
++            [self _sfMenuStripFullScreenChanged];
++            return;
++        }
+     }
+     else {
+         height = -NSHeight([_menuView frame]);

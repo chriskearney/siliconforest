@@ -1,0 +1,789 @@
+{
+ "comment": "The 112 names QuickTime Player 10.5 (1252.3) binds that the 15 November copy of SiliconForest plus the loader libraries did not provide, with what now provides each. Names only, read from the binary's import table. kind: real (implemented), constant, model (holds its values; nothing acts on them), absence (binds; fails or does nothing when used, and says so once). additions-check.nix requires each to be exported from the library with that path. provided_by: what supplies the name on a system with the Cocoa patches 0340-0347 and the current framework wrappers.",
+ "symbols": [
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_NSEnabledBinding",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "AppKit (cocoa patch 0340)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_NSFontTextStyleCaption1",
+   "kind": "constant",
+   "note": "value believed correct, to be compared on macOS (conformance/qtp-names.m); +[NSFont preferredFontForTextStyle:options:] gives the font",
+   "provided_by": "AppKit (cocoa patch 0340)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_NSFontTextStyleLargeTitle",
+   "kind": "constant",
+   "note": "value believed correct, to be compared on macOS (conformance/qtp-names.m); +[NSFont preferredFontForTextStyle:options:] gives the font",
+   "provided_by": "AppKit (cocoa patch 0340)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_NSFontTextStyleTitle1",
+   "kind": "constant",
+   "note": "value believed correct, to be compared on macOS (conformance/qtp-names.m); +[NSFont preferredFontForTextStyle:options:] gives the font",
+   "provided_by": "AppKit (cocoa patch 0340)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_NSFontTextStyleTitle3",
+   "kind": "constant",
+   "note": "value believed correct, to be compared on macOS (conformance/qtp-names.m); +[NSFont preferredFontForTextStyle:options:] gives the font",
+   "provided_by": "AppKit (cocoa patch 0340)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_NSHiddenBinding",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "AppKit (cocoa patch 0340)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_NSImageNameToolbarBookmarks",
+   "kind": "constant",
+   "note": "private name; value inferred; nothing in the system acts on it",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_NSRecentDocumentsMenuName",
+   "kind": "constant",
+   "note": "private name; value inferred; nothing in the system acts on it",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_NSTitleBinding",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "AppKit (cocoa patch 0340)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_NSToolTipBinding",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "AppKit (cocoa patch 0340)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_NSWindowWillOrderOnScreenNotification",
+   "kind": "constant",
+   "note": "private name; value inferred; nothing in the system acts on it",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_OBJC_CLASS_$_NSClickGestureRecognizer",
+   "kind": "absence",
+   "note": "keeps its configuration, recognises no clicks",
+   "provided_by": "AppKit (cocoa patch 0340)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_OBJC_IVAR_$_NSSystemInfoPanel._optionsDictionary",
+   "kind": "real",
+   "note": "the options the About panel was last shown with (AppKit's class gained the variable)",
+   "provided_by": "AppKit (cocoa patch 0364)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+   "symbol": "_OBJC_IVAR_$_NSSystemInfoPanel.copyrightView",
+   "kind": "real",
+   "note": "the About panel's copyright view (its legal text field; AppKit's class gained the variable)",
+   "provided_by": "AppKit (cocoa patch 0364)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVAssetCollection",
+   "kind": "absence",
+   "note": "cannot be created (nil)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVAssetExportSession",
+   "kind": "absence",
+   "note": "every export session fails; no preset is compatible",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVAssetImageGenerator",
+   "kind": "absence",
+   "note": "every image request fails with an error",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVAssetReaderAudioMixOutput",
+   "kind": "absence",
+   "note": "cannot be created (nil)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVCaptureAudioFileOutput",
+   "kind": "absence",
+   "note": "cannot be created (nil)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVCaptureAudioPreviewOutput",
+   "kind": "absence",
+   "note": "cannot be created (nil)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVCaptureConnection",
+   "kind": "absence",
+   "note": "cannot be created (nil)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVCaptureMovieFileOutput",
+   "kind": "absence",
+   "note": "cannot be created (nil)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVComposition",
+   "kind": "absence",
+   "note": "an empty composition; editing calls fail with an error",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVMutableAudioMix",
+   "kind": "model",
+   "note": "kept as given; the staged player does not apply it",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVMutableAudioMixInputParameters",
+   "kind": "model",
+   "note": "kept as given; the staged player does not apply it",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVMutableComposition",
+   "kind": "absence",
+   "note": "an empty composition; editing calls fail with an error",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVMutableVideoComposition",
+   "kind": "model",
+   "note": "kept as given; the staged player does not apply it",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVMutableVideoCompositionInstruction",
+   "kind": "model",
+   "note": "kept as given; the staged player does not apply it",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVMutableVideoCompositionLayerInstruction",
+   "kind": "model",
+   "note": "kept as given; the staged player does not apply it",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_CLASS_$_AVTimeFormatter",
+   "kind": "real",
+   "note": "formats seconds and CMTime as [H:]MM:SS; other styles unknown",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation",
+   "symbol": "_OBJC_METACLASS_$_AVCaptureAudioPreviewOutput",
+   "kind": "absence",
+   "note": "cannot be created (nil)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia",
+   "symbol": "_CMVideoFormatDescriptionGetVideoDynamicRange",
+   "kind": "absence",
+   "note": "dynamic range is not classified (0)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia",
+   "symbol": "_FigAudioFormatDescriptionGetRichestDecodableFormatAndChannelLayout",
+   "kind": "absence",
+   "note": "arguments not established; returns -12782, writes nothing",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia",
+   "symbol": "_FigVideoFormatDescriptionContainsAlphaChannel",
+   "kind": "real",
+   "note": "reads the description's public alpha-channel extension",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio",
+   "symbol": "_AudioObjectAddPropertyListenerBlock",
+   "kind": "real",
+   "note": "over the function-pointer listener; the block runs on the given queue",
+   "provided_by": "CoreAudio (cocoa patch 0346)"
+  },
+  {
+   "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+   "symbol": "_NSAppleScriptErrorBriefMessage",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+   "symbol": "_NSKeyedArchiveRootObjectKey",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+   "symbol": "_NSLocalizedFileSizeDescription",
+   "kind": "absence",
+   "note": "arguments not established; returns nil",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+   "symbol": "_NSMetadataItemPixelHeightKey",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+   "symbol": "_NSMetadataItemPixelWidthKey",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+   "symbol": "_OBJC_CLASS_$_NSAppleScript",
+   "kind": "absence",
+   "note": "no AppleScript runtime: scripts fail with error -1753",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+   "symbol": "_OBJC_CLASS_$_NSFileCoordinator",
+   "kind": "real",
+   "note": "single process: the accessor runs at once; presenters are kept",
+   "provided_by": "Foundation wrapper (terminal-app/compat/Foundation.m)"
+  },
+  {
+   "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+   "symbol": "_OBJC_CLASS_$_NSFileWrapper",
+   "kind": "real",
+   "note": "this system's own class, from AppKit, re-exported: one class in the process; its URL interface is cocoa patch 0341 (on a system without it, initWithURL:options:error: is missing)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+   "symbol": "_OBJC_CLASS_$_NSMetadataItem",
+   "kind": "absence",
+   "note": "no Spotlight store: no item can be made",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+   "symbol": "_OBJC_CLASS_$_NSNameSpecifier",
+   "kind": "model",
+   "note": "holds container, key and name; nothing evaluates it",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+   "symbol": "__NSFullMethodName",
+   "kind": "real",
+   "note": "\"-[Class selector]\" for a receiver and selector",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/MediaToolbox.framework/Versions/A/MediaToolbox",
+   "symbol": "_FigAssetCreateWithURL",
+   "kind": "absence",
+   "note": "arguments not established; returns -12782, writes nothing",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/WebKit.framework/Versions/A/WebKit",
+   "symbol": "_OBJC_CLASS_$_WKWebsiteDataStore",
+   "kind": "absence",
+   "note": "no web engine: no data store (nil)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox",
+   "symbol": "_VTCopyVideoDecoderExtensionProperties",
+   "kind": "real",
+   "note": "truthful capability answers (SF-AB): no extension decoder, no stereo decode",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox",
+   "symbol": "_VTIsStereoMVHEVCDecodeSupported",
+   "kind": "real",
+   "note": "truthful capability answers (SF-AB): no extension decoder, no stereo decode",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Security.framework/Versions/A/Security",
+   "symbol": "_SecCodeMapMemory",
+   "kind": "absence",
+   "note": "errSecUnimplemented",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Security.framework/Versions/A/Security",
+   "symbol": "_SecKeychainItemFreeContent",
+   "kind": "absence",
+   "note": "errSecUnimplemented",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/Security.framework/Versions/A/Security",
+   "symbol": "_SecRequirementCreateWithData",
+   "kind": "absence",
+   "note": "errSecUnimplemented",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFAudio.framework/Versions/A/AVFAudio",
+   "symbol": "_OBJC_CLASS_$_AVAudioRoutingArbiter",
+   "kind": "real",
+   "note": "no other devices to arbitrate with: completes at once, device unchanged",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVFAudio.framework/Versions/A/AVFAudio",
+   "symbol": "_OBJC_CLASS_$_AVAudioSession",
+   "kind": "absence",
+   "note": "each request is refused with an error",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+   "symbol": "_NSURLContentModificationDateKey",
+   "kind": "constant",
+   "note": "the key is its own name",
+   "provided_by": "CoreFoundation wrapper (terminal-app/compat/CoreFoundation.m); answered by libFoundation (cocoa patch 0347)"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+   "symbol": "_NSURLEffectiveIconKey",
+   "kind": "constant",
+   "note": "the key is its own name; no icon is given (Foundation has none)",
+   "provided_by": "CoreFoundation wrapper (terminal-app/compat/CoreFoundation.m); answered by libFoundation (cocoa patch 0347)"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+   "symbol": "_NSURLFileResourceIdentifierKey",
+   "kind": "constant",
+   "note": "the key is its own name; libFoundation answers it (cocoa patch 0347)",
+   "provided_by": "CoreFoundation wrapper (terminal-app/compat/CoreFoundation.m); answered by libFoundation (cocoa patch 0347)"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+   "symbol": "_NSURLFileSizeKey",
+   "kind": "constant",
+   "note": "the key is its own name",
+   "provided_by": "CoreFoundation wrapper (terminal-app/compat/CoreFoundation.m); answered by libFoundation (cocoa patch 0347)"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+   "symbol": "_NSURLHasHiddenExtensionKey",
+   "kind": "constant",
+   "note": "the key is its own name; libFoundation answers it (cocoa patch 0347)",
+   "provided_by": "CoreFoundation wrapper (terminal-app/compat/CoreFoundation.m); answered by libFoundation (cocoa patch 0347)"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+   "symbol": "_NSURLIsVolumeKey",
+   "kind": "constant",
+   "note": "the key is its own name; libFoundation answers it (cocoa patch 0347)",
+   "provided_by": "CoreFoundation wrapper (terminal-app/compat/CoreFoundation.m); answered by libFoundation (cocoa patch 0347)"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+   "symbol": "_NSURLNameKey",
+   "kind": "constant",
+   "note": "the key is its own name",
+   "provided_by": "CoreFoundation wrapper (terminal-app/compat/CoreFoundation.m); answered by libFoundation (cocoa patch 0347)"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+   "symbol": "_NSURLParentDirectoryURLKey",
+   "kind": "constant",
+   "note": "the key is its own name; libFoundation answers it (cocoa patch 0347)",
+   "provided_by": "CoreFoundation wrapper (terminal-app/compat/CoreFoundation.m); answered by libFoundation (cocoa patch 0347)"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+   "symbol": "_NSURLVolumeIsReadOnlyKey",
+   "kind": "constant",
+   "note": "the key is its own name; libFoundation answers it (cocoa patch 0347)",
+   "provided_by": "CoreFoundation wrapper (terminal-app/compat/CoreFoundation.m); answered by libFoundation (cocoa patch 0347)"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+   "symbol": "_NSURLVolumeNameKey",
+   "kind": "constant",
+   "note": "the key is its own name; libFoundation answers it (cocoa patch 0347)",
+   "provided_by": "CoreFoundation wrapper (terminal-app/compat/CoreFoundation.m); answered by libFoundation (cocoa patch 0347)"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGGetDisplaysWithRect",
+   "kind": "real",
+   "note": "over the display list",
+   "provided_by": "CoreGraphics (cocoa patch 0342)"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSAddWindowsToSpaces",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSCopySpaces",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSHideSpaces",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSIsZoomed",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSRegisterConnectionNotifyProc",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSRemoveConnectionNotifyProc",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSRemoveHotKey",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSRemoveWindowsFromSpaces",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSSetHotKey",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSSetHotKeyEnabled",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSShowSpaces",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSSpaceCreate",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSSpaceDestroy",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+   "symbol": "_CGSSpaceSetAbsoluteLevel",
+   "kind": "absence",
+   "note": "no window-server Spaces, hot keys or connection notifications; shapes from the community CGSInternal headers",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreImage.framework/Versions/A/CoreImage",
+   "symbol": "_OBJC_CLASS_$_CIRenderDestination",
+   "kind": "absence",
+   "note": "cannot be created (nil)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+   "symbol": "_LSSharedFileListCopyProperty",
+   "kind": "absence",
+   "note": "shared file lists keep no properties; unimpErr or NULL",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+   "symbol": "_LSSharedFileListRemoveAllItems",
+   "kind": "absence",
+   "note": "shared file lists keep no properties; unimpErr or NULL",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+   "symbol": "_LSSharedFileListSetProperty",
+   "kind": "absence",
+   "note": "shared file lists keep no properties; unimpErr or NULL",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+   "symbol": "__CSDeviceSupportsAirDrop",
+   "kind": "real",
+   "note": "false: this machine has no AirDrop",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+   "symbol": "__MDItemMarkAsUsedWithURL",
+   "kind": "absence",
+   "note": "no Spotlight store; the use is not recorded",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+   "symbol": "__kLSSharedFileListItemBeforeFirst",
+   "kind": "constant",
+   "note": "private name; the system's own kLSSharedFileListItemBeforeFirst marker, taken when the library loads (a marker of our own crashed LSSharedFileListInsertItemURL)",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+   "symbol": "__kLSSharedFileListRecentDocumentItems",
+   "kind": "constant",
+   "note": "private name; value inferred; nothing in the system acts on it",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+   "symbol": "__kLSSharedFileListRecentItemsMaxAmount",
+   "kind": "constant",
+   "note": "private name; value inferred; nothing in the system acts on it",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+   "symbol": "_kLSSharedFileListApplicationRecentDocuments",
+   "kind": "constant",
+   "note": "value believed correct, not verified against macOS",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+   "symbol": "_kUTTypeAudiovisualContent",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+   "symbol": "_kUTTypeQuickTimeMovie",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText",
+   "symbol": "_CTFontDescriptorGetTextStyleSize",
+   "kind": "absence",
+   "note": "arguments not established; returns 0",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText",
+   "symbol": "_kCTFontContentSizeCategoryL",
+   "kind": "constant",
+   "note": "value believed correct, not verified against macOS",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO",
+   "symbol": "_kCGImagePropertyDepth",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO",
+   "symbol": "_kCGImagePropertyHasAlpha",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+   "symbol": "_OBJC_CLASS_$_CAConstraint",
+   "kind": "real",
+   "note": "constraint value object",
+   "provided_by": "QuartzCore (cocoa patch 0345)"
+  },
+  {
+   "library": "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+   "symbol": "_OBJC_CLASS_$_CAConstraintLayoutManager",
+   "kind": "real",
+   "note": "lays sublayers out by their constraints; CALayer asks its layout manager",
+   "provided_by": "QuartzCore (cocoa patch 0345)"
+  },
+  {
+   "library": "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+   "symbol": "_OBJC_CLASS_$_CAFilter",
+   "kind": "model",
+   "note": "keeps type and parameters; the compositor applies no filters",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+   "symbol": "_OBJC_CLASS_$_CAKeyframeAnimation",
+   "kind": "real",
+   "note": "interpolated by the renderer for opacity, position, anchor point and bounds; paced and cubic drawn as linear, paths not followed",
+   "provided_by": "QuartzCore (cocoa patch 0344)"
+  },
+  {
+   "library": "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+   "symbol": "_OBJC_CLASS_$_CATextLayer",
+   "kind": "real",
+   "note": "draws its string with CoreText: wrapping, truncation, alignment",
+   "provided_by": "QuartzCore (cocoa patch 0343)"
+  },
+  {
+   "library": "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+   "symbol": "_OBJC_CLASS_$_CATiledLayer",
+   "kind": "real",
+   "note": "an ordinary layer that remembers its tiling parameters; drawn whole",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+   "symbol": "_kCAAlignmentCenter",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "QuartzCore (cocoa patch 0343)"
+  },
+  {
+   "library": "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+   "symbol": "_kCAFilterDestOut",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "QuickTime additions"
+  },
+  {
+   "library": "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+   "symbol": "_kCATruncationMiddle",
+   "kind": "constant",
+   "note": "documented value",
+   "provided_by": "QuartzCore (cocoa patch 0343)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVKit.framework/Versions/A/AVKit",
+   "symbol": "_AVAddAudibleMediaSelectionOptionsToMenu",
+   "kind": "absence",
+   "note": "menu left unchanged; track selection does not reach the player",
+   "provided_by": "staged AVKit (finch/AVKit)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVKit.framework/Versions/A/AVKit",
+   "symbol": "_AVAddLegibleMediaSelectionOptionsToMenu",
+   "kind": "absence",
+   "note": "menu left unchanged; track selection does not reach the player",
+   "provided_by": "staged AVKit (finch/AVKit)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVKit.framework/Versions/A/AVKit",
+   "symbol": "_OBJC_CLASS_$_AVPlayerControllerTimeResolver",
+   "kind": "real",
+   "note": "holds the values our probes saw it hold and seeks the controller; not notification-exact",
+   "provided_by": "staged AVKit (finch/AVKit)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVKit.framework/Versions/A/AVKit",
+   "symbol": "_OBJC_CLASS_$_AVPlayerControlsViewController",
+   "kind": "absence",
+   "note": "base class for the application's edit controller: an empty view and the player controller; no built-in controls",
+   "provided_by": "staged AVKit (finch/AVKit)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVKit.framework/Versions/A/AVKit",
+   "symbol": "_OBJC_CLASS_$_AVTouchBarRecordingControlsProvider",
+   "kind": "absence",
+   "note": "no Touch Bar items for recording (nil)",
+   "provided_by": "staged AVKit (finch/AVKit)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVKit.framework/Versions/A/AVKit",
+   "symbol": "_OBJC_CLASS_$_AVVolumeControlSlider",
+   "kind": "real",
+   "note": "a working slider with mute, delegate callbacks and key-view loop",
+   "provided_by": "staged AVKit (finch/AVKit)"
+  },
+  {
+   "library": "/System/Library/Frameworks/AVKit.framework/Versions/A/AVKit",
+   "symbol": "_OBJC_METACLASS_$_AVPlayerControlsViewController",
+   "kind": "absence",
+   "note": "base class for the application's edit controller: an empty view and the player controller; no built-in controls",
+   "provided_by": "staged AVKit (finch/AVKit)"
+  }
+ ]
+}

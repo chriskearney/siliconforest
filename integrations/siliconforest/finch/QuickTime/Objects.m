@@ -28,6 +28,9 @@ static void diagnostic(const char *name){fprintf(stderr,"%s: unavailable on Sili
 + (id)defaultSlowMotionAdjustmentsForAsset:(id)asset{(void)asset;diagnostic("PhotosFormats default adjustments");return nil;}
 + (BOOL)isRecognizedSlowMotionFormatWithIdentifier:(id)identifier version:(id)version{(void)identifier;(void)version;return NO;}
 + (NSURL *)defaultVideoAdjustmentsURLForVideoURL:(NSURL *)url{(void)url;return nil;}
+/* the playback rate a high-frame-rate movie's slow part would get: slow motion is not offered here, so every movie
+   plays at its own rate (1); QuickTime treats a rate of 1 or more as "not slow motion" */
++ (float)defaultSlowMotionRateForNominalFrameRate:(float)rate{if(rate>60.5f)diagnostic("PhotosFormats slow motion");return 1.0f;}
 @end
 @interface PFSlowMotionUtilities:NSObject @end
 @implementation PFSlowMotionUtilities
@@ -45,6 +48,8 @@ id GEOManagedObjectContext(BOOL create){(void)create;return nil;}
 @interface GeoKitPlace:NSObject @end
 @implementation GeoKitPlace
 - (id)init{diagnostic("GeoKit place database");[self release];return nil;}
+/* the order a place search is sorted in (the database has none here) */
++ (NSSortDescriptor *)populationSortDescriptor{return [NSSortDescriptor sortDescriptorWithKey:@"population" ascending:NO];}
 @end
 @interface GEOCity:GeoKitPlace @end
 @implementation GEOCity @end

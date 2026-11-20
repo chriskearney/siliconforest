@@ -1,0 +1,21 @@
+diff --git a/src/Frameworks/Foundation/Runtime.subproj/NSError.m b/src/Frameworks/Foundation/Runtime.subproj/NSError.m
+index 8015e60..295abf1 100644
+--- a/src/Frameworks/Foundation/Runtime.subproj/NSError.m
++++ b/src/Frameworks/Foundation/Runtime.subproj/NSError.m
+@@ -91,6 +91,16 @@ NSErrorUserInfoKey const NSURLErrorKey = @"NSURL";
+     return [_userInfo objectForKey:NSLocalizedRecoverySuggestionErrorKey];
+ }
+ 
++// (QTP) the object that can try to recover from the error (NSRecoveryAttempterErrorKey), and the help anchor; both
++// were missing (AppKit asks when it presents an error; first seen with Apple's QuickTime Player)
++- (id)recoveryAttempter {
++    return [_userInfo objectForKey:NSRecoveryAttempterErrorKey];
++}
++
++- (NSString *)helpAnchor {
++    return [_userInfo objectForKey:@"NSHelpAnchor"];
++}
++
+ - (NSArray *)localizedRecoveryOptions {
+     return [_userInfo objectForKey:NSLocalizedRecoveryOptionsErrorKey];
+ }

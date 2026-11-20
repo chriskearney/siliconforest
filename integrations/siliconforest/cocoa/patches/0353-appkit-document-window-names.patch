@@ -1,0 +1,240 @@
+diff --git a/src/Frameworks/AppKit/NSDocument.m b/src/Frameworks/AppKit/NSDocument.m
+index f8dba68..0e7fe2e 100755
+--- a/src/Frameworks/AppKit/NSDocument.m
++++ b/src/Frameworks/AppKit/NSDocument.m
+@@ -344,6 +344,12 @@ static int untitled_document_number = 0;
+    [_windowControllers removeObjectIdenticalTo:controller];
+ }
+ 
++// (QTP) the name a document window's title shows (private on macOS; Apple's QuickTime Player asks the document
++// for it when it sets its window's title): the display name
++-(NSString *)_windowTitleDisplayName {
++   return [self displayName];
++}
++
+ -(NSString *)displayName
+ {
+   if(_fileURL==nil)
+diff --git a/src/Frameworks/AppKit/NSFont.m b/src/Frameworks/AppKit/NSFont.m
+index 983405c..b204ff5 100755
+--- a/src/Frameworks/AppKit/NSFont.m
++++ b/src/Frameworks/AppKit/NSFont.m
+@@ -277,6 +277,15 @@ static NSLock *_cacheLock=nil;
+ }
+ 
+ // the UI font has a regular and a bold face here, medium and up use the bold one
++// (QTP) private on macOS, asked for by Apple's QuickTime Player: the system font at the light and medium weights
+++(NSFont *)_lightSystemFontOfSize:(CGFloat)size {
++   return [self systemFontOfSize:size weight:NSFontWeightLight];
++}
++
+++(NSFont *)_mediumSystemFontOfSize:(CGFloat)size {
++   return [self systemFontOfSize:size weight:NSFontWeightMedium];
++}
++
+ +(NSFont *)systemFontOfSize:(CGFloat)size weight:(CGFloat)weight {
+    return weight>=0.23 ? [self boldSystemFontOfSize:size] : [self systemFontOfSize:size];
+ }
+diff --git a/src/Frameworks/AppKit/NSLayoutAnchor.m b/src/Frameworks/AppKit/NSLayoutAnchor.m
+index 8d938af..649e603 100644
+--- a/src/Frameworks/AppKit/NSLayoutAnchor.m
++++ b/src/Frameworks/AppKit/NSLayoutAnchor.m
+@@ -89,10 +89,46 @@
+ 
+ @end
+ 
++// (QTP) "system spacing" anchors (macOS 11): the receiver sits the standard space (8 points, AppKit's spacing
++// between sibling views) times the multiplier after or below the other anchor
++#define SF_SYSTEM_SPACING 8.0
++
+ @implementation NSLayoutXAxisAnchor
++
++- (NSLayoutConstraint *)constraintEqualToSystemSpacingAfterAnchor:(NSLayoutXAxisAnchor *)anchor multiplier:(CGFloat)m
++{
++    return [self _constraintTo:anchor relation:NSLayoutRelationEqual multiplier:1 constant:SF_SYSTEM_SPACING * m];
++}
++
++- (NSLayoutConstraint *)constraintGreaterThanOrEqualToSystemSpacingAfterAnchor:(NSLayoutXAxisAnchor *)anchor multiplier:(CGFloat)m
++{
++    return [self _constraintTo:anchor relation:NSLayoutRelationGreaterThanOrEqual multiplier:1 constant:SF_SYSTEM_SPACING * m];
++}
++
++- (NSLayoutConstraint *)constraintLessThanOrEqualToSystemSpacingAfterAnchor:(NSLayoutXAxisAnchor *)anchor multiplier:(CGFloat)m
++{
++    return [self _constraintTo:anchor relation:NSLayoutRelationLessThanOrEqual multiplier:1 constant:SF_SYSTEM_SPACING * m];
++}
++
+ @end
+ 
+ @implementation NSLayoutYAxisAnchor
++
++- (NSLayoutConstraint *)constraintEqualToSystemSpacingBelowAnchor:(NSLayoutYAxisAnchor *)anchor multiplier:(CGFloat)m
++{
++    return [self _constraintTo:anchor relation:NSLayoutRelationEqual multiplier:1 constant:SF_SYSTEM_SPACING * m];
++}
++
++- (NSLayoutConstraint *)constraintGreaterThanOrEqualToSystemSpacingBelowAnchor:(NSLayoutYAxisAnchor *)anchor multiplier:(CGFloat)m
++{
++    return [self _constraintTo:anchor relation:NSLayoutRelationGreaterThanOrEqual multiplier:1 constant:SF_SYSTEM_SPACING * m];
++}
++
++- (NSLayoutConstraint *)constraintLessThanOrEqualToSystemSpacingBelowAnchor:(NSLayoutYAxisAnchor *)anchor multiplier:(CGFloat)m
++{
++    return [self _constraintTo:anchor relation:NSLayoutRelationLessThanOrEqual multiplier:1 constant:SF_SYSTEM_SPACING * m];
++}
++
+ @end
+ 
+ @implementation NSLayoutDimension
+diff --git a/src/Frameworks/AppKit/NSMenu.subproj/NSMenu.m b/src/Frameworks/AppKit/NSMenu.subproj/NSMenu.m
+index 1c7f165..a953298 100755
+--- a/src/Frameworks/AppKit/NSMenu.subproj/NSMenu.m
++++ b/src/Frameworks/AppKit/NSMenu.subproj/NSMenu.m
+@@ -604,6 +604,26 @@ static NSUInteger SFItemModifiers(NSMenuItem *item) {
+    return _name;
+ }
+ 
++// (QTP) a menu's name (NSRecentDocumentsMenu, NSWindowsMenu ...) set from code, and every menu of a name: private on
++// macOS; Apple's QuickTime Player names its Open Recent menus with them
++-(void)_setMenuName:(NSString *)name {
++   if(name==_name)
++    return;
++   [_name release];
++   _name=[name copy];
++}
++
++-(NSArray *)_menusWithName:(NSString *)name {
++   NSMutableArray *result=[NSMutableArray array];
++
++   if([_name isEqual:name])
++    [result addObject:self];
++   for(NSMenuItem *item in _itemArray)
++    if([item submenu]!=nil)
++     [result addObjectsFromArray:[[item submenu] _menusWithName:name]];
++   return result;
++}
++
+ -(NSMenu *)_menuWithName:(NSString *)name {
+    if([_name isEqual:name])
+     return self;
+diff --git a/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.m b/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.m
+index 90ce729..dc737b0 100755
+--- a/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.m
++++ b/src/Frameworks/AppKit/NSMenu.subproj/NSMenuItem.m
+@@ -184,6 +184,22 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
+    return _keyEquivalentModifierMask;
+ }
+ 
++// (QTP) whether this item's key equivalent is that key with those modifiers (private on macOS; Apple's QuickTime
++// Player asks from its menu delegate): an upper-case equivalent carries Shift; only the device-independent bits count
++-(BOOL)_matchesKeyEquivalent:(NSString *)key modifierMask:(NSUInteger)mask {
++   NSString  *mine=[self keyEquivalent];
++   NSUInteger relevant=NSShiftKeyMask|NSControlKeyMask|NSAlternateKeyMask|NSCommandKeyMask;
++   NSUInteger wanted=[self keyEquivalentModifierMask]&relevant;
++
++   if([mine length]==0 || [key length]==0 || ![self isEnabled])
++    return NO;
++   if([mine length]==1 && [[mine uppercaseString] isEqualToString:mine] && ![[mine lowercaseString] isEqualToString:mine])
++    wanted|=NSShiftKeyMask;
++   if([mine caseInsensitiveCompare:key]!=NSOrderedSame)
++    return NO;
++   return (mask&relevant)==wanted;
++}
++
+ -(NSImage *)image {
+    return [[_image retain] autorelease];
+ }
+diff --git a/src/Frameworks/AppKit/NSModernAppKit.m b/src/Frameworks/AppKit/NSModernAppKit.m
+index 18e9d93..0d7d37a 100644
+--- a/src/Frameworks/AppKit/NSModernAppKit.m
++++ b/src/Frameworks/AppKit/NSModernAppKit.m
+@@ -4,6 +4,7 @@
+ #import <AppKit/NSModernAppKit.h>
+ #import <AppKit/NSBitmapImageRep.h>
+ #import <AppKit/NSMenuItem.h>
++#import <AppKit/NSPanel.h>
+ #import <AppKit/NSMenuView.h>
+ #import <AppKit/NSNib.h>
+ #import <AppKit/NSAccessibility.h>
+@@ -180,7 +181,7 @@ static CGFloat SFEncoded(CGFloat c)
+ 
+ @end
+ 
+-static char SFSeparatorStyleKey, SFAnimationBehaviorKey;
++static char SFSeparatorStyleKey, SFAnimationBehaviorKey, SFHostsLayersKey, SFTitlebarAlphaKey;
+ 
+ // carries a sheet's completion block through the delegate-and-selector form
+ @interface SFSheetHandler : NSObject {
+@@ -214,6 +215,38 @@ static char SFSeparatorStyleKey, SFAnimationBehaviorKey;
+ 
+ @implementation NSWindow (ModernWindow)
+ 
++// (QTP) macOS's (private) request that the window server composite the window's layers itself. Here AppKit
++// draws every layer into the window's picture, so it is kept and answered, and changes nothing. Apple's
++// QuickTime Player sets it on each document window it makes (the window was never made: unrecognised selector).
++// (QTP) private on macOS: whether the window is the panel the application runs modally
++- (BOOL)isModalPanel
++{
++    return [self isKindOfClass:[NSPanel class]] && [NSApp modalWindow] == self;
++}
++
++- (BOOL)canHostLayersInWindowServer
++{
++    return SFGetInteger(self, &SFHostsLayersKey, 0) != 0;
++}
++
++- (void)setCanHostLayersInWindowServer:(BOOL)flag
++{
++    SFSetInteger(self, &SFHostsLayersKey, flag ? 1 : 0);
++}
++
++// (QTP) macOS's (private) opacity of the title bar, which QuickTime Player fades with the controls. The compositor
++// draws the title bar here and has no such setting: the value is kept and answered (1 until set), nothing fades.
++- (CGFloat)titlebarAlphaValue
++{
++    NSNumber *value = objc_getAssociatedObject(self, &SFTitlebarAlphaKey);
++    return value ? [value doubleValue] : 1.0;
++}
++
++- (void)setTitlebarAlphaValue:(CGFloat)value
++{
++    objc_setAssociatedObject(self, &SFTitlebarAlphaKey, [NSNumber numberWithDouble:value], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++}
++
+ - (NSRect)contentLayoutRect
+ {
+     NSRect rect = [self contentRectForFrameRect:[self frame]];
+diff --git a/src/Frameworks/AppKit/NSThemeFrame.m b/src/Frameworks/AppKit/NSThemeFrame.m
+index 97b7720..89488fe 100755
+--- a/src/Frameworks/AppKit/NSThemeFrame.m
++++ b/src/Frameworks/AppKit/NSThemeFrame.m
+@@ -110,6 +110,12 @@ extern void CGNativeBorderFrameWidthsForStyle(unsigned styleMask, CGFloat *top,
+ 
+ @implementation NSThemeFrame
+ 
++// (QTP) the title bar's versions (autosave) button on macOS (private); this desktop's compositor draws the title bar
++// and there is none
++-(id)autosaveButton {
++   return nil;
++}
++
+ // all measurements in pixels
+ const float NSWindowTitleHeight = 32;
+ // toolbar heights of macOS's unified and compact styles
+diff --git a/src/Frameworks/AppKit/NSWindow.m b/src/Frameworks/AppKit/NSWindow.m
+index f22a46c..2766c3a 100755
+--- a/src/Frameworks/AppKit/NSWindow.m
++++ b/src/Frameworks/AppKit/NSWindow.m
+@@ -311,6 +311,12 @@ static BOOL _allowsAutomaticWindowTabbing=YES;
+ }
+ 
+ // This is Apple private API
++// (QTP) private on macOS: the view the window's frame is drawn in (Apple's QuickTime Player asks it for the title
++// bar's versions button)
++-(NSView *)_borderView {
++   return _backgroundView;
++}
++
+ +(Class)frameViewClassForStyleMask:(unsigned int)styleMask {
+    return [NSThemeFrame class];
+ }
