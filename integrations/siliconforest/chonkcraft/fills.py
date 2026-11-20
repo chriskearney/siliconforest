@@ -310,9 +310,28 @@ static void sf_glayer_needs_display(id self, SEL c) {
 }
 // SF_CHONK_TRACE: each window frame asked for, with the window's limits.
 static void (*orig_win_set_frame)(id, SEL, sf_rect, signed char, signed char, signed char);
+// SF_CHONK_WINDOW_TOPLEFT=x,y (points, from the screen's top left): Java's
+// windows are kept there (the game centres its window and has no option for
+// a place; for arranging a desk to be photographed).
+static int sf_place_on = -1;
+static double sf_place_x, sf_place_y;
 static void sf_win_set_frame(id self, SEL c, sf_rect r, signed char display, signed char animate, signed char tell) {
-    sf_size mn = ((sf_size (*)(id, SEL))msg)(self, sel("minSize")), mx = ((sf_size (*)(id, SEL))msg)(self, sel("maxSize"));
-    fprintf(stderr, "SF_CHONK_TRACE window %p setFrame %.0f,%.0f %.0fx%.0f min=%gx%g max=%gx%g\n", self, r.x, r.y, r.w, r.h, mn.w, mn.h, mx.w, mx.h);
+    if (sf_place_on < 0) {
+        const char *v = getenv("SF_CHONK_WINDOW_TOPLEFT");
+        sf_place_on = v && sscanf(v, "%lf,%lf", &sf_place_x, &sf_place_y) == 2;
+    }
+    const char *(*cname)(id) = (const char *(*)(id))dlsym(RTLD_DEFAULT, "object_getClassName");
+    if (sf_place_on && r.w > 1 && r.h > 1 && cname && strncmp(cname(self), "AWTWindow", 9) == 0) {
+        id screen = msg(self, sel("screen"));
+        if (!screen) screen = msg((id)((id (*)(const char *))dlsym(RTLD_DEFAULT, "objc_getClass"))("NSScreen"), sel("mainScreen"));
+        sf_rect sf = ((sf_rect (*)(id, SEL))msg)(screen, sel("frame"));
+        r.x = sf_place_x;
+        r.y = sf.h - sf_place_y - r.h;
+    }
+    if (getenv("SF_CHONK_TRACE")) {
+        sf_size mn = ((sf_size (*)(id, SEL))msg)(self, sel("minSize")), mx = ((sf_size (*)(id, SEL))msg)(self, sel("maxSize"));
+        fprintf(stderr, "SF_CHONK_TRACE window %p setFrame %.0f,%.0f %.0fx%.0f min=%gx%g max=%gx%g\n", self, r.x, r.y, r.w, r.h, mn.w, mn.h, mx.w, mx.h);
+    }
     orig_win_set_frame(self, c, r, display, animate, tell);
 }
 // AWT makes each window with the maximum size Java has not set yet, 0x0
@@ -383,7 +402,7 @@ __attribute__((constructor)) static void add_methods(void) {
         void *m = inst_method(cls("NSWindow"), sel("setMaxSize:"));
         if (m && !getenv("SF_CHONK_KEEP_ZERO_MAX")) orig_win_set_max = (void (*)(id, SEL, sf_size))set_imp(m, (void *)sf_win_set_max);
         // every frame change in SiliconForest's AppKit goes through this one
-        m = getenv("SF_CHONK_TRACE") ? inst_method(cls("NSWindow"), sel("setFrame:display:animate:tellWS:")) : 0;
+        m = (getenv("SF_CHONK_TRACE") || getenv("SF_CHONK_WINDOW_TOPLEFT")) ? inst_method(cls("NSWindow"), sel("setFrame:display:animate:tellWS:")) : 0;
         if (m) orig_win_set_frame = (void (*)(id, SEL, sf_rect, signed char, signed char, signed char))set_imp(m, (void *)sf_win_set_frame);
     }
     if (getenv("SF_CHONK_CPU_LAYER") && gl && glayer && inst_method && set_imp) {
