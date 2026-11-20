@@ -1,0 +1,18 @@
+{\rtf1\ansi\ansicpg1252
+{\fonttbl\f0\fswiss Helvetica;\f1\fmodern Courier;}
+{\colortbl;\red20\green90\blue60;\red150\green50\blue30;\red30\green55\blue120;\red80\green80\blue80;}
+\f0\fs48\b\cf1 SiliconForest desktop\b0\cf0\par
+\fs24 The desk is a Wayland session on an M1. \i chonkstep-darwin-desktop\i0 composites the windows. The dock is \i chonkstep-dock\i0. Apps stay unmodified: shims sit in front of them and never write into the bundle.\par
+\fs32\b\cf3 What is on the machine\b0\cf0\par
+\fs24\pard\li360
+\bullet  \b Compositor.\b0  Themes, wallpaper, and window decorations come from Chonkstep itself.\par
+\bullet  \b Dock.\b0  Pins for Terminal, Activity Monitor, Firefox, Preview, and the apps under test.\par
+\bullet  \b Unmodified Apple apps.\b0  TextEdit 1.20, Preview, and Terminal 2.15 run from their own binaries.\par
+\pard\li0\fs32\b\cf2 Layers\b0\cf0\par
+\fs22\f1
+compositor    chonkstep    decorations and themes\par
+dock          pins         launch by bundle id\par
+overlay       AppKit front TextEdit-only shims\par
+app           TextEdit     SHA-256 checked every run\par
+\f0\fs24\cf4 The overlay is a different install name, so dyld does not fold it onto the dock's AppKit.\cf0\par
+}
