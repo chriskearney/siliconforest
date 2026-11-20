@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Preview
+Comment=Apple's Preview (the unmodified bundle): opened with the same overlay the Preview runs use
+TryExec=/Applications/Preview.app/Contents/MacOS/Preview
+Exec=/usr/bin/sf-open-preview
+Icon=/Applications/Preview.app
+Categories=Graphics;Viewer;
+StartupWMClass=com.apple.Preview

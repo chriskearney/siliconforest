@@ -1,0 +1,31 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Start the unmodified Preview.app the same way the retained Preview runs do:
+# the bundle's own executable, with the staged framework and library overlay
+# ahead of the p44 prefix. This script does not write inside the bundle.
+set -eu
+APP=/Applications/Preview.app
+EXE="$APP/Contents/MacOS/Preview"
+EXPECTED=b0403a45bc454625aaa7a035f4ede247ef2c2bdd23b294e3dfa319800df1ebcd
+R=/private/var/db/sfpreview-dock
+P=/private/var/db/sfpreview-app/p44-diagnostic-01
+got=$(shasum -a 256 "$EXE" | awk 'NR==1 { print $1 }')
+if [ "$got" != "$EXPECTED" ]; then
+    echo "sf-open-preview: $EXE hash $got is not the unmodified bundle" >&2
+    exit 1
+fi
+mkdir -p "$R/home" "$R/tmp"
+export HOME="$R/home"
+export CFFIXED_USER_HOME="$R/home"
+export TMPDIR="$R/tmp/"
+export USER=root
+export LOGNAME=root
+export PATH="/usr/bin:/bin"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/private/var/run/gpu-desktop}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export SF_METAL_ENABLE_REAL_DEVICE=0
+export LANG="${LANG:-en_US.UTF-8}"
+export DYLD_FRAMEWORK_PATH="$R/Frameworks:$P/prefix/System/Library/PrivateFrameworks:$P/prefix/System/Library/Frameworks"
+export DYLD_LIBRARY_PATH="$R/lib:$P/core:$P/prefix/usr/lib:$P/prefix/usr/lib/swift"
+cd "$HOME"
+exec "$EXE" "$@"
