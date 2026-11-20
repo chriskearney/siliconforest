@@ -25,8 +25,8 @@
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-compat.nix
 let
   pd = (import ../rebase/pd.nix).pd;
-  p = pd.packages.x86_64-linux;
-  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
+  p = pd.packages.${pd.buildSystem};
+  pkgs = pd.buildPkgs;
   libsystem = import ./build-libsystem.nix;
   foundation = import ./build-foundation.nix;
   swift = import ./build-swift-runtime.nix;

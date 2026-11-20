@@ -1,0 +1,394 @@
+# SPDX-License-Identifier: APSL-2.0
+# The patched headers keep their own copyright and licence notices; this patch changes none of them.
+# Applied by release/base-tree.nix to the Cocoa source when the build system is aarch64-linux.
+# From upstream PureDarwin 26d109dd822adfddb2c7c937dc9ee90e0fa20cec, tools/cctools/include.
+
+diff --git a/tools/cctools/include/foreign/libkern/OSAtomic.h b/tools/cctools/include/foreign/libkern/OSAtomic.h
+index 5b28da50..c1c2841e 100644
+--- a/tools/cctools/include/foreign/libkern/OSAtomic.h
++++ b/tools/cctools/include/foreign/libkern/OSAtomic.h
+@@ -83,7 +83,7 @@ int32_t	OSAtomicDecrement32Barrier( volatile int32_t *__theValue )
+             { return OSAtomicAdd32Barrier( -1, __theValue); }
+ 
+ /* cctools-port: added defined(__ppc__) || */
+-#if defined(__ppc__) || defined(__ppc64__) || defined(__i386__) || defined(__x86_64__) || defined(__arm__) || defined(__arm64__)
++#if defined(__ppc__) || defined(__ppc64__) || defined(__i386__) || defined(__x86_64__) || defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
+ 
+ int64_t	OSAtomicAdd64( int64_t __theAmount, volatile int64_t *__theValue );
+ int64_t	OSAtomicAdd64Barrier( int64_t __theAmount, volatile int64_t *__theValue );
+@@ -102,7 +102,7 @@ __inline static
+ int64_t	OSAtomicDecrement64Barrier( volatile int64_t *__theValue )
+             { return OSAtomicAdd64Barrier( -1, __theValue); }
+ 
+-#endif  /* defined(__ppc__) || defined(__ppc64__) || defined(__i386__) || defined(__x86_64__) || defined(__arm__) || defined(__arm64__) */
++#endif  /* defined(__ppc__) || defined(__ppc64__) || defined(__i386__) || defined(__x86_64__) || defined(__arm__) || defined(__arm64__) || defined(__aarch64__) */
+ 
+ 
+ /* Boolean functions (and, or, xor.)  These come in four versions for each operation:
+@@ -139,12 +139,12 @@ bool	OSAtomicCompareAndSwapIntBarrier( int __oldValue, int __newValue, volatile
+ bool	OSAtomicCompareAndSwapLong( long __oldValue, long __newValue, volatile long *__theValue );
+ bool	OSAtomicCompareAndSwapLongBarrier( long __oldValue, long __newValue, volatile long *__theValue );
+ 
+-#if defined(__ppc64__) || defined(__i386__) || defined(__x86_64__) || defined(__arm__) || defined(__arm64__)
++#if defined(__ppc64__) || defined(__i386__) || defined(__x86_64__) || defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
+ 
+ bool    OSAtomicCompareAndSwap64( int64_t __oldValue, int64_t __newValue, volatile int64_t *__theValue );
+ bool    OSAtomicCompareAndSwap64Barrier( int64_t __oldValue, int64_t __newValue, volatile int64_t *__theValue );
+ 
+-#endif  /* defined(__ppc64__) || defined(__i386__) || defined(__x86_64__) || defined(__arm__) || defined(__arm64__) */
++#endif  /* defined(__ppc64__) || defined(__i386__) || defined(__x86_64__) || defined(__arm__) || defined(__arm64__) || defined(__aarch64__) */
+ 
+ 
+ /* Test and set.  They return the original value of the bit, and operate on bit (0x80>>(n&7))
+diff --git a/tools/cctools/include/foreign/libkern/OSByteOrder.h b/tools/cctools/include/foreign/libkern/OSByteOrder.h
+index 97f5155d..7a6b488c 100644
+--- a/tools/cctools/include/foreign/libkern/OSByteOrder.h
++++ b/tools/cctools/include/foreign/libkern/OSByteOrder.h
+@@ -43,7 +43,7 @@
+ #include <libkern/ppc/OSByteOrder.h>
+ #elif (defined(__i386__) || defined(__x86_64__))
+ #include <libkern/i386/OSByteOrder.h>
+-#elif defined(__arm__) || defined(__arm64__)
++#elif defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include <libkern/arm/OSByteOrder.h>
+ #else
+ #include <libkern/machine/OSByteOrder.h>
+diff --git a/tools/cctools/include/foreign/libkern/_OSByteOrder.h b/tools/cctools/include/foreign/libkern/_OSByteOrder.h
+index 2c8b9a48..d5799dad 100644
+--- a/tools/cctools/include/foreign/libkern/_OSByteOrder.h
++++ b/tools/cctools/include/foreign/libkern/_OSByteOrder.h
+@@ -66,7 +66,7 @@
+ #include <libkern/i386/_OSByteOrder.h>
+ #endif
+ 
+-#if defined(__arm__) || defined(__arm64__)
++#if defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include <libkern/arm/OSByteOrder.h>
+ #endif
+ 
+diff --git a/tools/cctools/include/foreign/libkern/arm/_OSByteOrder.h b/tools/cctools/include/foreign/libkern/arm/_OSByteOrder.h
+index 69a4fbb2..ab28982b 100644
+--- a/tools/cctools/include/foreign/libkern/arm/_OSByteOrder.h
++++ b/tools/cctools/include/foreign/libkern/arm/_OSByteOrder.h
+@@ -63,7 +63,7 @@
+ #if defined(__GNUC__)
+ 
+ 
+-#if defined (__arm__) || defined(__arm64__)
++#if defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include <libkern/arm/OSByteOrder.h>
+ #endif
+ 
+diff --git a/tools/cctools/include/foreign/mach/machine/boolean.h b/tools/cctools/include/foreign/mach/machine/boolean.h
+index b92d87c3..0640f163 100644
+--- a/tools/cctools/include/foreign/mach/machine/boolean.h
++++ b/tools/cctools/include/foreign/mach/machine/boolean.h
+@@ -33,7 +33,7 @@
+ #include "mach/ppc/boolean.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "mach/i386/boolean.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "mach/arm/boolean.h"
+ #elif defined (__riscv)
+ #include "mach/riscv/boolean.h"
+diff --git a/tools/cctools/include/foreign/mach/machine/exception.h b/tools/cctools/include/foreign/mach/machine/exception.h
+index 963b223f..d2dfd361 100644
+--- a/tools/cctools/include/foreign/mach/machine/exception.h
++++ b/tools/cctools/include/foreign/mach/machine/exception.h
+@@ -33,7 +33,7 @@
+ #include "mach/ppc/exception.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "mach/i386/exception.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "mach/arm/exception.h"
+ #elif defined (__riscv)
+ #include "mach/riscv/exception.h"
+diff --git a/tools/cctools/include/foreign/mach/machine/kern_return.h b/tools/cctools/include/foreign/mach/machine/kern_return.h
+index 774b1479..031ef63f 100644
+--- a/tools/cctools/include/foreign/mach/machine/kern_return.h
++++ b/tools/cctools/include/foreign/mach/machine/kern_return.h
+@@ -33,7 +33,7 @@
+ #include "mach/ppc/kern_return.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "mach/i386/kern_return.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "mach/arm/kern_return.h"
+ #elif defined (__riscv)
+ #include "mach/riscv/kern_return.h"
+diff --git a/tools/cctools/include/foreign/mach/machine/machine_types.defs b/tools/cctools/include/foreign/mach/machine/machine_types.defs
+index a60fe29f..da468b9c 100644
+--- a/tools/cctools/include/foreign/mach/machine/machine_types.defs
++++ b/tools/cctools/include/foreign/mach/machine/machine_types.defs
+@@ -31,7 +31,7 @@
+ 
+ #if defined (__i386__) || defined(__x86_64__)
+ #include "mach/i386/machine_types.defs"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "mach/arm/machine_types.defs"
+ #else
+ #error architecture not supported
+diff --git a/tools/cctools/include/foreign/mach/machine/processor_info.h b/tools/cctools/include/foreign/mach/machine/processor_info.h
+index 6b13b8c0..4fcfdcfa 100644
+--- a/tools/cctools/include/foreign/mach/machine/processor_info.h
++++ b/tools/cctools/include/foreign/mach/machine/processor_info.h
+@@ -33,7 +33,7 @@
+ #include "mach/ppc/processor_info.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "mach/i386/processor_info.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "mach/arm/processor_info.h"
+ #elif defined (__riscv)
+ #include "mach/riscv/processor_info.h"
+diff --git a/tools/cctools/include/foreign/mach/machine/rpc.h b/tools/cctools/include/foreign/mach/machine/rpc.h
+index 5ea9b62a..cce38255 100644
+--- a/tools/cctools/include/foreign/mach/machine/rpc.h
++++ b/tools/cctools/include/foreign/mach/machine/rpc.h
+@@ -33,7 +33,7 @@
+ #include "mach/ppc/rpc.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "mach/i386/rpc.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "mach/arm/rpc.h"
+ #elif defined (__riscv)
+ #include "mach/riscv/rpc.h"
+diff --git a/tools/cctools/include/foreign/mach/machine/thread_state.h b/tools/cctools/include/foreign/mach/machine/thread_state.h
+index 3997f99e..599eeb22 100644
+--- a/tools/cctools/include/foreign/mach/machine/thread_state.h
++++ b/tools/cctools/include/foreign/mach/machine/thread_state.h
+@@ -33,7 +33,7 @@
+ #include "mach/ppc/thread_state.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "mach/i386/thread_state.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "mach/arm/thread_state.h"
+ #elif defined (__riscv)
+ #include "mach/riscv/thread_state.h"
+diff --git a/tools/cctools/include/foreign/mach/machine/thread_status.h b/tools/cctools/include/foreign/mach/machine/thread_status.h
+index 7d771bad..f9b6e08b 100644
+--- a/tools/cctools/include/foreign/mach/machine/thread_status.h
++++ b/tools/cctools/include/foreign/mach/machine/thread_status.h
+@@ -33,7 +33,7 @@
+ #include "mach/ppc/thread_status.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "mach/i386/thread_status.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "mach/arm/thread_status.h"
+ #elif defined (__riscv)
+ #include "mach/riscv/thread_status.h"
+diff --git a/tools/cctools/include/foreign/mach/machine/vm_param.h b/tools/cctools/include/foreign/mach/machine/vm_param.h
+index 3789b1bd..e3b9d42c 100644
+--- a/tools/cctools/include/foreign/mach/machine/vm_param.h
++++ b/tools/cctools/include/foreign/mach/machine/vm_param.h
+@@ -33,7 +33,7 @@
+ #include "mach/ppc/vm_param.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "mach/i386/vm_param.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "mach/arm/vm_param.h"
+ #elif defined (__riscv)
+ #include "mach/riscv/vm_param.h"
+diff --git a/tools/cctools/include/foreign/mach/machine/vm_types.h b/tools/cctools/include/foreign/mach/machine/vm_types.h
+index fd3df1c5..7b64c3c2 100644
+--- a/tools/cctools/include/foreign/mach/machine/vm_types.h
++++ b/tools/cctools/include/foreign/mach/machine/vm_types.h
+@@ -33,7 +33,7 @@
+ #include "mach/ppc/vm_types.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "mach/i386/vm_types.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "mach/arm/vm_types.h"
+ #elif defined (__riscv)
+ #include "mach/riscv/vm_types.h"
+diff --git a/tools/cctools/include/foreign/mach/task.h b/tools/cctools/include/foreign/mach/task.h
+index 351c1f37..3e495511 100644
+--- a/tools/cctools/include/foreign/mach/task.h
++++ b/tools/cctools/include/foreign/mach/task.h
+@@ -33,7 +33,7 @@
+ #include <mach/ppc/task.h>
+ #elif defined(__ppc64__)
+ #include <mach/ppc64/task.h>
+-#elif defined(__arm__) || defined(__arm64__)
++#elif defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
+ /*#include <mach/arm/task.h>*/
+ #elif defined(__riscv)
+ #else
+diff --git a/tools/cctools/include/foreign/mach/thread_act.h b/tools/cctools/include/foreign/mach/thread_act.h
+index c19f1978..c23dfe33 100644
+--- a/tools/cctools/include/foreign/mach/thread_act.h
++++ b/tools/cctools/include/foreign/mach/thread_act.h
+@@ -33,7 +33,7 @@
+ #include <mach/ppc/thread_act.h>
+ #elif defined(__ppc64__)
+ #include <mach/ppc64/thread_act.h>
+-#elif defined(__arm__) || defined(__arm64__)
++#elif defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
+ /*#include <mach/arm/thread_act.h>*/
+ #elif defined(__riscv)
+ #else
+diff --git a/tools/cctools/include/foreign/machine/_param.h b/tools/cctools/include/foreign/machine/_param.h
+index 94e762d4..62772c00 100644
+--- a/tools/cctools/include/foreign/machine/_param.h
++++ b/tools/cctools/include/foreign/machine/_param.h
+@@ -29,7 +29,7 @@
+ #include "ppc/_param.h"
+ #elif defined (__i386__) || defined (__x86_64__)
+ #include "i386/_param.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "arm/_param.h"
+ #elif defined (__riscv)
+ #include "riscv/_param.h"
+diff --git a/tools/cctools/include/foreign/machine/_types.h b/tools/cctools/include/foreign/machine/_types.h
+index 7bd38ce7..04ae961b 100644
+--- a/tools/cctools/include/foreign/machine/_types.h
++++ b/tools/cctools/include/foreign/machine/_types.h
+@@ -35,7 +35,7 @@
+ #include "ppc/_types.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "i386/_types.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "arm/_types.h"
+ #elif defined (__riscv)
+ #include "riscv/_types.h"
+diff --git a/tools/cctools/include/foreign/machine/endian.h b/tools/cctools/include/foreign/machine/endian.h
+index e05ec064..953d8cf7 100644
+--- a/tools/cctools/include/foreign/machine/endian.h
++++ b/tools/cctools/include/foreign/machine/endian.h
+@@ -39,7 +39,7 @@
+ #include "ppc/endian.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "i386/endian.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "arm/endian.h"
+ #elif defined (__riscv)
+ #include "riscv/endian.h"
+diff --git a/tools/cctools/include/foreign/machine/limits.h b/tools/cctools/include/foreign/machine/limits.h
+index 37b5d3d2..c9726869 100644
+--- a/tools/cctools/include/foreign/machine/limits.h
++++ b/tools/cctools/include/foreign/machine/limits.h
+@@ -6,7 +6,7 @@
+ #include <ppc/limits.h>
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include <i386/limits.h>
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include <arm/limits.h>
+ #elif defined (__riscv)
+ #include <riscv/limits.h>
+diff --git a/tools/cctools/include/foreign/machine/param.h b/tools/cctools/include/foreign/machine/param.h
+index 0ce698f6..8574c0cf 100644
+--- a/tools/cctools/include/foreign/machine/param.h
++++ b/tools/cctools/include/foreign/machine/param.h
+@@ -35,7 +35,7 @@
+ #include "ppc/param.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "i386/param.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "arm/param.h"
+ #elif defined (__riscv)
+ #include "riscv/param.h"
+diff --git a/tools/cctools/include/foreign/machine/signal.h b/tools/cctools/include/foreign/machine/signal.h
+index 027d6541..6af7538e 100644
+--- a/tools/cctools/include/foreign/machine/signal.h
++++ b/tools/cctools/include/foreign/machine/signal.h
+@@ -32,7 +32,7 @@
+ #include "ppc/signal.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "i386/signal.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "arm/signal.h"
+ #elif defined (__riscv)
+ #include "riscv/signal.h"
+diff --git a/tools/cctools/include/foreign/machine/types.h b/tools/cctools/include/foreign/machine/types.h
+index 5a967797..1f0d8d25 100644
+--- a/tools/cctools/include/foreign/machine/types.h
++++ b/tools/cctools/include/foreign/machine/types.h
+@@ -38,7 +38,7 @@
+ #include "ppc/types.h"
+ #elif defined (__i386__) || defined(__x86_64__)
+ #include "i386/types.h"
+-#elif defined (__arm__) || defined(__arm64__)
++#elif defined (__arm__) || defined(__arm64__) || defined(__aarch64__)
+ #include "arm/types.h"
+ #elif defined (__riscv)
+ #include "riscv/types.h"
+diff --git a/tools/cctools/include/mach/arm/_structs.h b/tools/cctools/include/mach/arm/_structs.h
+index 186a2ef9..cef56c76 100644
+--- a/tools/cctools/include/mach/arm/_structs.h
++++ b/tools/cctools/include/mach/arm/_structs.h
+@@ -55,7 +55,7 @@ _STRUCT_ARM_VFP_STATE
+ #define _STRUCT_ARM_NEON_STATE64		struct __darwin_arm_neon_state64
+ #define _STRUCT_ARM_NEON_STATE		struct __darwin_arm_neon_state
+ 
+-#if defined(__arm64__)
++#if defined(__arm64__) || defined(__aarch64__)
+ _STRUCT_ARM_NEON_STATE64
+ {
+ 	__uint128_t       __v[32];
+@@ -102,7 +102,7 @@ _STRUCT_ARM_DEBUG_STATE
+ 	__uint32_t        __wcr[16];
+ };
+ 
+-#elif defined(__arm64__)
++#elif defined(__arm64__) || defined(__aarch64__)
+ #define _STRUCT_ARM_LEGACY_DEBUG_STATE	struct arm_legacy_debug_state
+ _STRUCT_ARM_LEGACY_DEBUG_STATE
+ {
+diff --git a/tools/cctools/include/mach/arm/thread_state.h b/tools/cctools/include/mach/arm/thread_state.h
+index e430319e..d4fa2387 100644
+--- a/tools/cctools/include/mach/arm/thread_state.h
++++ b/tools/cctools/include/mach/arm/thread_state.h
+@@ -14,7 +14,7 @@
+ #define THREAD_STATE_MAX	ARM_THREAD_STATE_MAX
+ #endif
+ 
+-#if defined(__arm64__) && !defined(THREAD_STATE_MAX)
++#if defined(__arm64__) || defined(__aarch64__) && !defined(THREAD_STATE_MAX)
+ #define THREAD_STATE_MAX	ARM_THREAD_STATE_MAX
+ #endif
+ 
+diff --git a/tools/cctools/include/mach/arm/thread_status.h b/tools/cctools/include/mach/arm/thread_status.h
+index 9eedf96e..e661a84a 100644
+--- a/tools/cctools/include/mach/arm/thread_status.h
++++ b/tools/cctools/include/mach/arm/thread_status.h
+@@ -68,7 +68,7 @@ typedef _STRUCT_ARM_NEON_STATE64		arm_neon_state64_t;
+ typedef _STRUCT_ARM_EXCEPTION_STATE		arm_exception_state_t;
+ typedef _STRUCT_ARM_EXCEPTION_STATE64	arm_exception_state64_t;
+ 
+-#if defined(XNU_KERNEL_PRIVATE) && defined(__arm64__)
++#if defined(XNU_KERNEL_PRIVATE) && defined(__arm64__) || defined(__aarch64__)
+ /* See below for ARM64 kernel structure definition for arm_debug_state. */
+ #else
+ /*
+@@ -77,7 +77,7 @@ typedef _STRUCT_ARM_EXCEPTION_STATE64	arm_exception_state64_t;
+  */
+ #if defined(__arm__)
+ typedef _STRUCT_ARM_DEBUG_STATE			arm_debug_state_t;
+-#elif defined(__arm64__)
++#elif defined(__arm64__) || defined(__aarch64__)
+ typedef _STRUCT_ARM_LEGACY_DEBUG_STATE		arm_debug_state_t;
+ #else
+ /* #error Undefined architecture */
+@@ -157,7 +157,7 @@ typedef struct arm_saved_state_tagged arm_saved_state_tagged_t;
+ #define ARM_SAVED_STATE32_COUNT ((mach_msg_type_number_t) \
+ 		(sizeof (arm_saved_state_t)/sizeof(unsigned int)))
+ 
+-#elif defined(__arm64__)
++#elif defined(__arm64__) || defined(__aarch64__)
+ 
+ #include <kern/assert.h>
+ #include <arm64/proc_reg.h>

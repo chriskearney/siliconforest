@@ -12,7 +12,7 @@
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-appkit.nix
 let
   pd = (import ../rebase/pd.nix).pd;
-  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
+  pkgs = pd.buildPkgs;
   root = import ../cocoa/build-desktop-root.nix;
   F = "/System/Library/Frameworks";
 in pkgs.runCommand "siliconforest-appkit-closure-arm64" { nativeBuildInputs = [ pkgs.python3 ]; } ''

@@ -10,7 +10,7 @@
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-terminfo.nix
 let
   pd = (import ../rebase/pd.nix).pd;
-  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
+  pkgs = pd.buildPkgs;
 in pkgs.runCommand "siliconforest-terminfo-${pkgs.ncurses.version}" { } ''
   set -o pipefail
   T=$out/usr/share/terminfo

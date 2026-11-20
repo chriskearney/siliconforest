@@ -4,8 +4,8 @@
 #   nix-build --extra-experimental-features nix-command --extra-experimental-features flakes build-user.nix
 let
   pd = (import ../rebase/pd.nix).pd;
-  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
-  p = pd.packages.x86_64-linux;
+  pkgs = pd.buildPkgs;
+  p = pd.packages.${pd.buildSystem};
   libSystem = import ../m1-userspace-diagnostics/build-libsystem-spawnattr.nix;
 in pkgs.stdenv.mkDerivation {
   name = "darwin-lab-sfavd-user-arm64";

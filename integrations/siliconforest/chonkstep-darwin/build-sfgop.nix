@@ -3,8 +3,8 @@
 let
   source = import ../rebase/pd.nix;
   pd = source.pd;
-  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
-in pd.packages.x86_64-linux.libsystem-arm64.overrideAttrs (old: {
+  pkgs = pd.buildPkgs;
+in pd.packages.${pd.buildSystem}.libsystem-arm64.overrideAttrs (old: {
   pname = "siliconforest-chonkstep-sfgop-static";
   src = pkgs.applyPatches {
     name = "siliconforest-chonkstep-sfgop-source";
