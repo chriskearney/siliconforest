@@ -1,21 +1,98 @@
-MIT License
+SILICONFOREST LICENSING NOTICE
 
-Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+SiliconForest contains code under several licenses. Original SiliconForest
+code is MIT-licensed. Third-party code retains its existing terms. Some
+files still need provenance review.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This file is a notice. It is not a grant of rights in the repository, and
+it does not change the licence of any file. The repository is not licensed
+as a whole under the MIT License.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Original SiliconForest code
+---------------------------
+
+The MIT grant, together with its copyright notice, is
+LICENSE-SILICONFOREST-MIT:
+
+  Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+
+That grant covers original SiliconForest code only: files written for
+SiliconForest that were not ported, adopted, or copied from another
+project. LICENSES/MIT.txt is a generic template and still contains the
+placeholders "<year>" and "<copyright holders>". It is not the
+SiliconForest grant. Use LICENSE-SILICONFOREST-MIT.
+
+
+Third-party code
+----------------
+
+Apple's APSL-2.0 code, GPL code, and the other third-party code in this
+tree keep the licence of the code they derive from. Full texts that were
+copied into the repository are in LICENSES/. LICENSES/README.md says where
+each copy came from. NOTICE is the provenance record. A directory name, a
+NOTICE file, or an SPDX line on a neighbouring file does not by itself
+state the licence of the file in front of you. Where a file does not
+identify its source, this notice does not decide it.
+
+Crediting a project in README.md ("Credits and lineage") or in NOTICE does
+not satisfy that project's licence. GPL-2.0 and APSL-2.0 code, and the
+other licences in this tree, carry their own terms: the licence text,
+copyright notices, source-availability conditions, and the APSL's
+modification notices. Files from different sources sit in the same
+directories, so the credits list does not say which terms apply to which
+file.
+
+Present as texts in LICENSES/, and named by NOTICE or by LICENSES/README.md
+as used by some code here:
+
+  MIT                  LICENSES/MIT.txt (template; the named grant is
+                       LICENSE-SILICONFOREST-MIT)
+  APSL-2.0             LICENSES/APSL-2.0.txt
+  GPL-2.0-only         LICENSES/GPL-2.0-only.txt
+                       (also the text of GPL-2.0-or-later, as that README notes)
+  GPL-3.0-only         LICENSES/GPL-3.0-only.txt
+  LGPL-2.1-or-later    LICENSES/LGPL-2.1-or-later.txt
+  Apache-2.0           LICENSES/Apache-2.0.txt
+  MPL-2.0              LICENSES/MPL-2.0.txt
+  BSD-2-Clause         LICENSES/BSD-2-Clause.txt
+  ISC                  LICENSES/ISC.txt
+  OFL-1.1              LICENSES/OFL-1.1.txt
+  Linux-syscall-note   LICENSES/Linux-syscall-note.txt
+  0BSD                 LICENSES/third-party/Indium-LICENSE-0BSD.txt
+
+LICENSES/third-party/ also holds licence files copied with their copyright
+lines: PureDarwin's own PUREDARWIN_LICENSE.txt (BSD-2-Clause), Finch (MIT
+and Apache-2.0), and m1n1 (MIT). PUREDARWIN_LICENSE.txt is the PureDarwin
+Project's licence file. It is not the licence of every file in PureDarwin.
+
+The PureDarwin base (NOTICE: branch upstream-xnu-12377 at c713d8fb) is
+itself mixed. A PureDarwin maintainer wrote that it includes pure MPL-2.0,
+MPL-2.0 OR MIT, and some tri-licensed files, as well as BSD-2-Clause:
+
+  https://github.com/chriskearney/siliconforest/issues/23#issuecomment-6984090313
+
+The tri-licence expressions were not named in that comment and are not
+assigned to files here. NOTICE also records some newer PureDarwin files as
+MPL-2.0 OR BSD-2-Clause from their own notices, and Apple's XNU and other
+Darwin code as APSL-2.0 or the other licence that file's header names.
+The licence of a PureDarwin file is the notice on that file in upstream
+PureDarwin:
+
+  https://github.com/PureDarwin/PureDarwin
+
+Code taken from Linux and Asahi Linux is recorded as GPL-2.0-only, or as a
+dual licence where the file says so. The vendored Chonkstep copy's LICENSE
+and Cargo.toml (license = "GPL-3.0-only") are GPL-3.0-only; NOTICE also
+records MIT licence files inside that copy. Finch is recorded as MIT OR
+Apache-2.0. OpenBSD bwfm is recorded as ISC. m1n1 is recorded as MIT.
+These are the statements in NOTICE and in the licence files.
+
+Files that still need provenance review, missing directory NOTICE files,
+SPDX tags without a copyright line, and the open questions about
+distributing a kernel collection or other combined binary are recorded in
+docs/RELEASE_CHECKLIST.md (items 4 and 6, and the notes added there).
+Nothing in this notice states that such a combination may be distributed.
+
+How the texts and the provenance record fit together is in LICENSING.md.
+The short status is in LICENSE_STATUS.md.

@@ -12,7 +12,7 @@ Nothing here is legal advice.
 
 | Item | Audit | What was done |
 |---|---|---|
-| Licence for our own code | F2 | `LICENSE` (MIT), `LICENSES/` with every licence text in use and its source, `NOTICE` corrected, `LICENSE_STATUS.md` now a pointer |
+| Licence for our own code | F2 | `LICENSE-SILICONFOREST-MIT` (the MIT grant and the SiliconForest copyright notice; the root `LICENSE` is the mixed-licence notice), `LICENSES/` with every licence text in use and its source, `NOTICE` corrected, `LICENSE_STATUS.md` now a pointer |
 | Outsider documentation | F9 | `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, screenshots in `docs/images/` |
 | Disk identifier in a test | F6 | the literal in `tests/test_m1_boot_install.py` is synthetic |
 | Build output in the tree | F5 | `chonkstep-darwin/client-dmabuf/target*/` removed, ignored |
@@ -86,6 +86,35 @@ the sources side by side, each under its own licence with notices intact, is com
   with which firmware and Apple-licensed parts left out.
 - Effort: the decision; advice if wanted.
 
+Notes added 19 November 2026, from the licence pass. Not legal advice. No decision
+is recorded here.
+
+- A PureDarwin maintainer asked the same distribution question on issue 23:
+  https://github.com/chriskearney/siliconforest/issues/23#issuecomment-6984090313
+- The FSF's licence list describes APSL 2.0 as a free software licence that is
+  incompatible with the GPL: https://www.gnu.org/licenses/license-list.html#apsl2
+  If that view applies to this kernel collection, distributing it may not be
+  possible under both GPL-2.0-only and APSL-2.0 at once. Publishing the sources
+  side by side, as the paragraph above calls common practice, is not by itself
+  a statement that the combined binary may be shipped.
+- The same list describes the Apache License 2.0 as incompatible with GPL version 2:
+  https://www.gnu.org/licenses/license-list.html#apache2
+  Finch is recorded as MIT OR Apache-2.0 (userspace frameworks). The GPL-2.0-only
+  code identified in this tree is in kernel extensions. No build in that pass showed
+  a Finch object linked into a GPL-2.0-only kext, and no file records a choice of
+  Finch's MIT side or its Apache-2.0 side. A binary that takes the Apache-2.0 side
+  together with GPL-2.0-only code is the same kind of open question.
+- The GPL-3.0-only desktop linking the APSL libSystem, already noted above, is
+  unanswered as well.
+
+The MIT grant those notes used to sit beside is `LICENSE-SILICONFOREST-MIT`. The
+root `LICENSE` is the mixed-licence notice. No recipe in this repository installs
+the root `LICENSE` under the name `LICENSE.build-recipes`. `NOTICE` says the licence
+texts are not yet installed beside `/usr/share/doc/siliconforest/NOTICE`. A release
+recipe outside this tree that bundled the old root `LICENSE` as the MIT grant should
+take `LICENSE-SILICONFOREST-MIT` for that grant and keep the root `LICENSE` as the
+notice.
+
 ## High
 
 ### 5. Build reproducibility for outsiders (F8). Work.
@@ -111,6 +140,38 @@ lock for the 25 source checkouts.
   `m1-native-boot`, `m1-avd-capacity`); `m1-apcie-host/NOTICE` is the model.
 - Licence texts still missing from `LICENSES/`: BSD-3-Clause, Swift-exception.
 - Effort: three to five days, mostly mechanical, with a review per directory.
+
+Further provenance notes from the licence pass of 19 November 2026. They do not
+replace the counts above.
+
+- `integrations/siliconforest/finch/`: SPDX tags found there are mostly `MIT`, with
+  some `MIT OR Apache-2.0`. A search for the string "The Finch" in that directory
+  found no copyright line. Finch copyright lines do appear in some patches under
+  `cocoa/`, `terminal-app/`, `activity-monitor/`, and `libsystem-default/`. `NOTICE`
+  says to treat `finch/` as Finch's until the files say which are Finch's and which
+  are glue. Reconcile that with the "28 files" count above.
+- `m1-native-input/` holds five copies of `IOHIDEventService.cpp` with the APSL-2.0
+  header (already item F21 below) and no SPDX line on those copies.
+- The vendored Chonkstep copy is GPL-3.0-only by its `LICENSE` and `Cargo.toml`.
+  `dock/bindings/LICENSE` and `examples/LICENSE` are MIT, copyright iconidentify.
+  The two `omarchy/plugins/*/LICENSE` files are the GPL-3 text. `NOTICE` had recorded
+  those two plugin files as not read.
+- `m1-apcie-bridge` has `NOTICE` files and almost no SPDX tags. Several early leaves
+  (`m1-bringup`, `m1-keyboard`, `m1-network-*`, `m1-dart`, `m1-gpu-uat*`, and others)
+  have no SPDX line. Some `PROVENANCE` notes still say original-code licence selection
+  is pending. `core/`, `contracts/`, `probe/`, `userspace/`, `specs/`, and most of
+  `tools/` and `tests/` likewise have no SPDX grant. `AGENTS.md` still says licence
+  selection for original code is pending.
+- `NOTICE` marks some entries "not verified" (Mesa, parts of drm-kmod and FreeBSD,
+  Firefox as run here, neofetch, several fonts, components reached only through the
+  build). Apple's binary driver licence is named there; which PureDarwin components
+  it covers is not established.
+- PureDarwin is mixed. `PUREDARWIN_LICENSE.txt` is BSD-2-Clause for that file.
+  A PureDarwin maintainer (issue 23, comment linked in item 4) names pure MPL-2.0,
+  MPL-2.0 OR MIT, and tri-licensed files. The tri-licence expressions were not named
+  and are not assigned here. `docs/roadmap/issues/SF-0-index.md` and issue 23 still
+  summarise PureDarwin's own files as BSD-2-Clause. Per-file terms are the headers
+  in upstream PureDarwin.
 
 ### 7. Home paths and bench addresses (F16, F17, F19). Owner decides the scope; then work.
 Counted on `release-prep`, outside frozen records (`reports/`, `archive/`, `planning/`,
@@ -176,7 +237,7 @@ local run was on Arch), and delete or let expire the old failed runs (2).
 3. Re-run the scans on `main`: gitleaks; the value search for Wi-Fi and disk identifiers; the
    hash comparison against `private/`; greps for session links and personal email domains.
 4. Enable private vulnerability reporting (`SECURITY.md` relies on it); set the description
-   and topics; check that GitHub detects the licence (it may show "Other": `LICENSE` has a
-   preamble before the MIT text).
+   and topics; check that GitHub detects the licence (it may show "Other": the root
+   `LICENSE` is a notice, and the MIT grant is `LICENSE-SILICONFOREST-MIT`).
 5. The owner reads the repository signed out, as an outsider would after the switch, and
    changes visibility himself.

@@ -9,6 +9,7 @@
   <a href="#hardware">Hardware</a> ·
   <a href="#safety">Safety</a> ·
   <a href="#credits-and-lineage">Credits</a> ·
+  <a href="#licence">Licence</a> ·
   <a href="#roadmap">Roadmap</a>
 </p>
 
@@ -17,6 +18,13 @@
 > **Early, one machine, not released.** SiliconForest runs on a single 13-inch M1 MacBook Pro.
 > There is no installer or image for anyone else yet. Details under [Status](#status) and
 > [Safety](#safety).
+
+<a id="licensing-warning"></a>
+
+> SiliconForest contains code under several licenses. Original SiliconForest code is
+> MIT-licensed ([`LICENSE-SILICONFOREST-MIT`](LICENSE-SILICONFOREST-MIT)). Third-party code
+> retains its existing terms. Some files still need provenance review. The repository is not
+> licensed as a whole under MIT. Read [`LICENSE`](LICENSE) before copying anything.
 
 ## What is this?
 
@@ -185,18 +193,31 @@ and needs a person in front of it, lost data on any partition, and damaged speak
 backup and a second computer. SiliconForest does not replace Apple's firmware, so Apple's
 own restore from a second Mac should remain possible (not tested here); it erases the disk.
 
-The software is provided **as is, without warranty of any kind**; see [`LICENSE`](LICENSE)
-and the licences in [`LICENSES/`](LICENSES/).
+The software is provided **as is, without warranty of any kind**. [`LICENSE`](LICENSE) is a
+notice for the tree. The MIT grant for original SiliconForest code is
+[`LICENSE-SILICONFOREST-MIT`](LICENSE-SILICONFOREST-MIT). Other texts that were copied in are
+in [`LICENSES/`](LICENSES/).
 
 ## Credits and lineage
 
 SiliconForest exists because of other people's work. The complete record, with revisions,
 licences and what was taken from each, is [`NOTICE`](NOTICE); the short version:
 
-- **[PureDarwin](https://www.puredarwin.org)** (BSD-2-Clause for its own files) is the base
-  this project forks: a buildable, bootable Darwin with a Nix build, its own drivers, a
-  Linux/FreeBSD compatibility layer in the kernel and a reimplementation of the Cocoa
-  frameworks. SiliconForest tracks PureDarwin's upstream branch, adopts its commits with
+Crediting a project in this list does not satisfy its licence. GPL-2.0 and APSL-2.0 code,
+and the other licences in this tree, carry their own terms: the licence text, copyright
+notices, source availability, and the APSL's modification notices. Files from different
+sources sit in the same directories, so this list does not say which terms apply to which
+file. See the [licensing note](#licensing-warning) above and [`LICENSE`](LICENSE).
+
+- **[PureDarwin](https://www.puredarwin.org)** is the base this project forks: a buildable,
+  bootable Darwin with a Nix build, its own drivers, a Linux/FreeBSD compatibility layer
+  in the kernel and a reimplementation of the Cocoa frameworks. It is a mix, not
+  BSD-2-Clause as a whole. Its own licence file is BSD-2-Clause. A PureDarwin maintainer
+  has said the tree also includes pure MPL-2.0, MPL-2.0 OR MIT, and tri-licensed files
+  ([comment](https://github.com/chriskearney/siliconforest/issues/23#issuecomment-6984090313)).
+  Apple's XNU and other Darwin code in it are APSL-2.0, or the other licence that file's
+  header names. Which file is which is [upstream PureDarwin's per-file licensing](https://github.com/PureDarwin/PureDarwin),
+  not this list. SiliconForest tracks PureDarwin's upstream branch, adopts its commits with
   their authorship, and intends to send fixes back.
 - **Apple's open-source releases** (Apple Public Source License 2.0 and others): XNU, the
   IOKit families, libSystem, dyld and the rest of Darwin, as PureDarwin builds them.
@@ -233,15 +254,26 @@ right matters to us.
 
 ## Licence
 
-- The original SiliconForest code is under the **MIT License**: [`LICENSE`](LICENSE). What it covers and what keeps its own licence: [`LICENSING.md`](LICENSING.md).
-- Ported and adopted code **keeps its own licence**, marked per file and per directory:
-  GPL-2.0 for the Linux-derived drivers, GPL-3.0-only for Chonkstep and its patches,
-  ISC, BSD-2-Clause, MPL-2.0, APSL-2.0, MIT OR Apache-2.0 and others.
-- Full texts: [`LICENSES/`](LICENSES/). Who made what: [`NOTICE`](NOTICE) and the `NOTICE`
-  file of each directory.
+This repository is **not** licensed as a whole under the MIT License.
+[`LICENSE`](LICENSE) is the notice. Original SiliconForest code is MIT-licensed
+under [`LICENSE-SILICONFOREST-MIT`](LICENSE-SILICONFOREST-MIT). Third-party code
+retains its existing terms. Some files still need provenance review. See the
+note at the top of this file.
 
-Some per-file licence marking is still incomplete; the open items are in
-[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
+- The MIT grant and copyright notice:
+  [`LICENSE-SILICONFOREST-MIT`](LICENSE-SILICONFOREST-MIT). It covers original
+  SiliconForest code only. [`LICENSES/MIT.txt`](LICENSES/MIT.txt) is a template
+  with placeholders, not that grant. Scope: [`LICENSING.md`](LICENSING.md).
+- Other code keeps the licence of the code it derives from: APSL-2.0, GPL-2.0,
+  GPL-3.0-only, and the others named in [`LICENSES/`](LICENSES/) and
+  [`NOTICE`](NOTICE). Those names are not a per-file map. Full texts:
+  [`LICENSES/`](LICENSES/).
+- Crediting a source in [Credits](#credits-and-lineage) does not satisfy its
+  licence. GPL-2.0 and APSL-2.0 carry their own terms.
+- Provenance still to review, and the open questions about distributing a
+  combined kernel collection, are in
+  [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) (items 4 and 6).
+  Status: [`LICENSE_STATUS.md`](LICENSE_STATUS.md).
 
 ## Roadmap
 

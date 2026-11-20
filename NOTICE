@@ -42,12 +42,22 @@ are not installed beside it yet.
 PureDarwin
 ----------
 The PureDarwin Project, https://www.puredarwin.org, https://github.com/PureDarwin/PureDarwin
-Licence: BSD-2-Clause for PureDarwin's own files ("Copyright (c) 2007-Present The PureDarwin
-Project. All rights reserved."; read from PUREDARWIN_LICENSE.txt, copied to
-LICENSES/third-party/PureDarwin-LICENSE.txt). APPLE_LICENSE.txt (Apple Public Source License,
+Licence: mixed. PUREDARWIN_LICENSE.txt is BSD-2-Clause for that file ("Copyright (c)
+2007-Present The PureDarwin Project. All rights reserved."; read from the file, copied to
+LICENSES/third-party/PureDarwin-LICENSE.txt). It is not the licence of every PureDarwin source
+file. A PureDarwin maintainer (Vali0004) wrote on 18 November 2026 that PureDarwin is a mix of
+several licences, including BSD-2-Clause, some pure MPL-2.0, MPL-2.0 OR MIT, and some
+tri-licenses (https://github.com/chriskearney/siliconforest/issues/23#issuecomment-6984090313).
+The tri-licence expressions were not named in that comment and are not assigned to files here.
+The licence of each file is the notice in that file in upstream PureDarwin
+(https://github.com/PureDarwin/PureDarwin), at the revision named below.
+APPLE_LICENSE.txt (Apple Public Source License,
 Version 2.0, August 6, 2003; read from the file, copied to LICENSES/APSL-2.0.txt) for the
-Apple-derived source; each file's own notice. Some of PureDarwin's newer files are
-"MPL-2.0 OR BSD-2-Clause" as their own notices say.
+Apple-derived source, including XNU; each file's own notice. Some of PureDarwin's newer files are
+"MPL-2.0 OR BSD-2-Clause" as their own notices say. That is one case read from notices here,
+not a full inventory. The roadmap index (docs/roadmap/issues/SF-0-index.md) and issue
+23 still summarise PureDarwin's own files as BSD-2-Clause. The per-file headers and the
+maintainer's comment are the fuller record.
 APPLE_DRIVER_LICENSE.txt, also in upstream's tree, is NOT an open-source licence: it is
 Apple's "Binary Driver Software License Agreement", a restrictive licence for Apple driver
 binaries (read from the file's head). Which components of PureDarwin it covers has not been
