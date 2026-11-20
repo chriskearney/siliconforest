@@ -5,7 +5,7 @@
 let
   pd = (import ../../rebase/pd.nix).pd;
   system = import ../../m1-userspace-diagnostics/build-libsystem-spawnattr.nix;
-  selected = pd.packages.x86_64-linux.userland-arm64.override {
+  selected = pd.packages.${pd.buildSystem}.userland-arm64.override {
     pname = "siliconforest-mdnsd-quiet";
     buildTargets = [ "mdnsd" ];
     prebuiltLibSystem = system;

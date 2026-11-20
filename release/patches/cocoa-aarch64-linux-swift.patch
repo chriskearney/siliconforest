@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 SiliconForest contributors
+# Applied by release/base-tree.nix to the Cocoa source when the build system is aarch64-linux.
+# Same purpose as upstream PureDarwin 03270b7957457cdc9f94f79460dda68357fd3d52 (nix/pkgs/toolchain/swift-toolchain.nix), with the aarch64 archive taken from sources.lock.
+
+diff --git a/flake.nix b/flake.nix
+index 67cb449..18c82a0 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -12,7 +12,7 @@
+     };
+   };
+
+-  outputs = { self, nixpkgs, iig-tools, kc-tools, xnu-loader, corecrypto-src }:
++  outputs = { self, nixpkgs, iig-tools, kc-tools, xnu-loader, corecrypto-src, sf-swift-host-source ? null }:
+     let
+       lib = nixpkgs.lib;
+       systems = [ "x86_64-linux" "x86_64-darwin" "aarch64-linux" "aarch64-darwin" ];
+@@ -3966,7 +3966,9 @@
+               notifyInclude = ./src/Libraries/XPC/notify;
+               src = "${foundationSource}/src/Frameworks/Foundation";
+             };
+-          swiftToolchain = pkgs.callPackage ./nix/pkgs/toolchain/swift-toolchain.nix { };
++          swiftToolchain = pkgs.callPackage ./nix/pkgs/toolchain/swift-toolchain.nix {
++            sfSwiftHostSource = if system == "aarch64-linux" then sf-swift-host-source else null;
++          };
+           swiftRuntimeBuild =
+             pkgs.callPackage ./nix/pkgs/apple/swift-runtime.nix {
+               inherit darwinCrossToolchain nativeLd swiftToolchain;
+diff --git a/nix/pkgs/toolchain/swift-toolchain.nix b/nix/pkgs/toolchain/swift-toolchain.nix
+index 583951a..b53f3b2 100644
+--- a/nix/pkgs/toolchain/swift-toolchain.nix
++++ b/nix/pkgs/toolchain/swift-toolchain.nix
+@@ -10,6 +10,7 @@
+ , curl
+ , libedit
+ , python3
++, sfSwiftHostSource ? null
+ }:
+
+ # swift.org's prebuilt Linux toolchain, host tool only: its swift-frontend and
+@@ -29,7 +30,7 @@ stdenv.mkDerivation {
+   pname = "swift-toolchain";
+   inherit version;
+
+-  src = fetchurl src;
++  src = if sfSwiftHostSource == null then fetchurl src else sfSwiftHostSource;
+
+   nativeBuildInputs = [ autoPatchelfHook ];
+   buildInputs = [ stdenv.cc.cc.lib zlib libuuid libxml2 ncurses sqlite curl libedit python3 ];
+@@ -51,6 +52,6 @@ stdenv.mkDerivation {
+     description = "swift.org Swift ${version} toolchain (host compiler for the PD Swift runtime)";
+     homepage = "https://www.swift.org";
+     license = lib.licenses.asl20;
+-    platforms = [ "x86_64-linux" ];
++    platforms = [ "x86_64-linux" ] ++ lib.optional (sfSwiftHostSource != null) "aarch64-linux";
+   };
+ }

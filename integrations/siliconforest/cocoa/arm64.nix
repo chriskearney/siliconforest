@@ -6,8 +6,8 @@
 # the exported pieces. Nothing here changes a source file; patched builds are in ./patched.nix.
 let
   flake = (import ../../../release/cocoa-base.nix).pd;
-  pd = flake.packages.x86_64-linux;
-  pkgs = import flake.inputs.nixpkgs { system = "x86_64-linux"; };
+  pd = flake.packages.${flake.buildSystem};
+  pkgs = flake.buildPkgs;
   src = flake.outPath;
   common = {
     darwinCrossToolchain = pd."arm64-cross-toolchain";

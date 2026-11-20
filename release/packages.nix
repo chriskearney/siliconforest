@@ -4,8 +4,46 @@
 let
   inherit (base) pkgs;
   sf = ../integrations/siliconforest;
-  p = base.pd.packages.x86_64-linux;
-  desktop = import ./desktop.nix { inherit base; };
+  system = pkgs.stdenv.buildPlatform.system;
+  # Hosts that build the base tree with their own toolchain; x86_64-linux keeps the recipes' defaults.
+  nativeHosts = [ "aarch64-linux" "aarch64-darwin" ];
+  sourceManifest = builtins.readFile ../sources.lock;
+  # The x86_64 source manifest excludes archives used only by the aarch64 Linux host.
+  nativeHostArchive = "\n    \"[^\"]+-(aarch64-unknown-linux-gnu|ubuntu24[.]04-aarch64)\": [{][^}]*[}],";
+  x86SourceManifest = builtins.concatStringsSep "" (builtins.filter builtins.isString
+    (builtins.split nativeHostArchive sourceManifest));
+  p = base.pd.packages.${system};
+  cocoa = builtins.scopedImport { import = importRecipe; } ./cocoa-base.nix;
+  # The release copies these source directories whole. Scope their existing
+  # host selectors without changing the files copied into x86_64 derivations.
+  nativeLegacyPackages = pd: pd // {
+    packages = pd.packages // { x86_64-linux = pd.packages.${system}; };
+  };
+  importLegacy = path:
+    let file = toString path; in
+    if file == toString (sf + "/rebase/pd.nix") then
+      let selected = importRecipe path; in
+      selected // { pd = nativeLegacyPackages selected.pd; }
+    else if file == toString (sf + "/qemu-dev/sf-userland.nix") then
+      nativeLegacyPackages (importRecipe path)
+    else if file == toString base.pd.inputs.nixpkgs then _: pkgs
+    else importRecipe path;
+  # Native desktop recipes share the base and Cocoa package sets.
+  importRecipe = path:
+    let file = toString path; in
+    if !(builtins.elem system nativeHosts) then import path
+    else if file == toString ./base.nix then base
+    else if file == toString ./cocoa-base.nix then cocoa
+    else if file == toString ./base-tree.nix then args: import path (args // { inherit system; })
+    else if pkgs.lib.hasPrefix "${toString sf}/homebrew/" file
+      || file == toString (sf + "/m1-storage/userland/build-openssh.nix")
+      || file == toString ./image/activity-monitor.nix
+    then builtins.scopedImport { import = importLegacy; } path
+    else if pkgs.lib.hasPrefix "${toString sf}/" file
+      || builtins.elem file (map toString [ ./desktop.nix ./image/firefox-runtime.nix ])
+    then builtins.scopedImport { import = importRecipe; } path
+    else import path;
+  desktop = importRecipe ./desktop.nix { inherit base; };
   boot = import ./boot-stages.nix { inherit base; };
   version = "0.1.0";
   releaseBoot = import ./boot-stages.nix {
@@ -16,7 +54,7 @@ let
     inherit base;
     rootUUID = "53465f52-4f4f-5455-5549-445f5f5f5f5f";
   };
-  recipe = path: import (sf + "/${path}");
+  recipe = path: importRecipe (sf + "/${path}");
   rootLayout = name: source: subdir: pkgs.runCommand "siliconforest-${name}-root" { } ''
     mkdir -p "$out"
     cp -RL ${source}${subdir}/. "$out/"
@@ -38,7 +76,7 @@ let
       pinned = (builtins.fromJSON (builtins.readFile ../sources.lock)).homebrew;
     in assert pinned == builtins.fromJSON (builtins.readFile ./image/homebrew.lock.json);
       import ./image/homebrew.nix { inherit pkgs; };
-    activity-monitor = import ./image/activity-monitor.nix {
+    activity-monitor = importRecipe ./image/activity-monitor.nix {
       inherit pkgs;
       linkRoot = image.rootTree;
     };
@@ -88,7 +126,7 @@ let
       mkdir -p "$out"
       cp -R --no-preserve=ownership ${recipe "firefox/sc-network.nix"}/System/Library/Frameworks "$out/Frameworks"
     '';
-    firefox-runtime = import ./image/firefox-runtime.nix {
+    firefox-runtime = importRecipe ./image/firefox-runtime.nix {
       inherit pkgs;
       overrides = {
         "network-v1" = pieces.firefox-sc-network;
@@ -121,7 +159,8 @@ let
 in {
   inherit pieces desktop image;
   packages = pieces // {
-    source-manifest = pkgs.writeText "siliconforest-sources.json" (builtins.readFile ../sources.lock);
+    source-manifest = pkgs.writeText "siliconforest-sources.json"
+      (if system == "x86_64-linux" then x86SourceManifest else sourceManifest);
     base-source = base.renamed;
     base-build-source = base.buildSource;
     rust-toolchain = desktop.rust;
@@ -138,7 +177,9 @@ in {
     qemu-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; };
     qemu-proof-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; proof = true; };
     default = image.release;
-    qemu-base = recipe "qemu-dev/build-image.nix" { };
+    # x86_64-linux keeps the recipe's own source, ../rebase/pd.nix, and with it the SF_PD check
+    qemu-base = recipe "qemu-dev/build-image.nix"
+      (if builtins.elem pkgs.stdenv.hostPlatform.system nativeHosts then { source = base; } else { });
     qemu-runner = import ./qemu-runner.nix { inherit pkgs; };
     qemu-smoke-image = import ./qemu-smoke.nix { inherit base; };
     root-base = p.image-arm64-virt-minimal-release;

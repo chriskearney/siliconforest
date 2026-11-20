@@ -22,8 +22,8 @@
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-perl.nix
 let
   pd = import ../qemu-dev/sf-userland.nix;
-  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
-  p = pd.packages.x86_64-linux;
+  pkgs = pd.buildPkgs;
+  p = pd.packages.${pd.buildSystem};
   libSystem = import ../libsystem-default/build-libsystem.nix;
   pins = (builtins.fromJSON (builtins.readFile ../../../sources.lock)).auxiliarySources;
   fetch = import ../../../release/fetch.nix { inherit pkgs; };

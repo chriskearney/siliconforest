@@ -1,0 +1,11 @@
+The three cocoa-aarch64-linux-*.patch files are applied by release/base-tree.nix to the Cocoa source (upstream PureDarwin e7aa00a60f0b56ef35aa24252e81467787bf71ea, fetched separately) when the build system is aarch64-linux. No file of that source is copied here; the patched files keep their own copyright and licence notices.
+
+cocoa-aarch64-linux-mig-sdk.patch is upstream PureDarwin 042dfbc0f7088dc099823a6767c30bd082ffe5ce (nix/pkgs/toolchain/apple-sdk-pinned.nix) on the renamed tree. PureDarwin's own files are BSD-2-Clause, "Copyright (c) 2007-Present The PureDarwin Project. All rights reserved." (LICENSES/third-party/PureDarwin-LICENSE.txt).
+
+cocoa-aarch64-linux-cctools.patch is upstream PureDarwin 26d109dd822adfddb2c7c937dc9ee90e0fa20cec (tools/cctools/include). It adds defined(__aarch64__) to architecture checks in 26 files: 25 headers and one .defs file. Twenty-two contain explicit Apple Public Source License 2.0 notices (LICENSES/APSL-2.0.txt), three have Apple copyright notices without an explicit APSL declaration in their file headers, and foreign/machine/limits.h identifies itself as public domain. The patch changes none of those original notices.
+
+cocoa-aarch64-linux-swift.patch is written for this repository (MIT). It serves the purpose of upstream PureDarwin 03270b7957457cdc9f94f79460dda68357fd3d52 (nix/pkgs/toolchain/swift-toolchain.nix) and takes the Swift archive from sources.lock.
+
+aarch64-linux-xnu-headers.patch is written for this repository (MIT) and patches the base source's build.nix.
+
+aarch64-darwin-host.patch is applied to the base source (upstream PureDarwin c713d8fb9b048a38e2242d67e29b9957ced8c495) when the build system is aarch64-darwin. It is the nix/pkgs/apple/icucore.nix and src/Kernel/fbsdkpi/fbsdkpi.cmake changes of upstream PureDarwin 9190470a6785afe9c88511eadfa6d8ac3e322954 on the renamed tree. That commit's changes to the Swift toolchain, mslc and the locale data are not taken here.

@@ -4,10 +4,14 @@
 { pkgs }:
 let
   sources = import ./sources.nix;
+  hostTarget = {
+    aarch64-linux = "aarch64-unknown-linux-gnu";
+    x86_64-linux = "x86_64-unknown-linux-gnu";
+  }.${pkgs.stdenv.buildPlatform.system};
   components = [
-    "rustc-1.98.1-x86_64-unknown-linux-gnu"
-    "cargo-1.98.1-x86_64-unknown-linux-gnu"
-    "rust-std-1.98.1-x86_64-unknown-linux-gnu"
+    "rustc-1.98.1-${hostTarget}"
+    "cargo-1.98.1-${hostTarget}"
+    "rust-std-1.98.1-${hostTarget}"
     "rust-std-1.98.1-aarch64-apple-darwin"
     "rust-std-1.98.1-aarch64-unknown-none-softfloat"
   ];
