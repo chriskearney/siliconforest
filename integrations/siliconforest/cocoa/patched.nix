@@ -852,6 +852,7 @@ let
     ./patches/0053-coretext-lines-and-fonts-remembered.patch
     ./patches/0215-coretext-copy-keeps-graphics-font-for-rendering-attributes.patch
     ./patches/0220-coretext-memory-font-descriptors-without-filesystem.patch
+    ./patches/0368-coretext-run-delegates-bypass-line-cache.patch
   ];
   coretext = optimised (pd."coretext-arm64".override { src = coretextSrc; });
   coregraphicsSrc = patchedDir "src/Frameworks/CoreGraphics" [
@@ -883,6 +884,7 @@ let
     ./patches/0343-quartzcore-text-layer.patch
     ./patches/0344-quartzcore-keyframe-animation.patch
     ./patches/0345-quartzcore-constraint-layout-manager.patch
+    ./patches/0369-quartzcore-layer-contents-types.patch
   ];
   quartzcore = pd."quartzcore-msm-arm64".override { src = quartzcoreSrc; };
   wp = "${pd."wayland-protocols"}/share/wayland-protocols";

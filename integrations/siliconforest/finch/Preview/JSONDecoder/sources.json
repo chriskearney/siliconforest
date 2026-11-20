@@ -1,0 +1,19 @@
+{
+  "revision": "c20150400269a6afffe5b3a9f9fa8bbd51d69e1a",
+  "license": "Apache-2.0 WITH Swift-exception",
+  "files": {
+    "JSON/JSONDecoder.swift": "fac6f49c97f0101c04c51a88eb97a51c8365e6f7cad4391149b2785d87f40f2a",
+    "JSON/JSONScanner.swift": "2940f4fede36c99412b186f5209a9c45bc9ca1dd23717c35f7c9a430c5af2160",
+    "JSON/JSON5Scanner.swift": "11c234ae5bbbd0854822db3f7c0593a19b42b7a153c1e84e794fac3d1af8fd3f",
+    "JSON/BufferView.swift": "cffff6b60aea69a925ee50a976cf1f9d40090ba261cce7ad2b44d5b357ceff7d",
+    "JSON/BufferViewCompatibility.swift": "670171ab87661791fdad10a9150a87c896e092c9f05c2febbc6a4e6b2ad93beb",
+    "JSON/BufferViewIndex.swift": "2b17e7b0929f8a09f680d213277aec1ac6159fca47d4ad8198c9e8984246a194",
+    "JSON/BufferViewIterator.swift": "f36c73aa608ee3cbc53605472ec010cafece76468aa8a8047c745a23d4fd4698",
+    "CodableUtilities.swift": "60472655e3495b37699e86986fd4806d48428476a61b2bf693b68fb5d5861538",
+    "CodableWithConfiguration.swift": "74d2c27c5438a40c1fa610ed132d88daebd740fbc3826a96547257a61756b91a",
+    "LockedState.swift": "2472d22ec4cd972649b12a743bd39c43c61078061995327c67d011b517b9118f",
+    "Decimal/Decimal.swift": "c8a598470cffd08721a831ede21aff6bf61b8e31e11a1044f3139f5a90a4ed11",
+    "Decimal/Decimal+Math.swift": "8557b63a8105a276d508d7482a889e5ad6294056ad052845aab02b2a594c6bec",
+    "Decimal/Decimal+Conformances.swift": "d51549a9793769617c194270900deaf946da8e1a9041d3b753f170da39de062b"
+  }
+}

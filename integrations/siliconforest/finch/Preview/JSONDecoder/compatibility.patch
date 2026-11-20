@@ -1,0 +1,60 @@
+--- a/JSONDecoder.swift
++++ b/JSONDecoder.swift
+@@ -146 +146 @@
+-                joinedString = ([components[0].lowercased()] + components[1...].map { $0.capitalized }).joined()
++                joinedString = ([components[0].lowercased()] + components[1...].map { _sfJSONCapitalized(String($0)) }).joined()
+@@ -463 +463 @@
+-                guard var string = String(bytes: postBOMBuffer, encoding: sourceEncoding) else {
++                guard var string = _sfJSONString(bytes: postBOMBuffer, encoding: sourceEncoding) else {
+@@ -645,5 +645,2 @@
+-            let string = try self.unwrapString(from: mapValue, for: codingPathNode, additionalKey)
+-            guard let date = try? Date.ISO8601FormatStyle().parse(string) else {
+-                throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: self.codingPath, debugDescription: "Expected date string to be ISO8601-formatted."))
+-            }
+-            return date
++            _ = try self.unwrapString(from: mapValue, for: codingPathNode, additionalKey)
++            throw SFJSONDecoderUnavailable.iso8601DateStrategy
+--- a/Decimal.swift
++++ b/Decimal.swift
+@@ -21 +21 @@
+-#if !FOUNDATION_FRAMEWORK
++#if true
+@@ -186 +186 @@
+-#if FOUNDATION_FRAMEWORK
++#if false
+@@ -189,10 +189 @@
+-    public func toString(with locale: Locale? = nil) -> String {
+-        let separator: String
+-        if let locale = locale,
+-           let localizedSeparator = locale.decimalSeparator {
+-            separator = localizedSeparator
+-        } else {
+-            separator = "."
+-        }
+-        return _toString(withDecimalSeparator: separator)
+-    }
++    public func toString() -> String { _toString(withDecimalSeparator: ".") }
+--- a/Decimal+Math.swift
++++ b/Decimal+Math.swift
+@@ -735 +735 @@
+-    #if FOUNDATION_FRAMEWORK
++    #if false
+--- a/Decimal+Conformances.swift
++++ b/Decimal+Conformances.swift
+@@ -13 +13 @@
+-#if FOUNDATION_FRAMEWORK
++#if false
+@@ -19,2 +19,2 @@
+-    public init?(string: __shared String, locale: __shared Locale? = nil) {
+-        let decimalSeparator = locale?.decimalSeparator ?? "."
++    public init?(string: __shared String) {
++        let decimalSeparator = "."
+@@ -239 +239 @@
+-#if FOUNDATION_FRAMEWORK
++#if false
+@@ -488 +488 @@
+-#if FOUNDATION_FRAMEWORK
++#if false
+@@ -644 +644 @@
+-#if FOUNDATION_FRAMEWORK
++#if false

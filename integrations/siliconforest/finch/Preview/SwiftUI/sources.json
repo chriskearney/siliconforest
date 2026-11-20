@@ -1,0 +1,69 @@
+{
+  "diagnostic_patches_shipping_allowed": false,
+  "edge": {
+    "candidate": "/home/chrisk/src/darwin-lab/runs/preview/swiftui-wt/runs/swiftui/Edge.swift",
+    "candidate_sha256": "1e078a7c00ed5934b497174eaff7dfa5a0a94a5a8598faa0225a0d16b5c36d6e",
+    "omission": "Package-only Edge.Set.init(Axis.Set) depends on full Axis/TextAlignment/UnaryLayout/Protobuf; no replacement emitted",
+    "removed_exact_text": "extension Edge.Set {\n    package init(_ axes: Axis.Set) {\n        var set = Edge.Set()\n        if axes.contains(.horizontal) {\n            set.insert(.horizontal)\n        }\n        if axes.contains(.vertical) {\n            set.insert(.vertical)\n        }\n        self = set\n    }\n}\n\n",
+    "sha256": "a82b8daa69dc0b3a1da1bc1a70be587a11cc465b736779340ecf91a6c8b03deb",
+    "source": "/home/chrisk/src/darwin-lab/runs/preview/swiftui-wt/runs/swiftui/adapted/Sources/SwiftUICore/Layout/Edge/Edge.swift"
+  },
+  "finch_files": {
+    "userland/CoreGraphics/swift/CoreGraphics.swift": "81cfe89c4ad176e0acb91e4883f0cb20b67edab1877868e871d80a915ef7993a",
+    "userland/SwiftUI/adapt.py": "35d69d64b7967632fd3f6520a8fff93d019da6499e3cdf3f5f9ee7aabd564df0",
+    "userland/SwiftUI/build.sh": "bbc71a7c916e691e5230fa39da80b6c0cac02a6668464630b8b38c8bb928e96f",
+    "userland/SwiftUI/demangle.cpp": "0f5ace951d4d8d389be216d761c34a8c25fb5d739f867cd890bde1930b41136e",
+    "userland/SwiftUI/patches/Compute/0001-finch.patch": "959b4475eb44de83a4291f48546f3dea38c0f829b398e2d88542ba29ed6b617e",
+    "userland/SwiftUI/patches/OpenRenderBox/0001-path-retain-release-and-cgpath-copy.patch": "5cf1a3675bc01702f7539385997f2f49d32e863ab44a49b03515ea7ed8c7c992",
+    "userland/SwiftUI/patches/OpenSwiftUI-button-role.patch": "5c3ac9e94b05a4afd9866cef1e6524ed419a5f1847e933ef745c0f31ab7e4096",
+    "userland/SwiftUI/patches/OpenSwiftUI-color-shading.patch": "84af2e813831756101d5cd6658317c50a4b5ef187e6791889d6131a0ff6e8c73",
+    "userland/SwiftUI/patches/OpenSwiftUI-emit-library-symbols.patch": "bc4d341c2f6055132f6964110d2e63e6be9995140a3b80035bea20f6eba7c0a1",
+    "userland/SwiftUI/patches/OpenSwiftUI-finch-path-boolean-ops.patch": "9629ab83b6c03e2bae55d62b303d1697b7b7c338b0312b74f75155ba74a5a7a8",
+    "userland/SwiftUI/patches/OpenSwiftUI-finch-path-editing.patch": "fe292960c0cce0840a37c069d9b64ed19e25ea541d44b8e17c56c82adc7cbcfc",
+    "userland/SwiftUI/patches/OpenSwiftUI-toggle-style.patch": "6bdfcb75b22d1efa24bec2a2aba6417dbeeeebcb1741871f3a82e103bb908a3b",
+    "userland/SwiftUI/patches/OpenSwiftUI-z-originally-defined.patch": "bd2ac7adcc3bcab937caa41302ad66574bc0a005e82e338525922690363b1362",
+    "userland/swift/patches/0001-arm64e-runtime-metadata.patch": "4b2a0e54d13472c05f0138131f549ccf2887fcc317291029b85891c204f79acf"
+  },
+  "finch_revision": "2d9b1bb1af57e14462e4621d194929188a8845b0",
+  "libc_backtrace": {
+    "change": "Only existing function extracted with original copyright and direct required includes. Same underlying _dyld_images_for_addresses and uuid_copy. Hidden at private graph link with -unexported_symbol; no success stub.",
+    "sha256": "4e2605a1545552b35ab724a8e0725a2adfd7abff5c9787b643a96fba3cbb7569",
+    "upstream": "/home/chrisk/src/darwin-lab/sources/puredarwin-rebase/src/Libraries/libSystem/libc/gen/backtrace.c"
+  },
+  "pins": {
+    "Compute": {
+      "origin": "https://github.com/OpenSwiftUIProject/Compute",
+      "revision": "ef29bc336a16cee2091eb30b0a3aef606d2163d9"
+    },
+    "OpenAttributeGraph": {
+      "origin": "https://github.com/OpenSwiftUIProject/OpenAttributeGraph.git",
+      "revision": "46f2e1b832fa9626bd88f62ba34ba0b799b5206c"
+    },
+    "OpenCoreGraphics": {
+      "origin": "https://github.com/OpenSwiftUIProject/OpenCoreGraphics",
+      "revision": "df5ab4c4dcd0afc8fde978f6a0ad5228bb8aee17"
+    },
+    "OpenRenderBox": {
+      "origin": "https://github.com/OpenSwiftUIProject/OpenRenderBox",
+      "revision": "4b0e86bcf926426fbbf2186d4dde17280a40cafb"
+    },
+    "OpenSwiftUI": {
+      "origin": "https://github.com/OpenSwiftUIProject/OpenSwiftUI.git",
+      "revision": "aefa4e6edc9c37a992a0cf9c6cf317fb670ed305"
+    },
+    "swift-runtime-headers": {
+      "origin": "https://github.com/jcmosc/swift-runtime-headers.git",
+      "revision": "626688ce65f43a83d5822532e1c9e85f92e21106"
+    },
+    "swift-syntax": {
+      "origin": "https://github.com/swiftlang/swift-syntax.git",
+      "revision": "79e4b74a295b6eb74a8b585e3a39d29e70c1dbd1"
+    }
+  },
+  "schema": 1,
+  "upstream_runtime_limits": [
+    "OAG resetProfile placeholder replaced with actual Compute graph reset",
+    "Other upstream unfinished renderer/API paths remain; none are support claims.",
+    "arm64 native graph proof does not establish Apple arm64e SwiftUI client ABI or full layout/popover."
+  ]
+}

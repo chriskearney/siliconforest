@@ -1,0 +1,165 @@
+--- a/Sources/OpenAttributeGraphShims/Adapter/Compute.swift
++++ b/Sources/OpenAttributeGraphShims/Adapter/Compute.swift
+@@ -45,7 +45,7 @@
+     }
+ 
+     public func resetProfile() {
+-        // TODO: placeholder
++        Self.resetProfile(self)
+     }
+ }
+ 
+--- /dev/null
++++ b/Sources/OpenAttributeGraphShims/CFStringBridge.swift
+@@ -0,0 +1,31 @@
++import Foundation
++
++extension String {
++    init(_ cfString: CFString) {
++        if let ptr = CFStringGetCStringPtr(cfString, CFStringBuiltInEncodings.UTF8.rawValue) {
++            self.init(cString: ptr)
++            return
++        }
++
++        let length = CFStringGetLength(cfString)
++        let maxSize = CFStringGetMaximumSizeForEncoding(length, CFStringBuiltInEncodings.UTF8.rawValue) + 1
++
++        let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: maxSize)
++        defer { buffer.deallocate() }
++
++        guard CFStringGetCString(cfString, buffer, maxSize, CFStringBuiltInEncodings.UTF8.rawValue) else {
++            self = ""
++            return
++        }
++        self.init(cString: buffer)
++    }
++
++    var cfString: CFString {
++        let bytes = Array(utf8)
++        guard let result = bytes.withUnsafeBufferPointer({ buffer in
++            CFStringCreateWithBytes(nil, buffer.baseAddress, buffer.count,
++                                    CFStringBuiltInEncodings.UTF8.rawValue, false)
++        }) else { preconditionFailure("Compute UTF-8 CFString allocation failed") }
++        return result
++    }
++}
+--- a/Sources/OpenAttributeGraphShims/DebugClient.swift
++++ b/Sources/OpenAttributeGraphShims/DebugClient.swift
+@@ -2,7 +2,7 @@
+ //  DebugServerTests.swift
+ //  OpenAttributeGraphShims
+ 
+-#if canImport(Darwin)
++#if canImport(Darwin) && FINCH_DEBUG_CLIENT
+ public import Foundation
+ public import Network
+ 
+--- a/Sources/OpenAttributeGraphShims/Graph+Debug.swift
++++ b/Sources/OpenAttributeGraphShims/Graph+Debug.swift
+@@ -1,57 +1,46 @@
+-//
+-//  Graph+Debug.swift
+-//  OpenAttributeGraphShims
+-
++// SPDX-License-Identifier: MIT
++// Cross-build bridge for actual CoreFoundation graph descriptions.
+ #if canImport(Darwin)
+-
++import Foundation
++private func _descriptionOptions(_ format: CFString) -> CFDictionary {
++    var keyCallbacks = kCFTypeDictionaryKeyCallBacks
++    var valueCallbacks = kCFTypeDictionaryValueCallBacks
++    let dictionary = CFDictionaryCreateMutable(nil, 1, &keyCallbacks, &valueCallbacks)!
++    let key = DescriptionOption.format.rawValue
++    CFDictionarySetValue(dictionary, Unmanaged.passUnretained(key).toOpaque(), Unmanaged.passUnretained(format).toOpaque())
++    return dictionary
++}
+ #if OPENATTRIBUTEGRAPH_COMPUTE
+ extension Graph {
+-    public static var descriptionFormatDictionary: CFString {
+-        "graph/dict" as CFString
++    public static var descriptionFormatDictionary: CFString { "graph/dict".cfString }
++    public static var descriptionFormatDot: CFString { "graph/dot".cfString }
++    public static var descriptionAllGraphs: CFString { "all_graphs".cfString }
++}
++#endif
++@_spi(Debug)
++extension Graph {
++    public var dict: [String: Any]? {
++        guard let result = Graph.description(nil, options: _descriptionOptions(Self.descriptionFormatDictionary)),
++              CFGetTypeID(result) == CFDictionaryGetTypeID() else { return nil }
++        let dictionary = unsafeBitCast(result, to: CFDictionary.self)
++        let count = CFDictionaryGetCount(dictionary)
++        var keys = [UnsafeRawPointer?](repeating: nil, count: count)
++        var values = keys
++        CFDictionaryGetKeysAndValues(dictionary, &keys, &values)
++        var output: [String: Any] = [:]
++        for index in 0..<count {
++            guard let key = keys[index], let value = values[index] else { return nil }
++            let keyObject = Unmanaged<AnyObject>.fromOpaque(key).takeUnretainedValue()
++            guard CFGetTypeID(keyObject) == CFStringGetTypeID() else { return nil }
++            output[String(unsafeBitCast(keyObject, to: CFString.self))] =
++                Unmanaged<AnyObject>.fromOpaque(value).takeUnretainedValue()
++        }
++        return output
+     }
+-
+-    public static var descriptionFormatDot: CFString {
+-        "graph/dot" as CFString
+-    }
+-
+-    public static var descriptionAllGraphs: CFString {
+-        "all_graphs" as CFString
++    public var dot: String? {
++        guard let result = Graph.description(self, options: _descriptionOptions(Self.descriptionFormatDot)),
++              CFGetTypeID(result) == CFStringGetTypeID() else { return nil }
++        return String(unsafeBitCast(result, to: CFString.self))
+     }
+ }
+ #endif
+-
+-import Foundation
+-
+-@_spi(Debug)
+-extension Graph {
+-    public var dict: [String: Any]? {
+-        let options = [
+-            DescriptionOption.format: Graph.descriptionFormatDictionary
+-        ] as NSDictionary
+-        guard let description = Graph.description(nil, options: options) else {
+-            return nil
+-        }
+-        guard let dictionary = description as? NSDictionary else {
+-            return nil
+-        }
+-        return dictionary as? [String: Any]
+-    }
+-
+-    // style:
+-    // - bold: empty input/output edge
+-    // - dashed: indirect or has no value
+-    // color:
+-    // - red: is_changed
+-    public var dot: String? {
+-        let options = [
+-            DescriptionOption.format: Graph.descriptionFormatDot
+-        ] as NSDictionary
+-        guard let description = Graph.description(self, options: options)
+-        else {
+-            return nil
+-        }
+-        return description as? String
+-    }
+-}
+-
+-#endif
+--- a/Sources/OpenAttributeGraphShims/Metadata+Debug.swift
++++ b/Sources/OpenAttributeGraphShims/Metadata+Debug.swift
+@@ -92,6 +92,6 @@
+ 
+ extension Int {
+     fileprivate var hex: String {
+-        "0x\(String(format: "%X", self))"
++        "0x\(String(self, radix: 16, uppercase: true))"
+     }
+ }

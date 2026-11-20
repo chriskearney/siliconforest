@@ -1,0 +1,3 @@
+# Patch context and extracted upstream license text retain their source whitespace.
+*.patch -whitespace
+backtrace_image_offsets.c -whitespace

@@ -1,0 +1,14 @@
+_OBJC_CLASS_$_SCNCamera
+_OBJC_CLASS_$_SCNOffscreenRenderer
+_OBJC_CLASS_$_SCNSceneSource
+_OBJC_CLASS_$_SCNTransaction
+_OBJC_CLASS_$_SCNView
+_OBJC_METACLASS_$_SCNView
+_SCNExportPointOfViewAttribute
+_SCNSceneEndTimeAttributeKey
+_SCNSceneSourceAssetAuthorKey
+_SCNSceneSourceAssetAuthoringToolKey
+_SCNSceneSourceAssetContributorsKey
+_SCNSceneSourceAssetUpAxisKey
+_SCNSceneSourceSceneIndexKey
+_SCNSceneStartTimeAttributeKey

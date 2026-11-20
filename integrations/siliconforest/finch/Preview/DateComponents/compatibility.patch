@@ -1,0 +1,8 @@
+--- a/DateComponents.swift
++++ b/DateComponents.swift
+@@ -489 +489 @@
+-        hasher.combine(_isLeapMonth)
++        hasher.combine(_isLeapMonth ?? false) // Match the existing nil/false equality rule.
+@@ -678 +678 @@
+-#if FOUNDATION_FRAMEWORK
++#if false // Scoped value slice: retained NSDateComponents lacks newer fields.

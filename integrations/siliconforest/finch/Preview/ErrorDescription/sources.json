@@ -1,0 +1,22 @@
+{
+  "pin": "c20150400269a6afffe5b3a9f9fa8bbd51d69e1a",
+  "pin_localized_description": "one line inside CocoaError.swift; that file stays out of this compile",
+  "license": "Apache-2.0 WITH Swift-exception",
+  "probe_license": "MIT OR Apache-2.0",
+  "license_sha256": "2245a990b635558be210fb3eb4f8a6f7a49aebc0fefbf5859146a65ddc7ddcf3",
+  "files": {
+    "LocalizedDescription.swift": "5eb0d0ed84585eb2dcbac0c7c7bcd192f1ab2b7ff3f11d75bb82d148420d17ed",
+    "DescriptionProbe.swift": "5fea3b5c8cd2321bf7c9e40008e9c590dafce4f18e09524ab84c87a37e21c3a1",
+    "symbols.c": "6cd2dace2df9c5a35e4f3f4c3aa419a908c01891549d170fd31b61e6592c4ec2"
+  },
+  "baseline_library_sha256": "e49ea43b71d3bcbb0c63c7b69df8fda74fdafb979e52d2376a2b99a34303b649",
+  "baseline_export_count": 5292,
+  "tested_library_sha256": "bed3c17185d4103f1b8737434506ab66c35c2fc6b561491ea00e712554f4a0c9",
+  "tested_probe_sha256": "240666f8962cd7765fd2ef9629e585b04902309d6c8f90b1420c5ee6d0263322",
+  "export_count": 5294,
+  "exports_lost": 0,
+  "exports_gained": [
+    "_$ss5ErrorP10FoundationE20localizedDescriptionSSvg",
+    "_$ss5ErrorP10FoundationE20localizedDescriptionSSvpMV"
+  ]
+}

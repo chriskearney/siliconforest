@@ -1,0 +1,37 @@
+--- a/userland/PDFKit/PDFKit.m
++++ b/userland/PDFKit/PDFKit.m
+@@ -632,7 +632,7 @@
+ }
+ - (void)drawInRect:(PDFRect)rect
+ {
+-    CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
++    CGContextRef context = [[NSGraphicsContext currentContext] graphicsPort];
+     if (!context) return;
+     CGContextSetLineWidth(context, _fwidth);
+     if (_fdash.count) {
+@@ -1040,12 +1040,12 @@
+ }
+ - (void)drawWithBox:(PDFDisplayBox)box
+ {
+-    CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
++    CGContextRef context = [[NSGraphicsContext currentContext] graphicsPort];
+     if (context) [self drawWithBox:box toContext:context];
+ }
+ - (void)transformContextForBox:(PDFDisplayBox)box
+ {
+-    CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
++    CGContextRef context = [[NSGraphicsContext currentContext] graphicsPort];
+     if (context) [self transformContext:context forBox:box];
+ }
+ - (void)drawWithBox:(PDFDisplayBox)box toContext:(CGContextRef)context
+--- a/userland/PDFKit/PDFView.m
++++ b/userland/PDFKit/PDFView.m
+@@ -220,7 +220,7 @@
+ {
+     [_fbackground set]; NSRectFill(dirtyRect);
+     if (!_fdocument.pageCount) return;
+-    CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
++    CGContextRef context = [[NSGraphicsContext currentContext] graphicsPort];
+     if (!context) return;
+     NSUInteger first = _fmode == kPDFDisplaySinglePage ? _fpageIndex : 0;
+     NSUInteger last = _fmode == kPDFDisplaySinglePage ? _fpageIndex + 1 : _fdocument.pageCount;

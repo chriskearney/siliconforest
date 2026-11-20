@@ -1,0 +1,14 @@
+NSURLContentModificationDateKey
+NSURLContentTypeKey
+NSURLEffectiveIconKey
+NSURLFileResourceIdentifierKey
+NSURLFileSizeKey
+NSURLHasHiddenExtensionKey
+NSURLIsPackageKey
+NSURLIsVolumeKey
+NSURLNameKey
+NSURLParentDirectoryURLKey
+NSURLVolumeIsLocalKey
+NSURLVolumeIsReadOnlyKey
+NSURLVolumeNameKey
+NSURLVolumeUUIDStringKey

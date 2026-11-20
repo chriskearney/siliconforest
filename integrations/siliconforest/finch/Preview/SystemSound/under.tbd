@@ -1,0 +1,16 @@
+--- !tapi-tbd-v3
+archs: [ arm64 ]
+platform: macosx
+install-name: "@loader_path/AudioToolbox.sf-under"
+current-version: 1000.0
+compatibility-version: 1.0
+exports:
+  - archs: [ arm64 ]
+    symbols:
+      - "_AudioServicesAddSystemSoundCompletion"
+      - "_AudioServicesCreateSystemSoundID"
+      - "_AudioServicesDisposeSystemSoundID"
+      - "_AudioServicesGetProperty"
+      - "_AudioServicesPlayAlertSound"
+      - "_AudioServicesRemoveSystemSoundCompletion"
+...

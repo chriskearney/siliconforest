@@ -1,0 +1,249 @@
+RecapPerformanceTesting compatibility provider
+
+Derived from The Finch Project contributors' MIT OR Apache-2.0 source:
+  Finch revision 2d9b1bb1af57e14462e4621d194929188a8845b0
+  userland/RecapPerformanceTesting/RecapPerformanceTesting.m
+  Upstream file SHA256:
+  2b5ffb257b6836723304f3a5f469b42e3415f5101755286e560975c33daa46a7
+Copyright (c) 2026 The Finch Project contributors.
+The complete upstream MIT and Apache licenses accompany built outputs.
+
+SiliconForest changes: recording is explicitly unsupported. The runner reports
+unavailable and readiness returns NO with an NSError. Under Finch's one-object
+result-callback convention, failure callbacks receive an NSError, never nil.
+Void-only operations raise SFRecapUnsupportedOperationException with that error
+in NSUnderlyingErrorKey; they never invoke a success-only completion block.
+Parameter instances store data only and never record or complete a test.
+
+Preview's observed mandatory imports name RPTTestRunner and
+RPTActivationTestParameters. Its selector inventory includes isRecapAvailable,
+runTestWithParameters:, setTestName:, and
+initWithTestName:window:completionHandler:. Selector presence alone does not
+establish a receiver or a full private Apple ABI. The activation class is new
+open parameter storage using the same name/window/completion fields as Finch's
+resize parameters. No claim of complete Apple Recap compatibility is made.
+
+No Apple implementation, framework binary, SDK declaration, extracted asset or
+application bytes are included in this provider. The cross-built probe has to
+run on a separately authorized compatible runtime before behavioral validation
+can be claimed. Building or exporting this output does not install it.
+
+
+CoreSpotlight attribute-only provider
+
+Copyright (c) 2026 The Finch Project contributors.
+MIT OR Apache-2.0; both complete licenses accompany built outputs.
+Finch revision 2d9b1bb1af57e14462e4621d194929188a8845b0:
+  userland/CoreSpotlight/CSSearchableItem.m
+Upstream SHA256: 2cc5a95bbb8e18a67cd95f3eeaefe953a172f3f5c9c2c8be9fd2910531940027
+Mined attribute/key storage only, not its index/query/service or whole framework.
+SiliconForest changes: typed common getters/setters, bounded KVC, synchronized
+field table, unavailable archives explicitly rejected; typed Swift UTType bridge.
+No Apple source, private headers, binary, or assets used.
+
+
+Scoped QuickLook reader
+
+Copyright (c) 2026 The Finch Project contributors.
+MIT OR Apache-2.0; both complete licenses accompany built outputs.
+Finch revision 2d9b1bb1af57e14462e4621d194929188a8845b0:
+  userland/QuickLook/QuickLook.m
+  SHA256 4dccdce307cf2bee3d3425e7a39cc84aa19f5e13e3aacfc333935b181e955a47
+  userland/QuickLook/QuickLookUI.m
+  SHA256 74b0ad6fd4d6a0def58120450f8563bdaa4964e5852516cd89c2d4fd25f81e77
+Mined three display-state constants and the preview item/model/view lifetime
+pattern only. No wholesale panel/generator framework adoption. SiliconForest
+uses actual loaded/page data and retained PDFKit/image rendering, validates
+page/zoom bounds, and preserves explicit unsupported service behavior. No Apple
+implementation, private headers or extracted assets used.
+
+The existing open QTP QuickLook/QuickLookUI source is retained unchanged:
+Copyright (c) 2026 Chris Kearney and the SiliconForest contributors, MIT.
+Its thumbnail-absence API, time key and opener factory are preserved.
+
+
+Scoped Swift Foundation UUID value
+
+Copyright (c) 2022 Apple Inc. and the Swift project authors.
+Apache-2.0 WITH Swift-exception; full text LICENSES/Swift-Foundation.txt at the
+repository root and Swift-Foundation-LICENSE.txt beside built output licenses.
+swiftlang/swift-foundation swift-6.3.1-RELEASE,
+revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a:
+  Sources/FoundationEssentials/UUID.swift
+  SHA256 bc94e578e85471e675bfce1c3dbe6ecfc15d1f913bf9a416b19a4d3a7bb5cf22
+  LICENSE.md
+  SHA256 2245a990b635558be210fb3eb4f8a6f7a49aebc0fefbf5859146a65ddc7ddcf3
+Changes: retain UUID tuple/value, initializers, formatting, equality and hash;
+use the real open libSystem UUID operations through SFUUIDRuntime; validate
+the complete Swift string before C parsing. Omit Codable, reflection protocol,
+Comparable, generic random-generator and NSUUID bridge extensions. This is a
+coherent Foundation module rebuild, not type metadata aliases or a second module.
+The build/probe/check harness is original MIT code. No Apple proprietary source,
+SDK declarations or implementation bytes are included.
+
+
+Scoped Swift Foundation JSONDecoder preparation
+
+swiftlang/swift-foundation swift-6.3.1-RELEASE,
+revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a.
+Copyright (c) 2014-2024 Apple Inc. and the Swift project authors; exact original
+per-file notices remain in the prepared sources. Apache-2.0 WITH Swift-exception.
+The full license is LICENSES/Swift-Foundation.txt; preparation copies it beside
+the derived files. JSONDecoder/sources.json records all 13 paths and SHA-256s.
+JSONDecoder/compatibility.patch scopes the original pure-Swift Decimal branch,
+CoreFoundation string adapters and explicit unavailable ISO8601 date strategy.
+The original decoder/scanners/containers and Decodable dispatch remain real.
+JSONSupport.swift, prepare.py and probe.swift are original MIT code. No Data
+source edits, proprietary Apple implementation, headers or assets are included.
+
+
+Scoped Swift Foundation JSONEncoder and writer
+
+Same swift-foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a.
+Copyright (c) 2014-2023 Apple Inc. and the Swift project authors.
+Apache-2.0 WITH Swift-exception; LICENSES/Swift-Foundation.txt is copied beside
+prepared sources with the original per-file notices. JSONEncoder/sources.json
+records SHA-256s for JSONEncoder.swift, JSONWriter.swift and the mined
+_specializingCast helper in AttributedString/Collection Stdlib Defaults.swift.
+The patch supplies scoped Unicode lookup, checked array specialization, current
+UTF-8 key sorting and explicit date-format error boundaries. The real encoder
+containers, writer and Encodable dispatch remain. JSONEncoderSupport.swift
+retains the helper's upstream notice/license; prepare.py and probe.swift are MIT.
+No Data/decoder edits or proprietary implementation/headers/assets are included.
+
+
+Scoped DateComponents value
+
+swift-foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a,
+Sources/FoundationEssentials/Calendar/DateComponents.swift.
+Copyright (c) 2014-2017 Apple Inc. and the Swift project authors.
+Apache-2.0 WITH Swift-exception; full LICENSES/Swift-Foundation.txt is copied
+beside prepared sources. DateComponents/sources.json records the source digest.
+Changes normalize the leap-month hash to match existing equality and exclude
+the unavailable newer Objective-C bridge. The original value/Codable behavior
+is retained. CalendarValues.swift, its small open CF API declaration header,
+preparation and probe are original MIT code. No proprietary implementation,
+private Apple headers, assets or Data source edits are included.
+
+Scoped Swift AttributedString reader values
+------------------------------------------
+Swift Foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a,
+29 files recorded in AttributedString/sources.json. Original Apple/Swift project
+copyright notices remain; Apache-2.0 WITH Swift-exception, full text in
+LICENSES/Swift-Foundation.txt, copied beside prepared sources.
+Swift Collections revision c11818f3cae0780656baa430b49e7f163f08dffd,
+171 source digests and retained object hashes in AttributedString/collections.json.
+Copyright Apple Inc. and the Swift project authors; Apache-2.0 WITH Swift-exception,
+full text in LICENSES/Swift-Collections.txt, copied beside prepared sources.
+Compatibility patches retain original headers; original adapter/header/preparer
+and probe additions use their stated MIT license. No Apple app code/assets are
+tracked. See AttributedString/README.md for exact measured scope and omissions.
+
+Scoped PersonNameComponents bridge
+
+The pinned swift-foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a
+does not contain PersonNameComponents. The Swift 5.4 Darwin overlay, carried by
+Finch revision 2d9b1bb1af57e14462e4621d194929188a8845b0 at
+userland/Foundation/swift/Darwin/PersonNameComponents.swift, is copied unchanged
+into this tree. SHA-256 e9308ddc957b9f834e2f28a4ff3f48db52e96a6bc6641a47a9aafe1bcda2b121.
+Copyright (c) 2014-2017 Apple Inc. and the Swift project authors.
+Apache-2.0 WITH Swift-exception; the file keeps its notice. Finch's one-line
+provenance comment stays. compatibility.patch, applied only when compiling,
+makes the phonetic accessors call the existing bridge methods explicitly and
+replaces String.appending with +. It does not change stored fields, equality,
+hash, or Codable keys. The header declaring the retained class's public
+names, the patch, preparation and probe are original MIT code. No Apple SDK
+header, proprietary implementation, or new Objective-C class is included.
+
+Scoped URLError bridge
+
+Pinned swift-foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a
+does not contain URLError. URLError.swift is original code compiled into that
+module, SHA-256 d5d362a99af119f4329e70f281e79454cb59858d9c4d39d29a6b973cb67535e9.
+It uses the Apache-2.0 WITH Swift-exception banner of the surrounding
+Foundation sources. The protocol stores the NSError returned by the failable
+domain/code/userInfo constructor. Code values are the retained NSURLSession
+constants. URLErrorProbe.swift and symbols.c are MIT OR Apache-2.0. No Apple
+SDK header or proprietary implementation is included.
+
+
+Scoped Error.localizedDescription
+
+Pinned swift-foundation revision c20150400269a6afffe5b3a9f9fa8bbd51d69e1a
+keeps a one-line localizedDescription inside CocoaError.swift. That file is
+left uncompiled. LocalizedDescription.swift is original code for this module,
+SHA-256 5eb0d0ed84585eb2dcbac0c7c7bcd192f1ab2b7ff3f11d75bb82d148420d17ed.
+It uses the Apache-2.0 WITH Swift-exception banner of the surrounding
+Foundation sources. The getter copies LocalizedError and CustomNSError fields
+onto the Finch NSError keys, then calls the real NSError method. An embedded
+NSError uses that object. DescriptionProbe.swift and symbols.c are
+MIT OR Apache-2.0. No Apple SDK header or proprietary implementation is
+included.
+
+Scoped URL resource values and content type reader
+-------------------------------------------------
+URLResourceValues/URLResourceValuesReader.swift mines selected real value
+storage/getter/setter declarations from swift-foundation
+c20150400269a6afffe5b3a9f9fa8bbd51d69e1a, URL/URL.swift, preserving Apple/Swift
+copyright and Apache-2.0 WITH Swift-exception; full LICENSES/Swift-Foundation.txt.
+URLResourceValues/ContentType.swift retains the Finch getter at
+2d9b1bb1af57e14462e4621d194929188a8845b0 under MIT OR Apache-2.0.
+The retained tested UTType adapter and public-name bridge keep their MIT notice.
+Original private C reader/header, preparation helper and probes are MIT.
+URLResourceValues/sources.json records exact pinned sources, mined declarations,
+reviewed adaptations and prior adapter hashes. Preparation copies full upstream
+Finch MIT/Apache and Swift Foundation licenses. No Apple implementation or assets
+are tracked; the existing retained open NSURL/UTType providers supply runtime
+metadata. See the reader README for actual native proof and unsupported bounds.
+
+Scoped Swift CGFloat metadata
+-----------------------------
+Finch revision 2d9b1bb1af57e14462e4621d194929188a8845b0,
+userland/swift/overlays/CoreFoundation/CGFloat.swift, is copied unchanged.
+SHA-256 61d4b0b7bac4c0695b0a485a3d70bb18f5009920e0ebb740b9acb7c0ae47fe28.
+Copyright (c) 2014-2017 Apple Inc. and the Swift project authors.
+Apache-2.0 WITH Swift-exception; the file keeps its notice. The validated
+object CGFloat.o is linked, not recompiled. probe.c, link.py, and run_m1.py
+are original MIT code. No Apple SDK binary is copied into git.
+
+Scoped TipKit
+-------------
+TipKit/TipKit.swift is a scoped derivative of Finch revision
+2d9b1bb1af57e14462e4621d194929188a8845b0, userland/TipKit/TipKit.swift,
+SHA-256 8f972e83bb877fbc9664a74f38b0760a94112dc8bb8cb9f7c25dafa38e05405f.
+Copyright (c) 2026 The Finch Project contributors.
+MIT OR Apache-2.0. TipViews.swift is not compiled. The event predicate
+rule and the EventPredicateExpression conformances follow Finch's empty
+extensions and are compiled against the tested p9 Foundation module.
+NotEqual is not declared. popoverTip is not compiled. TipGroup.currentTip
+uses the Swift host ObservationMacros plugin and the Darwin Observation
+module; currentTipUpdates is omitted. The P13 SwiftUI binding-subset
+source and its companion CGFloat.swift are module inputs only and are
+not linked into this image. build.py, probe.swift, and run_m1.py are
+original MIT code. No Apple SDK binary is copied into git.
+
+Scoped MapKit source
+---------------------
+Preview/MapKit/Geo.swift, MapKit.swift, probe.swift, and build.py are
+original MIT, Copyright 2026 Chris Kearney. They are not a Finch port.
+The land polygons are Natural Earth 1:110m, public domain, pinned outside
+git at runs/preview/retained/mapkit/ne_110m_land.geojson, SHA-256
+9e0729ee253ca7d7a5c4ae9395fb1902264c5377c52e224d13dd85010e2835d9.
+No Apple SDK binary is copied into git. The Linux compile did not emit
+_MapKit_SwiftUI.
+
+SwiftUI source preparation and Linux graph slice
+
+OpenSwiftUI aefa4e6edc9c37a992a0cf9c6cf317fb670ed305,
+OpenAttributeGraph 46f2e1b832fa9626bd88f62ba34ba0b799b5206c,
+OpenCoreGraphics df5ab4c4dcd0afc8fde978f6a0ad5228bb8aee17,
+OpenRenderBox 4b0e86bcf926426fbbf2186d4dde17280a40cafb,
+and Compute 0.6.0 ef29bc336a16cee2091eb30b0a3aef606d2163d9 are MIT projects.
+Finch's retained adaptations are MIT OR Apache-2.0. Swift's runtime headers and
+CompilerPlugin source retain their Apache-2.0-with-runtime-exception notices.
+Exact source pins and the per-file Finch hashes are in SwiftUI/sources.json.
+The open libc backtrace_image_offsets implementation retains its original APSL
+copyright and license notice in SwiftUI/backtrace_image_offsets.c. It is used
+only in the private graph candidate; no shared system library is installed.
+Diagnostic-only header declarations are not runtime providers or support claims.
+Native graph, observation and Edge evidence is scoped in SwiftUI/README.md.

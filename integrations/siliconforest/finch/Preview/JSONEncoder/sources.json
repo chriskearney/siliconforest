@@ -1,0 +1,13 @@
+{
+  "revision": "c20150400269a6afffe5b3a9f9fa8bbd51d69e1a",
+  "license": "Apache-2.0 WITH Swift-exception",
+  "files": {
+    "JSON/JSONEncoder.swift": "9703d2c18ac87eff4109f1d1304a8142ee0901e0ae8f0c9a0ee7500585350a8e",
+    "JSON/JSONWriter.swift": "e75d9d2fdbd73456f7e3385f746c4a7de5e525509e89cdac851c450f15fed7df"
+  },
+  "mined_helper": {
+    "path": "Sources/FoundationEssentials/AttributedString/Collection Stdlib Defaults.swift",
+    "sha256": "9c451ee73936da8f1a349eb79c55d318e21747c3043c74559e29474022ef056b",
+    "symbol": "_specializingCast"
+  }
+}

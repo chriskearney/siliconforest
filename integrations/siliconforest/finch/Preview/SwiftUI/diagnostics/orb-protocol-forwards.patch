@@ -1,0 +1,12 @@
+--- a/Sources/OpenRenderBoxCxx/include/OpenRenderBox/ORBBase.h
++++ b/Sources/OpenRenderBoxCxx/include/OpenRenderBox/ORBBase.h
+@@ -69,3 +69,9 @@
+ #if !ORB_TARGET_OS_DARWIN
+ #include "CFCGTypes.h"
+ #endif
++
++// Diagnostic forwards only; final public protocol headers are a separate input.
++#ifdef __OBJC__
++@protocol MTLDrawable;
++@protocol CALayerDelegate;
++#endif

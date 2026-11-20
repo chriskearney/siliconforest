@@ -1,0 +1,25 @@
+{
+  "install_name": "/System/Library/Frameworks/_MapKit_SwiftUI.framework/Versions/A/_MapKit_SwiftUI",
+  "preview_imports": 10,
+  "linux_emitted_exports": 0,
+  "audit": "runs/preview/app-private/p13/projected-audit.json",
+  "p14_receipt": "app-private/p14/diagnostic-02/launch-result.json",
+  "p15_receipt": "app-private/p15/p15-diagnostic-01/launch-result.json",
+  "natural_earth": {
+    "path": "runs/preview/retained/mapkit/ne_110m_land.geojson",
+    "sha256": "9e0729ee253ca7d7a5c4ae9395fb1902264c5377c52e224d13dd85010e2835d9",
+    "features": 127,
+    "source": "Natural Earth Vector 1:110m land, public domain"
+  },
+  "location_essentials": {
+    "image": "runs/preview/retained/leaf/packet/prefix/_LocationEssentials.framework/Versions/A/_LocationEssentials",
+    "sha256": "0bc8e0470f5dd91372bd8edcd6f70e8cb3bc714daf85e8d9d9efd40fedb4d09b",
+    "exports": ["_CLLocationCoordinate2DMake"]
+  },
+  "swiftui_p13": {
+    "sha256": "366e2f883d17af3ac94fe8f37d3b53f24adad02c5fa49f95b0653ff0991d9e1a",
+    "has_namespace": false,
+    "has_nsview_representable": false
+  },
+  "compile_log": "runs/preview/retained/mapkit/compile-001.log"
+}

@@ -1,0 +1,99 @@
+{
+  "status": "predicate image proved on M1; not published",
+  "branch": "preview-tipkit",
+  "worktree": "runs/preview/tipkit-wt",
+  "install_name": "/System/Library/Frameworks/TipKit.framework/Versions/A/TipKit",
+  "compatibility_version": "1.0.0",
+  "current_version": "1.0.0",
+  "preview_imports": 42,
+  "present_exports": 40,
+  "provider": {
+    "path": "runs/preview/retained/tipkit/build/TipKit",
+    "sha256": "6c9b27caeacb2d5d17464111c696ce61f67f5e17030841604d2c18de3a3b5d31",
+    "size": 360115
+  },
+  "probe": {
+    "path": "runs/preview/retained/tipkit/build/tipkit-probe",
+    "sha256": "90110ff25d96c6ea9842addbb2164a58dac903bd731df7bd061133e7d7f39e2e",
+    "size": 125337,
+    "m1": {
+      "receipt": "runs/preview/retained/tipkit/evidence/tipkit-20261119T165446Z.json",
+      "sha256": "3dd8d459a14795279e07ef7889f35ad3dc39180083bae63e042d5f74cb62028f",
+      "remote": "/private/var/db/sfpreview-tipkit/tipkit-20261119T165446Z",
+      "pid": 7552,
+      "returncode": 0,
+      "signals": [],
+      "seconds": 0.28968587500276044
+    }
+  },
+  "foundation": {
+    "linked_dylib_sha256": "aa7de512b8f76a22d9f9484455b5fccd35af9b99f5d0e9c943b54bfaefd530c0",
+    "swiftmodule_sha256": "8ad0dda8f4e565a44588e308cdf9f84c4e9c0eb3f6586d0768b95fc6072647e8",
+    "p13_not_linked_sha256": "2de8e8fc00a7acd6b1633add2db6cf13c9a7f6892d0c34250665bdd69921f0d6",
+    "install_name": "/usr/lib/swift/libswiftFoundation.dylib"
+  },
+  "source_sha256": {
+    "TipKit.swift": "2fdedd3a1014110d6ebe63b0e7e5eba8a599a50005204210eec5d0834365cf22",
+    "probe.swift": "e62ea7d5f55e9f6799af04e945466f089e46918ad44b9f3929187bdddc591a76",
+    "build.py": "ab588b21f4b2c9666d94a768a9b1a63a624ce27f49ee3997e06adbe2e0f5f336",
+    "run_m1.py": "4ee7b8a00c2f49f83e11e5544f800b20c6b3e97c888c8f4ba0e2359ab4b27120"
+  },
+  "finch": "2d9b1bb1af57e14462e4621d194929188a8845b0",
+  "observation_dylib_sha256": "5504789018d67debc27820a9e439810f7041ddafa1f7d8bc9e4037f57517bc37",
+  "predicate_exports": [
+    "_$s10Foundation20PredicateExpressionsO10ComparisonVy_xq_G6TipKit05EventB10ExpressionA2gHRzAgHR_rlMc",
+    "_$s10Foundation20PredicateExpressionsO5ValueVy_xG6TipKit05EventB10ExpressionAGMc",
+    "_$s10Foundation20PredicateExpressionsO7KeyPathVy_xq_G6TipKit05EventB10ExpressionA2gHRzrlMc",
+    "_$s10Foundation20PredicateExpressionsO8VariableVy_xG6TipKit05EventB10ExpressionAGMc",
+    "_$s6TipKit4TipsO4RuleVyAeC5EventVy_xG_AA0E19PredicateExpression_pSb6Output10Foundation0fG0PRts_XPAK0F11ExpressionsO8VariableVy_AHGXEtcSeRzSERzs8SendableRzlufC"
+  ],
+  "extra_equal_conformance": "_$s10Foundation20PredicateExpressionsO5EqualVy_xq_G6TipKit05EventB10ExpressionA2gHRzAgHR_rlMc",
+  "missing_groups": {
+    "swiftui_popover_tip": [
+      "_$s7SwiftUI4ViewP6TipKitE07popoverD0_11isPresented16attachmentAnchor9arrowEdge6actionQrAD0D0_pSg_AA7BindingVySbGSgAA017PopoverAttachmentJ0OAA0L0OSgyAD4TipsO6ActionVctF",
+      "_$s7SwiftUI4ViewP6TipKitE07popoverD0_11isPresented16attachmentAnchor9arrowEdge6actionQrAD0D0_pSg_AA7BindingVySbGSgAA017PopoverAttachmentJ0OAA0L0OSgyAD4TipsO6ActionVctFQOMQ"
+    ]
+  },
+  "prior_closure_rule_receipt": {
+    "path": "runs/preview/retained/tipkit/evidence/tipkit-20261119T154704Z.json",
+    "sha256": "821bce3c0ce186efeac6ecfe3612bc3a0132345238f3099bd40e5c06421dd483",
+    "image_sha256": "8f54374985fb961c2e060f444e74080928309deae9b27217916123cf9fc2510f",
+    "remote": "/private/var/db/sfpreview-tipkit/tipkit-20261119T154704Z",
+    "pid": 5410,
+    "returncode": 0,
+    "covers_predicate_rules": false,
+    "protected_foundation": "94a07b510d116a7cfb4f302708f1a3ee7286d4be9c94037b77db13dc48959c2f",
+    "compositor": 125,
+    "owner_guard": "active=0"
+  },
+  "predicate_receipt": {
+    "path": "runs/preview/retained/tipkit/evidence/tipkit-20261119T165446Z.json",
+    "sha256": "3dd8d459a14795279e07ef7889f35ad3dc39180083bae63e042d5f74cb62028f",
+    "remote": "/private/var/db/sfpreview-tipkit/tipkit-20261119T165446Z",
+    "pid": 7552,
+    "returncode": 0,
+    "signals": [],
+    "loaded_tipkit": "6c9b27caeacb2d5d17464111c696ce61f67f5e17030841604d2c18de3a3b5d31",
+    "loaded_foundation": "aa7de512b8f76a22d9f9484455b5fccd35af9b99f5d0e9c943b54bfaefd530c0",
+    "loaded_libswiftos": "85612fb27c269f6146064c6d8776180bfa4d7c32cd3e994773f85362c588513c",
+    "protected_foundation": "94a07b510d116a7cfb4f302708f1a3ee7286d4be9c94037b77db13dc48959c2f",
+    "compositor": 125,
+    "owner_guard": "active=0",
+    "assertions": [
+      "configured twice without throwing",
+      "two donations stay pending until the parameter is true, then available",
+      "ordered group is nil before that and OpenTip after tipClosed",
+      "firstAvailable is OpenTip, then RuleTip, then OpenTip",
+      "MaxDisplayCount invalidates after one noteDisplayed",
+      "Comparison Value(1) < Value(2) is available",
+      "Comparison Value(2) < Value(1) stays pending"
+    ]
+  },
+  "open": [
+    "PID 7552 is the predicate image. PID 5410 is the earlier closure-rule image 8f543749 and does not cover these rules.",
+    "Runtime loaded scratch p9 libswiftFoundation aa7de512 and libswiftos. P13 2de8e8fc was not on the search path. QTP Foundation and the active Foundation image were not replaced.",
+    "popoverTip stays absent. The SwiftUI image this probe loaded has no Binding and no PopoverAttachmentAnchor. The swiftui-wt image exports Edge and still has neither Binding nor PopoverAttachmentAnchor.",
+    "NotEqual, DonationFilter, DonatedWithin, and the parameter Rule initializer are not in this image. The probe did not evaluate a key path. try? maps a thrown PredicateError, including undefinedVariable, to false.",
+    "Preview was not relaunched. TipViews.swift and tipkit-test.swift were not compiled. currentTipUpdates was not compiled."
+  ]
+}

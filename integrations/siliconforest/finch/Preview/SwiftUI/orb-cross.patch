@@ -1,0 +1,10 @@
+--- a/Sources/OpenRenderBoxCxx/include/OpenRenderBox/ORBBase.h
++++ b/Sources/OpenRenderBoxCxx/include/OpenRenderBox/ORBBase.h
+@@ -66,6 +66,6 @@
+ #define ORB_OBJC_FOUNDATION 0
+ #endif /* TARGET_OS_DARWIN && __OBJC__ */
+ 
+-#if !ORB_TRRET_OS_DARWIN
++#if !ORB_TARGET_OS_DARWIN
+ #include "CFCGTypes.h"
+ #endif

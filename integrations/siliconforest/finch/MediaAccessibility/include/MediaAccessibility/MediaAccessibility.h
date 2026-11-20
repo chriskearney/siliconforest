@@ -5,6 +5,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
 #include <CoreText/CoreText.h>
+#include <ImageIO/ImageIO.h>
 #include <stdbool.h>
 typedef CFIndex MACaptionAppearanceDomain, MACaptionAppearanceBehavior;
 typedef CFIndex MACaptionAppearanceDisplayType, MACaptionAppearanceFontStyle;
@@ -44,4 +45,7 @@ CFArrayRef MAAudibleMediaCopyPreferredCharacteristics(void);
 void MACaptionAppearanceDidDisplayCaptions(CFArrayRef strings);
 CFStringRef MAImageCaptioningCopyMetadataTagPath(void);
 CFStringRef MAImageCaptioningCopyCaption(CFURLRef url, CFErrorRef *error);
+CFStringRef MAImageCaptioningCopyCaptionWithSource(CGImageSourceRef source, CFErrorRef *error);
 bool MAImageCaptioningSetCaption(CFURLRef url, CFStringRef caption, CFErrorRef *error);
+bool MAImageCaptioningSetCaptionIntoMetadata(CGMutableImageMetadataRef metadata, CFStringRef caption,
+    CFErrorRef *error);

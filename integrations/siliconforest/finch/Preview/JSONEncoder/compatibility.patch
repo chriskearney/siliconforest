@@ -1,0 +1,86 @@
+--- a/JSONEncoder.swift
++++ b/JSONEncoder.swift
+@@ -146 +146 @@
+-            while let upperCaseRange = stringKey[searchRange]._rangeOfCharacter(from: BuiltInUnicodeScalarSet.uppercaseLetters, options: []) {
++            while let upperCaseRange = _sfJSONEncoderCaseRange(stringKey[searchRange], uppercase: true) {
+@@ -152 +152 @@
+-                guard let lowerCaseRange = stringKey[searchRange]._rangeOfCharacter(from: BuiltInUnicodeScalarSet.lowercaseLetters, options: []) else {
++                guard let lowerCaseRange = _sfJSONEncoderCaseRange(stringKey[searchRange], uppercase: false) else {
+@@ -1147 +1147 @@
+-            return self.wrap(date.formatted(.iso8601))
++            throw SFJSONEncoderUnavailable.iso8601DateStrategy
+@@ -1151 +1151,4 @@
+-            return self.wrap(formatter.string(from: date))
++            guard let string = formatter.string(from: date) else {
++                throw EncodingError.invalidValue(date, .init(codingPath: codingPath, debugDescription: "Date formatter did not return a string."))
++            }
++            return self.wrap(string)
+@@ -1250 +1253 @@
+-        return if let array = _specializingCast(array, to: [Int8].self) {
++        return if let array = _sfJSONEncoderCast(value, to: [Int8].self) {
+@@ -1252 +1255 @@
+-        } else if let array = _specializingCast(array, to: [Int16].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [Int16].self) {
+@@ -1254 +1257 @@
+-        } else if let array = _specializingCast(array, to: [Int32].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [Int32].self) {
+@@ -1256 +1259 @@
+-        } else if let array = _specializingCast(array, to: [Int64].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [Int64].self) {
+@@ -1258 +1261 @@
+-        } else if let array = _specializingCast(array, to: [Int128].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [Int128].self) {
+@@ -1260 +1263 @@
+-        } else if let array = _specializingCast(array, to: [Int].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [Int].self) {
+@@ -1262 +1265 @@
+-        } else if let array = _specializingCast(array, to: [UInt8].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [UInt8].self) {
+@@ -1264 +1267 @@
+-        } else if let array = _specializingCast(array, to: [UInt16].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [UInt16].self) {
+@@ -1266 +1269 @@
+-        } else if let array = _specializingCast(array, to: [UInt32].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [UInt32].self) {
+@@ -1268 +1271 @@
+-        } else if let array = _specializingCast(array, to: [UInt64].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [UInt64].self) {
+@@ -1270 +1273 @@
+-        } else if let array = _specializingCast(array, to: [UInt128].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [UInt128].self) {
+@@ -1272 +1275 @@
+-        } else if let array = _specializingCast(array, to: [UInt].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [UInt].self) {
+@@ -1274 +1277 @@
+-        } else if let array = _specializingCast(array, to: [String].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [String].self) {
+@@ -1276 +1279 @@
+-        } else if let array = _specializingCast(array, to: [Float].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [Float].self) {
+@@ -1278 +1281 @@
+-        } else if let array = _specializingCast(array, to: [Double].self) {
++        } else if let array = _sfJSONEncoderCast(value, to: [Double].self) {
+--- a/JSONWriter.swift
++++ b/JSONWriter.swift
+@@ -275,19 +274,0 @@
+-            #if FOUNDATION_FRAMEWORK
+-            var compatibilitySorted = false
+-            if JSONEncoder.compatibility1 {
+-                // If applicable, use the old NSString-based sorting with appropriate options
+-                compatibilitySorted = true
+-                let nsKeysAndValues = dict.map {
+-                    (key: $0.key as NSString, value: $0.value)
+-                }
+-                let elems = nsKeysAndValues.sorted(by: { a, b in
+-                    let options: String.CompareOptions = [.numeric, .caseInsensitive, .forcedOrdering]
+-                    let range = NSMakeRange(0, a.key.length)
+-                    let locale = Locale.system
+-                    return a.key.compare(b.key as String, options: options, range: range, locale: locale) == .orderedAscending
+-                })
+-                for elem in elems {
+-                    try serializeObjectElement(key: elem.key as String, value: elem.value, depth: depth)
+-                }
+-            }
+-            #else
+@@ -295 +275,0 @@
+-            #endif

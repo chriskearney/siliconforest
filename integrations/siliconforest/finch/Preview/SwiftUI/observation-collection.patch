@@ -1,0 +1,75 @@
+--- a/Sources/SwiftUICore/Data/Observation/ObservationUtils.swift
++++ b/Sources/SwiftUICore/Data/Observation/ObservationUtils.swift
+@@ -10,42 +10,6 @@
+ package import OpenAttributeGraphShims
+ @_spi(SwiftUI)
+ package import Observation
+-
+-// MARK: - _ThreadLocal
+-
+-private enum _ThreadLocal {
+-    static let key = pthread_key_t(106)   // __PTK_FRAMEWORK_SWIFT_KEY6
+-
+-    static var value: UnsafeMutableRawPointer? {
+-        get { pthread_getspecific(key) }
+-        set { pthread_setspecific(key, newValue) }
+-    }
+-}
+-
+-// MARK: - ObservationEntry
+-
+-private struct ObservationEntry {
+-    let context: AnyObject
+-    var properties: Set<AnyKeyPath>
+-
+-    func union(_ entry: ObservationEntry) -> ObservationEntry {
+-        ObservationEntry(context: context, properties: properties.union(entry.properties))
+-    }
+-}
+-
+-extension ObservationTracking._AccessList {
+-    mutating func merge(_ other: ObservationTracking._AccessList) {
+-        withUnsafeMutablePointer(to: &self) { ptr1 in
+-            withUnsafePointer(to: other) { ptr2 in
+-                let selfPtr = UnsafeMutableRawPointer(mutating: ptr1)
+-                    .assumingMemoryBound(to: [ObjectIdentifier: ObservationEntry].self)
+-                let otherPtr = UnsafeRawPointer(ptr2)
+-                    .assumingMemoryBound(to: [ObjectIdentifier: ObservationEntry].self)
+-                selfPtr.pointee.merge(otherPtr.pointee) { $0.union($1) }
+-            }
+-        }
+-    }
+-}
+ 
+ // MARK: - ObservationGraphMutation
+ 
+@@ -107,17 +71,11 @@
+ package func _withObservation<T>(
+     do work: () throws -> T
+ ) rethrows -> (value: T, accessList: ObservationTracking._AccessList?) {
+-    var accessList: ObservationTracking._AccessList?
+-    let result = try withUnsafeMutablePointer(to: &accessList) { ptr in
+-        let previous = _ThreadLocal.value
+-        _ThreadLocal.value = UnsafeMutableRawPointer(ptr)
+-        defer { _ThreadLocal.value = previous }
+-        return try work()
+-    }
+-    if let accessList {
++    let collected = try ObservationTracking._collectAccesses(work)
++    if let accessList = collected.accessList {
+         ObservationRegistrar.latestAccessLists.append(accessList)
+     }
+-    return (result, accessList)
++    return collected
+ }
+ 
+ @inline(__always)
+@@ -160,7 +118,7 @@
+     var newAccessList = accessList
+     let removedValue = ObservationRegistrar.invalidations.value.removeValue(forKey: weakAttribute)
+     if let removedValue {
+-        newAccessList.merge(removedValue.accessList)
++        ObservationTracking._mergeAccessLists(&newAccessList, removedValue.accessList)
+         removedValue.mutation.cancel()
+     }
+ 

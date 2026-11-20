@@ -1,0 +1,28 @@
+--- a/Sources/SwiftUICore/Accessibility/AccessibilityChartDescriptor.swift
++++ b/Sources/SwiftUICore/Accessibility/AccessibilityChartDescriptor.swift
+@@ -182,7 +182,9 @@
+             guard let dictionary = _AXOpenSwiftUIUnarchiveChartDescriptor(data) as? [AnyHashable: Any] else {
+                 throw ChartDescriptorArchiveError.unarchiveFailed
+             }
+-            let descriptor = AXChartDescriptor(dictionary: dictionary)
++            guard let descriptor = AXChartDescriptor(dictionary: dictionary) else {
++                throw ChartDescriptorArchiveError.unarchiveFailed
++            }
+             storage = .resolved(descriptor)
+             return descriptor
+         case let .resolved(descriptor):
+--- a/Sources/OpenSwiftUI_SPI/Shims/Accessibility/AXChartDescriptor_Private.h
++++ b/Sources/OpenSwiftUI_SPI/Shims/Accessibility/AXChartDescriptor_Private.h
+@@ -16,10 +16,8 @@
+ 
+ OPENSWIFTUI_ASSUME_NONNULL_BEGIN
+ 
+-@interface AXChartDescriptor (OpenSwiftUI_SPI)
+-- (instancetype)initWithDictionary:(NSDictionary *)dictionary;
+-- (NSDictionary *)dictionaryRepresentation;
+-@end
++// The verified open Accessibility provider declares both methods on the class.
++// Its dictionary initializer is failable; keep that nullability authoritative.
+ 
+ OPENSWIFTUI_ASSUME_NONNULL_END
+ 

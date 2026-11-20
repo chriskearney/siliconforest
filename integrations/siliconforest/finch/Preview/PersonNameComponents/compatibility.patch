@@ -1,0 +1,33 @@
+--- a/PersonNameComponents.swift
++++ b/PersonNameComponents.swift
+@@ -71,8 +71,19 @@
+      The phoneticRepresentation of the phoneticRepresentation object itself will be ignored. nil by default, must be instantiated.
+      */
+     public var phoneticRepresentation: PersonNameComponents? {
+-        get { return _handle.map { $0.phoneticRepresentation } }
+-        set { _applyMutation { $0.phoneticRepresentation = newValue } }
++        // This compiler does not apply the later _ObjectiveCBridgeable conformance
++        // inside these accessors. Bridge explicitly; both methods copy the retained object.
++        get {
++            return _handle.map { object in
++                guard let value = object.phoneticRepresentation else { return nil }
++                return PersonNameComponents._unconditionallyBridgeFromObjectiveC(value)
++            }
++        }
++        set {
++            _applyMutation { object in
++                object.phoneticRepresentation = newValue?._bridgeToObjectiveC()
++            }
++        }
+     }
+     
+     public func hash(into hasher: inout Hasher) {
+@@ -90,7 +101,7 @@
+ extension PersonNameComponents : CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+     public var description: String {
+         return self.customMirror.children.reduce("") {
+-            $0.appending("\($1.label ?? ""): \($1.value) ")
++            $0 + "\($1.label ?? ""): \($1.value) "
+         }
+     }
+     

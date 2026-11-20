@@ -1,0 +1,45 @@
+{
+  "symbol": "_$s12CoreGraphics7CGFloatVMn",
+  "provider": "/usr/lib/swift/libswiftCoreFoundation.dylib",
+  "same_provider_imports": [
+    {
+      "name": "_$s12CoreGraphics7CGFloatVMn",
+      "library": "/usr/lib/swift/libswiftCoreFoundation.dylib",
+      "weak": false
+    }
+  ],
+  "import_audit": "runs/preview/retained/cross-intents/open-intents-imports.json",
+  "observed_receipt": "runs/preview/app-private/evidence/appintents-geometry-resource-20261119T142405Z.json",
+  "runtime": {
+    "path": "/nix/store/1xx6zwsdr41ws0v28156nkmzkbh1y3h7-siliconforest-swift-runtime-6.3.3/usr/lib/swift/libswiftCoreFoundation.dylib",
+    "sha256": "5cc34db69a4d67170cf5ab4dee8f0ec857ec64c9ff365ee2d0b4c67d03813f1e",
+    "uuid": "24560DFE-A6D3-3B95-B19B-FDB809705F24",
+    "install_name": "/usr/lib/swift/libswiftCoreFoundation.dylib",
+    "compatibility_version": 65536,
+    "current_version": 0,
+    "timestamp": 1,
+    "exports": [
+      "__swift_FORCE_LOAD_$_swiftCoreFoundation",
+      "_$s14CoreFoundation9_CFObjectMp",
+      "_$s14CoreFoundation9_CFObjectPAAE2eeoiySbx_xtFZ",
+      "_$s14CoreFoundation9_CFObjectPAAE4hash4intoys6HasherVz_tF",
+      "_$s14CoreFoundation9_CFObjectPAAE9hashValueSivg",
+      "_$s14CoreFoundation9_CFObjectPAAE9hashValueSivpMV",
+      "_$s14CoreFoundation9_CFObjectPSHTb",
+      "_$s14CoreFoundation9_CFObjectTL"
+    ]
+  },
+  "object": {
+    "path": "runs/preview/retained/swift-foundation-cross/cgfloat/CGFloat.o",
+    "sha256": "8c55d9502164710e6192c3f720abb67869b2f3aa8bb4f49d86f00a96e7747ffb",
+    "size": 74488
+  },
+  "source": {
+    "path": "sources/finch/userland/swift/overlays/CoreFoundation/CGFloat.swift",
+    "tree_copy": "CoreFoundationCGFloat/CGFloat.swift",
+    "sha256": "61d4b0b7bac4c0695b0a485a3d70bb18f5009920e0ebb740b9acb7c0ae47fe28",
+    "finch": "2d9b1bb1af57e14462e4621d194929188a8845b0",
+    "license": "Apache-2.0 WITH Swift-exception"
+  },
+  "base_install_name": "/usr/lib/swift/libswiftCoreFoundationBase.dylib"
+}

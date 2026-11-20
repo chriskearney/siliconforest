@@ -1,0 +1,32 @@
+--- a/src/Frameworks/CoreText/CTLine.m
++++ b/src/Frameworks/CoreText/CTLine.m
+@@ -415,6 +415,19 @@
+     return YES;
+ }
+
++static BOOL hasRunDelegate(CFAttributedStringRef string, CFIndex length) {
++    for (CFIndex index = 0; index < length;) {
++        CFRange range;
++        if (CFAttributedStringGetAttribute(string, index, kCTRunDelegateAttributeName, &range))
++            return YES;
++        CFIndex next = range.location + range.length;
++        if (next <= index)
++            return YES;
++        index = next;
++    }
++    return NO;
++}
++
+ CTLineRef CTLineCreateWithAttributedString(CFAttributedStringRef string) {
+     CTTypesetterRef ts;
+     CTLineRef line;
+@@ -425,7 +438,8 @@
+
+     if (off < 0)
+         off = getenv("CT_NO_LINE_CACHE") != NULL;
+-    BOOL cache = !off && length > 0 && length <= SF_LINE_MAX;
++    // Run delegates can supply new metrics for the same attributed string.
++    BOOL cache = !off && length > 0 && length <= SF_LINE_MAX && !hasRunDelegate(string, length);
+     if (cache) {
+         CFStringGetCharacters(CFAttributedStringGetString(string), CFRangeMake(0, length), text);
+         for (CFIndex i = 0; i < length; i++)

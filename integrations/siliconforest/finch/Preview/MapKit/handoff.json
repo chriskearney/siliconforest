@@ -1,0 +1,31 @@
+{
+  "status": "local source committed; this Linux tree did not emit the framework image",
+  "branch": "preview-mapkit",
+  "worktree": "runs/preview/mapkit-wt",
+  "install_name": "/System/Library/Frameworks/_MapKit_SwiftUI.framework/Versions/A/_MapKit_SwiftUI",
+  "preview_imports": 10,
+  "linux_object": null,
+  "source_sha256": {
+    "Geo.swift": "d472582e1c80876abf82a21a273791e9722b08780ca5214c7e9efabe0e12a086",
+    "MapKit.swift": "1eacab523bb1549e64635ee3427a4479e400cd6fe9d6466c1c4928d8924062b4",
+    "probe.swift": "67d815e50ee53b43d09ede78538d3d8a5713a12947e8b2e18439e30bd4923195",
+    "build.py": "30931e661d9baa4c01e0b80c0a78287992c858d445eb705c0bf845decedf16ad"
+  },
+  "compile_log": "runs/preview/retained/mapkit/compile-001.log",
+  "p15": {
+    "receipt": "app-private/p15/p15-diagnostic-01/launch-result.json",
+    "pid": 6396,
+    "returncode": -6,
+    "loaded": "/System/Library/Frameworks/_MapKit_SwiftUI.framework/Versions/A/_MapKit_SwiftUI",
+    "stop": "_CGImageCreateByScaling",
+    "integrity_pass": true,
+    "bytes_unchanged": true
+  },
+  "open": [
+    "Linux compile-001 emitted no _MapKit_SwiftUI object. The ten audited names were absent. The P13 SwiftUI subset has no Namespace or NSViewRepresentable.",
+    "The geo probe did not link. Generated EmbeddedLand.swift failed the raw-string indentation check, so the coastline assertions have not run from this tree.",
+    "MapCameraBounds distances are stored and not applied. Gestures and live tiles are absent. New York is water at 1:110m.",
+    "Do not use the M6 SwiftUI candidate at runtime until its closure passes. The full source names Namespace and NSViewRepresentable; a scoped build can omit View conformance and namespace storage and still link SwiftUI 366e2f88.",
+    "Preview was not relaunched by this lane. ImageIO _CGImageCreateByScaling belongs to the coordinator."
+  ]
+}

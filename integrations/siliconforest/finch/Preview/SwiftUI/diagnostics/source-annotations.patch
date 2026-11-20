@@ -1,0 +1,39 @@
+--- a/Sources/OpenSwiftUI_SPI/OpenSwiftUIBase.h
++++ b/Sources/OpenSwiftUI_SPI/OpenSwiftUIBase.h
+@@ -139,3 +139,36 @@
+ #endif
+ 
+ #endif /* OpenSwiftUIBase_h */
++
++/* Diagnostic compile adapter for newer source-level Foundation annotations.
++ * No API bodies, data symbols or runtime substitutes. Not staged or linked. */
++#ifndef NS_HEADER_AUDIT_BEGIN
++#define NS_HEADER_AUDIT_BEGIN(...) NS_ASSUME_NONNULL_BEGIN
++#define NS_HEADER_AUDIT_END(...) NS_ASSUME_NONNULL_END
++#endif
++#ifndef NS_SWIFT_SENDABLE
++#define NS_SWIFT_SENDABLE __attribute__((swift_attr("@Sendable")))
++#endif
++
++#ifndef NS_SWIFT_NAME
++#define NS_SWIFT_NAME(name) __attribute__((swift_name(#name)))
++#endif
++/* Compile diagnostics only: newer source annotations and the Foundation options
++ * parameter spelled by pinned OpenSwiftUI_SPI/NSAttributedString.h. No bodies. */
++#ifndef NS_DESIGNATED_INITIALIZER
++#define NS_DESIGNATED_INITIALIZER __attribute__((objc_designated_initializer))
++#endif
++#ifndef NS_UNAVAILABLE
++#define NS_UNAVAILABLE __attribute__((unavailable))
++#endif
++#ifndef NS_NONATOMIC_IOSONLY
++#define NS_NONATOMIC_IOSONLY atomic
++#endif
++#ifdef __OBJC__
++#import <Foundation/Foundation.h>
++typedef NSUInteger NSAttributedStringFormattingOptions;
++#endif
++/* Diagnostic forward declaration only; no protocol definition or runtime claim. */
++#ifdef __OBJC__
++@protocol MTLDrawable;
++#endif
