@@ -77,6 +77,13 @@ let
     ];
     patchFlags = [ "-p1" "--fuzz=0" ];
   }
+  else if system == "aarch64-darwin" && sourceName == "upstream-base" then
+    pkgs.applyPatches {
+      name = "siliconforest-aarch64-darwin-build-source";
+      src = buildSource;
+      patches = [ ./patches/aarch64-darwin-host.patch ];
+      patchFlags = [ "-p1" "--fuzz=0" ];
+    }
   else buildSource;
   inputs = rootInputs // {
     # An aarch64 Linux host needs corecrypto f577aafe, which the base tree pins: corecrypto-pin plus its aarch64 Linux host case.

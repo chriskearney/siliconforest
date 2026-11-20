@@ -5,6 +5,8 @@ let
   inherit (base) pkgs;
   sf = ../integrations/siliconforest;
   system = pkgs.stdenv.buildPlatform.system;
+  # Hosts that build the base tree with their own toolchain; x86_64-linux keeps the recipes' defaults.
+  nativeHosts = [ "aarch64-linux" "aarch64-darwin" ];
   sourceManifest = builtins.readFile ../sources.lock;
   # The x86_64 source manifest excludes archives used only by the aarch64 Linux host.
   nativeHostArchive = "\n    \"[^\"]+-(aarch64-unknown-linux-gnu|ubuntu24[.]04-aarch64)\": [{][^}]*[}],";
@@ -29,7 +31,7 @@ let
   # Native desktop recipes share the base and Cocoa package sets.
   importRecipe = path:
     let file = toString path; in
-    if system != "aarch64-linux" then import path
+    if !(builtins.elem system nativeHosts) then import path
     else if file == toString ./base.nix then base
     else if file == toString ./cocoa-base.nix then cocoa
     else if file == toString ./base-tree.nix then args: import path (args // { inherit system; })
@@ -177,7 +179,7 @@ in {
     default = image.release;
     # x86_64-linux keeps the recipe's own source, ../rebase/pd.nix, and with it the SF_PD check
     qemu-base = recipe "qemu-dev/build-image.nix"
-      (if pkgs.stdenv.hostPlatform.system == "aarch64-linux" then { source = base; } else { });
+      (if builtins.elem pkgs.stdenv.hostPlatform.system nativeHosts then { source = base; } else { });
     qemu-runner = import ./qemu-runner.nix { inherit pkgs; };
     qemu-smoke-image = import ./qemu-smoke.nix { inherit base; };
     root-base = p.image-arm64-virt-minimal-release;
