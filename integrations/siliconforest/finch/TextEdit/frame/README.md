@@ -27,7 +27,12 @@ are not modified. Objects and the built front are not committed.
 
 `ExceptionLog.m` prints an exception AppKit catches. `SpellCheckerAdd.m`
 replaces the spelling getters and setters that only raise.
-`DocumentRead.m` reads RTF through `NSRichTextReader`. `LayoutAdd.m`
+`DocumentRead.m` reads RTF through `NSRichTextReader`. That reader drops
+`\trowd`, so each real row is rewritten to one paragraph joined by `\u9`
+before the parse. The same tab stops are stroked as a navy grid from
+every `NSTextView` `drawRect:` and from `drawGlyphsForGlyphRange:atPoint:`.
+A line fragment with no height still takes the paragraph's line height.
+The file on disk keeps `\trowd`. `LayoutAdd.m`
 fills the layout, scroll, and text-view selectors TextEdit calls, and,
 when `SF_TE_PLACE=1`, puts the first three document windows on a grid.
 That grid is read by the compositor only while `window_position=on`,

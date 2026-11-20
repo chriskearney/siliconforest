@@ -51,6 +51,15 @@ static double sf_one(id self, SEL _cmd)
     return 1.0;
 }
 
+/* Horizontal. A table reflow asks; the dock view does not implement it,
+   and the unrecognized selector aborts the document. */
+static long sf_layout_orientation(id self, SEL _cmd)
+{
+    (void)self;
+    (void)_cmd;
+    return 0;
+}
+
 static void sf_add(Class cls, const char *name, IMP imp, const char *types)
 {
     if (cls)
@@ -273,6 +282,8 @@ static void sf_layout_add(void)
     Class view = objc_lookUpClass("NSTextView");
     Class viewMeta = view ? object_getClass((id)view) : nil;
     sf_add(viewMeta, "_textHighlightMenuItems", (IMP)sf_menu_items, "@@:");
+    sf_add(view, "layoutOrientation", (IMP)sf_layout_orientation, "q@:");
+    sf_add(view, "setLayoutOrientation:", (IMP)sf_ignore_int, "v@:q");
     Class window = objc_lookUpClass("NSWindow");
     if (getenv("SF_TE_PLACE") && window) {
         Method anim = class_getInstanceMethod(window, sel_registerName("setFrame:display:animate:"));
