@@ -2,5 +2,7 @@ org.siliconforest.terminal
 com.apple.Terminal
 com.apple.ActivityMonitor
 org.mozilla.firefox
+org.videolan.vlc
+com.apple.QuickTimePlayerX
 com.apple.Preview
 com.apple.TextEdit
