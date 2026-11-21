@@ -14,7 +14,7 @@ let
   libsystemLegacy = import ./libsystem-default/build-libsystem-legacy-exports.nix;
   colorsync = import ./finch/ColorSync/build.nix;
   audiotoolbox = import ./finch/AudioToolbox/install.nix;
-  opengl = import ./firefox/perf/tools/term12/cgl.nix { with0303 = true; };
+  opengl = import ./firefox/perf/tools/term12/cgl.nix { with0303 = true; with0009 = true; };
   iosurface = import ./cocoa/iosurface.nix;
   surfaceSession = import ./firefox/surface-session.nix;
   corevideo = import ./cocoa/corevideo-displaylink.nix;

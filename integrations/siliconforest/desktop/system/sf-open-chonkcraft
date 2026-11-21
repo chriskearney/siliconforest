@@ -46,7 +46,6 @@ if [ "$GPU" != 0 ] && [ -x "$B/bin/surface-session" ] && [ -x /usr/libexec/iosur
 else
     unset SF_CHONK_GPU_PRESENT
 fi
-export DYLD_LIBRARY_PATH="$B/fwlib"
 export DYLD_FRAMEWORK_PATH="$B/fw"
 # A process named "java" shows up as "java" in SiliconForest's menu bar.
 # -Xdock:name is already set, but the desk keys off the executable name.
