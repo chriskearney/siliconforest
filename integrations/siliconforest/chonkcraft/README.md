@@ -38,8 +38,8 @@ into the window. The log line `CAOpenGLLayer ...: no OpenGL (libEGL) on this sys
 layer is not drawn` is QuartzCore saying it will not draw the layer itself in that mode;
 the fill does.
 
-`SF_CHONK_GPU_PRESENT=1` (set by `sf-open-chonkcraft` when asked for, off by default) shows
-Java's frames as GPU buffers instead: the launcher runs the game under a private `iosurfaced`
+By default `sf-open-chonkcraft` shows Java's frames as GPU buffers instead
+(`SF_CHONK_GPU_PRESENT=1`, the default; `SF_CHONK_GPU_PRESENT=0` forces the CPU layer path): the launcher runs the game under a private `iosurfaced`
 (`$B/bin/surface-session`, the one Firefox's launcher uses, broker
 `org.siliconforest.iosurfaced.sffx.chonkcraft.<pid>`) with `SFFX_GPU_PRESENT=1` and
 `SFFX_IOSURFACE_GPU=1`. On each `-setNeedsDisplay` the fill has Java draw as before, copies
