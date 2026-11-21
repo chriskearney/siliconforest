@@ -13,7 +13,7 @@ let
     cd tree
     for p in ${./patches/0230-iosurface-private-standalone-broker.patch} ${./patches/0231-iosurface-opt-in-dmabuf-fileport-storage.patch} \
         ${./patches/0232-iosurface-nv12-gpu-planes-and-local-use-count.patch} ${./patches/0233-iosurface-lookup-never-revives-a-finalizing-surface.patch} \
-        ${./patches/0151-iosurface-libdrm-loaded-on-first-gpu-surface.patch}; do
+        ${./patches/0151-iosurface-libdrm-loaded-on-first-gpu-surface.patch} ${./patches/0234-iosurface-create-property-gpu-storage.patch}; do
       patch -p1 --no-backup-if-mismatch < $p
     done
     cp -r src/Frameworks/IOSurface $out

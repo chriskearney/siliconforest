@@ -459,6 +459,8 @@
 #         through its next drawing (white rows below each of Onyx2D's four bands). SF_WS_PACE_HOLD=0: as before
 #   0376w WindowServer (bake-in step 4): SF_WS_PACE_PRESENTS is default on (SF_WS_PACE_PRESENTS=0 turns it off), with
 #         0375w's hold-copy and 0156w's 100 ms missing-callback guard active
+#   0377w WindowServer (bake-in step 6): sfGPUFrameCreate passes SFIOSurfaceGPUStorage=1 so GPU output frames get
+#         dma-buf storage without requiring global SFFX_IOSURFACE_GPU=1
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
@@ -889,6 +891,7 @@ let
     ./patches/0333w-windowserver-changed-rows-found-in-one-vector-pass.patch
     ./patches/0375w-windowserver-paced-present-copies-the-backing-store-at-the-flush.patch
     ./patches/0376w-windowserver-pace-presents-default-on.patch
+    ./patches/0377w-windowserver-gpu-frame-requests-gpu-storage.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" windowserverPatches;
   # (IOSURF) VLC's private copy only: the system's patches and the opt-in cadence hold (SF_WS_CADENCE)

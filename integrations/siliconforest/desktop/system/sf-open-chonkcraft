@@ -33,16 +33,18 @@ export SFLayerRendering=0
 export SF_CHONK_CPU_LAYER=1
 export CHONKCRAFT_ASSET_PACK="$PACK"
 # Java's frames go to the screen as GPU buffers instead of a read back (fills.py), by default:
-# IOSurfaces with dma-buf storage from a private iosurfaced for this game only (surface-session, as Firefox's
-# launcher does), registered with WindowServer's GPU presenter. SF_CHONK_GPU_PRESENT=0: the CPU layer path.
-# The fill falls back to the CPU path by itself when the GPU path fails; so does this script when the private
-# broker does not start (or surface-session or iosurfaced is missing).
+# IOSurfaces with per-surface dma-buf storage (SFIOSurfaceGPUStorage, bake-in step 6) served by
+# the canonical org.siliconforest.iosurfaced broker, registered with WindowServer's GPU presenter.
+# SF_CHONK_GPU_PRESENT=0: CPU layer path. SF_CHONK_PRIVATE_IOSURFACED=1: private surface-session fallback.
 GPU=${SF_CHONK_GPU_PRESENT:-1}
 SESSION=
-if [ "$GPU" != 0 ] && [ -x "$B/bin/surface-session" ] && [ -x /usr/libexec/iosurfaced ]; then
-    export SF_CHONK_GPU_PRESENT="$GPU" SFFX_GPU_PRESENT=1 SFFX_IOSURFACE_GPU=1
-    export SFFX_IOSURFACE_SERVICE="org.siliconforest.iosurfaced.sffx.chonkcraft.$$"
-    SESSION="$B/bin/surface-session"
+if [ "$GPU" != 0 ]; then
+    export SF_CHONK_GPU_PRESENT="$GPU" SFFX_GPU_PRESENT=1
+    if [ "${SF_CHONK_PRIVATE_IOSURFACED:-0}" = 1 ] && [ -x "$B/bin/surface-session" ] && [ -x /usr/libexec/iosurfaced ]; then
+        export SFFX_IOSURFACE_GPU=1
+        export SFFX_IOSURFACE_SERVICE="org.siliconforest.iosurfaced.sffx.chonkcraft.$$"
+        SESSION="$B/bin/surface-session"
+    fi
 else
     unset SF_CHONK_GPU_PRESENT
 fi

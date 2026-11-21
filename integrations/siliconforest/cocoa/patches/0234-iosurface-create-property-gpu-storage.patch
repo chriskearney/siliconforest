@@ -1,0 +1,41 @@
+--- a/src/Frameworks/IOSurface/IOSurface.c	2026-11-21 15:41:19.596833128 -0800
++++ b/src/Frameworks/IOSurface/IOSurface.c	2026-11-21 15:41:19.614072077 -0800
+@@ -299,9 +299,19 @@
+         h->reserved==GPU_HEADER_TAG&&h->dataOffset==GPU_HEADER_SIZE&&
+         validGPULayout(h)&&h->allocSize<=size-GPU_HEADER_SIZE;
+ }
+-static int allocateGPU(IOSurfaceRef s,struct shared_header *h) {
++/* (0234, bake-in step 6) Per-surface GPU storage via create properties
++ * (SFIOSurfaceGPUStorage or IOSurfaceOpenGLTextureCompatibility), so canonical
++ * org.siliconforest.iosurfaced serves GPU surfaces on demand without global
++ * SFFX_IOSURFACE_GPU=1. SFFX_IOSURFACE_GPU=0 disables; =1 stays accepted. */
++static int wantGPUStorage(CFDictionaryRef properties) {
+     const char *enabled=getenv("SFFX_IOSURFACE_GPU");
+-    if(!enabled||strcmp(enabled,"1")||!validGPULayout(h))
++    if(enabled&&!strcmp(enabled,"0"))return 0;
++    if(enabled&&!strcmp(enabled,"1"))return 1;
++    return flag(properties,CFSTR("SFIOSurfaceGPUStorage"))||
++           flag(properties,CFSTR("IOSurfaceOpenGLTextureCompatibility"));
++}
++static int allocateGPU(IOSurfaceRef s,struct shared_header *h,CFDictionaryRef properties) {
++    if(!wantGPUStorage(properties)||!validGPULayout(h))
+         return 0;
+     size_t size=(GPU_HEADER_SIZE+h->allocSize+GPU_HEADER_SIZE-1)&~(size_t)(GPU_HEADER_SIZE-1);
+     int fd=gpuBufferFD(size);
+@@ -506,14 +516,14 @@
+         return NULL;
+     h.magic = HEADER_MAGIC, h.version = HEADER_VERSION, h.dataOffset = HEADER_SIZE;
+     h.global = flag(properties, kIOSurfaceIsGlobal);
+-    if(getenv("SFFX_IOSURFACE_GPU")&&
++    if(wantGPUStorage(properties)&&
+        (h.pixelFormat==0x34323076||h.pixelFormat==0x34323066)&&!validGPULayout(&h))
+         return NULL;
+ 
+ 
+     if (!(s = newSurface()))
+         return NULL;
+-    if(!allocateGPU(s,&h)) {
++    if(!allocateGPU(s,&h,properties)) {
+         size = roundPage(HEADER_SIZE + h.allocSize);
+         if (mach_make_memory_entry_64(mach_task_self(), &size, 0, MAP_MEM_NAMED_CREATE | VM_PROT_READ | VM_PROT_WRITE,
+                                       &s->entry, MACH_PORT_NULL) != KERN_SUCCESS) {

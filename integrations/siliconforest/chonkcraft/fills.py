@@ -422,9 +422,9 @@ static int sf_gpu_setup(void) {
     int mode = !strcmp(v, "verify") ? 2 : 1;
     const char *why = 0;
     const char *p = getenv("SFFX_GPU_PRESENT"), *s = getenv("SFFX_IOSURFACE_GPU");
+    const char *svc = getenv("SFFX_IOSURFACE_SERVICE");
     if (mode == 1 && (!p || strcmp(p, "1"))) why = "SFFX_GPU_PRESENT=1 not set";
-    else if (!s || strcmp(s, "1")) why = "SFFX_IOSURFACE_GPU=1 not set";
-    else if (!getenv("SFFX_IOSURFACE_SERVICE")) why = "no private iosurfaced (SFFX_IOSURFACE_SERVICE)";
+    else if (s && !strcmp(s, "0")) why = "SFFX_IOSURFACE_GPU=0 disabled";
     void *ios = why ? 0 : dlopen("/System/Library/Frameworks/IOSurface.framework/IOSurface", RTLD_LAZY);
     void *gl = why ? 0 : dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", RTLD_LAZY);
     void *cf = why ? 0 : dlopen("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", RTLD_LAZY);
@@ -461,7 +461,7 @@ static int sf_gpu_setup(void) {
     }
     if (why) { fprintf(stderr, "SF_CHONK GPU present off (%s): CPU layer path\n", why); return 0; }
     fprintf(stderr, "SF_CHONK GPU present %s: IOSurface ring of %d, broker %s\n", mode == 2 ? "VERIFY (CPU path still presents)" : "on",
-            SF_GPU_RING, getenv("SFFX_IOSURFACE_SERVICE"));
+            SF_GPU_RING, svc ? svc : "org.siliconforest.iosurfaced");
     return mode;
 }
 
@@ -504,9 +504,9 @@ static int sf_gpu_find_view(id layer) {
 static void *sf_gpu_surface(int w, int h) {
     void *d = sf_cf_dict(0, 0, sf_cf_kcb, sf_cf_vcb);
     if (!d) return 0;
-    const char *keys[] = { "IOSurfaceWidth", "IOSurfaceHeight", "IOSurfaceBytesPerElement", "IOSurfacePixelFormat" };
-    int values[] = { w, h, 4, 0x42475241 /* 'BGRA' */ };
-    for (int i = 0; i < 4; i++) {
+    const char *keys[] = { "IOSurfaceWidth", "IOSurfaceHeight", "IOSurfaceBytesPerElement", "IOSurfacePixelFormat", "SFIOSurfaceGPUStorage" };
+    int values[] = { w, h, 4, 0x42475241 /* 'BGRA' */, 1 };
+    for (int i = 0; i < 5; i++) {
         void *k = sf_cf_str(0, keys[i], 0x08000100), *n = sf_cf_num(0, 9 /* kCFNumberIntType */, &values[i]);
         if (k && n) sf_cf_dict_set(d, k, n);
         if (k) sf_cf_release(k);
