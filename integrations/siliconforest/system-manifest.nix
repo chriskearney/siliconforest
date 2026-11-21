@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
 # Top-level manifest of the SiliconForest system components and out-of-root recipes
-# folded into one tree on sf-integration (bake-in step 1).
+# folded into one tree on sf-integration (bake-in steps 1-3: launchers, system
+# AppKit/libFoundation/CT/CG/CF/Foundation, system libWindowServer 0333w+0375w).
 #
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link \
 #     integrations/siliconforest/system-manifest.nix -A <attr>
