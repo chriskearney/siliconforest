@@ -1,8 +1,8 @@
 diff --git a/crates/wm-darwin/src/pixels.rs b/crates/wm-darwin/src/pixels.rs
-index 2724b50..a8f8e83 100644
+index 2724b50..b4cb2d0 100644
 --- a/crates/wm-darwin/src/pixels.rs
 +++ b/crates/wm-darwin/src/pixels.rs
-@@ -109,6 +109,59 @@ pub fn shm_row_to_rgba(row: &mut [u8], xrgb: bool) {
+@@ -109,6 +109,41 @@ pub fn shm_row_to_rgba(row: &mut [u8], xrgb: bool) {
      }
  }
  
@@ -41,47 +41,16 @@ index 2724b50..a8f8e83 100644
 +    }
 +}
 +
-+/// CHONKPERF test switch: the fused row copy, unless `$XDG_RUNTIME_DIR/chonkperf-slowcopy` exists
-+/// (looked at once a second), so that one test session measures both.
-+fn fused_copy() -> bool {
-+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-+    static LOOKED: AtomicU64 = AtomicU64::new(u64::MAX);
-+    static ON: AtomicBool = AtomicBool::new(true);
-+    let second = START.get_or_init(std::time::Instant::now).elapsed().as_secs();
-+    if LOOKED.swap(second, Ordering::Relaxed) != second {
-+        let dir = std::env::var_os("XDG_RUNTIME_DIR").unwrap_or_else(|| "/private/var/run/gpu-desktop".into());
-+        let slow = std::path::Path::new(&dir).join("chonkperf-slowcopy").exists();
-+        if ON.swap(!slow, Ordering::Relaxed) == slow {
-+            eprintln!("WMSHM row copy {}", if slow { "copy then convert (daily)" } else { "fused (CHONKPERF)" });
-+        }
-+    }
-+    ON.load(Ordering::Relaxed)
-+}
-+
  /// Row-wise copy of `rects` (image coordinates) from a client pool into the
  /// matching rows of an owned RGBA image. Each row segment is first copied out
  /// of client memory in one block and only then interpreted, so a client that
-@@ -126,6 +179,7 @@ pub unsafe fn copy_shm_rows(
-     let width = layout.width as usize;
-     assert_eq!(dst.len(), width * layout.height as usize * 4, "image size mismatch");
-     let mut copied = 0;
-+    let fused = fused_copy();
-     for rect in rects {
-         let r = rect.intersect(layout.bounds());
-         if r.is_empty() {
-@@ -137,8 +191,12 @@ pub unsafe fn copy_shm_rows(
+@@ -137,8 +172,7 @@ pub unsafe fn copy_shm_rows(
              let source = layout.offset + y * layout.stride + x0 * 4;
              let row = &mut dst[(y * width + x0) * 4..][..bytes];
              // No Rust reference to client memory is formed; Smithay contains SIGBUS.
 -            unsafe { std::ptr::copy_nonoverlapping(ptr.add(source), row.as_mut_ptr(), bytes) };
 -            shm_row_to_rgba(row, layout.xrgb);
-+            if fused {
-+                unsafe { copy_row_to_rgba(ptr.add(source), row, layout.xrgb) };
-+            } else {
-+                unsafe { std::ptr::copy_nonoverlapping(ptr.add(source), row.as_mut_ptr(), bytes) };
-+                shm_row_to_rgba(row, layout.xrgb);
-+            }
++            unsafe { copy_row_to_rgba(ptr.add(source), row, layout.xrgb) };
          }
          copied += r.area();
      }
