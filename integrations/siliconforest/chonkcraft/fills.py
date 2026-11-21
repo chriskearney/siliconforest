@@ -261,6 +261,10 @@ static void (*sf_gl_viewport)(int, int, int, int);
 static void (*sf_gl_read)(int, int, int, int, unsigned, unsigned, void *);
 static void (*sf_gl_store)(unsigned, int);
 static void (*sf_gl_finish)(void);
+static const unsigned char *(*sf_gl_string)(unsigned);
+static int sf_pack_invert = -1;  // Mesa's GL_MESA_pack_invert: rows read back top first, no flip copy
+static id sf_cpu_dirty;          // (CHONKPERF) the layer whose new frame waits for the window's next display
+static id (*orig_glayer_contents)(id, SEL);
 static void *(*sf_cs_rgb)(void);
 static void *(*sf_dp_create)(void *, const void *, size_t, void (*)(void *, const void *, size_t));
 static void *(*sf_img_create)(size_t, size_t, size_t, size_t, size_t, void *, unsigned, void *, const double *, bool, int);
@@ -287,13 +291,24 @@ static void sf_cpu_render(id self) {
     sf_gl_viewport(0, 0, w, h);
     ((void (*)(id, SEL, void *, void *, double, const void *))msg)(self, sel("drawInCGLContext:pixelFormat:forLayerTime:displayTime:"), sf_cpu_ctx, sf_cpu_pf, 0.0, 0);
     sf_cgl_set_current(sf_cpu_ctx);
-    sf_gl_finish();
+    if (sf_pack_invert < 0) {
+        const char *ext = sf_gl_string ? (const char *)sf_gl_string(0x1F03 /* GL_EXTENSIONS */) : 0;
+        sf_pack_invert = ext && strstr(ext, "GL_MESA_pack_invert") && !getenv("SF_CHONK_FLIP_COPY");
+        fprintf(stderr, "SF_CHONK readback rows %s\n", sf_pack_invert ? "inverted by Mesa (GL_MESA_pack_invert)" : "flipped by a copy");
+    }
     size_t row = (size_t)w * 4;
-    unsigned char *px = malloc(row * h), *fl = malloc(row * h);
-    if (px && fl) {
+    // (CHONKPERF) glReadPixels waits for the drawing itself: no glFinish before it
+    unsigned char *px = sf_pack_invert ? 0 : malloc(row * h), *fl = malloc(row * h);
+    if ((px || sf_pack_invert) && fl) {
         sf_gl_store(0x0D05 /* GL_PACK_ALIGNMENT */, 1);
-        sf_gl_read(0, 0, w, h, 0x80E1 /* GL_BGRA */, 0x1401 /* GL_UNSIGNED_BYTE */, px);
-        for (int y = 0; y < h; y++) memcpy(fl + (size_t)y * row, px + (size_t)(h - 1 - y) * row, row);
+        if (sf_pack_invert) {
+            sf_gl_store(0x8758 /* GL_PACK_INVERT_MESA */, 1);
+            sf_gl_read(0, 0, w, h, 0x80E1 /* GL_BGRA */, 0x1401 /* GL_UNSIGNED_BYTE */, fl);
+            sf_gl_store(0x8758 /* GL_PACK_INVERT_MESA */, 0);
+        } else {
+            sf_gl_read(0, 0, w, h, 0x80E1 /* GL_BGRA */, 0x1401 /* GL_UNSIGNED_BYTE */, px);
+            for (int y = 0; y < h; y++) memcpy(fl + (size_t)y * row, px + (size_t)(h - 1 - y) * row, row);
+        }
         void *dp = sf_dp_create(0, fl, row * h, sf_free_pixels);
         void *cs = sf_cs_rgb();
         void *img = sf_img_create(w, h, 8, 32, row, cs, 2 /* PremultipliedFirst */ | (2 << 12) /* 32Little */, dp, 0, 0, 0);
@@ -304,9 +319,36 @@ static void sf_cpu_render(id self) {
     free(px); free(fl);
     sf_cgl_set_current(previous);
 }
+/* (CHONKPERF) Java asks for a display at every frame it draws (60 a second); the window shows about half of them.
+ * A new frame now only marks the layer: it is drawn and read back when AppKit draws the window and asks the layer
+ * for its contents, so only the frame about to be presented is read back. SF_CHONK_EAGER_READBACK=1: as before,
+ * every frame read back when Java asks. */
+static int sf_eager_readback(void) {
+    static int on = -1;
+    if (on < 0) on = getenv("SF_CHONK_EAGER_READBACK") != 0 || !orig_glayer_contents;
+    return on;
+}
 static void sf_glayer_needs_display(id self, SEL c) {
+    if (sf_eager_readback()) {
+        orig_glayer_needs_display(self, c);
+        sf_cpu_render(self);
+        return;
+    }
+    if (sf_cpu_dirty && sf_cpu_dirty != self) {  // another layer's frame not taken yet: read it now
+        id other = sf_cpu_dirty;
+        sf_cpu_dirty = 0;
+        sf_cpu_render(other);
+    }
+    sf_cpu_dirty = self;
     orig_glayer_needs_display(self, c);
-    sf_cpu_render(self);
+}
+int pthread_main_np(void);
+static id sf_glayer_contents(id self, SEL c) {
+    if (sf_cpu_dirty == self && pthread_main_np()) {  // the GL work stays on the main thread, as before
+        sf_cpu_dirty = 0;
+        sf_cpu_render(self);
+    }
+    return orig_glayer_contents(self, c);
 }
 // SF_CHONK_TRACE: each window frame asked for, with the window's limits.
 static void (*orig_win_set_frame)(id, SEL, sf_rect, signed char, signed char, signed char);
@@ -415,6 +457,7 @@ __attribute__((constructor)) static void add_methods(void) {
         sf_gl_read = (void (*)(int, int, int, int, unsigned, unsigned, void *))dlsym(gl, "glReadPixels");
         sf_gl_store = (void (*)(unsigned, int))dlsym(gl, "glPixelStorei");
         sf_gl_finish = (void (*)(void))dlsym(gl, "glFinish");
+        sf_gl_string = (const unsigned char *(*)(unsigned))dlsym(gl, "glGetString");
         sf_cs_rgb = cg ? (void *(*)(void))dlsym(cg, "CGColorSpaceCreateDeviceRGB") : 0;
         sf_dp_create = cg ? (void *(*)(void *, const void *, size_t, void (*)(void *, const void *, size_t)))dlsym(cg, "CGDataProviderCreateWithData") : 0;
         sf_img_create = cg ? (void *(*)(size_t, size_t, size_t, size_t, size_t, void *, unsigned, void *, const double *, bool, int))dlsym(cg, "CGImageCreate") : 0;
@@ -427,7 +470,18 @@ __attribute__((constructor)) static void add_methods(void) {
             orig_glayer_needs_display = (void (*)(id, SEL))get_imp(m);
             if (!add(glayer, sel("setNeedsDisplay"), (void *)sf_glayer_needs_display, "v@:"))
                 set_imp(m, (void *)sf_glayer_needs_display);
-            fprintf(stderr, "SF_CHONK CPU layer path on\n");
+            void *mc = getenv("SF_CHONK_EAGER_READBACK") ? 0 : inst_method(glayer, sel("contents"));
+            if (mc) {
+                orig_glayer_contents = (id (*)(id, SEL))get_imp(mc);
+                if (!add(glayer, sel("contents"), (void *)sf_glayer_contents, "@@:"))
+                    set_imp(mc, (void *)sf_glayer_contents);
+            }
+            /* (CHONKPERF) the window presents once per frame callback, the newest backing store as soon as the
+             * callback comes, so the frame drawn meanwhile reaches the next refresh (WindowServer's TERM9 pacing,
+             * read at its first present); SF_WS_PACE_PRESENTS=0 keeps every flush committed at once */
+            setenv("SF_WS_PACE_PRESENTS", "1", 0);
+            fprintf(stderr, "SF_CHONK CPU layer path on: readback %s, presents paced %s\n", mc ? "at display" : "every frame",
+                    getenv("SF_WS_PACE_PRESENTS"));
         }
     }
     if (getenv("SF_CHONK_TRACE")) {
