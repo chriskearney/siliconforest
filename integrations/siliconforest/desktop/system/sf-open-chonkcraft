@@ -26,7 +26,6 @@ export PATH="/usr/bin:/bin"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/private/var/run/gpu-desktop}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export LANG="${LANG:-en_US.UTF-8}"
-export SF_METAL_ENABLE_REAL_DEVICE=0
 # Java2D on OpenGL (CGL on Mesa); the fill in the runtime draws its layer
 # (see integrations/siliconforest/chonkcraft/fills.py)
 export SEVEN_JAVA2D_PIPELINE=opengl

@@ -23,7 +23,6 @@ export LOGNAME=root
 export PATH="/usr/bin:/bin"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/private/var/run/gpu-desktop}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
-export SF_METAL_ENABLE_REAL_DEVICE=0
 export LANG="${LANG:-en_US.UTF-8}"
 export DYLD_FRAMEWORK_PATH="$R/Frameworks:$P/prefix/System/Library/PrivateFrameworks:$P/prefix/System/Library/Frameworks"
 export DYLD_LIBRARY_PATH="$R/lib:$P/core:$P/prefix/usr/lib:$P/prefix/usr/lib/swift"
