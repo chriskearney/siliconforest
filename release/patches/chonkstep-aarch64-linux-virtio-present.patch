@@ -1,0 +1,107 @@
+Chonkstep: Present desktop frames on the VirtIO scanout
+
+Use the VirtIO transfer service when its kind matches. Keep the GOP fence path for IOGOPFramebuffer.
+
+--- a/crates/wm-darwin/src/presenter.rs
++++ b/crates/wm-darwin/src/presenter.rs
+@@ -239,8 +239,12 @@
+     use std::marker::PhantomData;
+     use std::rc::Rc;
++    const SFGOP_SERVICE_VIRTIO_TRANSFER: u32 = 2;
++
+     #[link(name = "SFGOP", kind = "static")]
+     unsafe extern "C" {
+         fn SFGOPOpen(fb: *mut RawFramebuffer) -> i32;
+         fn SFGOPClose(fb: *mut RawFramebuffer);
++        fn SFGOPGetServiceKind(fb: *const RawFramebuffer) -> u32;
++        fn SFGOPPresent(fb: *mut RawFramebuffer, x: u32, y: u32, width: u32, height: u32) -> i32;
+     }
+     // SiliconForest SFIOKitLib.h:92 / minimal IOKitLib.c:237. This is intentionally
+@@ -255,4 +259,5 @@
+         scanout: Scanout,
+         stats: Option<PresentStats>,
++        virtio_transfer: bool,
+         _single_thread: PhantomData<Rc<()>>,
+     }
+@@ -290,14 +295,21 @@
+                     return Err(format!("IOObjectConformsTo failed: {kr:#x}"));
+                 }
+-                if conforms == 0 {
+-                    return Err("native presenter supports only IOGOPFramebuffer; VirtIO present protocol is distinct".into());
++                let virtio_transfer = conforms == 0;
++                if virtio_transfer {
++                    let service_kind = unsafe { SFGOPGetServiceKind(&raw) };
++                    if service_kind != SFGOP_SERVICE_VIRTIO_TRANSFER {
++                        return Err("native presenter requires IOGOPFramebuffer or IOVirtIOGPU".into());
++                    }
+                 }
+-                Ok(())
++                Ok(virtio_transfer)
+             })();
+             // The mapping stays valid until SFGOPClose in Drop; Scanout holds
+             // only the address and is dropped with this object.
+-            let scanout = checked.and_then(|()| unsafe { Scanout::new(raw.address as usize as *mut u8, layout) });
+-            let scanout = match scanout {
+-                Ok(scanout) => scanout,
++            let scanout = checked.and_then(|virtio_transfer| {
++                let scanout = unsafe { Scanout::new(raw.address as usize as *mut u8, layout) }?;
++                Ok((scanout, virtio_transfer))
++            });
++            let (scanout, virtio_transfer) = match scanout {
++                Ok(mapping) => mapping,
+                 Err(error) => {
+                     unsafe { SFGOPClose(&mut raw) };
+@@ -310,4 +322,5 @@
+                 scanout,
+                 stats: None,
++                virtio_transfer,
+                 _single_thread: PhantomData,
+             })
+@@ -322,27 +335,37 @@
+         pub fn restore(&mut self, snapshot: &[u8]) -> Result<(), String> {
+             self.scanout.restore(snapshot)?;
+-            fence();
+-            Ok(())
++            self.finish_present()
+         }
+         pub fn size(&self) -> Size {
+             Size::new(self.layout.width, self.layout.height)
+         }
+-    }
+-    fn fence() {
+-        unsafe { std::arch::asm!("dsb oshst", options(nostack, preserves_flags)) };
++
++        fn finish_present(&mut self) -> Result<(), String> {
++            unsafe { std::arch::asm!("dsb oshst", options(nostack, preserves_flags)) };
++            if self.virtio_transfer {
++                let kr = unsafe {
++                    SFGOPPresent(&mut self.raw, 0, 0, self.layout.width, self.layout.height)
++                };
++                if kr != 0 {
++                    return Err(format!("SFGOPPresent failed: {kr:#x}"));
++                }
++            }
++            Ok(())
++        }
+     }
+     impl Presenter for Pdgop {
+         fn present(&mut self, frame: &tiny_skia::Pixmap) -> Result<(), String> {
+-            self.stats = Some(self.scanout.write_full_per_pixel(frame)?);
+-            fence();
+-            Ok(()) // store completion only: no vblank, panel, RPC or desktop claim
++            let stats = self.scanout.write_full_per_pixel(frame)?;
++            self.finish_present()?;
++            self.stats = Some(stats);
++            Ok(())
+         }
+         fn present_damage(&mut self, frame: &tiny_skia::Pixmap, damage: &[DRect]) -> Result<(), String> {
+             let stats = self.scanout.write_damage(frame, damage)?;
+             if stats.bytes_written != 0 {
+-                fence();
++                self.finish_present()?;
+             }
+             self.stats = Some(stats);
+-            Ok(()) // store completion only, as above
++            Ok(())
+         }
+         fn take_stats(&mut self) -> Option<PresentStats> {

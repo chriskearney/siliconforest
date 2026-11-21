@@ -99,6 +99,9 @@ let
           ./patches/parallels-13-virtio-net-msix.patch
           ./patches/parallels-14-bsd-autoname.patch
           ./patches/parallels-15-dhcp-build.patch
+          ./patches/parallels-17-gpu-backing-descriptors.patch
+          ./patches/parallels-18-gpu-backing-pages.patch
+          ./patches/parallels-19-gpu-msix.patch
         ];
       patchFlags = [ "-p1" "--fuzz=0" ];
     }

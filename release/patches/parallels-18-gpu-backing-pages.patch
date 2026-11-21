@@ -1,0 +1,33 @@
+VirtIO GPU: Back the primary scanout with whole pages
+
+diff --git a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
+index 3549d31..922376f 100644
+--- a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
++++ b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
+@@ -16,6 +16,7 @@
+ #include <IOKit/IOLib.h>
+ #include <IOKit/IOPlatformExpert.h>
+ #include <kern/thread_call.h>
++#include <mach/vm_param.h>
+ #include <sys/errno.h>
+ #include <sys/random.h>
+ 
+@@ -2115,7 +2116,8 @@ IOVirtIOGPU::start(IOService *provider)
+     fScanoutWidth = fWidth;
+     fScanoutHeight = fHeight;
+ 
+-    size_t fbSize = (size_t)fPitch * fHeight;
++    // The scanout uses pixel dimensions while its backing covers complete pages.
++    size_t fbSize = round_page((size_t)fPitch * fHeight);
+     fFbMem = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
+         kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous,
+         fbSize, 0xFFFFFFFFULL);
+@@ -2427,7 +2429,7 @@ IOVirtIOGPU::setDisplayMode(IODisplayModeID mode, IOIndex depth)
+     }
+ 
+     uint32_t pitch = width * 4;
+-    size_t bytes = (size_t)pitch * height;
++    size_t bytes = round_page((size_t)pitch * height);
+     IOBufferMemoryDescriptor *mem = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
+         kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous, bytes, 0xFFFFFFFFULL);
+ 

@@ -56,4 +56,12 @@ parallels-15-dhcp-build.patch is written for this repository (MIT) and changes t
 
 parallels-16-resolver-watch.patch is written for this repository (MIT) and changes the mDNSResponder POSIX daemon to follow resolver file updates in the base source. The files it changes keep their original notices.
 
+parallels-17-gpu-backing-descriptors.patch is written for this repository (MIT) and changes VirtIO GPU backing requests to use a separate descriptor in the base source. The files it changes keep their original notices.
+
+parallels-18-gpu-backing-pages.patch is written for this repository (MIT) and changes VirtIO GPU scanout backing to cover whole pages in the base source. The files it changes keep their original notices.
+
+parallels-19-gpu-msix.patch is written for this repository (MIT) and changes how VirtIO GPU completion interrupts map to MSI-X table entries in the base source. The files it changes keep their original notices.
+
+chonkstep-aarch64-linux-virtio-present.patch is written for this repository (MIT) and changes the presenter to use the VirtIO scanout in the Chonkstep base source. The files it changes keep their original notices.
+
 aarch64-darwin-host.patch is applied to the base source (upstream PureDarwin c713d8fb9b048a38e2242d67e29b9957ced8c495) when the build system is aarch64-darwin. It is the nix/pkgs/apple/icucore.nix and src/Kernel/fbsdkpi/fbsdkpi.cmake changes of upstream PureDarwin 9190470a6785afe9c88511eadfa6d8ac3e322954 on the renamed tree. That commit's changes to the Swift toolchain, mslc and the locale data are not taken here.
