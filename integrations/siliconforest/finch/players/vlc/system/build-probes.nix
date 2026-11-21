@@ -3,6 +3,7 @@
 # The probes of VLC's system install (../../../../../../docs/roadmap/issues/SF-AH-vlc.md, "Proposal"):
 #   usr/share/sf-test/sf-vlc-features-probe    what of the six steps the system in use has (dlopen only)
 #   usr/share/sf-test/sf-vlc-libsystem-probe   status 0 only with step 6's libSystem (the installer's proof)
+#   usr/share/sf-test/sf-bookmark-probe        status 0 only with a libFoundation that has NSURL bookmarks (step 7b)
 # (step 5's proof is the system tree's own sf-kvo-probe, whose twelfth check is the queued perform).
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-probes.nix
 let
@@ -23,5 +24,6 @@ in pkgs.runCommand "siliconforest-vlc-system-probes-arm64" { } ''
   LF="-fuse-ld=${p.native-ld}/bin/ld -nostdlib -L${p.libobjc-arm64}/usr/lib -L${p.coreFoundation-arm64}/usr/lib -Wl,-platform_version,macos,26.5,26.5"
   $CC $CF ${./probe/sf-vlc-features-probe.m} $LF -Llib-now -lobjc -lFoundation -lSystem -o $out/usr/share/sf-test/sf-vlc-features-probe
   $CC $CF ${./probe/sf-vlc-libsystem-probe.c} $LF -Llib-legacy -lSystem -o $out/usr/share/sf-test/sf-vlc-libsystem-probe
+  $CC $CF ${./probe/sf-bookmark-probe.m} $LF -Llib-now -lobjc -lFoundation -lSystem -o $out/usr/share/sf-test/sf-bookmark-probe
   chmod 755 $out/usr/share/sf-test/*
 ''

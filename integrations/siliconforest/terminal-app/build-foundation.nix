@@ -68,6 +68,7 @@ in pd.packages.x86_64-linux."foundation-arm64".overrideAttrs (old: {
     ../cocoa/patches/0355-foundation-file-set-locale-names.patch
     ../cocoa/patches/0359-foundation-error-recovery-attempter.patch
     ../cocoa/patches/0361-foundation-intersection-of-unbounded-rects.patch
+    # NSURL bookmark data (QuickTime Player's Open Recent; QTP2, branch media-quicktime: cocoa 0365)
     ../cocoa/patches/0365-foundation-url-bookmarks.patch
   ];
   patchFlags = [ "-p4" ];
