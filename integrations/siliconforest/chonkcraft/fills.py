@@ -886,12 +886,11 @@ __attribute__((constructor)) static void add_methods(void) {
                 if (!add(glayer, sel("contents"), (void *)sf_glayer_contents, "@@:"))
                     set_imp(mc, (void *)sf_glayer_contents);
             }
-            /* (CHONKPERF) the window presents once per frame callback, the newest backing store as soon as the
-             * callback comes, so the frame drawn meanwhile reaches the next refresh (WindowServer's TERM9 pacing,
-             * read at its first present); SF_WS_PACE_PRESENTS=0 keeps every flush committed at once */
-            setenv("SF_WS_PACE_PRESENTS", "1", 0);
+            /* (bake-in step 4) SF_WS_PACE_PRESENTS is now default on in libWindowServer (0376w);
+             * SF_WS_PACE_PRESENTS=0 still disables pacing. */
+            const char *paced = getenv("SF_WS_PACE_PRESENTS");
             fprintf(stderr, "SF_CHONK CPU layer path on: readback %s, presents paced %s\n", mc ? "at display" : "every frame",
-                    getenv("SF_WS_PACE_PRESENTS"));
+                    paced ? paced : "1(default)");
             sf_gpu_mode = sf_gpu_setup();
         }
     }

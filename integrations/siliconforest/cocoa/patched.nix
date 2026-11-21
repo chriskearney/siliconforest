@@ -457,6 +457,8 @@
 #         backing store into a frame at the flush (AppKit has finished drawing then); the frame callback only attaches
 #         and commits that copy. Before, the callback copied the backing store while the main thread could be halfway
 #         through its next drawing (white rows below each of Onyx2D's four bands). SF_WS_PACE_HOLD=0: as before
+#   0376w WindowServer (bake-in step 4): SF_WS_PACE_PRESENTS is default on (SF_WS_PACE_PRESENTS=0 turns it off), with
+#         0375w's hold-copy and 0156w's 100 ms missing-callback guard active
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
@@ -886,6 +888,7 @@ let
     ./patches/0178w-windowserver-layers-presented-from-the-render-thread.patch
     ./patches/0333w-windowserver-changed-rows-found-in-one-vector-pass.patch
     ./patches/0375w-windowserver-paced-present-copies-the-backing-store-at-the-flush.patch
+    ./patches/0376w-windowserver-pace-presents-default-on.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" windowserverPatches;
   # (IOSURF) VLC's private copy only: the system's patches and the opt-in cadence hold (SF_WS_CADENCE)
