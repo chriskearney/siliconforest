@@ -10,7 +10,7 @@ SF=(ssh -o UserKnownHostsFile="$HOME/.ssh/known_hosts_m1_siliconforest" -o Globa
 M5=(ssh -o BatchMode=yes -o ConnectTimeout=10 chriskearney@100.115.210.75)
 VDM='sudo -n $HOME/maclab/macvdmtool/macvdmtool'
 log() { echo "$(date '+%F %T %Z') BAKEIN $*" | tee -a $H/work/bakein-$L.txt; }
-m1_alive() { timeout 25 "${SF[@]}" 'pgrep -x chonkstep-darwin-desktop' 2>/dev/null; }
+m1_alive() { timeout 25 "${SF[@]}" 'pgrep -x chonkstep-darwin-desktop.next || pgrep -x chonkstep-darwin-desktop' 2>/dev/null; }
 check() { d=$(m1_alive); if [ -z "$d" ]; then sleep 30; d=$(m1_alive); fi
   if [ -n "$d" ]; then log "after $1: M1 answers, desktop pid $d"; return 0; fi
   if timeout 25 "${SF[@]}" true 2>/dev/null; then log "after $1: M1 answers but NO desktop process: STOP (no reset)"; exit 20; fi
@@ -25,7 +25,7 @@ for p in $P; do
      PASSENV="APP=$p; $nc" CAP=200 bash $HERE/m1.sh $L-$p "bakein $L: $p launched once (observe mode: session log, captures, TERM)" $HERE/m1/obs-app.sh;;
   esac
   log "pass $p rc $?"; check $p
-  d1=$(timeout 25 "${SF[@]}" 'pgrep -x chonkstep-darwin-desktop' 2>/dev/null); [ -z "$D0" ] && D0=$d1
+  d1=$(timeout 25 "${SF[@]}" 'pgrep -x chonkstep-darwin-desktop.next || pgrep -x chonkstep-darwin-desktop' 2>/dev/null); [ -z "$D0" ] && D0=$d1
   if [ -n "$d1" ] && [ "$d1" != "$D0" ]; then log "after $p: the desktop process changed ($D0 -> $d1): it ended during the pass: STOP"; exit 22; fi
   sleep 5
 done

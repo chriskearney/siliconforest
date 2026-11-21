@@ -21,7 +21,7 @@ obs_metrics() { obs_since > $W/$T-log.txt
   say "log since mark: $(wc -l < $W/$T-log.txt) lines; WMPACING: $(grep -a WMPACING $W/$T-log.txt | tail -1 | cut -c1-200)"
   say "WMCOST lines $(grep -a -c WMCOST $W/$T-log.txt); WMDMABUF zero_copy=1 imports $(grep -a WMDMABUF $W/$T-log.txt | grep -c 'zero_copy=1'); WMSTALL lines $(grep -a -c WMSTALL $W/$T-log.txt) (max $(grep -a WMSTALL $W/$T-log.txt | sed -E 's/.*turn ([0-9.]+) ms.*/\1/' | sort -n | tail -1) ms)"
   _e=$(grep -a -i -E 'panic|fatal|abort|segfault|crash' $W/$T-log.txt | grep -v WMSTALL | head -3 | cut -c1-200); [ -n "$_e" ] && say "log mentions: $_e"; }
-desk_ok() { _p=$(pgrep -x chonkstep-darwin-desktop); [ -n "$_p" ] && [ "$_p" = "$DESK0" ] && [ -n "$(pgrep -x chonkstep-dock)" ]; }
-DESK0=$(pgrep -x chonkstep-darwin-desktop)   # the desktop at the start of this pass
+desk_ok() { _p=$(desk_pid); [ -n "$_p" ] && [ "$_p" = "$DESK0" ] && [ -n "$(pgrep -x chonkstep-dock)" ]; }
+DESK0=$(desk_pid)   # the desktop at the start of this pass
 # log-tail of a launcher log for the report
 ltail() { [ -e "$1" ] && tail -n ${2:-3} "$1" | tr '\n' '|' | cut -c1-300; }
