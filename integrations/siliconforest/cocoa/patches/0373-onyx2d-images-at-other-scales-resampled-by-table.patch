@@ -1,0 +1,165 @@
+--- a/src/Frameworks/Onyx2D/O2Context_builtin.m
++++ b/src/Frameworks/Onyx2D/O2Context_builtin.m
+@@ -1097,6 +1097,121 @@
+  * 8-bit RGB image of 32 bits a pixel in the surface's own byte order (B, G, R first in memory) with its alpha
+  * skipped (or premultiplied when the mode is copy), no mask or decode array, and a transform along the axes that keeps
+  * it within two pixels of its own size (rows either way up). O2_NO_IMAGE_FAST_PATH=1 turns it off (A/B). */
++/* (CHONK2, 0373) The same opaque image at another scale along the axes -- a window's picture made in points
++ * shown on a desk at 150 % (ChonkCraft's 1280x778 frame covers 1920x1167 pixels) -- is resampled here: each
++ * device pixel is the bilinear blend of the four source pixels around its centre, as the general path's
++ * resampler gives, but through a table of source columns and weights made once per row length and two
++ * channels at a time in a 32-bit word, each source row resampled across once for the two device rows that
++ * use it. The general path cost that frame about 27 ms (83 % of the main thread; the game ran at 34 frames a
++ * second). Same conditions as the copy above, and also a premultiplied image in the normal blend mode, blended
++ * over the surface (the layer ChonkCraft reads back from GL is one: kCGImageAlphaPremultipliedFirst); the
++ * interpolation none stays on the general path. O2_NO_IMAGE_SCALE_FAST_PATH=1 leaves scaled images to the
++ * general path (A/B). One thread, the drawing thread. */
++static int sfScaleDisabled(void){
++   static int disabled=-1;
++
++   if(disabled<0)
++    disabled=getenv("O2_NO_IMAGE_SCALE_FAST_PATH")!=NULL;
++   return disabled;
++}
++
++/* a and b blended, f/256 of b: red and blue, alpha and green, each pair as two 16-bit lanes */
++static inline uint32_t sfLerp8888(uint32_t a,uint32_t b,uint32_t f){
++   uint32_t g=256-f;
++   uint32_t rb=(((a&0x00FF00FFu)*g+(b&0x00FF00FFu)*f)>>8)&0x00FF00FFu;
++   uint32_t ag=(((a>>8)&0x00FF00FFu)*g+((b>>8)&0x00FF00FFu)*f)&0xFF00FF00u;
++
++   return rb|ag;
++}
++
++/* s, premultiplied, over d (the normal blend mode): s + d*(1-alpha of s); a lane that rounding takes past 255 stays at 255 */
++static inline uint32_t sfOver8888(uint32_t s,uint32_t d){
++   uint32_t a=s>>24;
++
++   if(a==255)
++    return s;
++   if(a==0 && s==0)
++    return d;
++
++   uint32_t k=256-(a+(a>>7));
++   uint32_t rb=(s&0x00FF00FFu)+((((d&0x00FF00FFu)*k)>>8)&0x00FF00FFu);
++   uint32_t ag=((s>>8)&0x00FF00FFu)+(((((d>>8)&0x00FF00FFu)*k)>>8)&0x00FF00FFu);
++   uint32_t m;
++
++   m=rb&0x01000100u; rb=(rb|(m-(m>>8)))&0x00FF00FFu;
++   m=ag&0x01000100u; ag=(ag|(m-(m>>8)))&0x00FF00FFu;
++   return rb|(ag<<8);
++}
++
++/* opaque: the alpha byte is skipped (set opaque); over: a premultiplied image in the normal blend mode, blended
++   over what the surface has; neither: a premultiplied image in the copy mode, its pixels as they are */
++static BOOL sfDrawImageScaled(const uint8_t *src,size_t srcRow,long width,long height,BOOL opaque,BOOL over,uint8_t *dst,size_t dstRow,
++                              long x0,long x1,long y0,long y1,O2AffineTransform inverse){
++   long      count=x1-x0;
++   long     *c0=malloc((size_t)count*sizeof(long)),*c1=malloc((size_t)count*sizeof(long));
++   uint16_t *cf=malloc((size_t)count*sizeof(uint16_t));
++   uint32_t *ha=malloc((size_t)count*4),*hb=malloc((size_t)count*4);
++   uint32_t  opaqueBits=opaque ? 0xFF000000u : 0;
++   long      ra=-1,rb=-1;   // the source rows ha and hb hold, resampled across
++
++   if(c0==NULL || c1==NULL || cf==NULL || ha==NULL || hb==NULL){
++    free(c0); free(c1); free(cf); free(ha); free(hb);
++    return NO;
++   }
++   for(long i=0;i<count;i++){
++    double   sx=inverse.a*(x0+i+0.5)+inverse.tx-0.5;
++    long     a=(long)floor(sx),b=a+1;
++    unsigned f=(unsigned)((sx-a)*256+0.5);
++
++    if(f>=256){ a=b; f=0; }
++    c0[i]=MAX(0,MIN(width-1,a));
++    c1[i]=MAX(0,MIN(width-1,b));
++    cf[i]=(uint16_t)f;
++   }
++   for(long y=y0;y<y1;y++){
++    double    sy=inverse.d*(y+0.5)+inverse.ty-0.5;
++    long      r0=(long)floor(sy),r1=r0+1;
++    uint32_t  fy=(uint32_t)((sy-r0)*256+0.5);
++    uint32_t *out=(uint32_t *)(dst+(size_t)y*dstRow)+x0;
++
++    if(fy>=256){ r0=r1; fy=0; }
++    r0=MAX(0,MIN(height-1,r0));
++    r1=MAX(0,MIN(height-1,r1));
++    for(int k=0;k<2;k++){
++     long r=k ? r1 : r0,other=k ? r0 : r1;
++
++     if(r==ra || r==rb)
++      continue;
++
++     uint32_t       *buf;
++     const uint32_t *line=(const uint32_t *)(src+(size_t)r*srcRow);
++
++     if(ra==other){ buf=hb; rb=r; } else { buf=ha; ra=r; }
++     for(long i=0;i<count;i++)
++      buf[i]=sfLerp8888(line[c0[i]],line[c1[i]],cf[i]);
++    }
++
++    const uint32_t *p0=(r0==ra) ? ha : hb,*p1=(r1==ra) ? ha : hb;
++
++    if(over){
++     if(fy==0)
++      for(long i=0;i<count;i++)
++       out[i]=sfOver8888(p0[i],out[i]);
++     else
++      for(long i=0;i<count;i++)
++       out[i]=sfOver8888(sfLerp8888(p0[i],p1[i],fy),out[i]);
++    }
++    else if(fy==0)
++     for(long i=0;i<count;i++)
++      out[i]=p0[i]|opaqueBits;
++    else
++     for(long i=0;i<count;i++)
++      out[i]=sfLerp8888(p0[i],p1[i],fy)|opaqueBits;
++   }
++   free(c0); free(c1); free(cf); free(ha); free(hb);
++   return YES;
++}
++
+ static const char *sfDrawImageAtDevicePixels(O2Context_builtin *self,O2Image *image,O2AffineTransform t){
+    static int disabled=-1;
+ 
+@@ -1121,8 +1236,10 @@
+ 
+    O2BitmapInfo info=O2ImageGetBitmapInfo(image),alpha=info&kO2BitmapAlphaInfoMask;
+    BOOL         opaque=(alpha==kO2ImageAlphaNoneSkipFirst);
++   // (0373) a premultiplied image in the normal blend mode, scaled: blended over the surface (a window's layer read back from GL)
++   BOOL         over=(!opaque && alpha==kO2ImageAlphaPremultipliedFirst && gState->_blendMode==kO2BlendModeNormal);
+ 
+-   if((info&kO2BitmapByteOrderMask)!=kO2BitmapByteOrder32Little || (!opaque && !(alpha==kO2ImageAlphaPremultipliedFirst && gState->_blendMode==kO2BlendModeCopy)))
++   if((info&kO2BitmapByteOrderMask)!=kO2BitmapByteOrder32Little || (!opaque && !over && !(alpha==kO2ImageAlphaPremultipliedFirst && gState->_blendMode==kO2BlendModeCopy)))
+     return "image layout";
+ 
+    O2BitmapInfo sinfo=O2ImageGetBitmapInfo((O2ImageRef)surface),salpha=sinfo&kO2BitmapAlphaInfoMask;
+@@ -1143,8 +1260,14 @@
+ 
+    if(width<=0 || height<=0)
+     return NULL;
+-   if(fabs(t.a-1)*width>2.0 || fabs(fabs(t.d)-1)*height>2.0)
++   /* (0373) further from its own size it is resampled here, along the axes, when the scale is within 1/4 and 8 and
++      the interpolation asked is not none (none is the general path's nearest source pixel, left to it) */
++   BOOL scaled=(fabs(t.a-1)*width>2.0 || fabs(fabs(t.d)-1)*height>2.0);
++
++   if(scaled && (sfScaleDisabled() || gState->_interpolationQuality==kO2InterpolationNone || t.a<0.25 || t.a>8 || fabs(t.d)<0.25 || fabs(t.d)>8))
+     return "not at its own size";
++   if(over && !scaled)
++    return "image layout";
+    if(!isfinite(t.tx) || !isfinite(t.ty) || fabs(t.tx)>1e7 || fabs(t.ty)>1e7)
+     return "far off";
+ 
+@@ -1174,6 +1297,12 @@
+     return NULL;
+ 
+    long count=x1-x0;
++
++   if(scaled){
++    if(!sfDrawImageScaled(src,srcRow,width,height,opaque,over,dst,dstRow,x0,x1,y0,y1,inverse))
++     return "memory";
++    return NULL;
++   }
+    long column=(long)floor(inverse.a*(x0+0.5)+inverse.tx);
+    /* across, where the source drifts less than half a pixel from the destination over the row one offset serves it;
+       else each destination column takes its own source column (a window's full-screen frame of 1707 points over

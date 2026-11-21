@@ -664,6 +664,10 @@
 #         its own size (within two pixels) is copied a row at a time instead of resampled and blended pixel by pixel
 #         (QuickTime Player's picture cost 150 ms a draw: two pictures a second); O2_NO_IMAGE_FAST_PATH=1 turns it off,
 #         O2_IMAGE_TRACE=1 says why an image was resampled
+#   0373  Onyx2D (CHONK2; every application, through the guarded install only): the same opaque image at another
+#         scale along the axes (1/4 to 8: a picture made in points on a desk at 150 %) is resampled bilinearly through
+#         a table of source columns and weights instead of pixel by pixel through the general path (ChonkCraft's
+#         1280x778 frame cost 27 ms a draw: 34 frames a second); O2_NO_IMAGE_SCALE_FAST_PATH=1 turns it off
 #   0009  Security: SecItemCopyMatching writes its result on every path and answers
 #         errSecItemNotFound when nothing was found (Firefox crashed on the unwritten result)
 #   (0007 and 0008 are libSystem's sandbox profile compiler: ./build-libsystem-cocoa.nix)
@@ -844,6 +848,7 @@ let
     ./patches/0146-onyx2d-glyph-cache-knows-a-reused-face.patch
     ./patches/0154-onyx2d-font-files-mapped-once.patch
     ./patches/0363-onyx2d-images-at-device-pixels-copied.patch
+    ./patches/0373-onyx2d-images-at-other-scales-resampled-by-table.patch
   ];
   # upstream's framework recipes name no optimisation level: their compile lines get one here
   optimised = d: d.overrideAttrs (old: {
