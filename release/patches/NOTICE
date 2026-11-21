@@ -1,0 +1,49 @@
+The three cocoa-aarch64-linux-*.patch files are applied by release/base-tree.nix to the Cocoa source (upstream PureDarwin e7aa00a60f0b56ef35aa24252e81467787bf71ea, fetched separately) when the build system is aarch64-linux. No file of that source is copied here; the patched files keep their own copyright and licence notices.
+
+cocoa-aarch64-linux-mig-sdk.patch is upstream PureDarwin 042dfbc0f7088dc099823a6767c30bd082ffe5ce (nix/pkgs/toolchain/apple-sdk-pinned.nix) on the renamed tree. PureDarwin's own files are BSD-2-Clause, "Copyright (c) 2007-Present The PureDarwin Project. All rights reserved." (LICENSES/third-party/PureDarwin-LICENSE.txt).
+
+cocoa-aarch64-linux-cctools.patch is upstream PureDarwin 26d109dd822adfddb2c7c937dc9ee90e0fa20cec (tools/cctools/include). It adds defined(__aarch64__) to architecture checks in 26 files: 25 headers and one .defs file. Twenty-two contain explicit Apple Public Source License 2.0 notices (LICENSES/APSL-2.0.txt), three have Apple copyright notices without an explicit APSL declaration in their file headers, and foreign/machine/limits.h identifies itself as public domain. The patch changes none of those original notices.
+
+cocoa-aarch64-linux-swift.patch is written for this repository (MIT). It serves the purpose of upstream PureDarwin 03270b7957457cdc9f94f79460dda68357fd3d52 (nix/pkgs/toolchain/swift-toolchain.nix) and takes the Swift archive from sources.lock.
+
+aarch64-linux-xnu-headers.patch is written for this repository (MIT) and patches the base source's build.nix.
+
+The xnu-loader patches apply to the loader pinned in sources.lock at github:PureDarwin/xnu-loader/2e0ccce2bd88eec1194e78eaeb46a91601478555.
+
+xnu-loader-01-acpi-tables.patch is written for this repository (MIT) and adds early ACPI table validation and its test to the pinned loader source.
+
+xnu-loader-02-acpi-console.patch is written for this repository (MIT) and changes early console selection to use SPCR in the pinned loader source. The files it changes keep their original notices.
+
+xnu-loader-03-acpi-platform.patch is written for this repository (MIT) and changes how ACPI platform data is published in the device tree in the pinned loader source. The files it changes keep their original notices.
+
+xnu-loader-04-efi-conventional-memory.patch is written for this repository (MIT) and changes where the ACPI boot stages the kernel and boot data in the pinned loader source. The files it changes keep their original notices.
+
+xnu-loader-05-acpi-pci-resources.patch is written for this repository (MIT) and changes how ACPI PCI resources and the contained EFI bus range are validated and translated in the pinned loader source. The files it changes keep their original notices.
+
+xnu-loader-06-efi-pci-msi.patch is written for this repository (MIT) and changes how the EFI PCI host and GICv2m frame are published in the pinned loader source. The files it changes keep their original notices.
+
+xnu-loader-07-acpi-platform-ahci.patch is written for this repository (MIT) and adds a self-contained AHCI test. It changes how static DSDT resources produce a platform AHCI node in the pinned loader source. The files it changes keep their original notices.
+
+parallels-01-sbsa-uart.patch is written for this repository (MIT) and changes SBSA UART setup to preserve firmware configuration in the base source. The files it changes keep their original notices.
+
+parallels-02-firmware-platform.patch is written for this repository (MIT) and changes QEMU platform setup to require a firmware marker in the base source. The files it changes keep their original notices.
+
+parallels-03-gic-interface.patch is written for this repository (MIT) and changes GIC interface selection to check the distributor ID in the base source. The files it changes keep their original notices.
+
+parallels-04-gic-pending-signal.patch is written for this repository (MIT) and changes GIC interrupt group selection to probe the CPU's pending signal in the base source. The files it changes keep their original notices.
+
+parallels-05-firmware-ecam.patch is written for this repository (MIT) and changes the ARM PCI bridge to use firmware ECAM and address windows in the base source. The files it changes keep their original notices.
+
+parallels-06-ehci-interrupt.patch is written for this repository (MIT) and changes EHCI attachment when the PCI bridge supplies no interrupt route in the base source. The files it changes keep their original notices.
+
+parallels-07-gicv2m-msi.patch is written for this repository (MIT) and adds the shared MSI frame interface. It changes ARM platform and PCI interrupt handling to route MSI and MSI-X through GICv2m in the base source. The files it changes keep their original notices.
+
+parallels-08-ecam-offsets.patch is written for this repository (MIT) and changes firmware ECAM addressing to retain the extended register offset in the base source. The files it changes keep their original notices.
+
+parallels-09-bridge-bar-windows.patch is written for this repository (MIT) and changes firmware BAR lookup to use the host bridge windows in the base source. The files it changes keep their original notices.
+
+parallels-10-platform-ahci.patch is written for this repository (MIT) and changes AHCI matching and resource setup for controllers described by the platform in the base source. The files it changes keep their original notices.
+
+parallels-11-pci-io-apertures.patch is written for this repository (MIT) and changes PCI I/O range construction for firmware host apertures in the base source. The files it changes keep their original notices.
+
+aarch64-darwin-host.patch is applied to the base source (upstream PureDarwin c713d8fb9b048a38e2242d67e29b9957ced8c495) when the build system is aarch64-darwin. It is the nix/pkgs/apple/icucore.nix and src/Kernel/fbsdkpi/fbsdkpi.cmake changes of upstream PureDarwin 9190470a6785afe9c88511eadfa6d8ac3e322954 on the renamed tree. That commit's changes to the Swift toolchain, mslc and the locale data are not taken here.

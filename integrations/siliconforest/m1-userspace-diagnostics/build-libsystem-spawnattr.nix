@@ -3,7 +3,7 @@
 # attribute struct before setting its defaults. Source-only until reviewed.
 let
   pd = (import ../rebase/pd.nix).pd;
-in pd.packages.x86_64-linux.libsystem-arm64.overrideAttrs (old: {
+in pd.packages.${pd.buildSystem}.libsystem-arm64.overrideAttrs (old: {
   pname = "siliconforest-libsystem-spawnattr";
   patches = (old.patches or []) ++ [ ./fix-root/vm-page-size-symbol.patch ./fix-spawnattr/posix-spawnattr-init-zero.patch ];
 })

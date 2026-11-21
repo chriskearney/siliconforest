@@ -2,10 +2,10 @@
 # the Mesa source the M1's Linux runs (omacom/mesa integration/aurora 147a62f6190, 26.3.0-devel).
 let
   pd = (import ../rebase/pd.nix).pd;
-  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
+  pkgs = pd.buildPkgs;
 in rec {
   inherit pd pkgs;
-  p = pd.packages.x86_64-linux;
+  p = pd.packages.${pd.buildSystem};
   mesaRev = (builtins.fromJSON (builtins.readFile ../../../sources.lock)).auxiliarySources.mesa-gl.revision;
   mesaVersion = "26.3.0-devel-${builtins.substring 0 11 mesaRev}";
   mesaSrc = (import ../../../release/fetch.nix { pkgs = pkgs; }) "mesa-gl";
