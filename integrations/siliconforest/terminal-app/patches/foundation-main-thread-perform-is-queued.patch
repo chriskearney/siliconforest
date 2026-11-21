@@ -1,0 +1,20 @@
+--- a/src/Frameworks/Foundation/Runtime.subproj/NSThread.m
++++ b/src/Frameworks/Foundation/Runtime.subproj/NSThread.m
+@@ -325,9 +325,14 @@
+ 
+     CFRunLoopRef main = CFRunLoopGetMain();
+ 
+-    /* Already there, or no main run loop to hop to: just call it. Hopping in
+-     * the first case would deadlock a waitUntilDone:YES against itself. */
+-    if (main == NULL || [NSThread isMainThread]) {
++    /* No main run loop to hop to, or already there and asked to wait: just
++     * call it (hopping would deadlock a waitUntilDone:YES against itself).
++     * Asked not to wait, the message is queued even on the main thread, as on
++     * macOS: the caller goes on first. VLC's playlist adds an item while it
++     * holds the playlist's lock and sends itself the update this way; called
++     * at once, the update took the same lock and the interface stopped (its
++     * Open dialog never started a file). */
++    if (main == NULL || (wait && [NSThread isMainThread])) {
+         ((void (*)(id, SEL, id))objc_msgSend)(self, selector, object);
+         return;
+     }

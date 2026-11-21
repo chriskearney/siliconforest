@@ -1,0 +1,9 @@
+{
+  "prefix": "/private/var/db/sfvlc",
+  "bundle": "/private/var/db/sfvlc/vendor/VLC.app",
+  "arguments": ["--glconv=any"],
+  "wrapper": "/private/var/db/sfvlc/iosurf/wrap",
+  "arguments_without_wrapper": ["--glconv=none"],
+  "hardware_decode": true,
+  "notes": "hardware_decode: the launcher gives /dev/sfavd group staff, mode 0660, until reboot, so VLC's VideoToolbox decoder reaches the M1's decoder. wrapper (IOSURF): /private/var/db/sfvlc/iosurf/wrap puts first a VideoToolbox that gives VLC IOSurface-backed pictures (its IOSurface path to OpenGL was green) and QuartzCore 0331 (CAOpenGLLayer's picture as a GPU IOSurface), and sets the GPU presentation environment; with it, --glconv=any uses that path (no CPU copy of each picture). Without the wrapper: --glconv=none, VLC copies the decoded pictures into its textures itself."
+}

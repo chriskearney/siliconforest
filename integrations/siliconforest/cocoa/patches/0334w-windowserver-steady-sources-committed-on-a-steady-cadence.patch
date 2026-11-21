@@ -1,0 +1,128 @@
+--- a/src/Frameworks/WindowServer/rpc_wayland.c
++++ b/src/Frameworks/WindowServer/rpc_wayland.c
+@@ -5075,12 +5075,14 @@
+         wl_display_flush(ws.display);
+ }
+ 
++static void wsCadenceHold(int windowID);   // (IOSURF) SF_WS_CADENCE, below
+ // Private opt-in native-layer registration. Rectangles are physical top-down
+ // pixels, in both the source surface and the window backing store.
+ int _windowServerSFFXSetGPULayer(int windowID,uintptr_t key,void *surface,
+     double sx,double sy,double sw,double sh,double dx,double dy,double dw,double dh){
+     const char *enabled=getenv("SFFX_GPU_PRESENT");
+     if(!enabled||strcmp(enabled,"1")||!ensureConnected()||!ws.dmabuf)return 0;
++    if(!pthread_main_np())wsCadenceHold(windowID);   // (IOSURF) SF_WS_CADENCE
+     pthread_mutex_lock(&ws.pixelsLock);
+     struct wsWindow *window=windowForID(windowID);int good=0;
+     // (TERM10) a window the compositor shows as a popup or layer surface takes only shared-memory buffers: AppKit
+@@ -5107,6 +5109,7 @@
+     double sx,double sy,double sw,double sh,double dx,double dy,double dw,double dh,const int *damage){
+     const char *enabled=getenv("SFFX_GPU_PRESENT");
+     if(!enabled||strcmp(enabled,"1")||!ensureConnected()||!ws.dmabuf)return 0;
++    if(!pthread_main_np())wsCadenceHold(windowID);   // (IOSURF) SF_WS_CADENCE
+     pthread_mutex_lock(&ws.pixelsLock);
+     struct wsWindow *window=windowForID(windowID);int good=0;
+     if(window&&!sfGPURoleTakesDmabuf(window)){pthread_mutex_unlock(&ws.pixelsLock);return 0;}
+@@ -5136,9 +5139,94 @@
+  * a flush after a layer-only change presents it (AppKit drew nothing into the backing store), from that thread. Only
+  * a window shown already, flushed at its current size, as a toplevel, with the geometry serial AppKit worked its
+  * layers' geometry out under; else 0 and the main thread does this frame (its flush prepares what the window needs). */
++/* (IOSURF) SF_WS_CADENCE=1: a steady source's render-thread presents (a film's pictures) are committed on a steady cadence
++ * of the panel's refreshes. VLC's 30 fps pictures came on VLC's clock, whose phase against the refreshes drifts; while
++ * their commits reached the desk near the moment it latches a refresh's frame (8-9 ms before the refresh), each one
++ * fell on this refresh or the next by fractions of a millisecond, and consecutive pictures were 1 or 3 refreshes apart
++ * (19% of them in a 20 s trace). Here a picture is committed at a fixed phase of the refreshes, about the desk's flip,
++ * well before the next latch; the refresh taken is the previous picture's plus the source's cadence (its
++ * measured interval in refreshes) while the picture is ready by 3 ms after its moment, else the first it can make (one longer
++ * gap, once in a while as the phase drifts), and a picture a whole refresh early starts the cadence again (a seek).
++ * The refreshes are wsClock's (the desk's flips from wp_presentation feedback). Sources faster than one picture per
++ * two refreshes are not held. SF_WS_CADENCE=2 logs every present. */
++static struct { int windowID,held; uint64_t lastReady,lastSlot; double interval; } wsCadence[8];
++static unsigned wsCadenceNext;
++static pthread_mutex_t wsCadenceLock=PTHREAD_MUTEX_INITIALIZER;
++static int wsCadenceOn(void){
++    static int on=-1;
++    if(on<0){const char *v=getenv("SF_WS_CADENCE");on=v!=NULL?atoi(v):0;}
++    return on;
++}
++// the window's cadence slot (made when missing), with wsCadenceLock held
++static int wsCadenceSlot(int windowID){
++    for(int i=0;i<8;i++)if(wsCadence[i].windowID==windowID)return i;
++    int slot=wsCadenceNext++%8;
++    memset(&wsCadence[slot],0,sizeof(wsCadence[slot]));
++    wsCadence[slot].windowID=windowID;
++    return slot;
++}
++static void wsCadenceHold(int windowID){
++    int on=wsCadenceOn();
++    if(on<=0)
++        return;
++    // once a frame, before its first layer is handed over: a main-thread flush during the hold then shows the
++    // window's previous picture, not this one ahead of its refresh (and this present found nothing new to show)
++    pthread_mutex_lock(&wsCadenceLock);
++    int already=wsCadence[wsCadenceSlot(windowID)].held;
++    wsCadence[wsCadenceSlot(windowID)].held=1;
++    pthread_mutex_unlock(&wsCadenceLock);
++    if(already)
++        return;
++    uint64_t flip,refreshNs,now=mach_absolute_time();
++    pthread_mutex_lock(&wsClock.lock);
++    int known=wsClock.counter>0;flip=wsClock.presentedHost;refreshNs=wsClock.refreshNs?wsClock.refreshNs:16666667;
++    pthread_mutex_unlock(&wsClock.lock);
++    if(!known||refreshNs<4000000||refreshNs>50000000||flip>now)
++        return;
++    // the commit moment of slot k: refresh k (wsClock's grid) + SF_WS_CADENCE_PHASE ms (13: on the M1, the grid runs
++    // about 4 ms behind the desk's flip stamps, so this is about the desk's next flip, 7-8 ms before its latch)
++    static double phaseMs=-1;
++    if(phaseMs<0){const char *v=getenv("SF_WS_CADENCE_PHASE");phaseMs=v!=NULL?atof(v):13.0;if(phaseMs<0||phaseMs>(double)refreshNs/1e6)phaseMs=13.0;}
++    int64_t refresh=(int64_t)wsNsToHost(refreshNs),after=(int64_t)wsNsToHost((uint64_t)(phaseMs*1e6)),slack=(int64_t)wsNsToHost(3000000);
++    pthread_mutex_lock(&wsCadenceLock);
++    __typeof__(&wsCadence[0]) c=&wsCadence[wsCadenceSlot(windowID)];
++    if(c->lastReady!=0&&now>c->lastReady&&(int64_t)(now-c->lastReady)<4*refresh)
++        c->interval=c->interval>0?0.875*c->interval+0.125*(double)(now-c->lastReady):(double)(now-c->lastReady);
++    else{c->interval=0;c->lastSlot=0;}
++    c->lastReady=now;
++    int cadence=c->interval>0?(int)llround(c->interval/(double)refresh):0;
++    // slot k: committed at refresh k + 1 ms, shown at refresh k+1. The earliest: this refresh's while we are within
++    // 5 ms of it, else the next one's
++    int64_t kNow=((int64_t)(now-flip)-after)/refresh,kE=(int64_t)(now-flip)-after-kNow*refresh<=slack?kNow:kNow+1,k=kE;
++    const char *how="earliest";
++    if(cadence>=2&&c->lastSlot!=0){
++        int64_t kL=llround((double)((int64_t)c->lastSlot-(int64_t)flip)/(double)refresh)+cadence;
++        if(kL>=kNow&&kL<=kE+1&&(kL>kNow||(int64_t)(now-flip)-after-kNow*refresh<=slack)){k=kL;how="locked";}
++        else how=kL<kE?"late":"restart";
++    }
++    uint64_t at=(uint64_t)((int64_t)flip+k*refresh+after);
++    c->lastSlot=(uint64_t)((int64_t)flip+k*refresh);
++    pthread_mutex_unlock(&wsCadenceLock);
++    if(cadence>=2&&at>now)
++        mach_wait_until(at);
++    if(on>=2)
++        fprintf(stderr,"WSCADENCE %.1f window=%d cadence=%d %s held=%.2f phase=%.2f\n",wsNowMs(),windowID,cadence,how,
++                cadence>=2&&at>now?(double)wsHostToNs(at-now)/1e6:0.0,(double)wsHostToNs((uint64_t)((int64_t)(now-flip)%refresh))/1e6);
++}
++
++// the frame's present is done (or declined): the next layer handed over starts the next frame's hold
++static void wsCadenceFrameDone(int windowID){
++    if(wsCadenceOn()<=0)
++        return;
++    pthread_mutex_lock(&wsCadenceLock);
++    wsCadence[wsCadenceSlot(windowID)].held=0;
++    pthread_mutex_unlock(&wsCadenceLock);
++}
++
+ int _windowServerSFFXPresentLayers(int windowID,uint64_t geometry){
+     const char *enabled=getenv("SFFX_GPU_PRESENT");
+     if(!enabled||strcmp(enabled,"1")||!ws.connected||!ws.dmabuf)return 0;
++    wsCadenceHold(windowID);   // (IOSURF) SF_WS_CADENCE: here only when no layer was handed over first
+     double began = wsTiming() ? wsNowMs() : 0;
+     pthread_mutex_lock(&ws.pixelsLock);
+     struct wsWindow *window=windowForID(windowID);
+@@ -5166,6 +5254,7 @@
+         }
+     }
+     pthread_mutex_unlock(&ws.pixelsLock);
++    wsCadenceFrameDone(windowID);
+     return good;
+ }
+ int _windowServerSFFXGPUStats(int windowID,uint64_t values[4]){

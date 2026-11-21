@@ -28,8 +28,9 @@
 //     next key frame.
 //   - the callback always runs on the thread that calls into the session.
 //   - the picture is copied into the pixel buffer. The buffer is an IOSurface when the
-//     destination attributes carry kCVPixelBufferIOSurfacePropertiesKey and CoreVideo can
-//     make one (that path has not been run), plain memory otherwise.
+//     destination attributes carry kCVPixelBufferIOSurfacePropertiesKey, or ask for GL, GLES,
+//     Metal or Core Animation texture compatibility, and CoreVideo can make one; plain memory
+//     otherwise (Apple's are always IOSurfaces).
 //
 // Links FFmpeg (LGPL-2.1-or-later) statically; build-videotoolbox.nix has the recipe to
 // relink it.
@@ -38,6 +39,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreMedia/CMSampleBuffer.h>
 #include <CoreVideo/CVPixelBuffer.h>
+#include <dlfcn.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -262,6 +264,32 @@ static Boolean dictionary_true(CFDictionaryRef d, CFStringRef key)
     return v != NULL && CFGetTypeID(v) == CFBooleanGetTypeID() && CFBooleanGetValue(v);
 }
 
+// (IOSURF) Apple's decoder always hands out IOSurface-backed pixel buffers. A caller that asks
+// for buffers it can make GL, GLES, Metal or Core Animation textures from, without naming
+// kCVPixelBufferIOSurfacePropertiesKey, reads them with CVPixelBufferGetIOSurface, which plain
+// memory cannot answer: VLC (kCVPixelBufferIOSurfaceOpenGLTextureCompatibilityKey) got NULL,
+// CGLTexImageIOSurface2D refused it and the picture stayed green. Such a request gets an
+// IOSurface too. The keys are looked up by name, so a CoreVideo without one of them is fine.
+static Boolean wants_texture_surface(CFDictionaryRef attributes)
+{
+    static const char *const names[] = {
+        "kCVPixelBufferIOSurfaceOpenGLTextureCompatibilityKey", "kCVPixelBufferIOSurfaceOpenGLFBOCompatibilityKey",
+        "kCVPixelBufferIOSurfaceOpenGLESTextureCompatibilityKey", "kCVPixelBufferIOSurfaceOpenGLESFBOCompatibilityKey",
+        "kCVPixelBufferIOSurfaceCoreAnimationCompatibilityKey", "kCVPixelBufferOpenGLCompatibilityKey",
+        "kCVPixelBufferOpenGLESCompatibilityKey", "kCVPixelBufferMetalCompatibilityKey",
+    };
+
+    if (attributes == NULL)
+        return false;
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        const CFStringRef *key = dlsym(RTLD_DEFAULT, names[i]);
+
+        if (key != NULL && *key != NULL && dictionary_true(attributes, *key))
+            return true;
+    }
+    return false;
+}
+
 OSStatus VTDecompressionSessionCreate(CFAllocatorRef allocator, CMVideoFormatDescriptionRef format,
                                       CFDictionaryRef specification, CFDictionaryRef destinationAttributes,
                                       const VTDecompressionOutputCallbackRecord *outputCallback,
@@ -334,6 +362,13 @@ OSStatus VTDecompressionSessionCreate(CFAllocatorRef allocator, CMVideoFormatDes
         const void *value = CFDictionaryGetValue(destinationAttributes, kCVPixelBufferIOSurfacePropertiesKey);
 
         s->surface = CFDictionaryCreate(NULL, &key, &value, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    } else if (wants_texture_surface(destinationAttributes)) {
+        const void *key = kCVPixelBufferIOSurfacePropertiesKey;
+        CFDictionaryRef none = CFDictionaryCreate(NULL, NULL, NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        const void *value = none;
+
+        s->surface = CFDictionaryCreate(NULL, &key, &value, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        CFRelease(none);
     }
 
     s->avctx = avcodec_alloc_context3(codec);

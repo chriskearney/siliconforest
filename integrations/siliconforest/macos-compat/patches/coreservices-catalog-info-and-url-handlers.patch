@@ -1,0 +1,130 @@
+diff -ruN a/src/Libraries/CoreServices/CoreServices.exports b/src/Libraries/CoreServices/CoreServices.exports
+--- a/src/Libraries/CoreServices/CoreServices.exports	2026-11-17 22:08:57.341360062 -0800
++++ b/src/Libraries/CoreServices/CoreServices.exports	2026-11-17 22:09:05.613155429 -0800
+@@ -125,3 +125,6 @@
+ _kUTTypeURL
+ _kUTTypeUTF8PlainText
+ _kUTTypeXML
++_FSGetCatalogInfo
++_FSGetVolumeParms
++_LSCopyAllHandlersForURLScheme
+diff -ruN a/src/Libraries/CoreServices/FileManager.c b/src/Libraries/CoreServices/FileManager.c
+--- a/src/Libraries/CoreServices/FileManager.c	2026-11-17 22:08:57.341360062 -0800
++++ b/src/Libraries/CoreServices/FileManager.c	2026-11-17 22:08:57.345054875 -0800
+@@ -252,3 +252,86 @@
+     }
+     return FSPathMakeRef((const UInt8 *)path, foundRef, NULL);
+ }
++
++/* Classic File Manager metadata for programs built for older macOS releases (VLC media player
++ * 3.0, docs/roadmap/issues/SF-AH-vlc.md): FSGetCatalogInfo and FSGetVolumeParms over the real
++ * stat()/statfs() of the referenced file. Metadata this system does not have is refused, not invented.
++ * The two structure layouts are written from the public documentation of FSCatalogInfo and
++ * GetVolParmsInfoBuffer and checked at compile time. */
++#include <stdint.h>
++#pragma pack(push,2)
++typedef struct {uint16_t high;uint32_t low;uint16_t fraction;} SFUTCDate;
++typedef struct {
++ uint16_t nodeFlags;int16_t volume;uint32_t parentDirID,nodeID;
++ uint8_t sharingFlags,userPrivileges,reserved[2];
++ SFUTCDate created,contentModified,attributeModified,accessed,backedUp;
++ uint32_t permissions[4];uint8_t finderInfo[16],extendedFinderInfo[16];
++ uint64_t dataLogicalSize,dataPhysicalSize,resourceLogicalSize,resourcePhysicalSize;
++ uint32_t valence,textEncoding;
++} SFCatalogInfo;
++typedef struct {
++ int16_t version;int32_t attributes;void *localHandle;
++ int32_t serverAddress,volumeGrade;int16_t foreignPrivileges;
++ int32_t extendedAttributes;const char *deviceID;uint32_t maximumNameLength;
++} SFVolumeParms;
++#pragma pack(pop)
++_Static_assert(sizeof(SFCatalogInfo)==144,"catalog ABI");
++_Static_assert(__builtin_offsetof(SFVolumeParms,deviceID)==28,"volume ABI, native reference");
++_Static_assert(sizeof(SFVolumeParms)==40,"volume ABI");
++#include <sys/mount.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include <pthread.h>
++#include <string.h>
++#include <stdlib.h>
++#include <limits.h>
++struct volume {dev_t device;fsid_t fsid;char mount[PATH_MAX],name[256];};
++static struct volume volumes[128];static unsigned count;static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
++static int16_t volumeFor(const char *path,const struct stat *st) {
++ struct statfs fs;if(statfs(path,&fs))return 0;
++ pthread_mutex_lock(&lock);unsigned index;
++ for(index=0;index<count;index++)if(volumes[index].device==st->st_dev&&!memcmp(&volumes[index].fsid,&fs.f_fsid,sizeof(fsid_t)))break;
++ if(index==count){
++  if(count==128){pthread_mutex_unlock(&lock);return 0;}
++  volumes[index].device=st->st_dev;volumes[index].fsid=fs.f_fsid;
++  strlcpy(volumes[index].mount,fs.f_mntonname,sizeof(volumes[index].mount));
++  if(!strncmp(fs.f_mntfromname,"/dev/",5))strlcpy(volumes[index].name,fs.f_mntfromname+5,sizeof(volumes[index].name));
++  count++;
++ }
++ pthread_mutex_unlock(&lock);return (int16_t)-(int)(index+1);
++}
++OSStatus FSGetCatalogInfo(const FSRef *ref,uint32_t requested,SFCatalogInfo *info,void *name,void *spec,FSRef *parent) {
++ /* Implement requested node/volume/IDs/data sizes; reject unavailable metadata. */
++ if(!ref||spec||(requested&~(uint32_t)(2|4|8|16|0x4000)))return -4;
++ if(requested&&!info)return paramErr;
++ char path[PATH_MAX];OSStatus status=FSRefMakePath(ref,(UInt8*)path,sizeof(path));if(status)return status;
++ struct stat st;if(stat(path,&st))return fnfErr;
++ SFCatalogInfo result={0};
++ if(requested&2)result.nodeFlags=S_ISDIR(st.st_mode)?0x10:0;
++ if(requested&4){result.volume=volumeFor(path,&st);if(!result.volume)return ioErr;}
++ if(requested&16){if((uint64_t)st.st_ino>UINT32_MAX)return -4;result.nodeID=(uint32_t)st.st_ino;}
++ if(requested&0x4000){result.dataLogicalSize=st.st_size;result.dataPhysicalSize=(uint64_t)st.st_blocks*512;}
++ if(parent||(requested&8)){
++  char dir[PATH_MAX];strlcpy(dir,path,sizeof(dir));char *slash=strrchr(dir,'/');if(slash==dir)slash[1]=0;else if(slash)*slash=0;else return paramErr;
++  if(parent){status=FSPathMakeRef((const UInt8*)dir,parent,NULL);if(status)return status;}
++  if(requested&8){struct stat p;if(stat(dir,&p))return fnfErr;if((uint64_t)p.st_ino>UINT32_MAX)return -4;result.parentDirID=(uint32_t)p.st_ino;}
++ }
++ if(name){
++  const char *base=strrchr(path,'/');base=base?base+1:path;
++  CFStringRef text=CFStringCreateWithCString(NULL,base,kCFStringEncodingUTF8);if(!text)return bdNamErr;
++  CFIndex length=CFStringGetLength(text);if(length>255){CFRelease(text);return bdNamErr;}
++  uint16_t n=(uint16_t)length;memcpy(name,&n,2);CFStringGetCharacters(text,CFRangeMake(0,length),(UniChar*)((uint8_t*)name+2));CFRelease(text);
++ }
++ if(info)*info=result;return noErr;
++}
++OSStatus FSGetVolumeParms(FSVolumeRefNum ref,SFVolumeParms *out,uint32_t bytes) {
++ if(!out||bytes<sizeof(*out))return paramErr;
++ unsigned index=ref<0?(unsigned)(-ref-1):128;
++ pthread_mutex_lock(&lock);
++ if(index>=count){pthread_mutex_unlock(&lock);return -35;}
++ const struct volume *v=&volumes[index];struct stat st;struct statfs fs;
++ if(stat(v->mount,&st)||statfs(v->mount,&fs)||st.st_dev!=v->device||memcmp(&fs.f_fsid,&v->fsid,sizeof(fsid_t))){pthread_mutex_unlock(&lock);return -35;}
++ SFVolumeParms result={0};result.version=5;result.deviceID=v->name[0]?v->name:NULL;
++ long maximum=pathconf(v->mount,_PC_NAME_MAX);if(maximum>0&&maximum<=UINT32_MAX)result.maximumNameLength=(uint32_t)maximum;
++ memcpy(out,&result,sizeof(result));pthread_mutex_unlock(&lock);return noErr;
++}
+diff -ruN a/src/Libraries/CoreServices/LaunchServices.c b/src/Libraries/CoreServices/LaunchServices.c
+--- a/src/Libraries/CoreServices/LaunchServices.c	2026-11-17 22:08:57.341360062 -0800
++++ b/src/Libraries/CoreServices/LaunchServices.c	2026-11-17 22:08:57.345910614 -0800
+@@ -948,3 +948,26 @@
+         CFRelease(launched);
+     return status;
+ }
++
++/* Every registered application that declares the URL scheme in CFBundleURLTypes (VLC media
++ * player 3.0 asks who handles its schemes; docs/roadmap/issues/SF-AH-vlc.md). */
++CFArrayRef LSCopyAllHandlersForURLScheme(CFStringRef scheme) {
++ if(!scheme||CFGetTypeID(scheme)!=CFStringGetTypeID()||!CFStringGetLength(scheme))return NULL;
++ buildRegistryIfNeeded();
++ CFMutableArrayRef result=CFArrayCreateMutable(NULL,0,&kCFTypeArrayCallBacks);if(!result)return NULL;
++ for(CFIndex n=0;n<CFArrayGetCount(sApplicationURLs);n++){
++  CFBundleRef bundle=CFBundleCreate(NULL,CFArrayGetValueAtIndex(sApplicationURLs,n));if(!bundle)continue;
++  CFStringRef identifier=CFBundleGetIdentifier(bundle);CFTypeRef types=CFBundleGetValueForInfoDictionaryKey(bundle,CFSTR("CFBundleURLTypes"));Boolean found=false;
++  if(identifier&&types&&CFGetTypeID(types)==CFArrayGetTypeID())for(CFIndex i=0;i<CFArrayGetCount(types)&&!found;i++){
++   CFTypeRef entry=CFArrayGetValueAtIndex(types,i);if(!entry||CFGetTypeID(entry)!=CFDictionaryGetTypeID())continue;
++   CFTypeRef schemes=CFDictionaryGetValue(entry,CFSTR("CFBundleURLSchemes"));if(!schemes||CFGetTypeID(schemes)!=CFArrayGetTypeID())continue;
++   for(CFIndex j=0;j<CFArrayGetCount(schemes);j++){
++    CFTypeRef item=CFArrayGetValueAtIndex(schemes,j);
++    if(item&&CFGetTypeID(item)==CFStringGetTypeID()&&CFStringCompare(item,scheme,kCFCompareCaseInsensitive)==kCFCompareEqualTo){found=true;break;}
++   }
++  }
++  if(found&&!CFArrayContainsValue(result,CFRangeMake(0,CFArrayGetCount(result)),identifier))CFArrayAppendValue(result,identifier);
++  CFRelease(bundle);
++ }
++ return result;
++}
