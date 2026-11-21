@@ -1,0 +1,128 @@
+diff --git a/crates/wm-darwin/src/pacing.rs b/crates/wm-darwin/src/pacing.rs
+index d3ce451..440e451 100644
+--- a/crates/wm-darwin/src/pacing.rs
++++ b/crates/wm-darwin/src/pacing.rs
+@@ -76,6 +76,9 @@ pub struct PacingTrace {
+     repainted_px: u64,
+     screen_px: u64,
+     callback_only_releases: u64,
++    /// DESK11 (ChonkCraft): every buffer commit to a window, shm or GPU: a recording counts a
++    /// client's new frame as a change of the screen by it
++    pub surface_commits: u64,
+ }
+ 
+ impl PacingTrace {
+diff --git a/crates/wm-darwin/src/record.rs b/crates/wm-darwin/src/record.rs
+index 51a0f2a..ec5d0f0 100644
+--- a/crates/wm-darwin/src/record.rs
++++ b/crates/wm-darwin/src/record.rs
+@@ -96,6 +96,19 @@ struct H264 {
+     taken: u64,
+     sent: u64,
+     encoder: &'static str,
++    /// window commits at the last take: a client's new frame is a change even when no frame of the
++    /// desk was counted for it (ChonkCraft's window: 63 frames a second drawn, 2.2 taken)
++    last_commits: Option<u64>,
++    /// what the recording saw: the desk's frames and the windows' commits since the start, loop
++    /// turns, and why each frame was taken
++    start_frames: u64,
++    start_commits: u64,
++    end_frames: u64,
++    end_commits: u64,
++    turns: u64,
++    by_frame: u64,
++    by_commit: u64,
++    by_idle: u64,
+ }
+ 
+ struct Recording {
+@@ -580,6 +593,8 @@ impl Server {
+             h264_state = Some(H264 {
+                 tx: Some(wtx), gpu: Default::default(), failed, fps, writeback: policy.writeback, last_take: None, last_at_us: 0, no_slot: 0,
+                 submit_us: 0, submit_max_us: 0, harvest_us: 0, taken: 0, sent: 0, encoder: name,
++                last_commits: None, start_frames: self.frames_rendered(), start_commits: self.pacing.surface_commits, end_frames: 0, end_commits: 0,
++                turns: 0, by_frame: 0, by_commit: 0, by_idle: 0,
+             });
+             (None, handle)
+         } else {
+@@ -696,6 +711,8 @@ impl Server {
+             eprintln!("WMRECORD h264 taken={} sent={} no_buffer={} lost_on_gpu={} submit_ms_avg={:.3} submit_ms_max={:.2} harvest_ms_avg={:.3} encoder={}",
+                 h.taken, h.sent, h.no_slot, h.gpu.len(), if h.taken > 0 { h.submit_us as f64 / h.taken as f64 / 1000.0 } else { 0.0 }, h.submit_max_us as f64 / 1000.0,
+                 if h.sent > 0 { h.harvest_us as f64 / h.sent as f64 / 1000.0 } else { 0.0 }, h.encoder);
++            eprintln!("WMRECORD h264 seen desk_frames={} window_commits={} turns={} taken_by_frame={} taken_by_commit={} taken_idle={}",
++                h.end_frames.saturating_sub(h.start_frames), h.end_commits.saturating_sub(h.start_commits), h.turns, h.by_frame, h.by_commit, h.by_idle);
+             rec.dropped += h.no_slot;
+             rec.seq = h.taken;
+         }
+@@ -734,7 +751,7 @@ impl Server {
+     /// DESK11: each turn of the loop while recording H.264: the frames the GPU finished go to the writer; a new
+     /// frame is taken when the screen changed and one is due (at most `record_fps` a second), or after
+     /// `H264_IDLE_MS` without a change.
+-    fn record_h264_tick(&mut self, frames_now: u64) {
++    fn record_h264_tick(&mut self, frames_now: u64, commits_now: u64) {
+         let Some(rec) = self.recorder.active.as_mut() else { return };
+         let Some(h) = rec.h264.as_mut() else { return };
+         let t = Instant::now();
+@@ -747,16 +764,37 @@ impl Server {
+         }
+         let now = Instant::now();
+         let interval = Duration::from_micros(1_000_000 / u64::from(h.fps.max(1)));
++        h.turns += 1;
++        h.end_frames = frames_now;
++        h.end_commits = commits_now;
+         let fresh = rec.last_frame_count != Some(frames_now);
++        // a window's new buffer is a change too: taken on the recording's clock (at most `fps` a second)
++        let committed = h.last_commits != Some(commits_now);
+         // at 60 a second every frame the desk drew (it draws at most one a refresh); fewer: one when a
+         // fourth of the interval is left, so that a frame drawn early in its refresh is not skipped
+-        let due = match h.last_take {
+-            None => true,
+-            Some(last) => (fresh && (h.fps >= 60 || now >= last + interval * 3 / 4)) || now >= last + Duration::from_millis(H264_IDLE_MS),
++        let (due, why) = match h.last_take {
++            None => (true, 0),
++            Some(last) => {
++                if fresh && (h.fps >= 60 || now >= last + interval * 3 / 4) {
++                    (true, 0)
++                } else if committed && now >= last + interval * 3 / 4 {
++                    (true, 1)
++                } else if now >= last + Duration::from_millis(H264_IDLE_MS) {
++                    (true, 2)
++                } else {
++                    (false, 0)
++                }
++            }
+         };
+         if !due {
+             return;
+         }
++        match why {
++            0 => h.by_frame += 1,
++            1 => h.by_commit += 1,
++            _ => h.by_idle += 1,
++        }
++        h.last_commits = Some(commits_now);
+         let elapsed = rec.started.elapsed().as_micros() as u64;
+         let slot = (elapsed + H264_SLOT_US / 2) / H264_SLOT_US;
+         let at_us = (slot * H264_SLOT_US).max(if h.taken > 0 { h.last_at_us + H264_SLOT_US } else { 0 });
+@@ -823,7 +861,8 @@ impl Server {
+             }
+         }
+         if self.recorder.active.as_ref().is_some_and(|r| r.h264.is_some()) {
+-            self.record_h264_tick(frames_now);
++            let commits_now = self.pacing.surface_commits;
++            self.record_h264_tick(frames_now, commits_now);
+         }
+         let due = self.recorder.active.as_ref().is_some_and(|rec| {
+             rec.h264.is_none() &&
+diff --git a/crates/wm-darwin/src/server.rs b/crates/wm-darwin/src/server.rs
+index fce9154..884549d 100644
+--- a/crates/wm-darwin/src/server.rs
++++ b/crates/wm-darwin/src/server.rs
+@@ -2085,6 +2085,7 @@ impl CompositorHandler for Server {
+         let Some(id) = self.wm.backend().window_for_surface(surface) else {
+             return;
+         };
++        self.pacing.surface_commits += 1;
+         // DESK9: the handler's own time per buffer commit, and whether the commit brought anything to show
+         let handler_started = std::time::Instant::now();
+         let mut unchanged = false;
