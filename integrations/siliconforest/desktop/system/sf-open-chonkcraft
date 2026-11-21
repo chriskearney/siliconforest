@@ -36,15 +36,15 @@ export CHONKCRAFT_ASSET_PACK="$PACK"
 export DYLD_LIBRARY_PATH="$B/fwlib"
 export DYLD_FRAMEWORK_PATH="$B/fw"
 # A process named "java" shows up as "java" in SiliconForest's menu bar.
-# -Xdock:name is already set, but the desk keys off the executable name, so
-# run a hard link (or a copy) called ChonkCraft. Created at launch, never
-# written into the staged app bundle.
-mkdir -p "$B/bin"
-if [ ! -x "$B/bin/ChonkCraft" ] || [ "$J" -nt "$B/bin/ChonkCraft" ]; then
-    ln -f "$J" "$B/bin/ChonkCraft" 2>/dev/null || cp -f "$J" "$B/bin/ChonkCraft"
+# -Xdock:name is already set, but the desk keys off the executable name.
+# A hard link beside java keeps the JRE @rpath (libjli) working; a link
+# in another directory does not. Created at launch, not committed.
+LINK="$(dirname "$J")/ChonkCraft"
+if [ ! -x "$LINK" ] || [ "$J" -nt "$LINK" ]; then
+    ln -f "$J" "$LINK" 2>/dev/null || cp -f "$J" "$LINK"
 fi
 cd "$HOME"
-exec "$B/bin/ChonkCraft" -XX:ErrorFile="$B/logs/hs_err_%p.log" -Xms256m -Xmx2g -Dchonkcraft.version=0.1.1-beta22 \
+exec "$LINK" -XX:ErrorFile="$B/logs/hs_err_%p.log" -Xms256m -Xmx2g -Dchonkcraft.version=0.1.1-beta22 \
     --add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED \
     -Dapple.awt.application.name=ChonkCraft \
     -Dchonkcraft.packaged.native.dir="$A/app" -Djna.boot.library.path="$A/app" -Djna.nounpack=true \
