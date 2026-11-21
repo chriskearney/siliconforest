@@ -668,6 +668,9 @@
 #         scale along the axes (1/4 to 8: a picture made in points on a desk at 150 %) is resampled bilinearly through
 #         a table of source columns and weights instead of pixel by pixel through the general path (ChonkCraft's
 #         1280x778 frame cost 27 ms a draw: 34 frames a second); O2_NO_IMAGE_SCALE_FAST_PATH=1 turns it off
+#   0374  Onyx2D (CHONK3; every application, through the guarded install only): that resampling is split into bands of
+#         device rows drawn at once on up to four threads (ChonkCraft held the main thread ~12 ms a draw on one, after
+#         the desk's frame callback: the frame missed its refresh); O2_IMAGE_SCALE_THREADS=1 draws on one
 #   0009  Security: SecItemCopyMatching writes its result on every path and answers
 #         errSecItemNotFound when nothing was found (Firefox crashed on the unwritten result)
 #   (0007 and 0008 are libSystem's sandbox profile compiler: ./build-libsystem-cocoa.nix)
@@ -849,6 +852,7 @@ let
     ./patches/0154-onyx2d-font-files-mapped-once.patch
     ./patches/0363-onyx2d-images-at-device-pixels-copied.patch
     ./patches/0373-onyx2d-images-at-other-scales-resampled-by-table.patch
+    ./patches/0374-onyx2d-scaled-images-drawn-in-bands-on-four-threads.patch
   ];
   # upstream's framework recipes name no optimisation level: their compile lines get one here
   optimised = d: d.overrideAttrs (old: {

@@ -8,6 +8,9 @@
 //     kind 0 with interpolation none: left to the general path, so the same picture exactly
 //     and a child with O2_IMAGE_TRACE=1 drawing kind 1 must not say "resampled" (the fast path took it)
 //   sf-onyx2d-scale-probe bench    also: ms per 1280x778 -> 1920x1167 draw of kind 1, fast and general
+// (0374) and the library has O2ImageScaleThreadCount (the bands on threads), and 1280x778 pictures of kinds 1 and 2
+// drawn at 1.5 on its threads are the very bytes drawn on one (children with O2_IMAGE_SCALE_THREADS=1 and 4)
+//   sf-onyx2d-scale-probe big K    child: a hash of the 1280x778 picture of kind K at 1.5 and ms per draw
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -96,6 +99,13 @@ int main(int argc,char **argv){
         CGImageRef im=makeImage(w,h,kind); uint32_t *d=draw(im,w,h,quality,1,NULL);
         fwrite(d,4,(size_t)W*H,stdout); return 0;
     }
+    if(argc>1 && strcmp(argv[1],"big")==0){   // child: hash of a big picture and its time
+        int kind=argc>2 ? atoi(argv[2]) : 1; double ms;
+        CGImageRef im=makeImage(1280,778,kind); uint32_t *d=draw(im,1280,778,0,10,&ms);
+        uint64_t hsh=1469598103934665603ull; size_t n=(size_t)1920*1167;
+        for(size_t i=0;i<n;i++){ hsh^=d[i]; hsh*=1099511628211ull; }
+        printf("%016llx %.2f\n",(unsigned long long)hsh,ms); return 0;
+    }
     if(argc>1 && strcmp(argv[1],"gbench")==0){
         CGImageRef big=makeImage(1280,778,1); double g; free(draw(big,1280,778,0,5,&g));
         printf("1280x778 premultiplied at 1.5: general %.2f ms per draw\n",g); return 0;
@@ -110,6 +120,20 @@ int main(int argc,char **argv){
     int traced=(t==NULL || strstr(err,"resampled")!=NULL);
     printf("a premultiplied image at 1.5 in the normal blend mode: %s\n",traced ? "resampled by the general path" : "taken by the fast path");
     ok&=!traced;
+    if(dlsym(RTLD_DEFAULT,"O2ImageScaleThreadCount")==NULL){ printf("this Onyx2D lacks 0374 (no O2ImageScaleThreadCount)\n"); return 3; }
+    for(int kind=1;kind<=2;kind++){
+        char one[64]="",four[64]="";
+        for(int k=0;k<2;k++){
+            char cmd[1024]; snprintf(cmd,sizeof cmd,"O2_IMAGE_SCALE_THREADS=%d '%s' big %d",k ? 4 : 1,argv[0],kind);
+            FILE *f=popen(cmd,"r"); if(f){ if(!fgets(k ? four : one,64,f)) (k ? four : one)[0]=0; pclose(f); }
+        }
+        for(char *c=one;*c;c++) if(*c=='\n') *c=0;
+        for(char *c=four;*c;c++) if(*c=='\n') *c=0;
+        int same=(one[0] && strncmp(one,four,16)==0);
+        printf("1280x778 kind %d at 1.5, one thread / four: %.*s / %.*s (ms %s / %s): %s\n",kind,16,one,16,four,
+               strlen(one)>17 ? one+17 : "?",strlen(four)>17 ? four+17 : "?",same ? "same bytes" : "DIFFERENT");
+        ok&=same;
+    }
     if(argc>1 && strcmp(argv[1],"bench")==0){
         CGImageRef big=makeImage(1280,778,1); double f; free(draw(big,1280,778,0,20,&f));
         printf("1280x778 premultiplied at 1.5: fast %.2f ms per draw\n",f); fflush(stdout);
