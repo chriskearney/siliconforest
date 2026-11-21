@@ -1,0 +1,189 @@
+--- /dev/null
++++ b/src/Frameworks/AppKit/SFAccessibilityServer.h
+@@ -0,0 +1,66 @@
++// SFAccessibilityServer.h — IPC layer: AppKit → SiliconForest accessibility daemon
++// Copyright (c) 2026 The SiliconForest Project, SPDX-License-Identifier: MPL-2.0 OR BSD-2-Clause
++//
++// Sends JSON events over a Unix domain socket to the Python AXUIServer daemon
++// (a11y/axserver.py). The daemon forwards them to eSpeak-NG TTS and BRLTTY.
++//
++// Socket path: /tmp/com.siliconforest.axuiserver (matches axserver.py)
++// Message format (newline-delimited JSON):
++//   { "type": "focus_changed", "pid": N, "role": "AXButton",
++//     "label": "OK", "value": "", "frame": [x,y,w,h] }
++//   { "type": "window_activated", "pid": N, "title": "Terminal" }
++//   { "type": "text_changed",  "pid": N, "text": "..." }
++//   { "type": "screenreader_active", "active": true/false }
++
++#import <Foundation/NSObject.h>
++#import <Foundation/NSGeometry.h>
++#import <Foundation/NSString.h>
++
++#define SF_AX_SOCKET_PATH "/tmp/com.siliconforest.axuiserver"
++
++@interface SFAccessibilityServer : NSObject {
++    int _socketFd;
++    BOOL _connected;
++}
++
+++ (instancetype)sharedServer;
++
++// Connect to axserver daemon (called lazily on first post).
++- (BOOL)connect;
++
++// Close and forget the connection (reconnect on next post).
++- (void)disconnect;
++
++// Post focus-change event (called by NSView+Accessibility on first responder change).
++- (void)postFocusChangedWithRole:(NSString *)role
++                           label:(NSString *)label
++                           value:(NSString *)value
++                             pid:(int)pid
++                           frame:(NSRect)frame;
++
++// Post window-activation event.
++- (void)postWindowActivatedWithTitle:(NSString *)title pid:(int)pid;
++
++// Post text-change event (called by NSTextView on text change).
++- (void)postTextChangedWithText:(NSString *)text pid:(int)pid;
++
++// Query whether the screenreader is active (cached; refreshed every 2 s).
++@property(readonly) BOOL screenreaderActive;
++
++@end
+--- /dev/null
++++ b/src/Frameworks/AppKit/SFAccessibilityServer.m
+@@ -0,0 +1,152 @@
++// SFAccessibilityServer.m — IPC layer: AppKit → SiliconForest accessibility daemon
++// Copyright (c) 2026 The SiliconForest Project, SPDX-License-Identifier: MPL-2.0 OR BSD-2-Clause
++
++#import <AppKit/SFAccessibilityServer.h>
++#import <Foundation/Foundation.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++#include <errno.h>
++#include <string.h>
++
++static SFAccessibilityServer *_sharedServer = nil;
++
++@implementation SFAccessibilityServer {
++    BOOL _screenreaderActive;
++    NSTimeInterval _lastStatusCheck;
++}
++
+++ (instancetype)sharedServer {
++    if (_sharedServer == nil)
++        _sharedServer = [[SFAccessibilityServer alloc] init];
++    return _sharedServer;
++}
++
++- (instancetype)init {
++    if ((self = [super init]) == nil)
++        return nil;
++    _socketFd = -1;
++    _connected = NO;
++    _screenreaderActive = NO;
++    _lastStatusCheck = 0;
++    return self;
++}
++
++- (BOOL)connect {
++    if (_connected && _socketFd >= 0)
++        return YES;
++    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
++    if (fd < 0)
++        return NO;
++    struct sockaddr_un addr;
++    memset(&addr, 0, sizeof(addr));
++    addr.sun_family = AF_UNIX;
++    strncpy(addr.sun_path, SF_AX_SOCKET_PATH, sizeof(addr.sun_path) - 1);
++    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
++        close(fd);
++        return NO;
++    }
++    _socketFd = fd;
++    _connected = YES;
++    return YES;
++}
++
++- (void)disconnect {
++    if (_socketFd >= 0) {
++        close(_socketFd);
++        _socketFd = -1;
++    }
++    _connected = NO;
++}
++
++- (void)_sendJSON:(NSDictionary *)dict {
++    if (![self connect])
++        return;
++    NSData *data = [NSJSONSerialization dataWithJSONObject:dict options:0 error:nil];
++    if (data == nil)
++        return;
++    // Append newline as message delimiter
++    NSMutableData *msg = [NSMutableData dataWithData:data];
++    uint8_t nl = '\n';
++    [msg appendBytes:&nl length:1];
++    const uint8_t *bytes = (const uint8_t *)[msg bytes];
++    NSUInteger total = [msg length];
++    NSUInteger sent = 0;
++    while (sent < total) {
++        ssize_t n = write(_socketFd, bytes + sent, total - sent);
++        if (n < 0) {
++            if (errno == EINTR) continue;
++            [self disconnect];
++            return;
++        }
++        sent += n;
++    }
++}
++
++- (void)postFocusChangedWithRole:(NSString *)role
++                           label:(NSString *)label
++                           value:(NSString *)value
++                             pid:(int)pid
++                           frame:(NSRect)frame {
++    [self _sendJSON:@{
++        @"type":  @"focus_changed",
++        @"pid":   @(pid),
++        @"role":  role  ?: @"AXUnknown",
++        @"label": label ?: @"",
++        @"value": value ?: @"",
++        @"frame": @[@(frame.origin.x), @(frame.origin.y),
++                    @(frame.size.width), @(frame.size.height)],
++    }];
++}
++
++- (void)postWindowActivatedWithTitle:(NSString *)title pid:(int)pid {
++    [self _sendJSON:@{
++        @"type":  @"window_activated",
++        @"pid":   @(pid),
++        @"title": title ?: @"",
++    }];
++}
++
++- (void)postTextChangedWithText:(NSString *)text pid:(int)pid {
++    // Only post short snippets to avoid flooding the socket
++    NSString *snippet = text;
++    if ([snippet length] > 256)
++        snippet = [snippet substringToIndex:256];
++    [self _sendJSON:@{
++        @"type": @"text_changed",
++        @"pid":  @(pid),
++        @"text": snippet ?: @"",
++    }];
++}
++
++- (BOOL)screenreaderActive {
++    // Refresh status every 2 seconds: check if socket exists (daemon running)
++    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
++    if (now - _lastStatusCheck > 2.0) {
++        _lastStatusCheck = now;
++        _screenreaderActive = ([[NSFileManager defaultManager]
++            fileExistsAtPath:@SF_AX_SOCKET_PATH] && [self connect]);
++    }
++    return _screenreaderActive;
++}
++
++@end

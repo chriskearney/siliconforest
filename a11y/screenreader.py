@@ -1,62 +1,105 @@
-"""a11y/screenreader.py - SiliconForest Screen Reader
-
-TTS: OpenEVV/Eloquence (best) > eSpeak-NG (fallback)
-Braille: BrlAPI/BRLTTY (auto, all displays)
-Focus: AXUIElement polling
-
-Usage: python3 -m a11y.screenreader [--no-braille] [--voice auto|eloquence|espeak]
 """
+a11y/screenreader.py — SiliconForest Screen Reader (Phase 2)
+
+Starts the AXUIServer daemon and the AX observer together.
+On macOS: uses the real AXUIElement API (axreader.py) for testing.
+On SiliconForest: AXUIServer receives events from AppKit via Unix socket.
+
+Usage:
+    python3 a11y/screenreader.py [--braille] [--verbose]
+"""
+
+import asyncio
+import logging
+import os
+import subprocess
+import sys
 import argparse
-from a11y.ax.observer import FocusObserver
-from a11y.tts.espeak import EspeakTTS
-from a11y.tts.openevv import OpenEVVTTS
-from a11y.braille.brltty import BrailleDisplay, BrailleNavigator
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--no-braille", action="store_true")
-    p.add_argument("--no-speech", action="store_true")
-    p.add_argument("--lang", default="de")
-    p.add_argument("--rate", type=int, default=200)
-    p.add_argument("--voice", choices=["auto","eloquence","espeak"], default="auto")
-    args = p.parse_args()
+logger = logging.getLogger("screenreader")
 
-    tts = None
-    if not args.no_speech:
-        if args.voice in ("auto", "eloquence"):
-            tts = OpenEVVTTS(lang=args.lang, rate=args.rate)
-            if not tts.available:
-                print("OpenEVV nicht verfuegbar, nutze eSpeak-NG")
-                tts = EspeakTTS(lang=args.lang, rate=args.rate)
-        else:
-            tts = EspeakTTS(lang=args.lang, rate=args.rate)
+SOCKET_PATH = "/tmp/com.siliconforest.axuiserver"
+A11Y_DIR = os.path.dirname(os.path.abspath(__file__))
 
-    brl, nav = None, None
-    if not args.no_braille:
-        brl = BrailleDisplay()
-        if brl.connect():
-            nav = BrailleNavigator(brl)
-            print(f"Braille: {brl.cell_count} Zellen", flush=True)
-        else:
-            brl = None
 
-    def on_focus(desc):
-        if tts: tts.speak(desc, interrupt=True)
-        if nav: nav.on_focus(desc)
-        print(f"Fokus: {desc}", flush=True)
+async def run_axserver(braille: bool, verbose: bool):
+    """Start the AXUIServer daemon as a coroutine."""
+    # Import and run inline (same process) instead of subprocess for clean shutdown
+    sys.path.insert(0, os.path.dirname(A11Y_DIR))
+    from a11y.axserver import AXEventDispatcher, AXServer
 
-    obs = FocusObserver(on_focus=on_focus, poll_interval=0.1)
-    print("SiliconForest Screenreader startet...", flush=True)
-    if tts: tts.speak("Bildschirmleser aktiv")
-    if nav: brl.write_text("Bildschirmleser aktiv")
-    obs.start()
+    dispatcher = AXEventDispatcher(
+        use_tts=True,
+        use_braille=braille,
+        verbose=verbose,
+    )
+    await dispatcher.setup()
+    server = AXServer(dispatcher)
+    await server.start()
+    return server
+
+
+async def run_ax_observer():
+    """
+    On macOS: run axreader.py to observe real AXUIElement events and forward
+    them to the AXUIServer socket (bridging Apple AX → our daemon).
+    On SiliconForest: AppKit pushes events directly; this is a no-op.
+    """
+    is_siliconforest = not os.path.exists("/System/Library/Frameworks/AppKit.framework")
+    if is_siliconforest:
+        logger.info("SiliconForest mode: AppKit pushes AX events directly to socket")
+        return
+
+    # macOS: run axreader in a subprocess, pipe its JSON output to our socket
+    logger.info("macOS mode: bridging AXUIElement observer → AXUIServer socket")
+    axreader = os.path.join(A11Y_DIR, "axreader.py")
+    if not os.path.exists(axreader):
+        logger.warning("axreader.py not found — AX observer disabled")
+        return
+
     try:
-        import signal; signal.pause()
-    except (KeyboardInterrupt, AttributeError):
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, axreader, "--json-socket", SOCKET_PATH,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+    except Exception as e:
+        logger.warning(f"AX observer error: {e}")
+
+
+async def main():
+    parser = argparse.ArgumentParser(description="SiliconForest Screen Reader")
+    parser.add_argument("--braille",   action="store_true", help="Enable Braille display output")
+    parser.add_argument("--verbose",   action="store_true", help="Print all AX events")
+    parser.add_argument("--log-level", default="INFO",      help="DEBUG/INFO/WARNING")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper(), logging.INFO),
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
+
+    logger.info("SiliconForest Screen Reader starting")
+    logger.info(f"  TTS:    eSpeak-NG")
+    logger.info(f"  Braille: {'BRLTTY' if args.braille else 'disabled (use --braille)'}")
+    logger.info(f"  Socket: {SOCKET_PATH}")
+
+    server = await run_axserver(braille=args.braille, verbose=args.verbose)
+
+    try:
+        await run_ax_observer()
+        # Keep server running
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
         pass
-    obs.stop()
-    if tts: tts.stop()
-    if brl: brl.close()
+    finally:
+        await server.stop()
+        logger.info("Screen reader stopped")
+
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
