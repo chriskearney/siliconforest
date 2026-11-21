@@ -270,7 +270,15 @@ static void *(*sf_dp_create)(void *, const void *, size_t, void (*)(void *, cons
 static void *(*sf_img_create)(size_t, size_t, size_t, size_t, size_t, void *, unsigned, void *, const double *, bool, int);
 static void (*sf_cf_release)(const void *);
 static void sf_free_pixels(void *info, const void *data, size_t size) { (void)info; (void)size; free((void *)data); }
+static void sf_cpu_render_body(id self);
+static double sf_now_ms(void);
+static double sf_fill_acc;
 static void sf_cpu_render(id self) {
+    double t0 = sf_now_ms();
+    sf_cpu_render_body(self);
+    sf_fill_acc += sf_now_ms() - t0;
+}
+static void sf_cpu_render_body(id self) {
     sf_rect b = ((sf_rect (*)(id, SEL))msg)(self, sel("bounds"));
     double scale = ((double (*)(id, SEL))msg)(self, sel("contentsScale"));
     if (scale <= 0) scale = 1;
@@ -319,6 +327,399 @@ static void sf_cpu_render(id self) {
     free(px); free(fl);
     sf_cgl_set_current(previous);
 }
+/* SF_CHONK_GPU_PRESENT=1 (the launcher sets it with SFFX_GPU_PRESENT=1, SFFX_IOSURFACE_GPU=1 and a private
+ * iosurfaced): Java's frame goes to the screen as a GPU buffer, without a read back. On each frame Java asks for
+ * (-setNeedsDisplay, main thread) the fill draws Java's layer in its context as the CPU path does, copies the
+ * framebuffer to a texture (glCopyTexSubImage2D), draws it scaled to the view's size in window pixels (bilinear,
+ * top row first) into one of three IOSurfaces with dma-buf storage, waits for the GPU (glFinish: the kernel has
+ * no implicit fencing), registers that surface as the view's GPU layer with WindowServer
+ * (_windowServerSFFXSetGPULayer) and presents the window (_windowServerSFFXPresentLayers; the main-thread flush
+ * when WindowServer declines). WindowServer composes the layer over the window's CPU-drawn base on the GPU into
+ * a dma-buf frame that the compositor imports. Nothing is installed: the system pieces are those Firefox uses.
+ * Any setup failure, or a failed frame, turns it off for the process and logs why: the CPU path (read back,
+ * picture as the layer's contents) takes over. SF_CHONK_GPU_PRESENT=verify: frames are copied to the GPU
+ * buffers and checked (dumped to $TMPDIR) but the CPU path still presents. SF_CHONK_TIMING=1: main-thread CPU
+ * per frame and frame-ready times, every 2 s. */
+#include <sys/time.h>
+#include <mach/mach.h>
+#include <unistd.h>
+int pthread_main_np(void);
+static id (*sf_cls)(const char *);
+static int sf_gpu_mode;                      /* 0 off, 1 present, 2 verify */
+static int sf_gpu_dead;                      /* turned off for this process */
+static void *(*sf_ios_create)(const void *);
+static size_t (*sf_ios_w)(void *), (*sf_ios_h)(void *), (*sf_ios_gpuoff)(void *), (*sf_ios_row)(void *);
+static void *(*sf_ios_base)(void *);
+static int (*sf_ios_lock)(void *, unsigned, unsigned *), (*sf_ios_unlock)(void *, unsigned, unsigned *);
+static int (*sf_cgl_tex_ios)(void *, unsigned, unsigned, int, int, unsigned, unsigned, void *, unsigned);
+static int (*sf_ws_set_layer)(int, uintptr_t, void *, double, double, double, double, double, double, double, double);
+static int (*sf_ws_present)(int, uint64_t);
+static uint64_t (*sf_ws_serial)(int);
+static int (*sf_ws_takes)(int);
+static void *(*sf_cf_dict)(void *, long, const void *, const void *);
+static void (*sf_cf_dict_set)(void *, const void *, const void *);
+static void *(*sf_cf_num)(void *, long, const void *);
+static void *(*sf_cf_str)(void *, const char *, unsigned);
+static const void *sf_cf_kcb, *sf_cf_vcb;
+static void (*g_gen_tex)(int, unsigned *), (*g_del_tex)(int, const unsigned *), (*g_bind_tex)(unsigned, unsigned);
+static void (*g_tex_param)(unsigned, unsigned, int);
+static void (*g_tex_image)(unsigned, int, int, int, int, int, unsigned, unsigned, const void *);
+static void (*g_copy_tex_sub)(unsigned, int, int, int, int, int, int, int);
+static void (*g_gen_fb)(int, unsigned *), (*g_del_fb)(int, const unsigned *), (*g_bind_fb)(unsigned, unsigned);
+static void (*g_fb_tex)(unsigned, unsigned, unsigned, unsigned, int);
+static unsigned (*g_fb_status)(unsigned);
+static void (*g_enable)(unsigned), (*g_disable)(unsigned);
+static void (*g_begin)(unsigned), (*g_end)(void), (*g_texcoord)(float, float), (*g_vertex)(float, float), (*g_color)(float, float, float, float);
+static void (*g_matrix_mode)(unsigned), (*g_load_identity)(void), (*g_push_matrix)(void), (*g_pop_matrix)(void);
+static void (*g_ortho)(double, double, double, double, double, double);
+static void (*g_color_mask)(unsigned char, unsigned char, unsigned char, unsigned char);
+static void (*g_clear_color)(float, float, float, float), (*g_clear)(unsigned);
+static void (*g_push_attrib)(unsigned), (*g_pop_attrib)(void);
+static void (*g_geti)(unsigned, int *);
+static unsigned (*g_error)(void);
+static void (*g_active_tex)(unsigned), (*g_use_program)(unsigned);
+#define SF_GPU_RING 3
+static struct { void *surface; unsigned tex, fbo; int w, h; } sf_ring[SF_GPU_RING];
+static int sf_ring_next;
+static unsigned sf_src_tex; static int sf_src_w, sf_src_h;
+static id sf_gpu_view, sf_gpu_win;           /* the view hosting Java's layer, and its window (not retained) */
+static int sf_gpu_registered;
+static unsigned long sf_gpu_frames, sf_gpu_declined, sf_gpu_cpu_frames;
+
+static double sf_now_ms(void) { struct timeval t; gettimeofday(&t, 0); return t.tv_sec * 1000.0 + t.tv_usec / 1000.0; }
+static double sf_thread_cpu_ms(void) {
+    thread_basic_info_data_t info; mach_msg_type_number_t n = THREAD_BASIC_INFO_COUNT;
+    mach_port_t th = mach_thread_self();
+    kern_return_t kr = thread_info(th, THREAD_BASIC_INFO, (thread_info_t)&info, &n);
+    mach_port_deallocate(mach_task_self(), th);
+    if (kr != KERN_SUCCESS) return -1;
+    return (info.user_time.seconds + info.system_time.seconds) * 1000.0 + (info.user_time.microseconds + info.system_time.microseconds) / 1000.0;
+}
+/* SF_CHONK_TIMING: per 2 s, the frames Java asked for, the main thread's CPU per frame, the fill's own time */
+static int sf_timing = -1;
+static double sf_st_t0, sf_st_cpu0, sf_st_fill_ms;
+static unsigned long sf_st_frames;
+static void sf_stat_frame(const char *path, double fill_ms) {
+    if (sf_timing < 0) sf_timing = getenv("SF_CHONK_TIMING") != 0;
+    if (!sf_timing) return;
+    double now = sf_now_ms(), cpu = sf_thread_cpu_ms();
+    fprintf(stderr, "SF_CHONK FRAME t=%.1f path=%s fill=%.2f\n", now, path, fill_ms);
+    if (sf_st_t0 == 0) { sf_st_t0 = now; sf_st_cpu0 = cpu; sf_st_frames = 0; sf_st_fill_ms = 0; return; }
+    sf_st_frames++; sf_st_fill_ms += fill_ms;
+    if (now - sf_st_t0 >= 2000) {
+        double secs = (now - sf_st_t0) / 1000.0, used = cpu - sf_st_cpu0;
+        fprintf(stderr, "SF_CHONK STAT path=%s frames/s=%.1f main_cpu_ms/s=%.1f main_cpu_ms/frame=%.2f fill_ms/frame=%.2f gpu_frames=%lu declined=%lu cpu_frames=%lu\n",
+                path, sf_st_frames / secs, used / secs, sf_st_frames ? used / sf_st_frames : 0, sf_st_frames ? sf_st_fill_ms / sf_st_frames : 0,
+                sf_gpu_frames, sf_gpu_declined, sf_gpu_cpu_frames);
+        sf_st_t0 = now; sf_st_cpu0 = cpu; sf_st_frames = 0; sf_st_fill_ms = 0;
+    }
+}
+
+#define SF_LOAD(lib, var, name) (var = (__typeof__(var))dlsym(lib, name))
+static int sf_gpu_setup(void) {
+    const char *v = getenv("SF_CHONK_GPU_PRESENT");
+    if (!v || !*v || !strcmp(v, "0")) return 0;
+    int mode = !strcmp(v, "verify") ? 2 : 1;
+    const char *why = 0;
+    const char *p = getenv("SFFX_GPU_PRESENT"), *s = getenv("SFFX_IOSURFACE_GPU");
+    if (mode == 1 && (!p || strcmp(p, "1"))) why = "SFFX_GPU_PRESENT=1 not set";
+    else if (!s || strcmp(s, "1")) why = "SFFX_IOSURFACE_GPU=1 not set";
+    else if (!getenv("SFFX_IOSURFACE_SERVICE")) why = "no private iosurfaced (SFFX_IOSURFACE_SERVICE)";
+    void *ios = why ? 0 : dlopen("/System/Library/Frameworks/IOSurface.framework/IOSurface", RTLD_LAZY);
+    void *gl = why ? 0 : dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", RTLD_LAZY);
+    void *cf = why ? 0 : dlopen("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", RTLD_LAZY);
+    if (!why && (!ios || !gl || !cf)) why = "a framework did not load";
+    if (!why) {
+        SF_LOAD(ios, sf_ios_create, "IOSurfaceCreate"); SF_LOAD(ios, sf_ios_w, "IOSurfaceGetWidth"); SF_LOAD(ios, sf_ios_h, "IOSurfaceGetHeight");
+        SF_LOAD(ios, sf_ios_gpuoff, "IOSurfaceSFGPUGetOffset"); SF_LOAD(ios, sf_ios_row, "IOSurfaceGetBytesPerRow");
+        SF_LOAD(ios, sf_ios_base, "IOSurfaceGetBaseAddress"); SF_LOAD(ios, sf_ios_lock, "IOSurfaceLock"); SF_LOAD(ios, sf_ios_unlock, "IOSurfaceUnlock");
+        SF_LOAD(gl, sf_cgl_tex_ios, "CGLTexImageIOSurface2D");
+        SF_LOAD(RTLD_DEFAULT, sf_ws_set_layer, "_windowServerSFFXSetGPULayer"); SF_LOAD(RTLD_DEFAULT, sf_ws_present, "_windowServerSFFXPresentLayers");
+        SF_LOAD(RTLD_DEFAULT, sf_ws_serial, "_windowServerSFFXGeometrySerial"); SF_LOAD(RTLD_DEFAULT, sf_ws_takes, "_windowServerSFFXTakesGPULayers");
+        SF_LOAD(cf, sf_cf_dict, "CFDictionaryCreateMutable"); SF_LOAD(cf, sf_cf_dict_set, "CFDictionarySetValue");
+        SF_LOAD(cf, sf_cf_num, "CFNumberCreate"); SF_LOAD(cf, sf_cf_str, "CFStringCreateWithCString");
+        sf_cf_kcb = dlsym(cf, "kCFTypeDictionaryKeyCallBacks"); sf_cf_vcb = dlsym(cf, "kCFTypeDictionaryValueCallBacks");
+        SF_LOAD(gl, g_gen_tex, "glGenTextures"); SF_LOAD(gl, g_del_tex, "glDeleteTextures"); SF_LOAD(gl, g_bind_tex, "glBindTexture");
+        SF_LOAD(gl, g_tex_param, "glTexParameteri"); SF_LOAD(gl, g_tex_image, "glTexImage2D"); SF_LOAD(gl, g_copy_tex_sub, "glCopyTexSubImage2D");
+        SF_LOAD(gl, g_gen_fb, "glGenFramebuffers"); SF_LOAD(gl, g_del_fb, "glDeleteFramebuffers"); SF_LOAD(gl, g_bind_fb, "glBindFramebuffer");
+        SF_LOAD(gl, g_fb_tex, "glFramebufferTexture2D"); SF_LOAD(gl, g_fb_status, "glCheckFramebufferStatus");
+        SF_LOAD(gl, g_enable, "glEnable"); SF_LOAD(gl, g_disable, "glDisable"); SF_LOAD(gl, g_begin, "glBegin"); SF_LOAD(gl, g_end, "glEnd");
+        SF_LOAD(gl, g_texcoord, "glTexCoord2f"); SF_LOAD(gl, g_vertex, "glVertex2f"); SF_LOAD(gl, g_color, "glColor4f");
+        SF_LOAD(gl, g_matrix_mode, "glMatrixMode"); SF_LOAD(gl, g_load_identity, "glLoadIdentity"); SF_LOAD(gl, g_push_matrix, "glPushMatrix");
+        SF_LOAD(gl, g_pop_matrix, "glPopMatrix"); SF_LOAD(gl, g_ortho, "glOrtho"); SF_LOAD(gl, g_color_mask, "glColorMask");
+        SF_LOAD(gl, g_clear_color, "glClearColor"); SF_LOAD(gl, g_clear, "glClear"); SF_LOAD(gl, g_push_attrib, "glPushAttrib");
+        SF_LOAD(gl, g_pop_attrib, "glPopAttrib"); SF_LOAD(gl, g_geti, "glGetIntegerv"); SF_LOAD(gl, g_error, "glGetError");
+        SF_LOAD(gl, g_active_tex, "glActiveTexture"); SF_LOAD(gl, g_use_program, "glUseProgram");
+        if (!sf_ios_create || !sf_ios_w || !sf_ios_h || !sf_ios_gpuoff || !sf_ios_row || !sf_ios_base || !sf_ios_lock || !sf_ios_unlock) why = "IOSurface entry points missing";
+        else if (!sf_cgl_tex_ios) why = "CGLTexImageIOSurface2D missing";
+        else if (!sf_ws_set_layer || !sf_ws_present || !sf_ws_serial) why = "WindowServer GPU presenter entry points missing";
+        else if (!sf_cf_dict || !sf_cf_dict_set || !sf_cf_num || !sf_cf_str || !sf_cf_kcb || !sf_cf_vcb) why = "CoreFoundation entry points missing";
+        else if (!g_gen_tex || !g_del_tex || !g_bind_tex || !g_tex_param || !g_tex_image || !g_copy_tex_sub || !g_gen_fb || !g_del_fb || !g_bind_fb ||
+                 !g_fb_tex || !g_fb_status || !g_enable || !g_disable || !g_begin || !g_end || !g_texcoord || !g_vertex || !g_color ||
+                 !g_matrix_mode || !g_load_identity || !g_push_matrix || !g_pop_matrix || !g_ortho || !g_color_mask || !g_clear_color ||
+                 !g_clear || !g_push_attrib || !g_pop_attrib || !g_geti || !g_error || !g_active_tex || !g_use_program) why = "GL entry points missing";
+    }
+    if (why) { fprintf(stderr, "SF_CHONK GPU present off (%s): CPU layer path\n", why); return 0; }
+    fprintf(stderr, "SF_CHONK GPU present %s: IOSurface ring of %d, broker %s\n", mode == 2 ? "VERIFY (CPU path still presents)" : "on",
+            SF_GPU_RING, getenv("SFFX_IOSURFACE_SERVICE"));
+    return mode;
+}
+
+static void sf_gpu_unregister(void) {
+    if (sf_gpu_registered && sf_gpu_win && sf_ws_set_layer)
+        sf_ws_set_layer((int)(long)msg(sf_gpu_win, sel("windowNumber")), (uintptr_t)sf_gpu_view, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    sf_gpu_registered = 0;
+}
+static void sf_gpu_off(const char *why) {
+    if (sf_gpu_dead) return;
+    sf_gpu_dead = 1;
+    sf_gpu_unregister();
+    fprintf(stderr, "SF_CHONK GPU present OFF after %lu frames (%s): CPU layer path from now on\n", sf_gpu_frames, why);
+}
+/* the view whose layer is Java's (AWTView: a window's content view or a view under it) */
+static id sf_view_with_layer(id view, id layer, int depth) {
+    if (!view || depth > 3) return 0;
+    if (msg(view, sel("layer")) == layer) return view;
+    id subs = msg(view, sel("subviews"));
+    unsigned long n = subs ? ((unsigned long (*)(id, SEL))msg)(subs, sel("count")) : 0;
+    for (unsigned long i = 0; i < n; i++) {
+        id found = sf_view_with_layer(((id (*)(id, SEL, unsigned long))msg)(subs, sel("objectAtIndex:"), i), layer, depth + 1);
+        if (found) return found;
+    }
+    return 0;
+}
+static int sf_gpu_find_view(id layer) {
+    if (sf_gpu_view && msg(sf_gpu_view, sel("layer")) == layer && msg(sf_gpu_view, sel("window")) == sf_gpu_win && sf_gpu_win) return 1;
+    sf_gpu_unregister();
+    sf_gpu_view = sf_gpu_win = 0;
+    id wins = msg(msg(sf_cls("NSApplication"), sel("sharedApplication")), sel("windows"));
+    unsigned long n = wins ? ((unsigned long (*)(id, SEL))msg)(wins, sel("count")) : 0;
+    for (unsigned long i = 0; i < n && !sf_gpu_view; i++) {
+        id w = ((id (*)(id, SEL, unsigned long))msg)(wins, sel("objectAtIndex:"), i);
+        id v = sf_view_with_layer(msg(w, sel("contentView")), layer, 0);
+        if (v) { sf_gpu_view = v; sf_gpu_win = w; }
+    }
+    return sf_gpu_view != 0;
+}
+static void *sf_gpu_surface(int w, int h) {
+    void *d = sf_cf_dict(0, 0, sf_cf_kcb, sf_cf_vcb);
+    if (!d) return 0;
+    const char *keys[] = { "IOSurfaceWidth", "IOSurfaceHeight", "IOSurfaceBytesPerElement", "IOSurfacePixelFormat" };
+    int values[] = { w, h, 4, 0x42475241 /* 'BGRA' */ };
+    for (int i = 0; i < 4; i++) {
+        void *k = sf_cf_str(0, keys[i], 0x08000100), *n = sf_cf_num(0, 9 /* kCFNumberIntType */, &values[i]);
+        if (k && n) sf_cf_dict_set(d, k, n);
+        if (k) sf_cf_release(k);
+        if (n) sf_cf_release(n);
+    }
+    void *s = sf_ios_create(d);
+    sf_cf_release(d);
+    return s;
+}
+static void sf_ring_free(int i) {
+    if (sf_ring[i].fbo) g_del_fb(1, &sf_ring[i].fbo);
+    if (sf_ring[i].tex) g_del_tex(1, &sf_ring[i].tex);
+    if (sf_ring[i].surface) sf_cf_release(sf_ring[i].surface);
+    memset(&sf_ring[i], 0, sizeof(sf_ring[i]));
+}
+/* slot i holds a W x H GPU surface bound to a texture and framebuffer of the fill's context (current) */
+static const char *sf_ring_slot(int i, int w, int h) {
+    if (sf_ring[i].surface && sf_ring[i].w == w && sf_ring[i].h == h) return 0;
+    sf_ring_free(i);
+    void *s = sf_gpu_surface(w, h);
+    if (!s) return "IOSurfaceCreate failed";
+    sf_ring[i].surface = s; sf_ring[i].w = w; sf_ring[i].h = h;
+    if (!sf_ios_gpuoff(s)) return "the IOSurface has no GPU (dma-buf) storage";
+    g_gen_tex(1, &sf_ring[i].tex);
+    g_bind_tex(0x0DE1, sf_ring[i].tex);
+    if (sf_cgl_tex_ios(sf_cpu_ctx, 0x0DE1, 0x1908 /* GL_RGBA */, w, h, 0x80E1 /* GL_BGRA */, 0x8367 /* 8_8_8_8_REV */, s, 0) != 0)
+        return "CGLTexImageIOSurface2D failed";
+    g_gen_fb(1, &sf_ring[i].fbo);
+    g_bind_fb(0x8D40, sf_ring[i].fbo);
+    g_fb_tex(0x8D40, 0x8CE0, 0x0DE1, sf_ring[i].tex, 0);
+    unsigned st = g_fb_status(0x8D40);
+    if (st != 0x8CD5) { static char m[64]; snprintf(m, sizeof m, "framebuffer on the IOSurface incomplete 0x%x", st); return m; }
+    fprintf(stderr, "SF_CHONK GPU buffer %d: %dx%d IOSurface %p (dma-buf offset %zu)\n", i, w, h, s, sf_ios_gpuoff(s));
+    return 0;
+}
+/* SF_CHONK_GPU_PRESENT=verify: at two frames, to $TMPDIR (raw BGRA): the GPU buffer read through GL (top row
+ * first), the same buffer through its CPU mapping, Java's frame as copied (bottom row first), and Java's frame
+ * exported by CGLSFFXCopyFramebuffer (QuartzCore's export, flipped: top row first) through its CPU mapping */
+static int (*sf_cgl_copy_fb)(void *, int);
+static void *sf_verify_s1;
+static int sf_verify_now(unsigned long n) { return sf_gpu_mode == 2 && (n == 90 || n == 400); }
+static void sf_dump(const char *what, unsigned long n, int w, int h, const unsigned char *px, size_t row) {
+    char path[512]; const char *tmp = getenv("TMPDIR");
+    snprintf(path, sizeof path, "%sgpu-verify-%lu-%s-%dx%d.bgra", tmp ? tmp : "/tmp/", n, what, w, h);
+    FILE *f = fopen(path, "wb");
+    if (!f) return;
+    for (int y = 0; y < h; y++) fwrite(px + (size_t)y * row, 1, (size_t)w * 4, f);
+    fclose(f);
+    unsigned long nonblack = 0;
+    for (int y = 0; y < h; y += 7) for (int x = 0; x < w; x += 7) { const unsigned char *q = px + (size_t)y * row + (size_t)x * 4; if (q[0] + q[1] + q[2] > 24) nonblack++; }
+    fprintf(stderr, "SF_CHONK GPU verify frame %lu %s %dx%d row=%zu non-black %.1f%% -> %s\n", n, what, w, h, row,
+            100.0 * nonblack / (((w + 6) / 7) * ((h + 6) / 7)), path);
+}
+static void sf_dump_surface(const char *what, unsigned long n, void *s) {
+    if (sf_ios_lock(s, 1, 0) != 0) { fprintf(stderr, "SF_CHONK GPU verify %s: lock failed\n", what); return; }
+    const unsigned char *b = sf_ios_base(s);
+    if (b) sf_dump(what, n, (int)sf_ios_w(s), (int)sf_ios_h(s), b, sf_ios_row(s));
+    sf_ios_unlock(s, 1, 0);
+}
+static void sf_pack_reset(void) {
+    sf_gl_store(0x0D05, 1); sf_gl_store(0x0D02, 0); sf_gl_store(0x0D03, 0); sf_gl_store(0x0D04, 0); sf_gl_store(0x8758, 0);
+}
+/* before the copy: QuartzCore's own export of Java's framebuffer (1:1) */
+static void sf_gpu_verify_pre(unsigned long n, int w, int h) {
+    if (!sf_verify_now(n)) return;
+    int pr = 0, ps = 0, pp = 0, pa = 0;
+    g_geti(0x0D02, &pr); g_geti(0x0D03, &ps); g_geti(0x0D04, &pp); g_geti(0x0D05, &pa);
+    fprintf(stderr, "SF_CHONK GPU verify frame %lu pack row_length=%d skip_rows=%d skip_pixels=%d align=%d\n", n, pr, ps, pp, pa);
+    if (!sf_cgl_copy_fb) sf_cgl_copy_fb = (int (*)(void *, int))dlsym(RTLD_DEFAULT, "CGLSFFXCopyFramebuffer");
+    if (!sf_cgl_copy_fb) return;
+    if (sf_verify_s1 && ((int)sf_ios_w(sf_verify_s1) != w || (int)sf_ios_h(sf_verify_s1) != h)) { sf_cf_release(sf_verify_s1); sf_verify_s1 = 0; }
+    if (!sf_verify_s1) sf_verify_s1 = sf_gpu_surface(w, h);
+    if (!sf_verify_s1) return;
+    int ok = sf_cgl_copy_fb(sf_verify_s1, 1);
+    fprintf(stderr, "SF_CHONK GPU verify frame %lu CGLSFFXCopyFramebuffer -> %d (dma-buf offset %zu row %zu)\n", n, ok, sf_ios_gpuoff(sf_verify_s1), sf_ios_row(sf_verify_s1));
+    if (ok) sf_dump_surface("qc-export-cpu", n, sf_verify_s1);
+}
+/* after the draw into the buffer */
+static void sf_gpu_verify(int slot, int w, int h, int sw, int sh, unsigned long n) {
+    if (!sf_verify_now(n)) return;
+    size_t row = (size_t)w * 4;
+    unsigned char *px = malloc(row * h);
+    if (!px) return;
+    sf_pack_reset();
+    g_bind_fb(0x8CA8 /* READ */, sf_ring[slot].fbo);
+    sf_gl_read(0, 0, w, h, 0x80E1, 0x1401, px);   /* fbo row 0 = the buffer's first row */
+    sf_dump("buffer-gl", n, w, h, px, row);
+    free(px);
+    fprintf(stderr, "SF_CHONK GPU verify frame %lu buffer dma-buf offset %zu row %zu\n", n, sf_ios_gpuoff(sf_ring[slot].surface), sf_ios_row(sf_ring[slot].surface));
+    sf_dump_surface("buffer-cpu", n, sf_ring[slot].surface);
+    /* Java's frame as copied into the source texture */
+    unsigned fb = 0; size_t srow = (size_t)sw * 4;
+    unsigned char *sp = malloc(srow * sh);
+    if (sp) {
+        g_gen_fb(1, &fb); g_bind_fb(0x8CA8, fb);
+        g_fb_tex(0x8CA8, 0x8CE0, 0x0DE1, sf_src_tex, 0);
+        if (g_fb_status(0x8CA8) == 0x8CD5) { sf_gl_read(0, 0, sw, sh, 0x80E1, 0x1401, sp); sf_dump("source-gl-bottomup", n, sw, sh, sp, srow); }
+        g_bind_fb(0x8CA8, 0); g_del_fb(1, &fb); free(sp);
+    }
+}
+/* one frame on the GPU path; 0: not presented this way (reason in *why; *fatal: turn the path off) */
+static int sf_gpu_frame(id self, const char **why, int *fatal) {
+    *fatal = 0;
+    if (!sf_gpu_find_view(self)) { *why = "no view hosts the layer yet"; return 0; }
+    id win = sf_gpu_win, view = sf_gpu_view;
+    int wid = (int)(long)msg(win, sel("windowNumber"));
+    if (!((signed char (*)(id, SEL))msg)(win, sel("isVisible"))) { *why = "window not visible"; return 0; }
+    if (sf_ws_takes && !sf_ws_takes(wid)) { *why = "WindowServer takes no GPU layers for this window"; return 0; }
+    sf_rect bounds = ((sf_rect (*)(id, SEL))msg)(view, sel("bounds"));
+    sf_rect visible = ((sf_rect (*)(id, SEL))msg)(view, sel("visibleRect"));
+    if (bounds.w <= 0 || bounds.h <= 0 || visible.x != bounds.x || visible.y != bounds.y || visible.w != bounds.w || visible.h != bounds.h) {
+        *why = "view partly hidden"; return 0;
+    }
+    sf_rect target = ((sf_rect (*)(id, SEL, sf_rect, id))msg)(view, sel("convertRect:toView:"), visible, 0);
+    sf_rect wf = ((sf_rect (*)(id, SEL))msg)(win, sel("frame"));
+    double scale = ((double (*)(id, SEL))msg)(win, sel("backingScaleFactor"));
+    if (scale <= 0) scale = 1;
+    int W = (int)(target.w * scale + 0.5), H = (int)(target.h * scale + 0.5);
+    double dx = target.x * scale, dy = (wf.h - (target.y + target.h)) * scale;
+    /* Java's frame, at the layer's size, as the CPU path draws it */
+    sf_rect b = ((sf_rect (*)(id, SEL))msg)(self, sel("bounds"));
+    double cs = ((double (*)(id, SEL))msg)(self, sel("contentsScale"));
+    if (cs <= 0) cs = 1;
+    int w = (int)(b.w * cs + 0.999), h = (int)(b.h * cs + 0.999);
+    if (w <= 0 || h <= 0 || W <= 0 || H <= 0 || W > 16384 || H > 16384) { *why = "empty layer"; return 0; }
+    if (!sf_cpu_ctx) {
+        sf_cpu_pf = ((void *(*)(id, SEL, unsigned))msg)(self, sel("copyCGLPixelFormatForDisplayMask:"), 0);
+        sf_cpu_ctx = ((void *(*)(id, SEL, void *))msg)(self, sel("copyCGLContextForPixelFormat:"), sf_cpu_pf);
+        if (!sf_cpu_ctx) { *why = "no CGL context for the layer"; *fatal = 1; return 0; }
+    }
+    void *previous = sf_cgl_get_current();
+    if (sf_cpu_size[0] != w || sf_cpu_size[1] != h) {
+        sf_cpu_size[0] = w; sf_cpu_size[1] = h;
+        sf_cgl_set_param(sf_cpu_ctx, 304 /* kCGLCPSurfaceBackingSize */, sf_cpu_size);
+        sf_cgl_enable(sf_cpu_ctx, 305 /* kCGLCESurfaceBackingSize */);
+    }
+    sf_cgl_set_current(sf_cpu_ctx);
+    sf_gl_viewport(0, 0, w, h);
+    ((void (*)(id, SEL, void *, void *, double, const void *))msg)(self, sel("drawInCGLContext:pixelFormat:forLayerTime:displayTime:"), sf_cpu_ctx, sf_cpu_pf, 0.0, 0);
+    sf_cgl_set_current(sf_cpu_ctx);
+    for (int k = 0; k < 16 && g_error() != 0; k++) {}
+    int slot = sf_ring_next % SF_GPU_RING, rfb = 0, dfb = 0, tex = 0, unit = 0, prog = 0;
+    g_geti(0x8CAA /* READ_FRAMEBUFFER_BINDING */, &rfb); g_geti(0x8CA6 /* DRAW_FRAMEBUFFER_BINDING */, &dfb);
+    g_geti(0x84E0 /* ACTIVE_TEXTURE */, &unit); g_geti(0x8B8D /* CURRENT_PROGRAM */, &prog);
+    g_active_tex(0x84C0); g_geti(0x8069 /* TEXTURE_BINDING_2D */, &tex);
+    g_push_attrib(0x00002000 | 0x00004000 | 0x00000800 | 0x00080000 | 0x00040000 | 0x00000004 | 0x00000008);
+    /* ENABLE | COLOR_BUFFER | VIEWPORT | SCISSOR | TEXTURE | CURRENT | LINE: restored by glPopAttrib */
+    const char *bad = 0;
+    sf_gpu_verify_pre(sf_gpu_frames + 1, w, h);
+    /* Java's framebuffer (the read binding Java's draw left, as the CPU path's read back uses) into a texture */
+    if (!sf_src_tex) g_gen_tex(1, &sf_src_tex);
+    g_bind_tex(0x0DE1, sf_src_tex);
+    if (sf_src_w != w || sf_src_h != h) {
+        g_tex_image(0x0DE1, 0, 0x8058 /* RGBA8 */, w, h, 0, 0x80E1, 0x1401, 0);
+        sf_src_w = w; sf_src_h = h;
+    }
+    g_copy_tex_sub(0x0DE1, 0, 0, 0, 0, 0, w, h);
+    if ((bad = sf_ring_slot(slot, W, H))) { *fatal = 1; }
+    if (!bad) {
+        g_bind_fb(0x8D40, sf_ring[slot].fbo);
+        if (g_use_program) g_use_program(0);
+        g_disable(0x0BE2 /* BLEND */); g_disable(0x0C11 /* SCISSOR */); g_disable(0x0B71 /* DEPTH */); g_disable(0x0B90 /* STENCIL */);
+        g_disable(0x0BC0 /* ALPHA_TEST */); g_disable(0x0B44 /* CULL */); g_disable(0x8804 /* FRAGMENT_PROGRAM_ARB */);
+        g_disable(0x8620 /* VERTEX_PROGRAM_ARB */); g_disable(0x84F5 /* TEXTURE_RECTANGLE */); g_disable(0x8DB9 /* FRAMEBUFFER_SRGB */);
+        sf_gl_viewport(0, 0, W, H);
+        for (int k = 0; k < 16 && g_error() != 0; k++) {}  /* a capability this context lacks is not an error here */
+        g_color_mask(1, 1, 1, 1); g_clear_color(0, 0, 0, 1); g_clear(0x4000);
+        g_color_mask(1, 1, 1, 0);                /* the buffer stays opaque */
+        g_matrix_mode(0x1701); g_push_matrix(); g_load_identity(); g_ortho(0, W, 0, H, -1, 1);
+        g_matrix_mode(0x1700); g_push_matrix(); g_load_identity();
+        g_enable(0x0DE1); g_bind_tex(0x0DE1, sf_src_tex);
+        int filter = (W == w && H == h) || getenv("SF_CHONK_GPU_NEAREST") ? 0x2600 : 0x2601;
+        g_tex_param(0x0DE1, 0x2801, filter); g_tex_param(0x0DE1, 0x2800, filter);
+        g_tex_param(0x0DE1, 0x2802, 0x812F); g_tex_param(0x0DE1, 0x2803, 0x812F);
+        g_color(1, 1, 1, 1);
+        /* the buffer's row 0 (framebuffer y = 0) is the frame's top row: Java's framebuffer is bottom row first */
+        g_begin(7 /* QUADS */);
+        g_texcoord(0, 1); g_vertex(0, 0);
+        g_texcoord(1, 1); g_vertex((float)W, 0);
+        g_texcoord(1, 0); g_vertex((float)W, (float)H);
+        g_texcoord(0, 0); g_vertex(0, (float)H);
+        g_end();
+        g_matrix_mode(0x1701); g_pop_matrix(); g_matrix_mode(0x1700); g_pop_matrix();
+        sf_gl_finish();                          /* WindowServer reads the buffer from another context */
+        unsigned e = g_error();
+        if (e) { static char m[48]; snprintf(m, sizeof m, "GL error 0x%x", e); bad = m; *fatal = 1; }
+        if (!bad && sf_gpu_mode == 2) sf_gpu_verify(slot, W, H, w, h, sf_gpu_frames + 1);
+    }
+    g_pop_attrib();
+    g_bind_tex(0x0DE1, (unsigned)tex); g_active_tex((unsigned)unit);
+    if (g_use_program) g_use_program((unsigned)prog);
+    g_bind_fb(0x8CA8, (unsigned)rfb); g_bind_fb(0x8CA9, (unsigned)dfb);
+    sf_cgl_set_current(previous);
+    if (bad) { *why = bad; return 0; }
+    sf_ring_next++;
+    sf_gpu_frames++;
+    if (sf_gpu_mode == 2) return 0;              /* verify: the CPU path still presents */
+    if (!sf_ws_set_layer(wid, (uintptr_t)view, sf_ring[slot].surface, 0, 0, W, H, dx, dy, W, H)) {
+        *why = "WindowServer refused the GPU layer"; *fatal = 1; return 0;
+    }
+    if (!sf_gpu_registered) {
+        sf_gpu_registered = 1;
+        ((void (*)(id, SEL, void *))msg)(self, sel("setContents:"), 0);  /* AppKit draws no stale picture under it */
+        fprintf(stderr, "SF_CHONK GPU layer registered: window %d view %p frame %dx%d -> %dx%d at %.0f,%.0f (scale %.2f)\n",
+                wid, view, w, h, W, H, dx, dy, scale);
+    }
+    if (!sf_ws_present(wid, sf_ws_serial(wid))) {
+        sf_gpu_declined++;
+        msg(win, sel("flushWindow"));            /* WindowServer declined (resized, not configured yet): the flush presents */
+    }
+    return 1;
+}
+
 /* (CHONKPERF) Java asks for a display at every frame it draws (60 a second); the window shows about half of them.
  * A new frame now only marks the layer: it is drawn and read back when AppKit draws the window and asks the layer
  * for its contents, so only the frame about to be presented is read back. SF_CHONK_EAGER_READBACK=1: as before,
@@ -328,7 +729,30 @@ static int sf_eager_readback(void) {
     if (on < 0) on = getenv("SF_CHONK_EAGER_READBACK") != 0 || !orig_glayer_contents;
     return on;
 }
+static unsigned long sf_gpu_why_logged;
+static void sf_glayer_needs_display_cpu(id self, SEL c);
 static void sf_glayer_needs_display(id self, SEL c) {
+    int on_main = pthread_main_np();
+    if (sf_gpu_mode && !sf_gpu_dead && on_main) {
+        double t0 = sf_now_ms();
+        const char *why = 0; int fatal = 0;
+        int done = sf_gpu_frame(self, &why, &fatal);
+        double ms = sf_now_ms() - t0;
+        if (done) { sf_stat_frame("gpu", ms); return; }
+        if (fatal) sf_gpu_off(why ? why : "?");
+        else if (why) {
+            sf_gpu_unregister();
+            if (sf_gpu_why_logged++ < 8 || sf_gpu_why_logged % 300 == 0)
+                fprintf(stderr, "SF_CHONK GPU frame on the CPU path (%s) [%lu]\n", why, sf_gpu_why_logged);
+        }
+        sf_fill_acc += ms;
+        sf_gpu_cpu_frames++;
+    } else if (sf_gpu_mode && !sf_gpu_dead && !on_main && sf_gpu_why_logged++ < 8)
+        fprintf(stderr, "SF_CHONK GPU frame on the CPU path (asked off the main thread)\n");
+    sf_glayer_needs_display_cpu(self, c);
+    if (on_main) { sf_stat_frame(sf_gpu_mode == 2 ? "verify" : "cpu", sf_fill_acc); sf_fill_acc = 0; }
+}
+static void sf_glayer_needs_display_cpu(id self, SEL c) {
     if (sf_eager_readback()) {
         orig_glayer_needs_display(self, c);
         sf_cpu_render(self);
@@ -419,6 +843,7 @@ __attribute__((constructor)) static void add_methods(void) {
     msg = (id (*)(id, SEL, ...))dlsym(objc, "objc_msgSend");
     sel = (SEL (*)(const char *))dlsym(objc, "sel_registerName");
     if (!cls || !add || !msg || !sel) return;
+    sf_cls = cls;
     id ns = cls("NSString");
     if (ns) add(ns, sel("isCaseInsensitiveLike:"), (void *)sf_isCaseInsensitiveLike, "c@:@");
     for (unsigned i = 0; i < sizeof(sf_plain) / sizeof(sf_plain[0]); i++) {
@@ -482,6 +907,7 @@ __attribute__((constructor)) static void add_methods(void) {
             setenv("SF_WS_PACE_PRESENTS", "1", 0);
             fprintf(stderr, "SF_CHONK CPU layer path on: readback %s, presents paced %s\n", mc ? "at display" : "every frame",
                     getenv("SF_WS_PACE_PRESENTS"));
+            sf_gpu_mode = sf_gpu_setup();
         }
     }
     if (getenv("SF_CHONK_TRACE")) {

@@ -38,6 +38,23 @@ into the window. The log line `CAOpenGLLayer ...: no OpenGL (libEGL) on this sys
 layer is not drawn` is QuartzCore saying it will not draw the layer itself in that mode;
 the fill does.
 
+`SF_CHONK_GPU_PRESENT=1` (set by `sf-open-chonkcraft` when asked for, off by default) shows
+Java's frames as GPU buffers instead: the launcher runs the game under a private `iosurfaced`
+(`$B/bin/surface-session`, the one Firefox's launcher uses, broker
+`org.siliconforest.iosurfaced.sffx.chonkcraft.<pid>`) with `SFFX_GPU_PRESENT=1` and
+`SFFX_IOSURFACE_GPU=1`. On each `-setNeedsDisplay` the fill has Java draw as before, copies
+the framebuffer to a texture (`glCopyTexSubImage2D`) and draws it with a textured quad
+(bilinear, top row first, alpha 1) into one of three window-pixel-size dma-buf IOSurfaces
+(`CGLTexImageIOSurface2D`), `glFinish`es, registers it at 1:1 with
+`_windowServerSFFXSetGPULayer` and presents with `_windowServerSFFXPresentLayers`. Any
+failure falls back to the CPU layer path and logs why (`SF_CHONK GPU ...`); when the private
+broker cannot start, the launcher runs the CPU path. `SF_CHONK_GPU_PRESENT=verify` renders
+the buffers but keeps presenting through the CPU path and dumps frames 90 and 400 to
+`$TMPDIR/gpu-verify-*.bgra` (the buffer through GL and through its CPU mapping, the source,
+QuartzCore's `CGLSFFXCopyFramebuffer`). The CPU mapping is what WindowServer shows; a
+`glReadPixels` of the IOSurface's own FBO comes back shifted by the 16384-byte dma-buf offset
+on this Mesa, which is a read-back artifact only.
+
 ## Window size
 
 AWT makes each window with the maximum size Java has not set yet, 0x0
@@ -53,6 +70,7 @@ as none, for this runtime only.
 
 `SF_CHONK_TRACE=1` (layer render/draw counts and bounds, window frames, a backtrace when the
 theme frame goes to 0x0), `SF_CHONK_KEEP_ZERO_MAX=1` (the old behaviour),
+`SF_CHONK_TIMING=1` (`SF_CHONK FRAME`/`SF_CHONK STAT` lines: requests, main-thread CPU, fill time, GPU/CPU frames),
 `J2D_TRACE_LEVEL=4`, `SF_CAOGL_TRACE=1`, `SF_CA_TRACE=1`, and `kill -3` for a Java thread dump.
 
 ## Not yet
