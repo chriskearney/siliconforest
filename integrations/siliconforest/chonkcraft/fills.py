@@ -800,19 +800,6 @@ static void sf_win_set_frame(id self, SEL c, sf_rect r, signed char display, sig
     }
     orig_win_set_frame(self, c, r, display, animate, tell);
 }
-// AWT makes each window with the maximum size Java has not set yet, 0x0
-// (-[AWTWindow setPropertiesForStyleBits:mask:]), and sets the real one when
-// the window is shown. macOS does not hold -setFrame: to it; SiliconForest's
-// AppKit did, so the first frame Java gave the window collapsed it to 0x0 and
-// the content view to 0x-22. A maximum of zero on an axis is stored as none.
-// (The same fix for every application is cocoa patch 0370; this one is for
-// the AppKit installed today.)
-static void (*orig_win_set_max)(id, SEL, sf_size);
-static void sf_win_set_max(id self, SEL c, sf_size z) {
-    if (z.w <= 0) z.w = 3.40282347e+38;   /* FLT_MAX: no maximum */
-    if (z.h <= 0) z.h = 3.40282347e+38;
-    orig_win_set_max(self, c, z);
-}
 static void (*orig_theme_set_size)(id, SEL, sf_size);
 static void tr_theme_set_size(id self, SEL c, sf_size z) {
     if (z.w <= 0 && z.h <= 0) {
@@ -866,10 +853,8 @@ __attribute__((constructor)) static void add_methods(void) {
         if (m) sf_glayer_draw = (void (*)(id, SEL, void *, void *, double, const void *))set_imp(m, (void *)sf_cgllayer_draw);
     }
     if (inst_method && set_imp && cls("NSWindow")) {
-        void *m = inst_method(cls("NSWindow"), sel("setMaxSize:"));
-        if (m && !getenv("SF_CHONK_KEEP_ZERO_MAX")) orig_win_set_max = (void (*)(id, SEL, sf_size))set_imp(m, (void *)sf_win_set_max);
         // every frame change in SiliconForest's AppKit goes through this one
-        m = (getenv("SF_CHONK_TRACE") || getenv("SF_CHONK_WINDOW_TOPLEFT")) ? inst_method(cls("NSWindow"), sel("setFrame:display:animate:tellWS:")) : 0;
+        void *m = (getenv("SF_CHONK_TRACE") || getenv("SF_CHONK_WINDOW_TOPLEFT")) ? inst_method(cls("NSWindow"), sel("setFrame:display:animate:tellWS:")) : 0;
         if (m) orig_win_set_frame = (void (*)(id, SEL, sf_rect, signed char, signed char, signed char))set_imp(m, (void *)sf_win_set_frame);
     }
     if (getenv("SF_CHONK_CPU_LAYER") && gl && glayer && inst_method && set_imp) {
