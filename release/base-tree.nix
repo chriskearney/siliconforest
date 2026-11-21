@@ -10,7 +10,9 @@ let
   load = name:
     let
       node = nodes.${name};
-      tree = sources.${name};
+      tree = if parallelsGuest && name == "xnu-loader"
+        then sources.${name} // { outPath = patchedLoader; }
+        else sources.${name};
       inputs = builtins.mapAttrs (_: target: load target) (node.inputs or { });
       result = tree // ((import (tree.outPath + "/flake.nix")).outputs
         (inputs // { self = result; })) // { inherit inputs; };
@@ -19,6 +21,20 @@ let
     (pkgs.lib.filterAttrs (_: target: nodes.${target}.locked.type != "path") nodes.${lock.upstreamFlakeRoot}.inputs);
   nixpkgs = load nodes.${lock.upstreamFlakeRoot}.inputs.nixpkgs;
   pkgs = import nixpkgs { inherit system; };
+  patchedLoader = pkgs.applyPatches {
+    name = "siliconforest-parallels-xnu-loader-source";
+    src = sources."xnu-loader";
+    patches = [
+      ./patches/xnu-loader-01-acpi-tables.patch
+      ./patches/xnu-loader-02-acpi-console.patch
+      ./patches/xnu-loader-03-acpi-platform.patch
+      ./patches/xnu-loader-04-efi-conventional-memory.patch
+      ./patches/xnu-loader-05-acpi-pci-resources.patch
+      ./patches/xnu-loader-06-efi-pci-msi.patch
+      ./patches/xnu-loader-07-acpi-platform-ahci.patch
+    ];
+    patchFlags = [ "-p1" "--fuzz=0" ];
+  };
   renameTools = builtins.path {
     path = ../tools;
     name = "siliconforest-rename-tools";
@@ -59,12 +75,27 @@ let
     path.write_text(source.replace(needle, 'export ZERO_AR_DATE=1\n' + needle))
     PY
   '';
+  parallelsGuest = sourceName == "upstream-base";
   cocoaAarch64 = sourceName == "upstream-cocoa" && system == "aarch64-linux";
-  prepared = if system == "aarch64-linux" && sourceName == "upstream-base" then
+  prepared = if parallelsGuest then
     pkgs.applyPatches {
-      name = "siliconforest-aarch64-linux-build-source";
+      name = "siliconforest-parallels-guest-source";
       src = buildSource;
-      patches = [ ./patches/aarch64-linux-xnu-headers.patch ];
+      patches = pkgs.lib.optional (system == "aarch64-linux") ./patches/aarch64-linux-xnu-headers.patch
+        ++ pkgs.lib.optional (system == "aarch64-darwin") ./patches/aarch64-darwin-host.patch
+        ++ [
+          ./patches/parallels-01-sbsa-uart.patch
+          ./patches/parallels-02-firmware-platform.patch
+          ./patches/parallels-03-gic-interface.patch
+          ./patches/parallels-04-gic-pending-signal.patch
+          ./patches/parallels-05-firmware-ecam.patch
+          ./patches/parallels-06-ehci-interrupt.patch
+          ./patches/parallels-07-gicv2m-msi.patch
+          ./patches/parallels-08-ecam-offsets.patch
+          ./patches/parallels-09-bridge-bar-windows.patch
+          ./patches/parallels-10-platform-ahci.patch
+          ./patches/parallels-11-pci-io-apertures.patch
+        ];
       patchFlags = [ "-p1" "--fuzz=0" ];
     }
   else if cocoaAarch64 then pkgs.applyPatches {
@@ -77,13 +108,6 @@ let
     ];
     patchFlags = [ "-p1" "--fuzz=0" ];
   }
-  else if system == "aarch64-darwin" && sourceName == "upstream-base" then
-    pkgs.applyPatches {
-      name = "siliconforest-aarch64-darwin-build-source";
-      src = buildSource;
-      patches = [ ./patches/aarch64-darwin-host.patch ];
-      patchFlags = [ "-p1" "--fuzz=0" ];
-    }
   else buildSource;
   inputs = rootInputs // {
     # An aarch64 Linux host needs corecrypto f577aafe, which the base tree pins: corecrypto-pin plus its aarch64 Linux host case.
