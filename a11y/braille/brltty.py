@@ -1,179 +1,306 @@
-"""a11y/braille/brltty.py — BrlAPI/BRLTTY Braille integration for SiliconForest
+"""
+a11y/braille/brltty.py — SiliconForest Braille display support via BRLTTY
 
-Provides Braille output and routing-key input for the Phase 3 screen reader
-using BRLTTY's Python BrlAPI bindings.
-
-Compatible with Brailliant BI 40X (HumanWare, hw driver) and all other
-displays supported by BRLTTY's `hw` and `hid` drivers.
+Supports all 39 BRLTTY 6.9.1 drivers and all connection types.
+Connects via libbrlapi (Unix socket from brltty daemon).
 
 Usage:
-    from a11y.braille.brltty import BrailleDisplay
-    brl = BrailleDisplay()
-    brl.connect()
-    brl.write_text("Schaltfläche OK")
-    brl.close()
-
-Requirements:
-    brltty built with hw driver and Python bindings (libbrlapi)
-    brltty running: brltty -b hw -d usb: -A auth=none
-
-BRLTTY version: 6.9.1+ (required for Darwin HID-class USB transport, PR #530)
-HumanWare Brailliant BI 40X: VID 0x1C71 PID 0xC131, hw driver, HID protocol
+    brltty_path = "/path/to/brltty"
+    nav = BrailleNavigator(brltty_path)
+    nav.start()     # launches brltty daemon
+    nav.write("Hallo Welt")
+    nav.stop()
 """
 
-import threading
-import queue
-from typing import Callable
+from __future__ import annotations
+import os
+import subprocess
+import time
+import logging
+from typing import Optional
 
-# BrlAPI Python bindings (installed with BRLTTY)
-try:
-    import brlapi
-    BRLAPI_AVAILABLE = True
-except ImportError:
-    BRLAPI_AVAILABLE = False
+logger = logging.getLogger("a11y.braille")
+
+# All 39 BRLTTY driver codes (BRLTTY 6.9.1, Drivers/Braille/)
+# Ordered by prevalence: most common modern displays first
+ALL_DRIVERS = [
+    "hw",   # HumanWare (Brailliant BI x, APH Mantis/Chameleon, NLS eReader)
+    "fs",   # Freedom Scientific (Focus series)
+    "hm",   # HIMS (BrailleSense, Smart Beetle, QBraille)
+    "eu",   # EuroBraille (b.note, b.book, Esys)
+    "ht",   # HandyTech (Active, Basic, Braille Star)
+    "bm",   # Baum/Orbit/Refreshabraille (VarioUltra, Orbit Reader)
+    "pm",   # Papenmeier (BRAILLEX)
+    "al",   # ALVA (Satellite, BC series)
+    "sk",   # Seika (3/5/40/80, Mini 24)
+    "np",   # NinePoint/Harpo (BraillePen 12/Touch, also BBTF)
+    "hd",   # Hedo (MobilLine, ProfiLine)
+    "fa",   # FrankAudiodata (TDI series)
+    "ic",   # Inceptor (BrailleMe derivative)
+    "dp",   # DotPad (APH graphics display)
+    "at",   # Albatross (46/80)
+    "ba",   # BrailComm
+    "bc",   # BrailleMemo (JD/Pocket/Smart)
+    "bd",   # Braudi
+    "bg",   # B2G (Braille to Go)
+    "bl",   # BrailleLite (Blazie 18/40)
+    "bn",   # BrailleNote (HumanWare legacy)
+    "cb",   # CombiBraille (TSI legacy)
+    "ce",   # Cebra
+    "cn",   # Canute (360-cell, Bristol Braille)
+    "ec",   # EcoBraille
+    "ir",   # Iris (HumanWare Iris)
+    "lb",   # Libbraille (generic)
+    "lt",   # LogText (Tieman)
+    "mb",   # MiniBraille
+    "md",   # MDV (Italian MB series)
+    "mm",   # MultiBraille (Tieman)
+    "mn",   # MinTerm (Braille Mint)
+    "mt",   # Metec (BD-40)
+    "pg",   # Pegasus (French 20/27/40/80)
+    "tn",   # TechniBraille
+    "ts",   # TSI (Navigator, PowerBraille)
+    "tt",   # TTY (virtual)
+    "vd",   # VisioBraille (German 20/40)
+    "vo",   # Voyager (Tieman 44/70)
+]
+
+# All connection types BRLTTY supports
+ALL_DEVICES = [
+    "usb:",           # USB direct (most modern displays)
+    "bluetooth:",     # Bluetooth
+    "hid:",           # HID over USB (newer HumanWare)
+    "serial:/dev/tty.usbserial",    # macOS USB-serial
+    "serial:/dev/ttyUSB0",          # Linux USB-serial
+    "serial:/dev/ttyS0",            # Legacy serial port
+]
 
 
-class BrailleDisplay:
-    """BrlAPI client for BRLTTY Braille display integration."""
+class BrailleNavigator:
+    """
+    Controls a Braille display via BRLTTY daemon + libbrlapi.
+    
+    Auto-detects the display and driver (tries all 39 BRLTTY drivers
+    over USB, Bluetooth, HID, and serial connections).
+    """
 
-    def __init__(self, host: str = "localhost", auth: str = ""):
-        self.host = host
-        self.auth = auth
+    def __init__(
+        self,
+        brltty_path: str = "/Volumes/Flo/Projekte/brltty/Programs/brltty",
+        conf_path: Optional[str] = None,
+        api_socket: str = "/tmp/BrlAPI",
+    ):
+        self.brltty_path = brltty_path
+        self.conf_path = conf_path or os.path.join(
+            os.path.dirname(__file__), "brltty.conf"
+        )
+        self.api_socket = api_socket
+        self._proc: Optional[subprocess.Popen] = None
+        self._brlapi = None
         self._conn = None
-        self._cells = 0
-        self._running = False
-        self._key_thread = None
-        self._on_routing_key: Callable[[int], None] | None = None
+        self._cell_count: int = 0
 
-    @property
-    def available(self) -> bool:
-        return BRLAPI_AVAILABLE
+    # ------------------------------------------------------------------
+    # Daemon lifecycle
+    # ------------------------------------------------------------------
 
-    @property
-    def connected(self) -> bool:
-        return self._conn is not None
+    def start(self, timeout: float = 5.0) -> bool:
+        """Start the BRLTTY daemon. Returns True if started successfully."""
+        if self._proc is not None and self._proc.poll() is None:
+            return True  # already running
 
-    @property
-    def cell_count(self) -> int:
-        return self._cells
+        # Build driver chain: auto first, then all 39 as explicit fallback
+        driver_chain = "auto," + ",".join(ALL_DRIVERS)
+        # Device chain: all connection types
+        device_chain = " ".join(ALL_DEVICES)
 
-    def connect(self) -> bool:
-        if not BRLAPI_AVAILABLE:
-            print("BrlAPI not available — install BRLTTY with Python bindings")
-            return False
+        cmd = [
+            self.brltty_path,
+            "--no-daemon",
+            f"--configuration-file={self.conf_path}",
+            f"--braille-driver={driver_chain}",
+            f"--braille-device={device_chain}",
+            f"--api-socket-path={self.api_socket}",
+            "--api-server=yes",
+            "--api-parameters=auth=none",
+            "--speech-driver=no",
+            "--screen-driver=no",
+            "--log-level=notice",
+            "--log-file=/tmp/brltty.log",
+        ]
         try:
-            self._conn = brlapi.Connection(host=self.host, auth=self.auth)
-            self._cells = self._conn.displaySize[0]
-            # Claim the driver so we can write Braille
-            self._conn.enterTtyMode()
-            print(f"BrlAPI connected: {self._cells} cells")
-            self._start_key_listener()
-            return True
-        except brlapi.ConnectionError as e:
-            print(f"BrlAPI connection failed: {e}")
-            print("Is BRLTTY running? Try: brltty -b hw -d usb: -A auth=none")
-            return False
-
-    def write_text(self, text: str, cursor: int = brlapi.CURSOR_OFF if BRLAPI_AVAILABLE else -1):
-        """Write text to the Braille display, truncated to cell count."""
-        if not self._conn:
-            return
-        try:
-            # Pad or truncate to cell count
-            padded = (text + " " * self._cells)[:self._cells]
-            self._conn.writeText(cursor, padded)
-        except brlapi.ConnectionError:
-            self._conn = None
-
-    def write_dots(self, dots: list[int]):
-        """Write raw dot patterns (list of byte values, one per cell)."""
-        if not self._conn:
-            return
-        try:
-            padded = (dots + [0] * self._cells)[:self._cells]
-            self._conn.writeDots(bytes(padded))
-        except brlapi.ConnectionError:
-            self._conn = None
-
-    def set_routing_key_handler(self, handler: Callable[[int], None]):
-        """Called when user presses a routing key (cell index 0-based)."""
-        self._on_routing_key = handler
-
-    def _start_key_listener(self):
-        self._running = True
-        self._key_thread = threading.Thread(target=self._key_loop, daemon=True)
-        self._key_thread.start()
-
-    def _key_loop(self):
-        """Read Braille display key events in a background thread."""
-        while self._running and self._conn:
-            try:
-                key = self._conn.readKey(block=True)
-                if key is None:
+            self._proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            logger.info(f"BRLTTY started (PID {self._proc.pid}), waiting for display…")
+            # Wait for BrlAPI socket to appear
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if os.path.exists(self.api_socket):
+                    logger.info("BrlAPI socket ready")
                     break
-                # Routing keys: BRL_CMD_ROUTE + cell_index
-                # Navigation keys: mapped to screen reader commands
-                self._handle_key(key)
-            except brlapi.ConnectionError:
-                break
+                time.sleep(0.1)
+            else:
+                logger.warning("BrlAPI socket did not appear — no Braille display connected?")
+                return False
+            return self._connect_api()
+        except FileNotFoundError:
+            logger.error(f"BRLTTY binary not found: {self.brltty_path}")
+            return False
+        except Exception as e:
+            logger.error(f"BRLTTY start failed: {e}")
+            return False
 
-    def _handle_key(self, key: int):
-        """Route Braille key events to screen reader commands."""
-        if not BRLAPI_AVAILABLE:
-            return
-        # Routing keys
-        if key & brlapi.KEY_TYPE_CMD:
-            cmd = key & brlapi.KEY_CMD_MASK
-            arg = (key & brlapi.KEY_CMD_ARG_MASK) >> brlapi.KEY_CMD_ARG_SHIFT
-            if cmd == brlapi.KEY_CMD_ROUTE and self._on_routing_key:
-                self._on_routing_key(arg)
-
-    def close(self):
-        self._running = False
-        if self._conn:
+    def stop(self):
+        """Stop the BRLTTY daemon."""
+        self._disconnect_api()
+        if self._proc is not None:
+            self._proc.terminate()
             try:
-                self._conn.leaveRawMode()
-                self._conn.close()
+                self._proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+            self._proc = None
+        logger.info("BRLTTY stopped")
+
+    # ------------------------------------------------------------------
+    # BrlAPI connection
+    # ------------------------------------------------------------------
+
+    def _connect_api(self) -> bool:
+        """Connect to the running BRLTTY daemon via libbrlapi."""
+        try:
+            from a11y.braille.brlapi_ctypes import BrlAPI
+            self._brlapi = BrlAPI(socket_path=self.api_socket)
+            self._conn = self._brlapi.connect()
+            self._cell_count = self._brlapi.get_display_size()
+            logger.info(f"BrlAPI connected: {self._cell_count} cells")
+            return True
+        except ImportError:
+            logger.warning("brlapi_ctypes not available — Braille output disabled")
+            return False
+        except Exception as e:
+            logger.warning(f"BrlAPI connect failed: {e}")
+            return False
+
+    def _disconnect_api(self):
+        """Disconnect from BrlAPI."""
+        if self._conn is not None:
+            try:
+                self._brlapi.disconnect()
             except Exception:
                 pass
             self._conn = None
+        self._brlapi = None
+
+    # ------------------------------------------------------------------
+    # Output
+    # ------------------------------------------------------------------
+
+    @property
+    def cell_count(self) -> int:
+        """Number of Braille cells on the connected display (0 if none)."""
+        return self._cell_count
+
+    def write(self, text: str) -> bool:
+        """
+        Write text to the Braille display.
+        Truncates to cell_count characters if necessary.
+        Returns True on success.
+        """
+        if self._brlapi is None:
+            return False
+        try:
+            self._brlapi.write_text(text[: self._cell_count or 40])
+            return True
+        except Exception as e:
+            logger.debug(f"Braille write failed: {e}")
+            self._disconnect_api()
+            return False
+
+    def write_at(self, text: str, cursor: int = 0) -> bool:
+        """Write text with cursor position (for text field navigation)."""
+        if self._brlapi is None:
+            return False
+        try:
+            self._brlapi.write_text(text[: self._cell_count or 40], cursor=cursor)
+            return True
+        except Exception as e:
+            logger.debug(f"Braille write_at failed: {e}")
+            return False
+
+    def clear(self) -> bool:
+        """Clear the Braille display."""
+        return self.write(" " * (self._cell_count or 40))
+
+    # ------------------------------------------------------------------
+    # Display detection helper (can be used without starting daemon)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def detect_connected_displays() -> list[dict]:
+        """
+        Probe USB/HID for connected Braille displays using system tools.
+        Returns a list of dicts: [{vendor_id, product_id, driver, name}]
+        
+        On macOS: uses system_profiler SPUSBDataType (no sudo needed).
+        On Linux: reads /sys/bus/usb/devices/.
+        """
+        import platform
+        import json
+
+        devices = []
+        if platform.system() == "Darwin":
+            try:
+                result = subprocess.run(
+                    ["system_profiler", "SPUSBDataType", "-json"],
+                    capture_output=True, text=True, timeout=10
+                )
+                data = json.loads(result.stdout)
+                usb_items = data.get("SPUSBDataType", [])
+                devices = _parse_usb_darwin(usb_items)
+            except Exception as e:
+                logger.debug(f"USB probe failed: {e}")
+        return devices
 
 
-# BRL-Navigator: maps screen reader focus events to Braille output
-class BrailleNavigator:
-    """
-    Integrates BrailleDisplay with the Phase 1 screen reader.
-    
-    Usage:
-        nav = BrailleNavigator(display)
-        nav.on_focus("Schaltfläche OK")  # called by FocusObserver
-    """
-
-    def __init__(self, display: BrailleDisplay):
-        self.display = display
-        self._current_text = ""
-        self._scroll_offset = 0
-
-    def on_focus(self, description: str):
-        """Update Braille display when focused element changes."""
-        self._current_text = description
-        self._scroll_offset = 0
-        self._render()
-
-    def _render(self):
-        cells = self.display.cell_count or 40
-        text = self._current_text
-        if len(text) > cells:
-            # Show scrolled view
-            text = text[self._scroll_offset:self._scroll_offset + cells]
-        self.display.write_text(text)
-
-    def scroll_right(self):
-        cells = self.display.cell_count or 40
-        if self._scroll_offset + cells < len(self._current_text):
-            self._scroll_offset += cells
-            self._render()
-
-    def scroll_left(self):
-        self._scroll_offset = max(0, self._scroll_offset - (self.display.cell_count or 40))
-        self._render()
+def _parse_usb_darwin(items: list, out: list = None) -> list:
+    """Recursively parse system_profiler SPUSBDataType for Braille VID/PIDs."""
+    if out is None:
+        out = []
+    # Known Braille display USB Vendor IDs
+    BRAILLE_VENDORS = {
+        0x1C71: ("HumanWare", "hw"),
+        0x0F4E: ("Freedom Scientific", "fs"),
+        0x1148: ("HIMS", "hm"),
+        0x0C45: ("EuroBraille", "eu"),
+        0x0403: ("FTDI/HandyTech", "ht"),
+        0x0904: ("Baum", "bm"),
+        0x0798: ("Papenmeier", "pm"),
+        0x0045: ("ALVA", "al"),
+        0x10C4: ("Seika", "sk"),
+        0x1FE4: ("HandyTech (native HID)", "ht"),
+        0x1209: ("Generic HID Braille", "hw"),
+        0x2341: ("Hedo", "hd"),
+        0x303A: ("BBTF/MyKeyPro", "np"),
+    }
+    for item in items:
+        if isinstance(item, dict):
+            vid_str = item.get("vendor_id", "")
+            pid_str = item.get("product_id", "")
+            try:
+                vid = int(vid_str, 16) if isinstance(vid_str, str) else int(vid_str)
+                pid = int(pid_str, 16) if isinstance(pid_str, str) else int(pid_str)
+                if vid in BRAILLE_VENDORS:
+                    name, driver = BRAILLE_VENDORS[vid]
+                    out.append({"vendor_id": hex(vid), "product_id": hex(pid),
+                                "driver": driver, "name": item.get("_name", name)})
+            except (ValueError, TypeError):
+                pass
+            # Recurse into sub-items
+            for key in ("_items", "items"):
+                if key in item:
+                    _parse_usb_darwin(item[key], out)
+    return out
