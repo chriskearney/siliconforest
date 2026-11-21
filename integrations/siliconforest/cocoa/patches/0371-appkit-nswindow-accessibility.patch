@@ -1,0 +1,86 @@
+--- /dev/null
++++ b/src/Frameworks/AppKit/NSWindow+Accessibility.h
+@@ -0,0 +1,24 @@
++// NSWindow+Accessibility.h — AX role and focused-element for NSWindow
++// Copyright (c) 2026 The SiliconForest Project, SPDX-License-Identifier: MPL-2.0 OR BSD-2-Clause
++
++#import <AppKit/NSWindow.h>
++
++@interface NSWindow (SFAccessibility)
++
++// AXRole for windows (always AXWindow).
++- (NSString *)accessibilityRole;
++
++// Window title as AX label.
++- (NSString *)accessibilityLabel;
++
++// The deepest focused view in this window's content tree.
++- (id)accessibilityFocusedUIElement;
++
++// AX children: the content view.
++- (NSArray *)accessibilityChildren;
++
++// Called by AppKit when first responder changes — posts AX focus notification.
++- (void)sfAccessibilityFirstResponderChanged:(id)newResponder;
++
++@end
+--- /dev/null
++++ b/src/Frameworks/AppKit/NSWindow+Accessibility.m
+@@ -0,0 +1,66 @@
++// NSWindow+Accessibility.m — AX role and focused-element for NSWindow
++// Copyright (c) 2026 The SiliconForest Project, SPDX-License-Identifier: MPL-2.0 OR BSD-2-Clause
++
++#import <AppKit/NSWindow+Accessibility.h>
++#import <AppKit/NSView+Accessibility.h>
++#import <AppKit/NSView.h>
++#import <Foundation/Foundation.h>
++#import "SFAccessibilityServer.h"
++
++@implementation NSWindow (SFAccessibility)
++
++- (NSString *)accessibilityRole {
++    return @"AXWindow";
++}
++
++- (NSString *)accessibilityLabel {
++    return [self title];
++}
++
++- (id)accessibilityFocusedUIElement {
++    id responder = [self firstResponder];
++    if ([responder isKindOfClass:[NSView class]])
++        return responder;
++    return [self contentView];
++}
++
++- (NSArray *)accessibilityChildren {
++    NSView *content = [self contentView];
++    if (content != nil)
++        return [NSArray arrayWithObject:content];
++    return [NSArray array];
++}
++
++- (void)sfAccessibilityFirstResponderChanged:(id)newResponder {
++    if (![newResponder isKindOfClass:[NSView class]])
++        return;
++    NSView *view = (NSView *)newResponder;
++    NSString *role   = [view accessibilityRole]  ?: @"AXUnknown";
++    NSString *label  = [view accessibilityLabel] ?: @"";
++    id        value  = [view accessibilityValue];
++    NSString *valStr = (value != nil) ? [NSString stringWithFormat:@"%@", value] : @"";
++    NSString *windowTitle = [self title] ?: @"";
++
++    // Post: window context + focused element
++    [[SFAccessibilityServer sharedServer]
++        postFocusChangedWithRole:role
++                           label:label
++                           value:valStr
++                             pid:[[NSProcessInfo processInfo] processIdentifier]
++                           frame:[view frame]];
++    // Also post window-activation if this is a new frontmost window
++    [[SFAccessibilityServer sharedServer]
++        postWindowActivatedWithTitle:windowTitle
++                                pid:[[NSProcessInfo processInfo] processIdentifier]];
++}
++
++@end

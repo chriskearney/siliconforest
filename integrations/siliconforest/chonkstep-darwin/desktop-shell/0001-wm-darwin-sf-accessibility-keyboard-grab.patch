@@ -1,0 +1,40 @@
+--- a/crates/wm-darwin/src/input.rs
++++ b/crates/wm-darwin/src/input.rs
+@@ -1,6 +1,8 @@
+ //! Real seat delivery shared by native PDHID and host wire tests.
++//! SiliconForest accessibility extension: AT-SPI device grab routing.
+ use std::collections::HashSet;
+-use smithay::{input::{Seat,keyboard::{KeyboardHandle,FilterResult,ModifiersState,XkbConfig},
++use std::os::unix::net::UnixStream;
++use std::io::Write;
++use smithay::{input::{Seat,keyboard::{KeyboardHandle,FilterResult,ModifiersState,XkbConfig},
+     pointer::{PointerHandle,MotionEvent,ButtonEvent,AxisFrame,CursorImageStatus,CursorImageSurfaceData}},
+     backend::input::{KeyState,ButtonState,Axis,AxisSource},utils::SERIAL_COUNTER,
+     reexports::wayland_server::{DisplayHandle,protocol::{wl_surface::WlSurface,wl_output,wl_seat::WlSeat}},
+@@ -14,8 +16,16 @@ pub(crate) struct InputState {
+     position:(f64,f64),buttons:u8,forwarded:u8,modifiers:Modifiers,last_time:u32,
+     suppressed_keys:HashSet<u32>,pub cursor_surface:Option<WlSurface>,
+     #[cfg(feature = "desktop-shell")]
+     deferred_focus:bool,
++    // AT-SPI device grab: when true, all key events are forwarded to the
++    // accessibility daemon (a11y/axserver.py) via SF_AX_SOCKET_PATH before
++    // being delivered to the focused Wayland client.
++    pub sf_accessibility_grab:bool,
+ }
+ 
++/// Unix socket path shared with AppKit's SFAccessibilityServer and axserver.py
++const SF_AX_SOCKET_PATH: &str = "/tmp/com.siliconforest.axuiserver";
++
++/// Forward a key event to the accessibility daemon (fire-and-forget, non-blocking).
++/// JSON format: {"type":"key_event","evdev":N,"down":true/false,"modifiers":M}
++fn sf_ax_forward_key(evdev: u32, down: bool, modifiers: u8) {
++    if let Ok(mut sock) = UnixStream::connect(SF_AX_SOCKET_PATH) {
++        let msg = format!(
++            "{{\"type\":\"key_event\",\"evdev\":{},\"down\":{},\"modifiers\":{}}}\n",
++            evdev, down, modifiers
++        );
++        let _ = sock.write_all(msg.as_bytes());
++    }
++}
++
+ fn modifiers(m:&ModifiersState)->Modifiers {
