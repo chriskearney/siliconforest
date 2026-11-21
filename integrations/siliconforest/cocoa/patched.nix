@@ -453,6 +453,10 @@
 #   0156w WindowServer (TERM9, FXPERF's FX-029 ask; opt-in SF_WS_PACE_PRESENTS=1, off by default): a window presents at
 #         most once per frame callback; a flush while its last commit is not drawn only marks the present pending and
 #         the callback presents the newest backing store (a callback missing for 100 ms holds nothing back)
+#   0375w WindowServer (CHONKPERF, ChonkCraft's white bars): a flush held back by SF_WS_PACE_PRESENTS copies the
+#         backing store into a frame at the flush (AppKit has finished drawing then); the frame callback only attaches
+#         and commits that copy. Before, the callback copied the backing store while the main thread could be halfway
+#         through its next drawing (white rows below each of Onyx2D's four bands). SF_WS_PACE_HOLD=0: as before
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
@@ -833,6 +837,7 @@ let
     ./patches/0166w-windowserver-momentum-capped-and-timed.patch
     ./patches/0173w-windowserver-pointer-enter-is-a-move.patch
     ./patches/0178w-windowserver-layers-presented-from-the-render-thread.patch
+    ./patches/0375w-windowserver-paced-present-copies-the-backing-store-at-the-flush.patch
   ];
   authenticationServicesSrc = patchedDir "src/Frameworks/AuthenticationServices" [
     ./patches/0003-authenticationservices-web-session-browser-side.patch
