@@ -1,0 +1,126 @@
+Use the distributor ID to select the ARM GIC interface
+
+A zero GIC CPU feature field sent a GICv3 guest down the legacy MMIO path and left its virtual timer interrupt pending. Select the system-register interface when the distributor ID confirms GICv3 or GICv4 and share that decision with the platform driver.
+
+diff --git a/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGIC.cpp b/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGIC.cpp
+index b05e52f..455cf36 100644
+--- a/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGIC.cpp
++++ b/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGIC.cpp
+@@ -67,13 +67,13 @@ static bool gSun50iSgi;
+ static IOMemoryMap *gGiccMap;
+ static volatile uint8_t *gGicc;
+ 
++extern "C" bool sf_arm_gic_uses_v2(void);
++
+ static bool
+ gic_is_v2(void)
+ {
+ #if !defined(__arm__) || defined(__arm64__)
+-	uint64_t pfr0;
+-	__asm__ volatile ("mrs %0, ID_AA64PFR0_EL1" : "=r"(pfr0));
+-	return ((pfr0 >> 24) & 0xf) == 0;
++	return sf_arm_gic_uses_v2();
+ #else
+ 	return false;
+ #endif
+diff --git a/src/Kernel/xnu/config/Unsupported.arm64.exports b/src/Kernel/xnu/config/Unsupported.arm64.exports
+index dad67a1..fee396a 100644
+--- a/src/Kernel/xnu/config/Unsupported.arm64.exports
++++ b/src/Kernel/xnu/config/Unsupported.arm64.exports
+@@ -29,6 +29,7 @@ _sf_smp_diag
+ _sf_serial_line_register
+ _sf_serial_line_feed
+ _sf_gic_current_spi
++_sf_arm_gic_uses_v2
+ _PE_console_mirror_putc
+ _msgbufp
+ _sf_dump_threads
+diff --git a/src/Kernel/xnu/osfmk/arm64/sleh.c b/src/Kernel/xnu/osfmk/arm64/sleh.c
+index e9a156f..4d79299 100644
+--- a/src/Kernel/xnu/osfmk/arm64/sleh.c
++++ b/src/Kernel/xnu/osfmk/arm64/sleh.c
+@@ -3937,14 +3937,28 @@ STARTUP(KMEM, STARTUP_RANK_LAST, sf_sun50i_gic_startup);
+ #if HAS_GICV3_FIQ
+ #include <pexpert/device_tree.h>
+ static vm_offset_t sf_gicv2_cpuif;
++static bool sf_gic_v2;
+ #define SF_GICV2_GICC_AIAR  0x020
+ #define SF_GICV2_GICC_AEOIR 0x024
+ // the gicv3 distributor, for masking spis nobody services
+ static vm_offset_t sf_gicd;
+ #define SF_GICD_TYPER       0x0004
+ #define SF_GICD_ICENABLER   0x0180
++#define SF_GICD_PIDR2_V2    0x0fe8
++#define SF_GICD_PIDR2_V3    0xffe8
+ #endif
+ 
++bool sf_arm_gic_uses_v2(void);
++bool
++sf_arm_gic_uses_v2(void)
++{
++#if HAS_GICV3_FIQ
++	return sf_gic_v2;
++#else
++	return ((__builtin_arm_rsr64("ID_AA64PFR0_EL1") >> 24) & 0xf) == 0;
++#endif
++}
++
+ // the spi each cpu's sleh_irq is servicing, for the gic interrupt controller in iokit (0: none)
+ static uint32_t sf_gic_spi[MAX_CPUS];
+ 
+@@ -4126,16 +4140,6 @@ sleh_irq(arm_saved_state_t *state)
+ #define SF_GICV2_GICC_IAR   0x00C
+ #define SF_GICV2_GICC_EOIR  0x010
+ 
+-static void
+-sf_gicv2_startup(void)
+-{
+-	// ID_AA64PFR0_EL1.GIC: 0 means no GICv3 system register interface
+-	if (((__builtin_arm_rsr64("ID_AA64PFR0_EL1") >> 24) & 0xf) == 0) {
+-		sf_gicv2_cpuif = ml_io_map(SF_GICV2_GICC_PHYS, 0x2000);
+-	}
+-}
+-STARTUP(KMEM, STARTUP_RANK_LAST, sf_gicv2_startup);
+-
+ // pd never enables an spi, so any the firmware left on would reach sleh_irq before iokit
+ // installs a handler: mask them all before interrupts are first enabled
+ static void
+@@ -4158,13 +4162,36 @@ sf_gicd_startup(void)
+ 	if (SecureDTGetProperty(gic, "reg", &prop, &size) != kSuccess || size < 8)
+ 		return;
+ 
+-	sf_gicd = ml_io_map(base + ((const uint64_t *)prop)[0], 0x10000);
++	const uint64_t *reg = (const uint64_t *)prop;
++	sf_gicd = ml_io_map(base + reg[0], 0x10000);
++	if (!sf_gicd)
++		return;
++
++	if (sf_gic_v2 && size >= 16 && reg[1] >= 0x10000) {
++		/* A CPU feature bit can omit the virtual GIC interface. Check the
++		 * legacy ID first because older loaders may assume a v3 layout. */
++		uint32_t legacy = *(volatile uint32_t *)(sf_gicd + SF_GICD_PIDR2_V2) & 0xf0;
++		if (legacy != 0x10 && legacy != 0x20) {
++			uint32_t arch = *(volatile uint32_t *)(sf_gicd + SF_GICD_PIDR2_V3) & 0xf0;
++			sf_gic_v2 = arch != 0x30 && arch != 0x40;
++		}
++	}
+ 	lines = (*(volatile uint32_t *)(sf_gicd + SF_GICD_TYPER) & 0x1f) + 1;
+ 	for (uint64_t n = 1; n < lines; n++) {
+ 		*(volatile uint32_t *)(sf_gicd + SF_GICD_ICENABLER + n * 4) = 0xffffffffu;
+ 	}
+ }
+-STARTUP(KMEM, STARTUP_RANK_LAST, sf_gicd_startup);
++
++static void
++sf_gic_startup(void)
++{
++	sf_gic_v2 = ((__builtin_arm_rsr64("ID_AA64PFR0_EL1") >> 24) & 0xf) == 0;
++	sf_gicd_startup();
++	if (sf_gic_v2) {
++		sf_gicv2_cpuif = ml_io_map(SF_GICV2_GICC_PHYS, 0x2000);
++	}
++}
++STARTUP(KMEM, STARTUP_RANK_LAST, sf_gic_startup);
+ 
+ static inline uint64_t
+ sf_gic_ack0(void)

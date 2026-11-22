@@ -45,7 +45,7 @@
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-libsystem.nix
 let
   pd = (import ../rebase/pd.nix).pd;
-in pd.packages.x86_64-linux.libsystem-arm64.overrideAttrs (old: {
+in pd.packages.${pd.buildSystem}.libsystem-arm64.overrideAttrs (old: {
   pname = "siliconforest-libsystem-default";
   patches = (old.patches or []) ++ [
     ../m1-userspace-diagnostics/fix-root/vm-page-size-symbol.patch

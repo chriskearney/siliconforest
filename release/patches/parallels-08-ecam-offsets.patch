@@ -1,0 +1,21 @@
+SFArmPCI: Keep extended offsets on firmware ECAM
+
+diff --git a/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp b/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
+index 995ce9d..edf9563 100644
+--- a/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
++++ b/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
+@@ -205,11 +205,13 @@ volatile UInt8 *SFArmPCI::configAddress(IOPCIAddressSpace space, UInt8 offset) c
+      * a dword boundary here: configRead8/16 need the exact byte, and a dword
+      * mask (offset & 0xfc) makes e.g. the header-type register at 0x0e read
+      * 0x0c instead, so every device is misparsed and rejected during probe.
++     * The firmware ECAM path takes the upper offset bits from registerNumExtended.
+      */
+     IOByteCount address = ((IOByteCount)(space.s.busNum - busFirst) << 20) |
+                           ((IOByteCount)space.s.deviceNum << 15) |
+                           ((IOByteCount)space.s.functionNum << 12) |
+-                          (offset & 0xfff);
++                          (firmwareECAM ? (static_cast<IOByteCount>(space.es.registerNumExtended) << 8) : 0) |
++                          offset;
+     return (volatile UInt8 *)(ecamMap->getVirtualAddress() + address);
+ }
+ 

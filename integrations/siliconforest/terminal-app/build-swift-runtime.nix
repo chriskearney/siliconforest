@@ -20,7 +20,7 @@
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-swift-runtime.nix
 let
   pd = (import ../rebase/pd.nix).pd;
-in (import ../rebase/swift-darwin-module.nix pd.packages.x86_64-linux."swift-runtime-arm64").overrideAttrs (old: {
+in (import ../rebase/swift-darwin-module.nix pd.packages.${pd.buildSystem}."swift-runtime-arm64").overrideAttrs (old: {
   pname = "siliconforest-swift-runtime";
   buildPhase = builtins.replaceStrings
     [ "cmake -P $S/Runtimes/Resync.cmake > /dev/null"

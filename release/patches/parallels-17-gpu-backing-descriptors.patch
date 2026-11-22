@@ -1,0 +1,57 @@
+VirtIO GPU: Send backing entries in a separate descriptor
+
+diff --git a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
+index ec72adb..3549d31 100644
+--- a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
++++ b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
+@@ -425,8 +425,10 @@ IOVirtIOGPU::ctrlFillTable(CtrlSlot *s, IOBufferMemoryDescriptor *payload, uint3
+ bool
+ IOVirtIOGPU::ctrlSubmit(const void *cmd, size_t cmdLen, IOBufferMemoryDescriptor *payload,
+                         uint32_t payloadLen, void *resp, size_t respLen, bool async,
+-                        unsigned timeoutMs)
++                        unsigned timeoutMs, uint32_t inlinePayloadOffset)
+ {
++    if (inlinePayloadOffset && (inlinePayloadOffset >= cmdLen || payloadLen))
++        return false;
+     if (!fQueueLock || !fSlotCount || cmdLen > kCtrlRespOffset ||
+         respLen > kCtrlSlotBytes - kCtrlRespOffset) {
+         DEBUG("ctrlSubmit: no queue or request too large\n");
+@@ -474,8 +476,12 @@ IOVirtIOGPU::ctrlSubmit(const void *cmd, size_t cmdLen, IOBufferMemoryDescriptor
+     IOByteCount firstLen = 0;
+     addr64_t first = payload && payloadLen ? payload->getPhysicalSegment(0, &firstLen, kIOMemoryMapperNone) : 0;
+ 
+-    chain[n++] = { s->phys, (uint32_t)cmdLen, false, false };
+-    if (payload && payloadLen && firstLen >= payloadLen) {
++    const uint32_t headerLen = inlinePayloadOffset ? inlinePayloadOffset : (uint32_t)cmdLen;
++    chain[n++] = { s->phys, headerLen, false, false };
++    if (inlinePayloadOffset) {
++        chain[n++] = { s->phys + inlinePayloadOffset, (uint32_t)cmdLen - inlinePayloadOffset,
++                       false, false };
++    } else if (payload && payloadLen && firstLen >= payloadLen) {
+         chain[n++] = { first, payloadLen, false, false };
+     } else if (payload && payloadLen) {
+         // a payload in pieces goes through the slot's indirect table, one descriptor per physical run
+@@ -653,7 +659,9 @@ IOVirtIOGPU::gpuAttachBacking(uint32_t resourceId, uint64_t phys, uint32_t size)
+     req.entry.length = size;
+ 
+     VGpuCtrlHdr resp; bzero(&resp, sizeof(resp));
+-    return sendCommand(&req, sizeof(req), &resp, sizeof(resp)) &&
++    // Put the backing entries in their own readable descriptor in the same chain.
++    return ctrlSubmit(&req, sizeof(req), NULL, 0, &resp, sizeof(resp), false, 1000,
++                      sizeof(req.hdr)) &&
+            resp.type == VIRTIO_GPU_RESP_OK_NODATA;
+ }
+ 
+diff --git a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.h b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.h
+index 34e49a6..7435074 100644
+--- a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.h
++++ b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.h
+@@ -70,7 +70,7 @@ private:
+     void     ctrlReapLocked();
+     bool     ctrlSubmit(const void *cmd, size_t cmdLen, IOBufferMemoryDescriptor *payload,
+                         uint32_t payloadLen, void *resp, size_t respLen, bool async,
+-                        unsigned timeoutMs);
++                        unsigned timeoutMs, uint32_t inlinePayloadOffset = 0);
+ 
+     // Framebuffer backing storage (guest RAM given to the host as the
+     // scanout resource's backing pages).

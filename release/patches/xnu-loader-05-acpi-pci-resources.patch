@@ -1,0 +1,241 @@
+arm64: Translate ACPI PCI resources into device-tree cells
+
+Publish MCFG and the EFI PCI resource windows in the synthetic device tree. Default QEMU reports MCFG buses 0 through 255 and an EFI bus descriptor for bus 0. Parallels reports bus 0 in both. Require the EFI bus range to fit within MCFG and publish the entire MCFG range.
+
+diff --git a/include/acpi_board.h b/include/acpi_board.h
+index 6e53419..9f74cea 100644
+--- a/include/acpi_board.h
++++ b/include/acpi_board.h
+@@ -24,6 +24,9 @@ typedef struct {
+   uint64_t gicd_base;
+   uint64_t gicr_base;
+   uint32_t gicr_size;
++  uint64_t ecam_base, ecam_length;
++  uint16_t pci_segment;
++  uint8_t pci_bus_first, pci_bus_last;
+   uint64_t msi_frame_base;
+   uint32_t msi_frame_id;
+   uint32_t msi_frame_flags;
+@@ -58,7 +61,22 @@ typedef struct {
+ 
+ const char *sf_acpi_tree(const SfAcpiBoard *board, uint64_t running_mpidr, SfAcpiTree *tree);
+ 
++enum { SF_ACPI_PCI_MAX_WINDOWS = 5 };
++
++typedef struct {
++  uint32_t reg[4];
++  uint32_t bus_range[2];
++  uint32_t ranges[SF_ACPI_PCI_MAX_WINDOWS][7];
++  size_t range_count;
++  uint64_t msi_reg[2];
++  uint32_t msi_spi_base, msi_spi_count;
++} SfAcpiPciTree;
++
++const char *sf_acpi_pci_tree(const SfAcpiBoard *board, uint32_t segment,
++                            const uint8_t *resources, size_t length, SfAcpiPciTree *tree);
++
+ extern bool sf_acpi_boot;
+ extern SfAcpiTree sf_acpi_tree_data;
++extern SfAcpiPciTree sf_acpi_pci_tree_data;
+ 
+ #endif
+diff --git a/src/acpi_board.c b/src/acpi_board.c
+index 766142e..0fb0c43 100644
+--- a/src/acpi_board.c
++++ b/src/acpi_board.c
+@@ -283,6 +283,102 @@ static const char *sf_read_madt(SfAcpiTable madt, SfAcpiBoard *board)
+   return NULL;
+ }
+ 
++static const char *sf_read_mcfg(SfAcpiTable table, SfAcpiBoard *board)
++{
++  if (table.bytes == NULL)
++    return NULL;
++  if (table.length != 60)
++    return "MCFG requires one ECAM allocation";
++
++  uint64_t base = sf_le(table.bytes + 44, 8);
++  uint8_t first = table.bytes[54], last = table.bytes[55];
++  uint64_t end = ((uint64_t)last + 1) << 20;
++  if (first > last || base == 0 || (base & 0xfffff) != 0 || base > UINT64_MAX - end)
++    return "MCFG ECAM range";
++  board->ecam_base = base + ((uint64_t)first << 20);
++  board->ecam_length = ((uint64_t)last - first + 1) << 20;
++  board->pci_segment = (uint16_t)sf_le(table.bytes + 52, 2);
++  board->pci_bus_first = first;
++  board->pci_bus_last = last;
++  return NULL;
++}
++
++const char *sf_acpi_pci_tree(const SfAcpiBoard *board, uint32_t segment,
++                            const uint8_t *resources, size_t length, SfAcpiPciTree *tree)
++{
++  if (board->ecam_length == 0 || board->pci_segment != segment)
++    return "MCFG has no matching root bridge";
++  SfAcpiPciTree translated = {
++    .reg = {(uint32_t)(board->ecam_base >> 32), (uint32_t)board->ecam_base,
++            0, (uint32_t)board->ecam_length},
++    .bus_range = {board->pci_bus_first, board->pci_bus_last},
++  };
++  if (board->msi_frame_base != 0) {
++    if ((board->msi_frame_base & 0xfff) != 0 || board->msi_frame_base > UINT64_MAX - 0x1000)
++      return "MADT MSI frame range";
++    translated.msi_reg[0] = board->msi_frame_base;
++    translated.msi_reg[1] = 0x1000;
++    if (board->msi_frame_flags & 1) {
++      translated.msi_spi_base = board->msi_spi_base;
++      translated.msi_spi_count = board->msi_spi_count;
++    }
++  }
++
++  bool bus_found = false;
++  while (length >= 2 && resources[0] != 0x79) {
++    enum { QWORD_BYTES = 46 };
++    if (length < QWORD_BYTES || resources[0] != 0x8a || sf_le(resources + 1, 2) != 43)
++      return "EFI root bridge resource descriptor";
++    const uint8_t *desc = resources;
++    resources += QWORD_BYTES;
++    length -= QWORD_BYTES;
++    uint8_t type = desc[3];
++    uint64_t min = sf_le(desc + 14, 8);
++    uint64_t max = sf_le(desc + 22, 8);
++    uint64_t translation = sf_le(desc + 30, 8);
++    uint64_t size = sf_le(desc + 38, 8);
++    if (size == 0)
++      continue;
++    if (max < min || max - min != size - 1)
++      return "EFI root bridge resource range";
++    if (type == 2) {
++      if (bus_found || translation != 0 || min < board->pci_bus_first || max > board->pci_bus_last)
++        return "EFI root bridge bus range falls outside MCFG";
++      bus_found = true;
++      continue;
++    }
++    if (type > 1 || translated.range_count == SF_ACPI_PCI_MAX_WINDOWS)
++      return "EFI root bridge window type or count";
++
++    uint64_t pci = min + translation;
++    if (((translation >> 63) == 0 ? pci < min : pci > min) || size - 1 > UINT64_MAX - pci)
++      return "EFI root bridge address translation";
++    uint64_t width = sf_le(desc + 6, 8);
++    if (type == 0 && width != 32 && width != 64)
++      return "EFI root bridge memory width";
++    uint32_t space = type == 1 ? 0x01000000 : width == 32 ? 0x02000000 : 0x03000000;
++    if (type == 0 && (desc[5] & 6) == 6)
++      space |= 0x40000000;
++    uint32_t *cells = translated.ranges[translated.range_count++];
++    cells[0] = space;
++    cells[1] = (uint32_t)(pci >> 32);
++    cells[2] = (uint32_t)pci;
++    cells[3] = (uint32_t)(min >> 32);
++    cells[4] = (uint32_t)min;
++    cells[5] = (uint32_t)(size >> 32);
++    cells[6] = (uint32_t)size;
++  }
++  if (length < 2 || resources[0] != 0x79)
++    return "EFI root bridge resource end tag";
++  if (translated.range_count == 0)
++    return "EFI root bridge supplied no windows";
++  if (!bus_found)
++    return "EFI root bridge supplied no bus range";
++
++  *tree = translated;
++  return NULL;
++}
++
+ const char *sf_acpi_read(SfAcpiMap map, void *context, uint64_t rsdp_address,
+                          SfAcpiBoard *board)
+ {
+@@ -309,6 +405,10 @@ const char *sf_acpi_read(SfAcpiMap map, void *context, uint64_t rsdp_address,
+     return "FACP PSCI unavailable";
+   found.psci = (found.arm_boot_flags & 2) != 0 ? SF_ACPI_PSCI_HVC : SF_ACPI_PSCI_SMC;
+ 
++  error = sf_read_mcfg(tables[SF_MCFG], &found);
++  if (error != NULL)
++    return error;
++
+   *board = found;
+   return NULL;
+ }
+diff --git a/tests/acpi_board_test.c b/tests/acpi_board_test.c
+index 235908c..29e0353 100644
+--- a/tests/acpi_board_test.c
++++ b/tests/acpi_board_test.c
+@@ -115,6 +115,69 @@ static SfFixture sf_synthetic(void)
+   return f;
+ }
+ 
++static void sf_qword(uint8_t *desc, uint8_t type, uint8_t flags, uint64_t granularity,
++                     uint64_t min, uint64_t max, uint64_t translation, uint64_t size)
++{
++  const uint8_t header[] = {0x8a, 43, 0, type, 0, flags};
++  memcpy(desc, header, sizeof(header));
++  sf_put_le(desc + 6, granularity, 8);
++  sf_put_le(desc + 14, min, 8);
++  sf_put_le(desc + 22, max, 8);
++  sf_put_le(desc + 30, translation, 8);
++  sf_put_le(desc + 38, size, 8);
++}
++
++static void sf_check_pci(const SfAcpiBoard *board)
++{
++  uint8_t resources[3 * 46 + 2] = {0};
++  sf_qword(resources, 0, 0, 32, 0x10000000, 0x1fffffff, 0, 0x10000000);
++  sf_qword(resources + 46, 1, 0, 0, 0x02400000, 0x024fffff,
++           UINT64_C(0xfffffffffdc00000), 0x100000);
++  sf_qword(resources + 92, 2, 0, 0, 0, 0, 0, 1);
++  resources[138] = 0x79;
++
++  const uint32_t reg[] = {0, 0x02300000, 0, 0x100000};
++  const uint32_t ranges[][7] = {
++    {0x02000000, 0, 0x10000000, 0, 0x10000000, 0, 0x10000000},
++    {0x01000000, 0, 0,          0, 0x02400000, 0, 0x100000},
++  };
++  SfAcpiPciTree tree = {0};
++  assert(sf_acpi_pci_tree(board, 0, resources, sizeof(resources), &tree) == NULL);
++  assert(memcmp(tree.reg, reg, sizeof(reg)) == 0);
++  assert(tree.bus_range[0] == 0 && tree.bus_range[1] == 0);
++  assert(tree.range_count == 2 && memcmp(tree.ranges, ranges, sizeof(ranges)) == 0);
++  assert(tree.msi_reg[0] == 0x02250000 && tree.msi_reg[1] == 0x1000);
++  assert(tree.msi_spi_base == 0 && tree.msi_spi_count == 0);
++
++  assert(sf_acpi_pci_tree(board, 1, resources, sizeof(resources), &tree) != NULL);
++  assert(sf_acpi_pci_tree(board, 0, resources, sizeof(resources) - 1, &tree) != NULL);
++  assert(sf_acpi_pci_tree(board, 0, resources + 92, sizeof(resources) - 92, &tree) != NULL);
++  resources[1] = 42;
++  assert(sf_acpi_pci_tree(board, 0, resources, sizeof(resources), &tree) != NULL);
++  assert(memcmp(tree.reg, reg, sizeof(reg)) == 0);
++  assert(tree.range_count == 2 && memcmp(tree.ranges, ranges, sizeof(ranges)) == 0);
++  /* Segment 0 Configuration() reported this memory window and bus range. */
++  uint8_t captured[2 * 46 + 2] = {0};
++  sf_qword(captured, 0, 0, 32, 0x10000000, 0x140fffff, 0, 0x4100000);
++  sf_qword(captured + 46, 2, 0, 0, 0, 0, 0, 1);
++  captured[92] = 0x79;
++  const uint32_t captured_range[] = {0x02000000, 0, 0x10000000, 0, 0x10000000, 0, 0x4100000};
++  assert(sf_acpi_pci_tree(board, 0, captured, sizeof(captured), &tree) == NULL);
++  assert(tree.range_count == 1 && memcmp(tree.ranges[0], captured_range, sizeof(captured_range)) == 0);
++  assert(memcmp(tree.reg, reg, sizeof(reg)) == 0);
++
++  SfAcpiBoard wider = *board;
++  wider.pci_bus_last = 255;
++  wider.ecam_length = UINT64_C(0x10000000);
++  assert(sf_acpi_pci_tree(&wider, 0, captured, sizeof(captured), &tree) == NULL);
++  assert(tree.bus_range[0] == 0 && tree.bus_range[1] == 255);
++  sf_qword(captured + 46, 2, 0, 0, 0, 1, 0, 2);
++  assert(sf_acpi_pci_tree(board, 0, captured, sizeof(captured), &tree) != NULL);
++  wider.pci_bus_first = 1;
++  wider.ecam_length -= UINT64_C(0x100000);
++  assert(sf_acpi_pci_tree(&wider, 0, captured, sizeof(captured), &tree) != NULL);
++}
++
+ static void sf_check_capture(SfFixture *fixture)
+ {
+   SfAcpiBoard board = {0};
+@@ -130,6 +193,7 @@ static void sf_check_capture(SfFixture *fixture)
+   assert(board.cpu_count == 2 && board.mpidr[0] == 0 && board.mpidr[1] == 1);
+   assert(board.timer_virt_gsi == 27 && board.timer_virt_flags == 2);
+   assert(board.psci == SF_ACPI_PSCI_SMC && board.arm_boot_flags == 1);
++  sf_check_pci(&board);
+   SfAcpiTree tree = {0};
+   assert(sf_acpi_tree(&board, 0x80000001, &tree) == NULL);
+   assert(tree.soc_base == 0x02010000 && tree.soc_size == 0x530000);

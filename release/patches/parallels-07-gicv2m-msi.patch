@@ -1,0 +1,593 @@
+arm64: Route PCI MSI and MSI-X through GICv2m
+
+diff --git a/nix/lib/kexts.nix b/nix/lib/kexts.nix
+index 21caef3..f770d05 100644
+--- a/nix/lib/kexts.nix
++++ b/nix/lib/kexts.nix
+@@ -143,7 +143,7 @@ in
+   { name = "SFBcm2835SD.kext"; dir = "SFBcm2835SD"; headers = [ "IOStorageFamily" ]; arches = x86arm; plistOnly = x86; }
+ 
+   # arm64 and riscv64 only
+-  { name = "SFArmPlatformExpert.kext"; dir = "SFArmPlatformExpert"; target = "SFArmPlatformExpert"; arches = arm; }
++  { name = "SFArmPlatformExpert.kext"; dir = "SFArmPlatformExpert"; target = "SFArmPlatformExpert"; headers = [ "IOPCIFamily" ]; arches = arm; }
+   { name = "SFArmPCI.kext"; dir = "SFArmPCI"; target = "SFArmPCI"; headers = [ "IOPCIFamily" ]; arches = arm; }
+   { name = "SFEcamPCI.kext"; dir = "SFEcamPCI"; target = "SFEcamPCI"; headers = [ "IOPCIFamily" ]; arches = armriscv; }
+   { name = "SFRiscvPlatformExpert.kext"; dir = "SFRiscvPlatformExpert"; target = "SFRiscvPlatformExpert";
+diff --git a/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp b/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp
+index 521deb9..513dc07 100644
+--- a/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp
++++ b/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp
+@@ -3994,6 +3994,15 @@ bool IOPCI2PCIBridge::publishNub( IOPCIDevice * nub, UInt32 index )
+ }
+ 
+ 
++bool IOPCIBridge::sf_set_msi_controller(IOInterruptController *controller)
++{
++    if (!reserved || reserved->messagedInterruptController)
++        return false;
++
++    reserved->messagedInterruptController = OSDynamicCast(IOPCIMessagedInterruptController, controller);
++    return reserved->messagedInterruptController != NULL;
++}
++
+ IOReturn IOPCIBridge::resolveMSIInterrupts( IOService * provider, IOPCIDevice * nub )
+ {
+     IOReturn ret = kIOReturnUnsupported;
+@@ -4035,6 +4044,8 @@ IOReturn IOPCIBridge::resolveMSIInterrupts( IOService * provider, IOPCIDevice *
+ 
+ IOReturn IOPCIBridge::resolveLegacyInterrupts( IOService * provider, IOPCIDevice * nub )
+ {
++    if (nub->getProperty("sf,no-pci-intx"))
++        return kIOReturnUnsupported;
+ #if USE_LEGACYINTS
+ 
+     uint32_t pin;
+diff --git a/src/Kernel/Extensions/IOPCIFamily/IOPCIMessagedInterruptController.cpp b/src/Kernel/Extensions/IOPCIFamily/IOPCIMessagedInterruptController.cpp
+index 2726b30..38a6524 100644
+--- a/src/Kernel/Extensions/IOPCIFamily/IOPCIMessagedInterruptController.cpp
++++ b/src/Kernel/Extensions/IOPCIFamily/IOPCIMessagedInterruptController.cpp
+@@ -211,6 +211,10 @@ IOReturn IOPCIMessagedInterruptController::disableInterrupt(IOService *nub, int
+ 		while (vector->interruptActive)	{}
+ 	}
+ 
++    if (sfSetGate && !vector->interruptDisabledHard) {
++        disableVectorHard(vectorNumber, vector);
++        vector->interruptDisabledHard = 1;
++    }
+ 	return (kIOReturnSuccess);
+ }
+ 
+@@ -288,6 +292,27 @@ bool IOPCIMessagedInterruptController::init(UInt32 numVectors)
+     return (init(numVectors, -1));
+ }
+ 
++bool IOPCIMessagedInterruptController::sf_init_platform(UInt64 doorbell, UInt32 first, UInt32 count,
++                                                      SFPCIMSIGate gate, void *context)
++{
++    sfDoorbell = doorbell;
++    sfSetGate = gate;
++    sfGateContext = context;
++    // Index the allocator by absolute INTID so multi-message MSI is aligned.
++    return init(first + count, 0) && reserveVectors(0, first);
++}
++
++IOInterruptController *sf_pci_create_msi_controller(UInt64 doorbell, UInt32 first, UInt32 count,
++                                                   SFPCIMSIGate gate, void *context)
++{
++    IOPCIMessagedInterruptController *controller = new IOPCIMessagedInterruptController;
++    if (controller && !controller->sf_init_platform(doorbell, first, count, gate, context)) {
++        controller->release();
++        return NULL;
++    }
++    return controller;
++}
++
+ bool IOPCIMessagedInterruptController::addDeviceInterruptProperties(
+                                 IORegistryEntry * device,
+                                 UInt32            controllerIndex,
+@@ -381,6 +406,7 @@ IOReturn IOPCIMessagedInterruptController::allocateDeviceInterrupts(
+     msiFlags = 0;
+     device = OSDynamicCast(IOPCIDevice, entry);
+     if (!device) msiCapability = 0;
++    if (sfSetGate && !msiCapability) return kIOReturnUnsupported;
+     msiPhysVectors = 0;
+ 
+     if (msiCapability)
+@@ -390,6 +416,8 @@ IOReturn IOPCIMessagedInterruptController::allocateDeviceInterrupts(
+ 
+         msiCapability  = device->reserved->msiCapability;
+         control    = device->configRead16(msiCapability + 2);
++        if (sfSetGate && !(device->reserved->msiMode & kMSIX) && !(control & 0x80) && (sfDoorbell >> 32))
++            return kIOReturnUnsupported;
+         if (kMSIX & device->reserved->msiMode)
+             msiPhysVectors = 1 + (0x7ff & control);
+         else
+@@ -431,7 +459,7 @@ IOReturn IOPCIMessagedInterruptController::allocateDeviceInterrupts(
+             }
+         }
+ #if !defined(SUPPORT_MULTIPLE_MSI)
+-        else if (numVectors)
++        else if (numVectors && !sfSetGate)
+         {
+             if ((data = OSDynamicCast(OSData, entry->getProperty(kIOPCIMSIFlagsKey)))
+               && (data->getLength() >= sizeof(uint32_t)))
+@@ -450,6 +478,11 @@ IOReturn IOPCIMessagedInterruptController::allocateDeviceInterrupts(
+         }
+ #endif
+         numVectors = getDeviceMSILimit(device, numVectors);
++        if (sfSetGate && numVectors && (device->reserved->msiMode & kMSIX) && numVectors < msiPhysVectors) {
++            IOLog("%s: GICv2m cannot allocate %u of %u MSI-X vectors\n",
++                  device->getName(), numVectors, msiPhysVectors);
++            return kIOReturnUnsupported;
++        }
+     }
+ 
+     allocated  = false;
+@@ -457,17 +490,43 @@ IOReturn IOPCIMessagedInterruptController::allocateDeviceInterrupts(
+     while (!allocated && numVectors > 0)
+     {
+         allocated = allocateInterruptVectors(entry, numVectors, &rangeStart);
++        if (!allocated && sfSetGate && (device->reserved->msiMode & kMSIX))
++            return kIOReturnNoSpace;
+         if (!allocated) numVectors >>= 1;
+     }
+     if (!allocated) return (kIOReturnNoSpace);
+ 
++    if (sfSetGate && (device->reserved->msiMode & kMSIX)) {
++        uint32_t table = device->configRead32(msiCapability + 4);
++        uint8_t bar = kIOPCIConfigBaseAddress0 + ((table & 7) << 2);
++        table &= ~7U;
++        IOMemoryMap *map = (bar < kIOPCIConfigBaseAddress0 + 6 * 4)
++            ? device->mapDeviceMemoryWithRegister(bar) : NULL;
++        size_t bytes = static_cast<size_t>(msiPhysVectors) * 16;
++        if (!map || table > map->getLength() || bytes > map->getLength() - table) {
++            OSSafeReleaseNULL(map);
++            _messagedInterruptsAllocator->deallocate(rangeStart, numVectors);
++            setProperty(kMSIFreeCountKey, _messagedInterruptsAllocator->getFreeCount(), 32);
++            return kIOReturnNoResources;
++        }
++        device->reserved->sfMSITableMap = map;
++        device->reserved->msiTable = map->getAddress() + table;
++    }
++
+ 	firstVector = static_cast<uint32_t>(rangeStart);
+-	ret = entry->callPlatformFunction(gIOPlatformGetMessagedInterruptAddressKey,
+-				/* waitForFunction */ false,
+-				/* nub             */ entry,
+-				/* options         */ (void *) 0,
+-				/* vector          */ (void *) (uintptr_t) (firstVector + _vectorBase),
+-				/* message         */ (void *) &message[0]);
++    if (sfSetGate) {
++        message[0] = static_cast<uint32_t>(sfDoorbell);
++        message[1] = static_cast<uint32_t>(sfDoorbell >> 32);
++        message[2] = firstVector;
++        ret = kIOReturnSuccess;
++    } else {
++        ret = entry->callPlatformFunction(gIOPlatformGetMessagedInterruptAddressKey,
++            /* waitForFunction */ false,
++            /* nub             */ entry,
++            /* options         */ (void *) 0,
++            /* vector          */ (void *) (uintptr_t) (firstVector + _vectorBase),
++            /* message         */ (void *) &message[0]);
++    }
+ 
+     if (kIOReturnSuccess == ret)
+     {
+@@ -535,7 +594,7 @@ IOReturn IOPCIMessagedInterruptController::allocateDeviceInterrupts(
+ 			device->reserved->msiPhysVectorCount = msiPhysVectors;
+ 			device->reserved->msiVectorCount     = numVectors;
+ 
+-            if (kMSIX & device->reserved->msiMode)
++            if ((kMSIX & device->reserved->msiMode) && !sfSetGate)
+             {
+                 IOMemoryMap * map;
+                 uint32_t      table;
+@@ -553,7 +612,7 @@ IOReturn IOPCIMessagedInterruptController::allocateDeviceInterrupts(
+                 map = device->mapDeviceMemoryWithRegister(bar);
+                 if (map) device->reserved->msiTable = map->getAddress() + table;
+             }
+-            else
++            else if (!(kMSIX & device->reserved->msiMode))
+             {
+ 				if (numVectors) numVectors = (31 - __builtin_clz(numVectors)); // log2
+ 				control |= (numVectors << 4);
+@@ -699,7 +758,13 @@ bool IOPCIMessagedInterruptController::allocateInterruptVectors( IOService *devi
+ {
+     bool result;
+    
+-    result = _messagedInterruptsAllocator->allocate(numVectors, rangeStartOut, numVectors);
++    UInt32 alignment = numVectors;
++    if (sfSetGate) {
++        IOPCIDevice *nub = OSDynamicCast(IOPCIDevice, device);
++        if (nub && (nub->reserved->msiMode & kMSIX))
++            alignment = 1;
++    }
++    result = _messagedInterruptsAllocator->allocate(numVectors, rangeStartOut, alignment);
+     if (result) setProperty(kMSIFreeCountKey, _messagedInterruptsAllocator->getFreeCount(), 32);
+ 
+     return (result);
+@@ -734,6 +799,13 @@ IOReturn IOPCIMessagedInterruptController::deallocateDeviceInterrupts(IOService
+ 		if (-1U == firstVector)    firstVector = vector;
+ 		deallocateInterrupt(vector);
+     }
++    if (sfSetGate) {
++        IOPCIDevice *nub = OSDynamicCast(IOPCIDevice, device);
++        if (nub && nub->reserved->sfMSITableMap) {
++            nub->reserved->msiTable = 0;
++            OSSafeReleaseNULL(nub->reserved->sfMSITableMap);
++        }
++    }
+     myName->release();
+ 
+     return (kIOReturnSuccess);
+@@ -768,6 +840,21 @@ IOPCIMessagedInterruptController::handleInterrupt( void *      state,
+ 	uint64_t            bits;
+ 	uint32_t            count, bit;
+ 
++    if (sfSetGate) {
++        if (source < 0 || static_cast<UInt32>(source) >= _vectorCount)
++            return kIOReturnSuccess;
++        vector = &vectors[source];
++        vector->interruptActive = 1;
++        OSMemoryBarrier();
++        if (vector->interruptRegistered) {
++            if (vector->interruptDisabledSoft || vector->interruptDisabledHard)
++                vector->interruptRegistered = 3;
++            else
++                vector->handler(vector->target, vector->refCon, vector->nub, vector->source);
++        }
++        vector->interruptActive = 0;
++        return kIOReturnSuccess;
++    }
+     source -= _vectorBase;
+     if ((source < 0) || (source > (int) _vectorCount)) return (kIOReturnSuccess);
+ 
+@@ -848,6 +935,15 @@ int IOPCIMessagedInterruptController::getVectorType(IOInterruptVectorNumber vect
+ void IOPCIMessagedInterruptController::disableVectorHard(IOInterruptVectorNumber vectorNumber,
+                                        					 IOInterruptVector * vector)
+ {
++    if (sfSetGate) {
++        sfSetGate(sfGateContext, static_cast<UInt32>(vectorNumber), false);
++        IOPCIDevice *nub = OSDynamicCast(IOPCIDevice, vector->nub);
++        if (nub && nub->reserved->msiTable) {
++            size_t slot = vector - nub->reserved->msiVectors;
++            reinterpret_cast<volatile uint32_t *>(nub->reserved->msiTable)[slot * 4 + 3] = 1;
++        }
++        return;
++    }
+ 	IOPCIDevice * device;
+ 	device = (IOPCIDevice *) vector->nub;
+ 
+@@ -861,6 +957,22 @@ void IOPCIMessagedInterruptController::disableVectorHard(IOInterruptVectorNumber
+ void IOPCIMessagedInterruptController::enableVector(IOInterruptVectorNumber vectorNumber,
+                                        				IOInterruptVector * vector)
+ {
++    if (sfSetGate) {
++        if (vector->interruptRegistered == 3) {
++            vector->interruptRegistered = 1;
++            vector->handler(vector->target, vector->refCon, vector->nub, vector->source);
++            if (vector->interruptRegistered != 1 ||
++                vector->interruptDisabledSoft || vector->interruptDisabledHard)
++                return;
++        }
++        IOPCIDevice *nub = OSDynamicCast(IOPCIDevice, vector->nub);
++        if (nub && nub->reserved->msiTable) {
++            size_t slot = vector - nub->reserved->msiVectors;
++            reinterpret_cast<volatile uint32_t *>(nub->reserved->msiTable)[slot * 4 + 3] = 0;
++        }
++        sfSetGate(sfGateContext, static_cast<UInt32>(vectorNumber), true);
++        return;
++    }
+ 	IOPCIDevice * device;
+ 	device = (IOPCIDevice *) vector->nub;
+ 
+diff --git a/src/Kernel/Extensions/IOPCIFamily/include/IOKit/pci/IOPCIBridge.h b/src/Kernel/Extensions/IOPCIFamily/include/IOKit/pci/IOPCIBridge.h
+index 8c0dc75..a555f20 100644
+--- a/src/Kernel/Extensions/IOPCIFamily/include/IOKit/pci/IOPCIBridge.h
++++ b/src/Kernel/Extensions/IOPCIFamily/include/IOKit/pci/IOPCIBridge.h
+@@ -94,6 +94,7 @@ private:
+ 	void updateWakeReason(IOPCIDevice * device);
+ 
+ protected:
++    bool sf_set_msi_controller(IOInterruptController *controller);
+ #if !defined(__arm64__) && !defined(__riscv)
+     static SInt32 compareAddressCell( UInt32 cellCount, UInt32 cleft[], UInt32 cright[] );
+ #else
+diff --git a/src/Kernel/Extensions/IOPCIFamily/include/IOKit/pci/IOPCIPrivate.h b/src/Kernel/Extensions/IOPCIFamily/include/IOKit/pci/IOPCIPrivate.h
+index fd8e8e5..873d48d 100644
+--- a/src/Kernel/Extensions/IOPCIFamily/include/IOKit/pci/IOPCIPrivate.h
++++ b/src/Kernel/Extensions/IOPCIFamily/include/IOKit/pci/IOPCIPrivate.h
+@@ -46,6 +46,7 @@
+ #endif
+ 
+ #include <IOKit/pci/IOPCIDevice.h>
++#include <IOKit/pci/SFPCIMSI.h>
+ #include <IOKit/IORangeAllocator.h>
+ #include <IOKit/IOInterruptController.h>
+ #include <libkern/OSDebug.h>
+@@ -79,6 +80,7 @@ struct IOPCIDeviceExpansionData
+     uint8_t             msiMode;
+     uint8_t             msiEnable;
+ 	uint64_t            msiTable;
++    IOMemoryMap *sfMSITableMap;
+ 	uint64_t            msiPBA;
+ 	IOInterruptVector * msiVectors;
+ 
+@@ -400,6 +402,9 @@ protected:
+     UInt32                  _parentOffset;
+ 
+     IORangeAllocator *      _messagedInterruptsAllocator;
++    UInt64                   sfDoorbell;
++    SFPCIMSIGate             sfSetGate;
++    void                    *sfGateContext;
+ 
+ public:
+ 
+@@ -429,6 +434,7 @@ public:
+     void disableDeviceMSI(IOPCIDevice *device);
+ 
+     bool init(UInt32 numVectors, UInt32 baseVector);
++    bool sf_init_platform(UInt64 doorbell, UInt32 first, UInt32 count, SFPCIMSIGate gate, void *context);
+ 
+     bool init(UInt32 numVectors);
+ 
+diff --git a/src/Kernel/Extensions/IOPCIFamily/include/IOKit/pci/SFPCIMSI.h b/src/Kernel/Extensions/IOPCIFamily/include/IOKit/pci/SFPCIMSI.h
+new file mode 100644
+index 0000000..3b9eba8
+--- /dev/null
++++ b/src/Kernel/Extensions/IOPCIFamily/include/IOKit/pci/SFPCIMSI.h
+@@ -0,0 +1,25 @@
++// SPDX-License-Identifier: MIT
++// Copyright (c) 2026 SiliconForest contributors
++
++#ifndef _IOKIT_SFPCIMSI_H
++#define _IOKIT_SFPCIMSI_H
++
++#include <IOKit/IOInterruptController.h>
++
++#define SF_PCI_MSI_RESOURCE "org.siliconforest.gic-v2m-msi"
++
++using SFPCIMSIGate = void (*)(void *context, UInt32 spi, bool enable);
++
++struct SFPCIMSIFrame {
++    UInt64 doorbell;
++    UInt32 first, count;
++    SFPCIMSIGate gate;
++    void *context;
++    void (*attach)(void *context, IOInterruptController *controller);
++};
++
++__attribute__((visibility("default")))
++IOInterruptController *sf_pci_create_msi_controller(UInt64 doorbell, UInt32 first, UInt32 count,
++                                                   SFPCIMSIGate gate, void *context);
++
++#endif
+diff --git a/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp b/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
+index c2a0bb7..995ce9d 100644
+--- a/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
++++ b/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
+@@ -4,6 +4,7 @@
+ #include <IOKit/IODeviceTreeSupport.h>
+ #include <IOKit/IOKitKeys.h>
+ #include <IOKit/pci/IOPCIDevice.h>
++#include <IOKit/pci/SFPCIMSI.h>
+ #include <libkern/OSByteOrder.h>
+ 
+ #define super IOPCIBridge
+@@ -136,6 +137,26 @@ bool SFArmPCI::configure(IOService *provider)
+                 return false;
+             }
+         }
++        if (provider->getProperty("msi-parent")) {
++            OSDictionary *match = resourceMatching(SF_PCI_MSI_RESOURCE);
++            IOService *resource = match ? waitForMatchingService(match, 5ULL * 1000000000) : NULL;
++            IOService *frameProvider = resource ? OSDynamicCast(IOService,
++                resource->getProperty(SF_PCI_MSI_RESOURCE)) : NULL;
++            SFPCIMSIFrame frame = {};
++            bool validFrame = frameProvider && frameProvider->callPlatformFunction(
++                SF_PCI_MSI_RESOURCE, false, &frame, NULL, NULL, NULL) == kIOReturnSuccess;
++            IOInterruptController *controller = validFrame && frame.gate && frame.attach
++                ? sf_pci_create_msi_controller(frame.doorbell, frame.first, frame.count,
++                                               frame.gate, frame.context) : NULL;
++            if (controller && sf_set_msi_controller(controller)) {
++                frame.attach(frame.context, controller);
++            } else {
++                OSSafeReleaseNULL(controller);
++                IOLog("SFArmPCI: GICv2m MSI controller unavailable\n");
++            }
++            OSSafeReleaseNULL(resource);
++            OSSafeReleaseNULL(match);
++        }
+         return hasMemory && super::configure(provider);
+     }
+     /* QEMU virt's low MMIO window is 0x10000000..0x3efeffff; PIO and the low ECAM follow it */
+diff --git a/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGICController.cpp b/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGICController.cpp
+index e9dd6ed..e7c1777 100644
+--- a/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGICController.cpp
++++ b/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGICController.cpp
+@@ -4,6 +4,8 @@
+ #include <IOKit/IOLib.h>
+ #include <IOKit/IODeviceTreeSupport.h>
+ #include <IOKit/IOInterruptController.h>
++#include <IOKit/IODeviceMemory.h>
++#include "../IOPCIFamily/include/IOKit/pci/SFPCIMSI.h"
+ #include <IOKit/IOPlatformExpert.h>
+ #include <IOKit/IOService.h>
+ #include <kern/thread.h>
+@@ -16,9 +18,11 @@
+ #define GICD_TYPER		0x0004
+ #define GICD_ISENABLER		0x0100
+ #define GICD_ICENABLER		0x0180
++#define GICD_ICPENDR      0x0280
+ #define GICD_IPRIORITYR		0x0400
+ #define GICD_IROUTER		0x6000
+ #define GICD_IGROUPR		0x0080
++#define GICD_ICFGR       0x0c00
+ #define GICD_ITARGETSR		0x0800
+ #define kSPIPriority		0xa0
+ 
+@@ -33,6 +37,8 @@ public:
+ 	static void attachThread(void *arg, wait_result_t wr);
+ 	static const OSSymbol *rootInterruptParentName(void);
+ 	IOReturn handleInterrupt(void *refCon, IOService *nub, int source) APPLE_KEXT_OVERRIDE;
++	IOReturn callPlatformFunction(const OSSymbol *name, bool wait, void *arg1,
++	    void *arg2, void *arg3, void *arg4) APPLE_KEXT_OVERRIDE;
+ 	bool vectorCanBeShared(IOInterruptVectorNumber vectorNumber, IOInterruptVector *vector) APPLE_KEXT_OVERRIDE;
+ 	int getVectorType(IOInterruptVectorNumber vectorNumber, IOInterruptVector *vector) APPLE_KEXT_OVERRIDE;
+ 	void disableVectorHard(IOInterruptVectorNumber vectorNumber, IOInterruptVector *vector) APPLE_KEXT_OVERRIDE;
+@@ -44,6 +50,11 @@ private:
+ 	uint64_t          fRoute;
+ 	// GICv2: spis are Group 1 (irq) and go to this cpu interface through ITARGETSR, not IROUTER
+ 	bool              fV2;
++    IOInterruptController *fMsiController;
++    SFPCIMSIFrame fMsiFrame;
++    void sf_init_msi(void);
++    static void sf_gate_msi(void *context, UInt32 spi, bool enable);
++    static void sf_attach_msi(void *context, IOInterruptController *controller);
+ 	// /arm-io/gic's phandle name, the interrupt parent device tree nubs list, when the loader has one
+ 	const OSSymbol   *fDTName;
+ 
+@@ -109,6 +120,97 @@ SFArmGICController::rootInterruptParentName(void)
+ 	return name;
+ }
+ 
++void
++SFArmGICController::sf_init_msi(void)
++{
++    IORegistryEntry *host = IORegistryEntry::fromPath("/pci", gIODTPlane);
++    OSData *parent = host ? OSDynamicCast(OSData, host->getProperty("msi-parent")) : NULL;
++    if (!parent || parent->getLength() != sizeof(UInt32)) {
++        OSSafeReleaseNULL(host);
++        return;
++    }
++    UInt32 phandle = *static_cast<const UInt32 *>(parent->getBytesNoCopy());
++    host->release();
++
++    IORegistryEntry *frame = IORegistryEntry::fromPath("/msi-controller", gIODTPlane);
++    if (!frame)
++        return;
++    OSData *identity = OSDynamicCast(OSData, frame->getProperty("AAPL,phandle"));
++    OSData *reg = OSDynamicCast(OSData, frame->getProperty("reg"));
++    if (!identity || identity->getLength() != sizeof(UInt32) ||
++        *static_cast<const UInt32 *>(identity->getBytesNoCopy()) != phandle ||
++        !frame->getProperty("msi-controller") || !reg || reg->getLength() != 4 * sizeof(UInt32)) {
++        frame->release();
++        return;
++    }
++    const UInt32 *cells = static_cast<const UInt32 *>(reg->getBytesNoCopy());
++    UInt64 base = (static_cast<UInt64>(cells[0]) << 32) | cells[1];
++    UInt64 length = (static_cast<UInt64>(cells[2]) << 32) | cells[3];
++    OSData *spiBase = OSDynamicCast(OSData, frame->getProperty("arm,msi-base-spi"));
++    OSData *spiCount = OSDynamicCast(OSData, frame->getProperty("arm,msi-num-spis"));
++    UInt32 first = 0, count = 0;
++    if (spiBase && spiCount && spiBase->getLength() == sizeof(UInt32) &&
++        spiCount->getLength() == sizeof(UInt32)) {
++        first = *static_cast<const UInt32 *>(spiBase->getBytesNoCopy());
++        count = *static_cast<const UInt32 *>(spiCount->getBytesNoCopy());
++    }
++    frame->release();
++
++    if (base == 0 || (base & 0xfff) != 0 || length != 0x1000 || base > UINT64_MAX - length)
++        return;
++    if (!first || !count) {
++        IODeviceMemory *mem = IODeviceMemory::withRange(base, length);
++        IOMemoryMap *map = mem ? mem->map() : NULL;
++        if (!map) {
++            OSSafeReleaseNULL(mem);
++            return;
++        }
++        const volatile UInt32 *regs = reinterpret_cast<const volatile UInt32 *>(map->getVirtualAddress());
++        UInt32 typer = regs[0x8 / sizeof(UInt32)];
++        first = (typer >> 16) & 0x3ff;
++        count = typer & 0x3ff;
++        map->release();
++        mem->release();
++    }
++    if (first < 32 || first >= fLines || count == 0 || count > fLines - first) {
++        IOLog("SFArmGIC: unusable GICv2m SPI range %u+%u\n", first, count);
++        return;
++    }
++
++    for (UInt32 spi = first; spi < first + count; spi++) {
++        UInt32 word = (spi / 32) * 4;
++        UInt32 bit = 1u << (spi % 32);
++        dwrite(GICD_ICENABLER + word, bit);
++        dwrite(GICD_ICPENDR + word, bit);
++        dwrite(GICD_IGROUPR + word, dread(GICD_IGROUPR + word) | bit);
++        UInt32 cfg = GICD_ICFGR + (spi / 16) * 4;
++        dwrite(cfg, dread(cfg) | (2u << ((spi % 16) * 2)));
++    }
++    __asm__ volatile ("dsb sy" ::: "memory");
++
++    fMsiFrame = {base + 0x40, first, count, &SFArmGICController::sf_gate_msi, this,
++                 &SFArmGICController::sf_attach_msi};
++    IOLog("SFArmGIC: GICv2m doorbell 0x%llx, edge Group 1 SPIs %u-%u\n",
++          (unsigned long long)fMsiFrame.doorbell, first, first + count - 1);
++}
++
++void
++SFArmGICController::sf_attach_msi(void *context, IOInterruptController *controller)
++{
++    auto *self = static_cast<SFArmGICController *>(context);
++    __atomic_store_n(&self->fMsiController, controller, __ATOMIC_RELEASE);
++}
++
++void
++SFArmGICController::sf_gate_msi(void *context, UInt32 spi, bool enable)
++{
++    auto *self = static_cast<SFArmGICController *>(context);
++    if (enable)
++        self->enableVector(spi, NULL);
++    else
++        self->disableVectorHard(spi, NULL);
++}
++
+ bool
+ SFArmGICController::initGIC(volatile uint8_t *gicd, bool v2)
+ {
+@@ -140,6 +242,7 @@ SFArmGICController::initGIC(volatile uint8_t *gicd, bool v2)
+ 			return false;
+ 	}
+ 
++    sf_init_msi();
+ 	getPlatform()->registerInterruptController((OSSymbol *)OSSymbol::withCStringNoCopy("SFArmGIC"), this);
+ 	IORegistryEntry *gic = IORegistryEntry::fromPath("/arm-io/gic", gIODTPlane);
+ 	if (gic != NULL) {
+@@ -184,6 +287,8 @@ SFArmGICController::attachThread(void *arg, wait_result_t)
+ 		IOLog("SFArmGIC: could not register with the cpu interrupt controller\n");
+ 	} else {
+ 		cpuIC->enableInterrupt(self, 0);
++        if (self->fMsiFrame.count)
++            self->publishResource(SF_PCI_MSI_RESOURCE, self);
+ 		// drivers of device tree nubs wait for this, with a deadline, before registering
+ 		if (self->fDTName != NULL)
+ 			self->publishResource(self->fDTName, self);
+@@ -197,6 +302,18 @@ SFArmGICController::attachThread(void *arg, wait_result_t)
+ 	thread_terminate(current_thread());
+ }
+ 
++IOReturn
++SFArmGICController::callPlatformFunction(const OSSymbol *name, bool wait, void *arg1,
++    void *arg2, void *arg3, void *arg4)
++{
++    // The frame carries kernel pointers. Keep its bytes out of the registry.
++    if (name && name->isEqualTo(SF_PCI_MSI_RESOURCE) && arg1 && fMsiFrame.count) {
++        *static_cast<SFPCIMSIFrame *>(arg1) = fMsiFrame;
++        return kIOReturnSuccess;
++    }
++    return IOInterruptController::callPlatformFunction(name, wait, arg1, arg2, arg3, arg4);
++}
++
+ IOReturn
+ SFArmGICController::handleInterrupt(void *, IOService *, int)
+ {
+@@ -205,6 +322,9 @@ SFArmGICController::handleInterrupt(void *, IOService *, int)
+ 
+ 	if (intid < 32 || intid >= fLines)
+ 		return kIOReturnSuccess;
++    IOInterruptController *msi = __atomic_load_n(&fMsiController, __ATOMIC_ACQUIRE);
++    if (msi && intid >= fMsiFrame.first && intid - fMsiFrame.first < fMsiFrame.count)
++        return msi->handleInterrupt(NULL, this, intid);
+ 	vector = &vectors[intid];
+ 	vector->interruptActive = 1;
+ 	if (!vector->interruptDisabledSoft && vector->interruptRegistered) {

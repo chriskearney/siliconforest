@@ -11,7 +11,7 @@
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-coreservices.nix
 let
   pd = import ../qemu-dev/sf-userland.nix;
-in pd.packages.x86_64-linux.coreServices-arm64.overrideAttrs (old: {
+in pd.packages.${pd.buildSystem}.coreServices-arm64.overrideAttrs (old: {
   pname = "siliconforest-coreservices";
   patches = (old.patches or []) ++ [ ./patches/coreservices-text-encoding-converter.patch ];
   buildPhase = builtins.replaceStrings

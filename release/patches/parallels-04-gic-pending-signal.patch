@@ -1,0 +1,112 @@
+Select the GIC interrupt group from the CPU pending signal
+
+A pending Group 0 timer interrupt can appear in the CPU interface while the CPU signals IRQ. Probe for a matching FIQ signal with exceptions masked, and route the timer and scheduler SGI through Group 1 when Group 0 does not signal FIQ.
+
+diff --git a/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGIC.cpp b/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGIC.cpp
+index 455cf36..5a067a8 100644
+--- a/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGIC.cpp
++++ b/src/Kernel/Extensions/SFArmPlatformExpert/SFArmGIC.cpp
+@@ -39,6 +39,8 @@ static uint32_t gGicTimerPpi = 27;
+ 
+ #define GIC_MAX_CPUS         32           /* matches MAX_CPUS in xnu's virt board config */
+ #define GICR_ISPENDR0        (GICR_SGI_BASE + 0x0200)
++#define SF_GICR_ICPENDR0     (GICR_SGI_BASE + 0x0280)
++#define SF_ISR_FIQ_PENDING  (1u << 6)
+ #define GIC_IPI_SGI          0            /* SGI INTID used for scheduler IPIs */
+ 
+ /* GICv2 (KVM on a GIC-400 host): distributor at the same base, CPU interface MMIO */
+@@ -282,7 +284,7 @@ gic_cpuif_setup(bool deliver)
+ 		    :: "r"((uint64_t)0x1), "r"((uint64_t)0xff) : "memory");
+ 	}
+ 	if (!gGicSecure) {
+-		__asm__ volatile ("msr ICC_IGRPEN0_EL1, %0\n" :: "r"(on) : "memory");
++		__asm__ volatile ("msr ICC_IGRPEN0_EL1, %0\n" :: "r"(gGicGrp1 ? 0 : on) : "memory");
+ 	}
+ 	__asm__ volatile (
+ 	    "msr ICC_IGRPEN1_EL1, %0\n"
+@@ -290,6 +292,39 @@ gic_cpuif_setup(bool deliver)
+ 	    :: "r"(on) : "memory");
+ }
+ 
++// Called with the local timer assigned to Group 0 and its delivery masked.
++static bool
++sf_gic_group0_signals_fiq(void)
++{
++	const uint32_t mask = 1u << GIC_TIMER_PPI;
++	const bool was_pending = (r_read(GICR_ISPENDR0) & mask) != 0;
++	uint64_t daif, highest, isr;
++
++	__asm__ volatile ("mrs %0, DAIF\n" "msr DAIFSet, #3\n" : "=r"(daif) :: "memory");
++	__builtin_arm_wsr64("ICC_IGRPEN0_EL1", 1);
++	if (!was_pending) {
++		r_write(GICR_ISPENDR0, mask);
++	}
++	r_write(GICR_ISENABLER0, mask);
++	__asm__ volatile ("dsb sy\n" "isb\n" ::: "memory");
++	const uint64_t start = __builtin_arm_rsr64("CNTVCT_EL0");
++	const uint64_t limit = __builtin_arm_rsr64("CNTFRQ_EL0") / 1000;
++	bool fiq;
++	do {
++		highest = __builtin_arm_rsr64("ICC_HPPIR0_EL1");
++		isr = __builtin_arm_rsr64("ISR_EL1");
++		fiq = highest == GIC_TIMER_PPI && (isr & SF_ISR_FIQ_PENDING) != 0;
++	} while (!fiq && __builtin_arm_rsr64("CNTVCT_EL0") - start < limit);
++
++	__builtin_arm_wsr64("ICC_IGRPEN0_EL1", 0);
++	r_write(GICR_ICENABLER0, mask);
++	if (!was_pending) {
++		r_write(SF_GICR_ICPENDR0, mask);
++	}
++	__asm__ volatile ("dsb sy\n" "msr DAIF, %0\n" "isb\n" :: "r"(daif) : "memory");
++	return fiq;
++}
++
+ #endif
+ 
+ bool
+@@ -368,32 +403,29 @@ SFArmGIC_init(void)
+ 		;
+ 	}
+ 
+-	/* The generic timer must land in **Group 0**, i.e. be delivered as an FIQ:
+-	 * xnu handles it in sleh_fiq() (ml_get_timer_pending() -> rtclock_intr()),
+-	 * which acknowledges via ICC_IAR0_EL1 and EOIs via ICC_EOIR0_EL1. Putting
+-	 * it in Group 1 sends it to sleh_irq(), which dispatches to the IOCPU
+-	 * interrupt controller - that has no notion of the timer, so it never
+-	 * rearms and the CPU wedges in an interrupt storm.
+-	 *
+-	 * Everything stays masked here. Delivery is switched on by
+-	 * SFArmGIC_enable() once cpu_data->interrupt_handler is installed. */
+-	// The IPI SGI joins the timer in Group 0 so both arrive
+-	// as FIQs and are classified by INTID in sleh_fiq()
++	/* Keep the timer and scheduler SGI in the same group, masked until
++	 * SFArmGIC_enable() runs with the CPU interrupt handler installed. */
++	const uint32_t local_interrupts = (1u << GIC_TIMER_PPI) | (1u << GIC_IPI_SGI);
+ 	r_write(GICR_ICENABLER0, 0xffffffffu);
+ 	if (gGicGrp1) {
+-		r_write(GICR_IGROUPR0, r_read(GICR_IGROUPR0) | (1u << GIC_TIMER_PPI) | (1u << GIC_IPI_SGI));
++		r_write(GICR_IGROUPR0, r_read(GICR_IGROUPR0) | local_interrupts);
+ 	} else {
+-		r_write(GICR_IGROUPR0, r_read(GICR_IGROUPR0) &
+-		    ~((1u << GIC_TIMER_PPI) | (1u << GIC_IPI_SGI)));
++		r_write(GICR_IGROUPR0, r_read(GICR_IGROUPR0) & ~local_interrupts);
+ 	}
+-	r_write(GICR_IGRPMODR0, r_read(GICR_IGRPMODR0) &
+-	    ~((1u << GIC_TIMER_PPI) | (1u << GIC_IPI_SGI)));
++	r_write(GICR_IGRPMODR0, r_read(GICR_IGRPMODR0) & ~local_interrupts);
+ 	((volatile uint8_t *)(gGicr + GICR_IPRIORITYR))[GIC_TIMER_PPI] = 0x00;
+ 	((volatile uint8_t *)(gGicr + GICR_IPRIORITYR))[GIC_IPI_SGI] = 0x00;
+ 
+ 	/* System register access and priority mask are safe now; delivery is not. */
+ 	gic_cpuif_setup(false);
+ 
++	/* The distributor can accept Group 0 while the CPU signals IRQ.
++	 * Use the IRQ group if the configured timer cannot signal an FIQ. */
++	if (!gGicGrp1 && !sf_gic_group0_signals_fiq()) {
++		gGicGrp1 = true;
++		r_write(GICR_IGROUPR0, r_read(GICR_IGROUPR0) | local_interrupts);
++	}
++
+ 	SF_LOG("SFArmGIC: configured (GICD_CTLR=0x%x GICR_WAKER=0x%x timer PPI %u %s/masked)\n",
+ 	    d_read(GICD_CTLR), r_read(GICR_WAKER), (unsigned)GIC_TIMER_PPI, gGicGrp1 ? "Group1" : "Group0");
+ 	return true;
