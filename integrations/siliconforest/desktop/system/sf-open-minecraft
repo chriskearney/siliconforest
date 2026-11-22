@@ -19,4 +19,6 @@ export XDG_RUNTIME_DIR
 export XDG_STATE_HOME="${XDG_STATE_HOME:-/private/var/db/desktop-state}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export LANG="${LANG:-en_US.UTF-8}"
+# Driver thread for GL dispatch. RD8 steady shown/s moved from about 35 to about 40.
+export mesa_glthread="${mesa_glthread:-true}"
 exec "$RUN" "$@"
