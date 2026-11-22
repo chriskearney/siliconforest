@@ -1,0 +1,214 @@
+Add the virtio socket probe and its build recipe
+
+diff --git a/nix/pkgs/apps/sf-vsock-test.nix b/nix/pkgs/apps/sf-vsock-test.nix
+new file mode 100644
+index 0000000..c5dd5aa
+--- /dev/null
++++ b/nix/pkgs/apps/sf-vsock-test.nix
+@@ -0,0 +1,35 @@
++# SPDX-License-Identifier: MIT
++# Copyright (c) 2026 SiliconForest contributors
++{ stdenv
++, darwinCrossToolchain
++, nativeLd
++, libSystem
++, appleSdk
++, targetTriple
++}:
++
++stdenv.mkDerivation {
++  pname = "sf-vsock-test";
++  version = "0.1";
++  src = ../../../src/Userspace/sf-vsock-test;
++  dontConfigure = true;
++  dontFixup = true;
++
++  buildPhase = ''
++    runHook preBuild
++    sdk="${appleSdk}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
++    cc="${darwinCrossToolchain}/bin/${targetTriple}-clang"
++    "$cc" -isysroot "$sdk" -mmacosx-version-min=26.5 -O2 -Wall -Wextra -Werror \
++      -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -I${libSystem}/usr/include \
++      --ld-path=${nativeLd}/bin/ld -nostdlib -Wl,-Z -L${libSystem}/usr/lib \
++      -Wl,-dylib_file,/usr/lib/system/libdyld.dylib:${libSystem}/usr/lib/system/libdyld.dylib \
++      -Wl,-platform_version,macos,26.5,26.5 main.c -lSystem -o sf-vsock-test
++    runHook postBuild
++  '';
++
++  installPhase = ''
++    runHook preInstall
++    install -Dm755 sf-vsock-test "$out/usr/bin/sf-vsock-test"
++    runHook postInstall
++  '';
++}
+diff --git a/src/Userspace/sf-vsock-test/main.c b/src/Userspace/sf-vsock-test/main.c
+new file mode 100644
+index 0000000..834b519
+--- /dev/null
++++ b/src/Userspace/sf-vsock-test/main.c
+@@ -0,0 +1,165 @@
++// SPDX-License-Identifier: MIT
++// Copyright (c) 2026 SiliconForest contributors
++#include <errno.h>
++#include <fcntl.h>
++#include <inttypes.h>
++#include <poll.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/ioctl.h>
++#include <sys/socket.h>
++#include <sys/vsock.h>
++#include <time.h>
++#include <unistd.h>
++
++static uint64_t sf_now_ms(void)
++{
++    struct timespec ts;
++    if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0) {
++        perror("clock_gettime");
++        exit(1);
++    }
++    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
++}
++
++static int sf_wait(struct pollfd *pfd, uint64_t deadline)
++{
++    for (;;) {
++        const uint64_t now = sf_now_ms();
++        if (now >= deadline)
++            return 0;
++        const int rc = poll(pfd, pfd ? 1 : 0, (int)(deadline - now));
++        if (rc >= 0 || errno != EINTR)
++            return rc;
++    }
++}
++
++static int sf_connect(int fd, const struct sockaddr_vm *address)
++{
++    if (connect(fd, (const struct sockaddr *)address, sizeof(*address)) == 0)
++        return 0;
++    if (errno != EINPROGRESS)
++        return errno;
++
++    struct pollfd pfd = {fd, POLLOUT, 0};
++    int rc = sf_wait(&pfd, sf_now_ms() + 3000);
++    if (rc < 0)
++        return errno;
++    if (rc == 0)
++        return ETIMEDOUT;
++
++    int error = 0;
++    socklen_t size = sizeof(error);
++    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &size) < 0)
++        return errno;
++    return error;
++}
++
++static int sf_stream(int fd, const struct sockaddr_vm *address)
++{
++    if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0) {
++        perror("fcntl");
++        return 1;
++    }
++    const uint64_t start = sf_now_ms();
++    const int error = sf_connect(fd, address);
++    const uint64_t elapsed = sf_now_ms() - start;
++    if (error == EAGAIN || error == ECONNREFUSED) {
++        printf("refused cid=%" PRIu32 " port=%" PRIu32 " errno=%d elapsed_ms=%" PRIu64 "\n",
++               address->svm_cid, address->svm_port, error, elapsed);
++        return 2;
++    }
++    if (error != 0) {
++        fprintf(stderr, "connect: %s (errno=%d) elapsed_ms=%" PRIu64 "\n",
++                strerror(error), error, elapsed);
++        return 1;
++    }
++
++    printf("accepted cid=%" PRIu32 " port=%" PRIu32 " elapsed_ms=%" PRIu64 "\n",
++           address->svm_cid, address->svm_port, elapsed);
++    fflush(stdout);
++    const uint64_t deadline = sf_now_ms() + 2000;
++    uint64_t bytes = 0;
++    bool eof = false;
++    struct pollfd pfd = {fd, POLLIN, 0};
++    for (;;) {
++        const int rc = sf_wait(eof ? NULL : &pfd, deadline);
++        if (rc < 0) {
++            perror("poll");
++            return 1;
++        }
++        if (rc == 0)
++            break;
++        unsigned char buffer[4096];
++        const ssize_t count = recv(fd, buffer, sizeof(buffer), 0);
++        if (count > 0)
++            bytes += (uint64_t)count;
++        else if (count == 0)
++            eof = true;
++        else if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
++            perror("recv");
++            return 1;
++        }
++    }
++
++    printf("received_bytes=%" PRIu64 " sent_bytes=0 wait_ms=2000\n", bytes);
++    if (shutdown(fd, SHUT_WR) < 0) {
++        perror("shutdown");
++        return 1;
++    }
++    puts("shutdown write complete");
++    return 0;
++}
++
++static bool sf_parse(const char *str, uint32_t *value)
++{
++    if (!*str || str[strspn(str, "0123456789")])
++        return false;
++    errno = 0;
++    const unsigned long n = strtoul(str, NULL, 10);
++    if (errno || n >= UINT32_MAX)
++        return false;
++    *value = (uint32_t)n;
++    return true;
++}
++
++int main(int argc, char **argv)
++{
++    struct sockaddr_vm address = {.svm_len = sizeof(address), .svm_family = AF_VSOCK};
++    uint32_t cid, port;
++    const bool get_cid = argc == 2 && strcmp(argv[1], "cid") == 0;
++    if (!get_cid) {
++        if (argc != 4 || strcmp(argv[1], "connect") ||
++            !sf_parse(argv[2], &cid) || !sf_parse(argv[3], &port)) {
++            fputs("usage: sf-vsock-test cid | sf-vsock-test connect CID PORT\n", stderr);
++            return 64;
++        }
++        address.svm_cid = cid;
++        address.svm_port = port;
++    }
++
++    const int fd = socket(AF_VSOCK, SOCK_STREAM, 0);
++    if (fd < 0) {
++        perror("socket(AF_VSOCK)");
++        return 1;
++    }
++
++    int result = 0;
++    if (get_cid) {
++        if (ioctl(fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid) < 0) {
++            perror("IOCTL_VM_SOCKETS_GET_LOCAL_CID");
++            result = 1;
++        } else {
++            printf("local_cid=%" PRIu32 "\n", cid);
++        }
++    } else {
++        result = sf_stream(fd, &address);
++    }
++    if (close(fd) < 0 && result == 0) {
++        perror("close");
++        result = 1;
++    }
++    return result;
++}

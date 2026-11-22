@@ -21,4 +21,8 @@ let
     };
   });
   kc = if kernelConfig == "debug" then p.kc-arm64-debug else p.kc-arm64;
-in kc.override { inherit kexts; }
+in kc.override ({
+  inherit kexts;
+} // pkgs.lib.optionalAttrs (source.parallelsGuest or false) {
+  extraKexts = [ "${kexts}/System/Library/Extensions/IOVirtIOSocket.kext" ];
+})

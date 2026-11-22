@@ -102,6 +102,8 @@ let
           ./patches/parallels-17-gpu-backing-descriptors.patch
           ./patches/parallels-18-gpu-backing-pages.patch
           ./patches/parallels-19-gpu-msix.patch
+          ./patches/parallels-20-vsock-transport.patch
+          ./patches/parallels-21-vsock-probe.patch
         ];
       patchFlags = [ "-p1" "--fuzz=0" ];
     }
