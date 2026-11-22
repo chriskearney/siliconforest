@@ -28,7 +28,7 @@ let
   r = import ../../rebase/pd.nix;
   inherit (r) pd pkgs;
   lib = pkgs.lib;
-  p = pd.packages.x86_64-linux;
+  p = pd.packages.${pd.buildSystem};
   libSystem = import ../../libsystem-default/build-libsystem.nix;
   tc = p.arm64-cross-toolchain;
   triple = "arm64-apple-darwin20.4";

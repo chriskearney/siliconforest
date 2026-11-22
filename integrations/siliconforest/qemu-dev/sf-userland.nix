@@ -22,7 +22,7 @@ let
     src = pd.outPath;
     patches = [ ./tree-patches/security-content-protection-header.patch ];
   };
-  # what builtins.getFlake adds to a flake's outputs and the lab's recipes use: outPath, inputs
+  # what builtins.getFlake adds to a flake's outputs and the lab's recipes use (outPath, inputs), and the build system base-tree.nix adds
   fixed = (import (patched + "/flake.nix")).outputs (pd.inputs // { self = fixed; })
-    // { outPath = "${patched}"; inherit (pd) inputs; };
+    // { outPath = "${patched}"; inherit (pd) inputs buildSystem buildPkgs; };
 in if source.tip then fixed else pd

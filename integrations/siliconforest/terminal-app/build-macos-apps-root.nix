@@ -38,8 +38,8 @@
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-macos-apps-root.nix
 let
   pd = (import ../rebase/pd.nix).pd;
-  p = pd.packages.x86_64-linux;
-  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
+  p = pd.packages.${pd.buildSystem};
+  pkgs = pd.buildPkgs;
   libsystem = import ./build-libsystem.nix;
   optimised = builtins.getEnv "SF_LIBSYSTEM" != "debug";
   libobjc = if builtins.getEnv "SF_LIBOBJC" == "old" then null else import ./build-libobjc.nix;

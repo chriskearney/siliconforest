@@ -1,0 +1,227 @@
+AHCI: Attach controllers described by the platform
+
+diff --git a/src/Kernel/Extensions/RavynAHCIPort/Info.plist b/src/Kernel/Extensions/RavynAHCIPort/Info.plist
+index 0ca6c01..3f86dcf 100644
+--- a/src/Kernel/Extensions/RavynAHCIPort/Info.plist
++++ b/src/Kernel/Extensions/RavynAHCIPort/Info.plist
+@@ -37,6 +37,17 @@
+             <key>IOProviderClass</key>
+             <string>IOPCIDevice</string>
+         </dict>
++        <key>Platform AHCI</key>
++        <dict>
++            <key>CFBundleIdentifier</key>
++            <string>com.ravynos.driver.RavynAHCIPort</string>
++            <key>IOClass</key>
++            <string>RavynAHCIPort</string>
++            <key>IONameMatch</key>
++            <string>generic-ahci</string>
++            <key>IOProviderClass</key>
++            <string>IOPlatformDevice</string>
++        </dict>
+     </dict>
+     <key>OSBundleLibraries</key>
+     <dict>
+diff --git a/src/Kernel/Extensions/RavynAHCIPort/RavynAHCIPort.cpp b/src/Kernel/Extensions/RavynAHCIPort/RavynAHCIPort.cpp
+index cbdd247..6601066 100644
+--- a/src/Kernel/Extensions/RavynAHCIPort/RavynAHCIPort.cpp
++++ b/src/Kernel/Extensions/RavynAHCIPort/RavynAHCIPort.cpp
+@@ -23,6 +23,7 @@
+  */
+ 
+ #include <IOKit/IOLib.h>
++#include <IOKit/IOPlatformExpert.h>
+ #include <IOKit/storage/IOMedia.h>
+ #include <machine/machine_routines.h>
+ #include <pexpert/pexpert.h>
+@@ -276,7 +277,7 @@ RavynAHCIPort::probe(IOService *provider, SInt32 *score)
+ {
+     IOPCIDevice *pci = OSDynamicCast(IOPCIDevice, provider);
+     AHCI_Debug("probe provider=%p pci=%p", provider, pci);
+-    if (!pci)
++    if (!pci && !OSDynamicCast(IOPlatformDevice, provider))
+         return NULL;
+ 
+     if (score) {
+@@ -292,48 +293,37 @@ bool RavynAHCIPort::start(IOService *provider)
+ {
+     PE_parse_boot_argn("ahci_debug", &gAHCIDebug, sizeof(gAHCIDebug));
+     AHCI_Debug("start provider=%p", provider);
++    if (!super::start(provider)) return false;
+     fProvider = OSDynamicCast(IOPCIDevice, provider);
+-    if (!fProvider || !super::start(provider)) return false;
+-
+-    fProvider->retain();
+-    fProvider->setMemoryEnable(true);
+-    fProvider->setBusMasterEnable(true);
+-
+-    fCommandLock = IOLockAlloc();
+-    if (!fCommandLock) {
+-        AHCI_Log("Failed to get command lock");
+-        return false;
++    if (fProvider) {
++        fProvider->retain();
++        fProvider->setMemoryEnable(true);
++        fProvider->setBusMasterEnable(true);
++
++        uint16_t vendor    = fProvider->configRead16(kIOPCIConfigVendorID);
++        uint16_t device    = fProvider->configRead16(kIOPCIConfigDeviceID);
++        uint32_t classCode = fProvider->configRead32(kIOPCIConfigRevisionID) >> 8;
++        AHCI_Debug("start provider=%p pci%x,%x pciclass,%06x",
++                   provider, vendor, device, classCode);
++
++        const uint32_t bar4 = fProvider->configRead32(kIOPCIConfigBaseAddress4);
++        const uint32_t bar5 = fProvider->configRead32(kIOPCIConfigBaseAddress5);
++        const uint16_t cmd  = fProvider->configRead16(kIOPCIConfigCommand);
++        AHCI_Debug("PCI CMD=%04x BAR4=%08x BAR5=%08x", cmd, bar4, bar5);
++
++        fABARMap = mapUsableBAR(fProvider, kIOPCIConfigBaseAddress5);
++        if (!fABARMap)
++            mapABARFromAssignedAddresses(fProvider, &fABARDesc, &fABARMap);
++        if (!fABARMap)
++            mapABARFromConfigBAR(fProvider, &fABARDesc, &fABARMap);
++    } else if (provider->getResources() == kIOReturnSuccess) {
++        fABARMap = provider->mapDeviceMemoryWithIndex(0, kIOMapInhibitCache);
+     }
+-    fWorkLoop = NULL;
+-    fInterruptSource = NULL;
+-    fInterruptsEnabled = false;
+-    fWaitChannel = 0;
+-
+-    uint16_t vendor    = fProvider->configRead16(kIOPCIConfigVendorID);
+-    uint16_t device    = fProvider->configRead16(kIOPCIConfigDeviceID);
+-    uint32_t classCode = fProvider->configRead32(kIOPCIConfigRevisionID) >> 8;
+-
+-    AHCI_Debug("start provider=%p pci%x,%x pciclass,%06x",
+-             provider, vendor, device, classCode);
+-
+-    const uint32_t bar4 = fProvider->configRead32(kIOPCIConfigBaseAddress4);
+-    const uint32_t bar5 = fProvider->configRead32(kIOPCIConfigBaseAddress5);
+-    const uint16_t cmd  = fProvider->configRead16(kIOPCIConfigCommand);
+-    AHCI_Debug("PCI CMD=%04x BAR4=%08x BAR5=%08x", cmd, bar4, bar5);
+-
+-    fABARMap = mapUsableBAR(fProvider, kIOPCIConfigBaseAddress5);
+-
+-    if (!fABARMap)
+-        mapABARFromAssignedAddresses(fProvider, &fABARDesc, &fABARMap);
+-
+-    if (!fABARMap)
+-        mapABARFromConfigBAR(fProvider, &fABARDesc, &fABARMap);
+ 
+     if (!fABARMap) {
+         AHCI_Log("Failed to map ABAR!");
+         return false;
+     }
+-
+     fABAR = (volatile uint8_t *)fABARMap->getVirtualAddress();
+ 
+     if (fABARMap->getLength() < PORT_REGS_BASE) {
+@@ -341,15 +331,29 @@ bool RavynAHCIPort::start(IOService *provider)
+                 (unsigned long long)fABARMap->getLength());
+         return false;
+     }
+-    {
+-        uint32_t probe = hbaRead32(AHCI_VS);
+-        if (probe == 0xFFFFFFFFU || hbaRead32(AHCI_CAP) == 0xFFFFFFFFU) {
+-            AHCI_Log("ABAR not decoding (VS=%08x CAP=%08x), refusing to attach",
+-                    probe, hbaRead32(AHCI_CAP));
+-            return false;
+-        }
++    uint32_t vs  = hbaRead32(AHCI_VS);
++    uint32_t cap = hbaRead32(AHCI_CAP);
++    uint32_t pi  = hbaRead32(AHCI_PI);
++    if (vs == 0xFFFFFFFFU || cap == 0xFFFFFFFFU ||
++        (!fProvider && ((vs >> 16) != 1 || pi == 0 || pi == 0xFFFFFFFFU))) {
++        AHCI_Log("ABAR not decoding (VS=%08x CAP=%08x PI=%08x), refusing to attach", vs, cap, pi);
++        return false;
++    }
++    if (!fProvider) {
++        AHCI_Log("platform AHCI at 0x%llx, VS=%08x CAP=%08x PI=%08x",
++                 (unsigned long long)fABARMap->getPhysicalAddress(), vs, cap, pi);
+     }
+ 
++    fCommandLock = IOLockAlloc();
++    if (!fCommandLock) {
++        AHCI_Log("Failed to get command lock");
++        return false;
++    }
++    fWorkLoop = NULL;
++    fInterruptSource = NULL;
++    fInterruptsEnabled = false;
++    fWaitChannel = 0;
++
+     /* Enable AHCI mode (GHC.AE) */
+     uint32_t ghc = hbaRead32(AHCI_GHC);
+     if (!(ghc & AHCI_GHC_AE)) {
+@@ -357,30 +361,32 @@ bool RavynAHCIPort::start(IOService *provider)
+         ghc = hbaRead32(AHCI_GHC);
+     }
+ 
+-    /* Try to set up MSI-driven command completion: IOPCIFamily's
+-     * resolveMSIInterrupts() already ran at nub publish and, if MSI
+-     * allocation succeeded, wired an interrupt source at index 0 to the
+-     * family's messaged-interrupt controller. If this fails for any reason
+-     * (no MSI available), issueCommand()'s wait loop falls back to pure
+-     * IOSleep(1) polling exactly as before - fInterruptsEnabled gates that. */
++    /* Source 0 comes from the firmware platform nub or the PCI configurator. */
+     fWorkLoop = IOWorkLoop::workLoop();
+     if (fWorkLoop) {
+         fInterruptSource = IOInterruptEventSource::interruptEventSource(
+-            this, &RavynAHCIPort::interruptOccurredStatic, fProvider, 0);
++            this, &RavynAHCIPort::interruptOccurredStatic, provider, 0);
+         if (fInterruptSource && fWorkLoop->addEventSource(fInterruptSource) == kIOReturnSuccess) {
+             fInterruptSource->enable();
+             hbaWrite32(AHCI_GHC, hbaRead32(AHCI_GHC) | AHCI_GHC_IE);
+             fInterruptsEnabled = true;
+-            AHCI_Debug("using MSI interrupt (source 0)");
++            AHCI_Debug("using %s interrupt (source 0)", fProvider ? "PCI" : "platform");
+         } else {
+-            if (fInterruptSource) { fInterruptSource->release(); fInterruptSource = NULL; }
+-            AHCI_Debug("MSI registration failed, falling back to polling");
++            OSSafeReleaseNULL(fInterruptSource);
++        }
++    }
++    if (!fInterruptsEnabled) {
++        if (!fProvider) {
++            AHCI_Log("platform interrupt registration failed");
++            OSSafeReleaseNULL(fWorkLoop);
++            return false;
+         }
++        AHCI_Debug("PCI interrupt registration failed, falling back to polling");
+     }
+ 
+-    uint32_t cap = hbaRead32(AHCI_CAP);
+-    uint32_t pi  = hbaRead32(AHCI_PI);
+-    uint32_t vs  = hbaRead32(AHCI_VS);
++    cap = hbaRead32(AHCI_CAP);
++    pi  = hbaRead32(AHCI_PI);
++    vs  = hbaRead32(AHCI_VS);
+ 
+     /* Drop any implemented port whose register block falls outside what was
+      * actually mapped, so a short ABAR cannot become an out-of-bounds access. */
+@@ -560,10 +566,10 @@ RavynAHCIPort::free()
+         IOLockFree(fCommandLock);
+         fCommandLock = NULL;
+     }
+-    fProvider = NULL;
+-    fABARDesc = NULL;
+-    fABARMap  = NULL;
+-    fABAR     = NULL;
++    OSSafeReleaseNULL(fABARMap);
++    OSSafeReleaseNULL(fABARDesc);
++    OSSafeReleaseNULL(fProvider);
++    fABAR = NULL;
+     bzero(fDiskNubs, sizeof(fDiskNubs));
+     super::free();
+ }
+@@ -800,9 +806,10 @@ RavynAHCIPort::interruptOccurred(IOInterruptEventSource *sender, int count)
+     /* Ack each port that fired (write-1-to-clear), then the global bits. */
+     for (int p = 0; p < 32; p++) {
+         if (!(is & (1U << p))) continue;
++        if (PORT_REGS_BASE + (p + 1) * PORT_REGS_SIZE > fABARMap->getLength()) continue;
+         portWrite32(p, PORT_IS, portRead32(p, PORT_IS));
+     }
+     hbaWrite32(AHCI_IS, is);
+ 
+     /* issueCommand() re-checks CI/IS itself on wake, so a plain broadcast
+      * (no lock held here) is sufficient - this only ever shortens the

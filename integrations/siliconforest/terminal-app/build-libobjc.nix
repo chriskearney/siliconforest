@@ -12,7 +12,7 @@
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-libobjc.nix
 let
   pd = (import ../rebase/pd.nix).pd;
-  p = pd.packages.x86_64-linux;
+  p = pd.packages.${pd.buildSystem};
 in p.libobjc-arm64.overrideAttrs (old: {
   pname = "siliconforest-libobjc";
   patches = (old.patches or [ ]) ++ [ ./patches/objc-pool-trace-read-once.patch ];

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 let
   base = import ../rebase/pd.nix;
-  p = base.pd.packages.x86_64-linux;
+  p = base.pd.packages.${base.pd.buildSystem};
 in {
   inherit p;
   inherit (base) pkgs pd;
