@@ -473,6 +473,9 @@
 #         and its dy is positive down only while disassociated. (true) unlocks. Unlocked motion is unchanged.
 #   0385  CoreGraphics: those two calls go to WindowServer and succeed; CGDisplayMoveCursorToPoint moves within
 #         the display; a mode whose refresh is 0 is reported as 60 Hz
+#   0386  AppKit: -[NSOpenGLContext flushBuffer] presents through the GPU IOSurface ring (SF_NSGL_GPU_PRESENT=0
+#         keeps the CPU readback; any failure falls back to it); NSWindow backing-rect conversion; the pixel
+#         format query writes a GLint; -[NSApplication setAppleMenu:] keeps the menu and -appleMenu returns it
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
@@ -872,6 +875,7 @@ let
     ./patches/0370-appkit-zero-maximum-size-is-no-maximum.patch
     ./patches/0379-appkit-auto-gpu-present-for-gpu-layers.patch
     ./patches/0381-appkit-chonkcraft-additive-symbols.patch
+    ./patches/0386-appkit-nsopengl-gpu-present-and-window-backing-rect.patch
   ];
   windowserverPatches = [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
