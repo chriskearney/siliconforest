@@ -1,0 +1,348 @@
+diff -ru a/src/Frameworks/WindowServer/message.h b/src/Frameworks/WindowServer/message.h
+--- a/src/Frameworks/WindowServer/message.h	2026-11-21 20:09:57.917239928 -0800
++++ b/src/Frameworks/WindowServer/message.h	2026-11-21 20:10:08.071734798 -0800
+@@ -53,6 +53,10 @@
+     kCGGetMouseLocation = 101,
+     /* windowID 0 asks for the active application window. */
+     kWSGetWindowInfo = 102,
++    /* wsRPCSimple: val1 = connected (0 disassociate/lock pointer, 1 associate/unlock) */
++    kCGAssociateMouseAndMouseCursorPosition = 103,
++    /* wsRPCSimple: val1 = x * scale, val2 = y * scale (CG screen coords, y-down), val3 = scale (256; 0 means 1) */
++    kCGWarpMouseCursorPosition = 104,
+ };
+ 
+ enum {
+diff -ru a/src/Frameworks/WindowServer/rpc_wayland.c b/src/Frameworks/WindowServer/rpc_wayland.c
+--- a/src/Frameworks/WindowServer/rpc_wayland.c	2026-11-21 20:09:57.917241478 -0800
++++ b/src/Frameworks/WindowServer/rpc_wayland.c	2026-11-21 20:34:12.306637804 -0800
+@@ -22,6 +22,10 @@
+ #include "viewporter-client-protocol.h"
+ #include "pointer-gestures-unstable-v1-client-protocol.h"
+ static const struct zwp_pointer_gesture_pinch_v1_listener pinchListener;   // (TERM8) below
++#include "relative-pointer-unstable-v1-client-protocol.h"
++#include "pointer-constraints-unstable-v1-client-protocol.h"
++static const struct zwp_relative_pointer_v1_listener relativePointerListener;
++static const struct zwp_locked_pointer_v1_listener lockedPointerListener;
+ #include "xdg-activation-v1-client-protocol.h"
+ #include "cursor-shape-v1-client-protocol.h"
+ #include "presentation-time-client-protocol.h"
+@@ -168,6 +172,14 @@
+     struct wl_pointer *pointer;
+     struct zwp_pointer_gestures_v1 *gestures;      // (TERM8) pinches, when the compositor offers them
+     struct zwp_pointer_gesture_pinch_v1 *pinch;
++    struct zwp_relative_pointer_manager_v1 *relativePointerManager;
++    struct zwp_relative_pointer_v1 *relativePointer;
++    struct zwp_pointer_constraints_v1 *pointerConstraints;
++    struct zwp_locked_pointer_v1 *lockedPointer;
++    int lockedWindowID;
++    int mouseDisassociated;
++    int pointerLockActive;
++    pthread_mutex_t pointerLockMutex;
+     struct wp_cursor_shape_manager_v1 *cursorShapes;  // (TERM8) named pointer shapes, when the compositor offers them
+     struct wp_cursor_shape_device_v1 *shapeDevice;
+     struct xkb_context *xkbContext;
+@@ -225,7 +237,7 @@
+     struct wsMode *modes;
+     struct wsMode *currentMode;
+     int32_t nextModeID;
+-} ws = { .modesLock = PTHREAD_MUTEX_INITIALIZER, .scale120 = 120, .outputScale = 1 };
++} ws = { .modesLock = PTHREAD_MUTEX_INITIALIZER, .pointerLockMutex = PTHREAD_MUTEX_INITIALIZER, .scale120 = 120, .outputScale = 1 };
+ 
+ struct wsMode {
+     struct zwlr_output_mode_v1 *proxy;
+@@ -754,6 +766,14 @@
+             ws.pinch = zwp_pointer_gestures_v1_get_pinch_gesture(ws.gestures, ws.pointer);
+             zwp_pointer_gesture_pinch_v1_add_listener(ws.pinch, &pinchListener, NULL);
+         }
++    } else if (strcmp(interface, zwp_relative_pointer_manager_v1_interface.name) == 0) {
++        ws.relativePointerManager = wl_registry_bind(registry, name, &zwp_relative_pointer_manager_v1_interface, 1);
++        if (ws.pointer != NULL && ws.relativePointer == NULL) {
++            ws.relativePointer = zwp_relative_pointer_manager_v1_get_relative_pointer(ws.relativePointerManager, ws.pointer);
++            zwp_relative_pointer_v1_add_listener(ws.relativePointer, &relativePointerListener, NULL);
++        }
++    } else if (strcmp(interface, zwp_pointer_constraints_v1_interface.name) == 0) {
++        ws.pointerConstraints = wl_registry_bind(registry, name, &zwp_pointer_constraints_v1_interface, 1);
+     } else if (strcmp(interface, wp_cursor_shape_manager_v1_interface.name) == 0) {
+         ws.cursorShapes = wl_registry_bind(registry, name, &wp_cursor_shape_manager_v1_interface, 1);
+         if (ws.pointer != NULL && ws.shapeDevice == NULL)
+@@ -2206,6 +2226,7 @@
+ }
+ 
+ static void sfFingerCancel(void);
++static void pointerLockAcquireForWindowLocked(struct wsWindow *w);
+ static void pointerEnter(void *data, struct wl_pointer *pointer, uint32_t serial,
+                          struct wl_surface *surface, wl_fixed_t x, wl_fixed_t y) {
+     for (struct wsWindow *w = ws.windows; w != NULL; w = w->next) {
+@@ -2255,6 +2276,14 @@
+         cursorUseLocked(cursorLookup("arrowCursor"));
+     cursorApplyLocked();
+     pthread_mutex_unlock(&cursor.lock);
++
++    pthread_mutex_lock(&ws.pointerLockMutex);
++    if (ws.mouseDisassociated && ws.lockedPointer == NULL) {
++        struct wsWindow *entered = windowForID(ws.pointerWindowID);
++        if (entered != NULL && entered->surface == surface && entered->popup == NULL)
++            pointerLockAcquireForWindowLocked(entered);
++    }
++    pthread_mutex_unlock(&ws.pointerLockMutex);
+ }
+ 
+ static void pointerLeave(void *data, struct wl_pointer *pointer, uint32_t serial,
+@@ -2297,8 +2326,132 @@
+     pthread_mutex_unlock(&cursor.lock);
+ }
+ 
++static void pointerLockDestroyLocked(void) {
++    if (ws.lockedPointer != NULL) {
++        zwp_locked_pointer_v1_destroy(ws.lockedPointer);
++        ws.lockedPointer = NULL;
++    }
++    ws.lockedWindowID = 0;
++    ws.pointerLockActive = 0;
++}
++
++static struct wsWindow *pointerLockTargetWindow(void) {
++    int ids[4] = { ws.focusWindowID, ws.keyHolderID, ws.pointerWindowID, ws.activeAppWindowID };
++    for (int i = 0; i < 4; i++) {
++        if (ids[i] != 0) {
++            struct wsWindow *w = windowForID(ids[i]);
++            if (w != NULL && w->surface != NULL && w->popup == NULL)
++                return w;
++        }
++    }
++    for (struct wsWindow *w = ws.windows; w != NULL; w = w->next) {
++        if (w->surface != NULL && w->toplevel != NULL)
++            return w;
++    }
++    return NULL;
++}
++
++static void pointerLockAcquireForWindowLocked(struct wsWindow *w) {
++    if (!ws.mouseDisassociated || ws.pointerConstraints == NULL || ws.pointer == NULL || w == NULL || w->surface == NULL)
++        return;
++    if (ws.lockedPointer != NULL) {
++        if (ws.lockedWindowID == w->windowID)
++            return;
++        pointerLockDestroyLocked();
++    }
++    ws.lockedPointer = zwp_pointer_constraints_v1_lock_pointer(
++        ws.pointerConstraints, w->surface, ws.pointer, NULL,
++        ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);
++    if (ws.lockedPointer == NULL)
++        return;
++    ws.lockedWindowID = w->windowID;
++    ws.pointerLockActive = 0;
++    zwp_locked_pointer_v1_add_listener(ws.lockedPointer, &lockedPointerListener, NULL);
++    wl_surface_commit(w->surface);
++    wl_display_flush(ws.display);
++    if (getenv("SF_WS_TRACE") != NULL)
++        fprintf(stderr, "WindowServer: pointer lock requested on window %d\n", w->windowID);
++}
++
++static void lockedPointerLocked(void *data, struct zwp_locked_pointer_v1 *locked) {
++    (void)data;
++    pthread_mutex_lock(&ws.pointerLockMutex);
++    if (ws.lockedPointer == locked)
++        ws.pointerLockActive = 1;
++    pthread_mutex_unlock(&ws.pointerLockMutex);
++    /* Ensure [NSCursor hide] / unhide is honored as soon as the lock activates. */
++    pthread_mutex_lock(&cursor.lock);
++    cursorApplyLocked();
++    wl_display_flush(ws.display);
++    pthread_mutex_unlock(&cursor.lock);
++    if (getenv("SF_WS_TRACE") != NULL)
++        fprintf(stderr, "WindowServer: pointer lock active on window %d\n", ws.lockedWindowID);
++}
++
++static void lockedPointerUnlocked(void *data, struct zwp_locked_pointer_v1 *locked) {
++    (void)data;
++    pthread_mutex_lock(&ws.pointerLockMutex);
++    if (ws.lockedPointer == locked)
++        ws.pointerLockActive = 0;
++    pthread_mutex_unlock(&ws.pointerLockMutex);
++    if (getenv("SF_WS_TRACE") != NULL)
++        fprintf(stderr, "WindowServer: pointer lock inactive\n");
++}
++
++static const struct zwp_locked_pointer_v1_listener lockedPointerListener = {
++    .locked = lockedPointerLocked,
++    .unlocked = lockedPointerUnlocked,
++};
++
++static void relativePointerMotion(void *data, struct zwp_relative_pointer_v1 *rp,
++                                  uint32_t utime_hi, uint32_t utime_lo,
++                                  wl_fixed_t dx_fixed, wl_fixed_t dy_fixed,
++                                  wl_fixed_t dx_unaccel, wl_fixed_t dy_unaccel) {
++    (void)data; (void)rp; (void)utime_hi; (void)utime_lo;
++    (void)dx_unaccel; (void)dy_unaccel;
++    int disassociated = 0;
++    int targetID = 0;
++    pthread_mutex_lock(&ws.pointerLockMutex);
++    disassociated = ws.mouseDisassociated;
++    targetID = ws.lockedWindowID;
++    pthread_mutex_unlock(&ws.pointerLockMutex);
++    if (!disassociated)
++        return;
++
++    noteInput();
++    if (targetID == 0)
++        targetID = ws.focusWindowID ? ws.focusWindowID : (ws.pointerWindowID ? ws.pointerWindowID : ws.activeAppWindowID);
++    struct wsWindow *window = targetID != 0 ? windowForID(targetID) : NULL;
++
++    /* Use accelerated dx/dy (positive right / positive down) to match macOS NSEvent deltaX/deltaY. */
++    double dx = wl_fixed_to_double(dx_fixed);
++    double dy = wl_fixed_to_double(dy_fixed);
++    struct mach_event event = {0};
++    event.windowID = targetID;
++    event.code = leftButtonDown ? WS_LEFT_MOUSE_DRAGGED
++               : rightButtonDown ? WS_RIGHT_MOUSE_DRAGGED
++               : otherButtonDown ? WS_OTHER_MOUSE_DRAGGED : WS_MOUSE_MOVED;
++    event.x = lastPointerX;
++    event.y = window != NULL ? window->h - lastPointerY : lastPointerY;
++    event.dx = dx;
++    event.dy = dy;
++    event.mods = currentModifiers;
++    if (getenv("SF_WS_TRACE") != NULL)
++        fprintf(stderr, "WindowServer: relative motion window=%d dx=%.2f dy=%.2f\n", targetID, dx, dy);
++    queuePush(&event);
++}
++
++static const struct zwp_relative_pointer_v1_listener relativePointerListener = {
++    .relative_motion = relativePointerMotion,
++};
++
+ static void pointerMotion(void *data, struct wl_pointer *pointer, uint32_t time,
+                           wl_fixed_t x, wl_fixed_t y) {
++    pthread_mutex_lock(&ws.pointerLockMutex);
++    int suppressAbsolute = (ws.mouseDisassociated && ws.relativePointer != NULL);
++    pthread_mutex_unlock(&ws.pointerLockMutex);
++    if (suppressAbsolute)
++        return;
+     noteInput();
+     if (cursor.hidden == 2) {  // hidden until the pointer moves: it moved
+         pthread_mutex_lock(&cursor.lock);
+@@ -2326,7 +2479,7 @@
+     if (wsTiming())
+         fprintf(stderr, "WSTIME %.1f motion surface=%d x=%.1f y=%.1f\n", wsNowMs(), ws.pointerWindowID, newX, newY);
+     event.dx = newX - lastPointerX;
+-    event.dy = lastPointerY - newY;
++    event.dy = ws.mouseDisassociated ? (newY - lastPointerY) : (lastPointerY - newY);
+     event.mods = currentModifiers;
+     lastPointerX = newX;
+     lastPointerY = newY;
+@@ -2772,6 +2925,10 @@
+              * window ever becomes key and keystrokes have nowhere to go. */
+             ws.keyHolderID = w->windowID;
+             keyFocusPush(w->windowID, WS_EVENT_FOCUS_GAINED);
++            pthread_mutex_lock(&ws.pointerLockMutex);
++            if (ws.mouseDisassociated && ws.lockedWindowID != w->windowID)
++                pointerLockAcquireForWindowLocked(w);
++            pthread_mutex_unlock(&ws.pointerLockMutex);
+             break;
+         }
+     }
+@@ -3024,6 +3181,10 @@
+             ws.pinch = zwp_pointer_gestures_v1_get_pinch_gesture(ws.gestures, ws.pointer);
+             zwp_pointer_gesture_pinch_v1_add_listener(ws.pinch, &pinchListener, NULL);
+         }
++        if (ws.relativePointerManager != NULL && ws.relativePointer == NULL) {
++            ws.relativePointer = zwp_relative_pointer_manager_v1_get_relative_pointer(ws.relativePointerManager, ws.pointer);
++            zwp_relative_pointer_v1_add_listener(ws.relativePointer, &relativePointerListener, NULL);
++        }
+         if (ws.cursorShapes != NULL && ws.shapeDevice == NULL)
+             ws.shapeDevice = wp_cursor_shape_manager_v1_get_pointer(ws.cursorShapes, ws.pointer);
+     }
+@@ -3517,6 +3678,10 @@
+     }
+     if (window->fractional != NULL) { wp_fractional_scale_v1_destroy(window->fractional); window->fractional = NULL; }
+     if (window->viewport != NULL)   { wp_viewport_destroy(window->viewport); window->viewport = NULL; }
++    pthread_mutex_lock(&ws.pointerLockMutex);
++    if (ws.lockedWindowID == window->windowID)
++        pointerLockDestroyLocked();
++    pthread_mutex_unlock(&ws.pointerLockMutex);
+     wl_surface_destroy(window->surface);
+     window->surface = wl_compositor_create_surface(ws.compositor);
+     if (ws.fractionalManager != NULL && ws.viewporter != NULL) {
+@@ -3817,6 +3982,10 @@
+         struct wsWindow *window = *link;
+ 
+         if (window->windowID == msg->windowID) {
++            pthread_mutex_lock(&ws.pointerLockMutex);
++            if (ws.lockedWindowID == window->windowID)
++                pointerLockDestroyLocked();
++            pthread_mutex_unlock(&ws.pointerLockMutex);
+             pthread_mutex_lock(&ws.pixelsLock);
+             *link = window->next;
+             pthread_mutex_unlock(&ws.pixelsLock);
+@@ -4397,6 +4566,71 @@
+             return KERN_SUCCESS;
+         }
+ 
++        case kCGAssociateMouseAndMouseCursorPosition: {
++            if (len < sizeof(struct wsRPCSimple))
++                return KERN_INVALID_ARGUMENT;
++            struct wsRPCSimple *msg = (struct wsRPCSimple *)data;
++            int connected = (msg->val1 != 0);
++
++            pthread_mutex_lock(&ws.pointerLockMutex);
++            if (!connected) {
++                ws.mouseDisassociated = 1;
++                struct wsWindow *target = pointerLockTargetWindow();
++                if (getenv("SF_WS_TRACE") != NULL)
++                    fprintf(stderr, "WindowServer: mouse disassociate=1 target=%d constraints=%d relptr=%d\n",
++                            target != NULL ? target->windowID : 0,
++                            ws.pointerConstraints != NULL, ws.relativePointer != NULL);
++                if (target != NULL)
++                    pointerLockAcquireForWindowLocked(target);
++            } else {
++                ws.mouseDisassociated = 0;
++                if (getenv("SF_WS_TRACE") != NULL)
++                    fprintf(stderr, "WindowServer: mouse disassociate=0 (unlock)\n");
++                pointerLockDestroyLocked();
++                if (ws.display != NULL)
++                    wl_display_flush(ws.display);
++            }
++            pthread_mutex_unlock(&ws.pointerLockMutex);
++            return KERN_SUCCESS;
++        }
++
++        case kCGWarpMouseCursorPosition: {
++            if (len < sizeof(struct wsRPCSimple))
++                return KERN_INVALID_ARGUMENT;
++            struct wsRPCSimple *msg = (struct wsRPCSimple *)data;
++            double scale = msg->val3 > 0 ? (double)msg->val3 : 1.0;
++            /* CoreGraphics screen coordinates are top-left origin (y-down);
++             * ws.lastMouseX/Y and window->x/y use AppKit bottom-left origin (y-up). */
++            double gx = (double)msg->val1 / scale;
++            double gy = (double)msg->val2 / scale;
++            double ay = (ws.screenH > 0 ? (double)ws.screenH : 0.0) - gy;
++
++            ws.lastMouseX = (int)llround(gx);
++            ws.lastMouseY = (int)llround(ay);
++
++            pthread_mutex_lock(&ws.pointerLockMutex);
++            if (ws.lockedPointer != NULL && ws.lockedWindowID != 0) {
++                struct wsWindow *w = windowForID(ws.lockedWindowID);
++                if (w != NULL && w->surface != NULL) {
++                    double sx = gx - w->x;
++                    double sy = (w->y + w->h) - ay;
++                    if (sx < 0.0) sx = 0.0;
++                    if (sy < 0.0) sy = 0.0;
++                    if (w->w > 0.0 && sx > w->w) sx = w->w;
++                    if (w->h > 0.0 && sy > w->h) sy = w->h;
++                    lastPointerX = sx;
++                    lastPointerY = sy;
++                    zwp_locked_pointer_v1_set_cursor_position_hint(
++                        ws.lockedPointer, wl_fixed_from_double(sx), wl_fixed_from_double(sy));
++                    wl_surface_commit(w->surface);
++                    if (ws.display != NULL)
++                        wl_display_flush(ws.display);
++                }
++            }
++            pthread_mutex_unlock(&ws.pointerLockMutex);
++            return KERN_SUCCESS;
++        }
++
+         default:
+             fprintf(stderr, "WindowServer: unhandled RPC code %u\n", base->code);
+             return KERN_INVALID_ARGUMENT;

@@ -467,6 +467,10 @@
 #         IOSurface contents; CPU-drawn windows keep the backing-store path (SFFX_GPU_PRESENT=0 disables, =1 forces)
 #   0380w WindowServer (bake-in step 7): GPU presenter entry points accept calls unless SFFX_GPU_PRESENT=0; vector
 #         compare and GPU damage default on (=0 disables)
+#   0384w WindowServer: CGAssociateMouseAndMouseCursorPosition(false) locks the focused window's pointer
+#         (zwp_pointer_constraints_v1, persistent) and takes zwp_relative_pointer_v1 dx/dy (positive right,
+#         positive down, as NSEvent's deltas are on macOS). Without a relative pointer, motion stays absolute
+#         and its dy is positive down only while disassociated. (true) unlocks. Unlocked motion is unchanged.
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
@@ -901,6 +905,7 @@ let
     ./patches/0376w-windowserver-pace-presents-default-on.patch
     ./patches/0377w-windowserver-gpu-frame-requests-gpu-storage.patch
     ./patches/0380w-windowserver-gpu-presenter-auto-and-perf-defaults.patch
+    ./patches/0384w-windowserver-pointer-lock-and-relative-motion.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" windowserverPatches;
   # (IOSURF) VLC's private copy only: the system's patches and the opt-in cadence hold (SF_WS_CADENCE)
@@ -990,18 +995,18 @@ let
     buildPhase = builtins.replaceStrings
       [ "cc=\"" "rpc_wayland.o xdg-shell-protocol.o" ]
       [ ''
-        for x in unstable/xdg-decoration/xdg-decoration-unstable-v1 staging/fractional-scale/fractional-scale-v1 stable/viewporter/viewporter staging/xdg-activation/xdg-activation-v1 unstable/pointer-gestures/pointer-gestures-unstable-v1 staging/cursor-shape/cursor-shape-v1 unstable/tablet/tablet-unstable-v2 stable/presentation-time/presentation-time; do
+        for x in unstable/xdg-decoration/xdg-decoration-unstable-v1 staging/fractional-scale/fractional-scale-v1 stable/viewporter/viewporter staging/xdg-activation/xdg-activation-v1 unstable/pointer-gestures/pointer-gestures-unstable-v1 unstable/relative-pointer/relative-pointer-unstable-v1 unstable/pointer-constraints/pointer-constraints-unstable-v1 staging/cursor-shape/cursor-shape-v1 unstable/tablet/tablet-unstable-v2 stable/presentation-time/presentation-time; do
           n=$(basename $x)
           wayland-scanner client-header ${wp}/$x.xml $n-client-protocol.h
           wayland-scanner private-code ${wp}/$x.xml $n-protocol.c
         done
         cc="''
-        "rpc_wayland.o xdg-decoration-unstable-v1-protocol.o fractional-scale-v1-protocol.o viewporter-protocol.o xdg-activation-v1-protocol.o pointer-gestures-unstable-v1-protocol.o cursor-shape-v1-protocol.o tablet-unstable-v2-protocol.o presentation-time-protocol.o xdg-shell-protocol.o" ]
+        "rpc_wayland.o xdg-decoration-unstable-v1-protocol.o fractional-scale-v1-protocol.o viewporter-protocol.o xdg-activation-v1-protocol.o pointer-gestures-unstable-v1-protocol.o relative-pointer-unstable-v1-protocol.o pointer-constraints-unstable-v1-protocol.o cursor-shape-v1-protocol.o tablet-unstable-v2-protocol.o presentation-time-protocol.o xdg-shell-protocol.o" ]
       (builtins.replaceStrings
         [ "$cc $cflags -c xdg-shell-protocol.c -o xdg-shell-protocol.o" ]
         [ ''
           $cc $cflags -c xdg-shell-protocol.c -o xdg-shell-protocol.o
-              for n in xdg-decoration-unstable-v1 fractional-scale-v1 viewporter xdg-activation-v1 pointer-gestures-unstable-v1 cursor-shape-v1 tablet-unstable-v2 presentation-time; do $cc $cflags -c $n-protocol.c -o $n-protocol.o; done'' ]
+              for n in xdg-decoration-unstable-v1 fractional-scale-v1 viewporter xdg-activation-v1 pointer-gestures-unstable-v1 relative-pointer-unstable-v1 pointer-constraints-unstable-v1 cursor-shape-v1 tablet-unstable-v2 presentation-time; do $cc $cflags -c $n-protocol.c -o $n-protocol.o; done'' ]
         old.buildPhase);
   }));
   windowserver = mkWindowserver windowserverSrc;
