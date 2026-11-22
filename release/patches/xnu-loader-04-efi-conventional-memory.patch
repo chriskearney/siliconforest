@@ -1,0 +1,200 @@
+arm64: Stage the ACPI boot in EFI conventional memory
+
+diff --git a/src/main.c b/src/main.c
+index 0a82821..2ba5949 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -14,2 +14,7 @@
+ static UINT64  g_jump_args;
++
++#if defined(__aarch64__)
++/* XNU manages one contiguous range from physBase. */
++static UINT64 g_xnu_window_lo, g_xnu_window_hi;
++#endif
+ 
+@@ -224,10 +229,15 @@ static EFI_STATUS load_ramdisk(AppContext *ctx) {
+   // arm64 xnu hands everything above topOfKernelData to the vm, so keep the ramdisk
+   // right after the boot-info block where topOfKernelData can cover it like iboot does
+   {
+-    UINTN pages = (size + EFI_PAGE_SIZE - 1) >> EFI_PAGE_SHIFT;
++    UINTN align = sf_acpi_boot ? XNU_BOOTINFO_ALIGN : EFI_PAGE_SIZE;
++    UINTN pages = ((size + align - 1) & ~(align - 1)) >> EFI_PAGE_SHIFT;
+     for (EFI_PHYSICAL_ADDRESS at = XNU_BOOTINFO_END;
+          at < XNU_BOOTINFO_END + 64ULL * XNU_L2_BLOCK_SIZE;
+          at = (at + XNU_L2_BLOCK_SIZE) & ~(XNU_L2_BLOCK_SIZE - 1)) {
++      if (sf_acpi_boot &&
++          (size > UINT32_MAX || at >= g_xnu_window_hi ||
++           pages > (g_xnu_window_hi - at) >> EFI_PAGE_SHIFT))
++        break;
+       EFI_PHYSICAL_ADDRESS try_at = at;
+       if (!EFI_ERROR(uefi_call_wrapper(ctx->bs->AllocatePages, 4,
+               AllocateAddress, EfiLoaderData, pages, &try_at))) {
+@@ -240,7 +250,8 @@ static EFI_STATUS load_ramdisk(AppContext *ctx) {
+     }
+   }
+   status = storage.ptr ? EFI_SUCCESS
+-                       : lowmem_alloc_pages(ctx, size, EfiLoaderData, &storage);
++                       : sf_acpi_boot ? EFI_OUT_OF_RESOURCES
++                                      : lowmem_alloc_pages(ctx, size, EfiLoaderData, &storage);
+ #else
+   status = lowmem_alloc_pages(ctx, size, EfiLoaderData, &storage);
+ #endif
+@@ -377,10 +388,6 @@ static VOID ReleaseBootInfoGuard(AppContext *ctx,
+ }
+ 
+ #if defined(__aarch64__)
+-/* XNU manages one contiguous range from physBase, so it gets the largest run
+- * of RAM without firmware holes, like sunxi's /memreserve/ secure monitor */
+-static UINT64 g_xnu_window_lo, g_xnu_window_hi;
+-
+ /* The types app_detect_physical_memory_size counts as RAM */
+ static BOOLEAN is_ram_type(UINT32 type) {
+   return type == EfiLoaderCode || type == EfiLoaderData ||
+@@ -391,38 +398,61 @@ static BOOLEAN is_ram_type(UINT32 type) {
+ }
+ 
+ static VOID FindXnuWindow(AppContext *ctx) {
++  g_xnu_window_lo = g_xnu_window_hi = 0;
+   UINTN map_size = 0, key = 0, desc_size = 0;
+   UINT32 desc_ver = 0;
+   EFI_MEMORY_DESCRIPTOR *mm = NULL;
+ 
+-  uefi_call_wrapper(ctx->bs->GetMemoryMap, 5, &map_size, mm, &key, &desc_size, &desc_ver);
++  EFI_STATUS status = uefi_call_wrapper(ctx->bs->GetMemoryMap, 5, &map_size, mm, &key, &desc_size, &desc_ver);
++  if (status != EFI_BUFFER_TOO_SMALL || desc_size < sizeof(*mm) ||
++      desc_size > (~(UINTN)0 - map_size) / 4)
++    return;
+   map_size += desc_size * 4;
++  UINTN capacity = map_size;
+ 
+   if (EFI_ERROR(uefi_call_wrapper(ctx->bs->AllocatePool, 3, EfiLoaderData, map_size, (VOID **)&mm)) || !mm)
+     return;
+ 
+-  if (EFI_ERROR(uefi_call_wrapper(ctx->bs->GetMemoryMap, 5, &map_size, mm, &key, &desc_size, &desc_ver))) {
++  status = uefi_call_wrapper(ctx->bs->GetMemoryMap, 5, &map_size, mm, &key, &desc_size, &desc_ver);
++  if (EFI_ERROR(status) || desc_size < sizeof(*mm) || desc_size % _Alignof(EFI_MEMORY_DESCRIPTOR) ||
++      map_size > capacity || map_size % desc_size) {
+     uefi_call_wrapper(ctx->bs->FreePool, 1, mm);
+     return;
+   }
+ 
+   UINTN n = map_size / desc_size;
++  UINT64 dram_base = UINT64_MAX;
+   for (UINTN i = 0; i < n; i++) {
+     EFI_MEMORY_DESCRIPTOR *d = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)mm + i * desc_size);
+-    UINT64 lo = d->PhysicalStart, hi = lo + (d->NumberOfPages << EFI_PAGE_SHIFT);
+-    BOOLEAN grew = TRUE;
+-
+-    if (!is_ram_type(d->Type))
++    UINT64 lo = d->PhysicalStart;
++    if (!is_ram_type(d->Type) || d->NumberOfPages == 0 ||
++        d->NumberOfPages > (UINT64_MAX - lo) >> EFI_PAGE_SHIFT)
+       continue;
+-
+-    /* The map need not be sorted: keep appending whichever RAM range starts at hi */
+-    while (grew) {
+-      grew = FALSE;
+-      for (UINTN j = 0; j < n; j++) {
+-        EFI_MEMORY_DESCRIPTOR *e = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)mm + j * desc_size);
+-        if (is_ram_type(e->Type) && e->PhysicalStart == hi) {
+-          hi += e->NumberOfPages << EFI_PAGE_SHIFT;
+-          grew = TRUE;
++    UINT64 hi = lo + (d->NumberOfPages << EFI_PAGE_SHIFT);
++    if (lo < dram_base)
++      dram_base = lo;
++    if (sf_acpi_boot) {
++      /* boot_args has 32-bit physical fields. Keep allocations out of all
++       * firmware-owned descriptors, including runtime and ACPI memory. */
++      const UINT64 limit = 1ULL << 32;
++      if (d->Type != EfiConventionalMemory || lo >= limit)
++        continue;
++      lo = (lo + XNU_BOOTINFO_ALIGN - 1) & ~(XNU_BOOTINFO_ALIGN - 1);
++      hi = ((hi < limit ? hi : limit) & ~(XNU_BOOTINFO_ALIGN - 1));
++      if (hi <= lo)
++        continue;
++    } else {
++      /* The map need not be sorted. Extend the existing FDT window over RAM. */
++      BOOLEAN grew = TRUE;
++      while (grew) {
++        grew = FALSE;
++        for (UINTN j = 0; j < n; j++) {
++          EFI_MEMORY_DESCRIPTOR *e = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)mm + j * desc_size);
++          if (is_ram_type(e->Type) && e->PhysicalStart == hi && e->NumberOfPages != 0 &&
++              e->NumberOfPages <= (UINT64_MAX - hi) >> EFI_PAGE_SHIFT) {
++            hi += e->NumberOfPages << EFI_PAGE_SHIFT;
++            grew = TRUE;
++          }
+         }
+       }
+     }
+@@ -434,6 +464,10 @@ static VOID FindXnuWindow(AppContext *ctx) {
+   }
+ 
+   uefi_call_wrapper(ctx->bs->FreePool, 1, mm);
++#if defined(XNU_LOADER_PLATFORM_GENERIC)
++  if (sf_acpi_boot && dram_base != UINT64_MAX)
++    g_board.ram_base = dram_base;
++#endif
+   log_info(L"xnu window: 0x%lx - 0x%lx\r\n", g_xnu_window_lo, g_xnu_window_hi);
+ }
+ #endif
+@@ -441,15 +475,18 @@ static VOID FindXnuWindow(AppContext *ctx) {
+ EFI_STATUS AllocKernelMemRegion(AppContext *ctx, UINT64 span_bytes, UINT64 virt_base) {
+ #if defined(__aarch64__)
+   UINT64 required_rem = virt_base & (XNU_L2_BLOCK_SIZE - 1);
+-  UINT64 first = XNU_LOADER_RAM_BASE + XNU_L2_BLOCK_SIZE + required_rem;
+-
+   FindXnuWindow(ctx);
++  if (sf_acpi_boot && (g_xnu_window_hi == 0 || span_bytes > UINT32_MAX)) {
++    log_error(L"no usable EFI memory window for the arm64 kernel\r\n");
++    return EFI_OUT_OF_RESOURCES;
++  }
++  UINT64 first = XNU_LOADER_RAM_BASE + XNU_L2_BLOCK_SIZE + required_rem;
+ 
+   /* Start inside the window, leaving room below for the trust caches */
+   UINT64 tc_slack = ctx->trustcache_slack ? ctx->trustcache_slack : XNU_BOOTINFO_ALIGN;
+-  if (g_xnu_window_lo > XNU_LOADER_RAM_BASE) {
++  if (sf_acpi_boot || g_xnu_window_lo > XNU_LOADER_RAM_BASE) {
+     UINT64 w = (g_xnu_window_lo + tc_slack + XNU_L2_BLOCK_SIZE - 1) & ~(XNU_L2_BLOCK_SIZE - 1);
+-    if (w + required_rem > first)
++    if (sf_acpi_boot || w + required_rem > first)
+       first = w + required_rem;
+   }
+   /* Two slacks: one below base for the trust caches,
+@@ -464,6 +501,11 @@ EFI_STATUS AllocKernelMemRegion(AppContext *ctx, UINT64 span_bytes, UINT64 virt_
+     /* Claim the trustcache page below the image as part of this allocation;
+      * grabbing it separately afterwards fails whenever UEFI already owns it. */
+     base = try - tc_slack;
++    if (sf_acpi_boot &&
++        (base >= g_xnu_window_hi || total_pages > (g_xnu_window_hi - base) >> EFI_PAGE_SHIFT)) {
++      status = EFI_OUT_OF_RESOURCES;
++      break;
++    }
+     status = uefi_call_wrapper(ctx->bs->AllocatePages, 4,
+       AllocateAddress, EfiLoaderData, total_pages, &base);
+     if (!EFI_ERROR(status)) {
+@@ -860,11 +902,20 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *st) {
+     }
+     arm64_args->memSizeActual = arm64_physical_mem_size;
+     // a ramdisk above the boot-info block must stay out of the vm's free pages
+-    if (ctx.ramdisk_size != 0 && ctx.ramdisk_phys >= XNU_BOOTINFO_END &&
+-        ctx.ramdisk_phys + ctx.ramdisk_size <= arm64_phys_base + arm64_physical_mem_size) {
+-      arm64_args->topOfKernelData =
+-          (ctx.ramdisk_phys + ctx.ramdisk_size + XNU_BOOTINFO_ALIGN - 1) & ~(XNU_BOOTINFO_ALIGN - 1);
++    if (ctx.ramdisk_size != 0) {
++      UINT64 disk_end = (ctx.ramdisk_phys + ctx.ramdisk_size + XNU_BOOTINFO_ALIGN - 1) &
++                       ~(XNU_BOOTINFO_ALIGN - 1);
++      if (ctx.ramdisk_phys >= XNU_BOOTINFO_END &&
++          disk_end <= arm64_phys_base + arm64_physical_mem_size) {
++        arm64_args->topOfKernelData = disk_end;
++      } else if (sf_acpi_boot) {
++        log_error(L"RAMDisk outside XNU managed memory\r\n");
++        return EFI_OUT_OF_RESOURCES;
++      }
+     }
++    if (sf_acpi_boot)
++      log_info(L"arm64 handoff: managed memory 0x%lx+0x%lx topOfKernelData 0x%lx\r\n",
++               arm64_phys_base, arm64_physical_mem_size, arm64_args->topOfKernelData);
+   }
+ #endif
+ 

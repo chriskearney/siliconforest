@@ -1,0 +1,72 @@
+VirtIO GPU: Match the first MSI-X source to table entry zero
+
+Count delivered interrupts under the queue lock after acknowledging the interrupt.
+
+diff --git a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
+index 922376f..b90e58a 100644
+--- a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
++++ b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
+@@ -1523,23 +1523,22 @@ IOVirtIOGPU::waitProgress(uint64_t seenG
+     return gen;
+ }
+ 
+-// an msi-x vector when the platform offers one (nub sources after intx at 0), else intx. its own work loop,
+-// as the framebuffer's gate may be held by a thread waiting on a completion
++// Use the first messaged source, which corresponds to MSI-X table entry zero.
++// The framebuffer's gate may be held by a waiter, so use a separate work loop.
+ bool
+ IOVirtIOGPU::setupInterrupt()
+ {
+-    int type = 0, source = -1;
++    int type = 0, source = 0;
++    if (fPCIDevice->getInterruptType(0, &type) != kIOReturnSuccess)
++        return false;
+ 
+-    for (int i = 1; i < 8 && fPCIDevice->getInterruptType(i, &type) == kIOReturnSuccess; i++) {
++    bool messaged = (type & kIOInterruptTypePCIMessaged) != 0;
++    for (int i = 1; i < 8 && !messaged && fPCIDevice->getInterruptType(i, &type) == kIOReturnSuccess; i++) {
+         if (type & kIOInterruptTypePCIMessaged) {
+             source = i;
+-            break;
++            messaged = true;
+         }
+     }
+-    if (source < 0 && fPCIDevice->getInterruptType(0, &type) == kIOReturnSuccess)
+-        source = 0;
+-    if (source < 0)
+-        return false;
+ 
+     fIrqLoop = IOWorkLoop::workLoop();
+     if (!fIrqLoop)
+@@ -1551,10 +1550,10 @@ IOVirtIOGPU::setupInterrupt()
+         return false;
+     }
+     // enabling a messaged source turns msi-x on, after which the device needs its vectors
+-    fIrqSource->enable();
+-    fIrqMsix = source > 0;
++    fIrqMsix = messaged;
+     fIrqSourceIndex = source;
+-    if (fIrqMsix && !fTransport.setMsixVectors(&fControlQ, (uint16_t)(source - 1), IOVirtIOTransport::kNoVector)) {
++    fIrqSource->enable();
++    if (fIrqMsix && !fTransport.setMsixVectors(&fControlQ, 0, IOVirtIOTransport::kNoVector)) {
+         fIrqSource->disable();
+         fIrqLoop->removeEventSource(fIrqSource);
+         OSSafeReleaseNULL(fIrqSource);
+@@ -1567,15 +1566,15 @@ IOVirtIOGPU::setupInterrupt()
+ 
+ // runs on fIrqLoop, a level triggered line stays masked until this returns
+ void
+-IOVirtIOGPU::interruptOccurred(IOInterruptEventSource *, int)
++IOVirtIOGPU::interruptOccurred(IOInterruptEventSource *, int count)
+ {
+-    fIrqCount++;
+     // with intx reading the isr acknowledges it and drops the line, an msi-x vector is ours alone
+     if (!fIrqMsix && !(fTransport.readIsr() & 1))
+         return;
+     if (!fQueueLock)
+         return;
+     IOLockLock(fQueueLock);
++    fIrqCount += count;
+     ctrlReapLocked();
+     IOLockUnlock(fQueueLock);
+ }

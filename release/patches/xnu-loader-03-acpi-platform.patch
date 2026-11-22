@@ -1,0 +1,290 @@
+arm64: Publish ACPI platform data in the device tree
+
+diff --git a/include/acpi_board.h b/include/acpi_board.h
+index ebf2b5a..6e53419 100644
+--- a/include/acpi_board.h
++++ b/include/acpi_board.h
+@@ -47,6 +47,18 @@ bool sf_acpi_rsdp_is_qemu(const uint8_t *rsdp);
+ const char *sf_acpi_read(SfAcpiMap map, void *context, uint64_t rsdp_address,
+                          SfAcpiBoard *board);
+ 
++typedef struct {
++  uint64_t soc_base, soc_size;
++  uint64_t uart_reg[2], gic_reg[4];
++  uint64_t mpidr[SF_ACPI_MAX_CPUS];
++  size_t cpu_count;
++  uint32_t timer_ppi;
++  const char *psci_method;
++} SfAcpiTree;
++
++const char *sf_acpi_tree(const SfAcpiBoard *board, uint64_t running_mpidr, SfAcpiTree *tree);
++
+ extern bool sf_acpi_boot;
++extern SfAcpiTree sf_acpi_tree_data;
+ 
+ #endif
+diff --git a/src/acpi_board.c b/src/acpi_board.c
+index 8d236b7..766142e 100644
+--- a/src/acpi_board.c
++++ b/src/acpi_board.c
+@@ -3,6 +3,55 @@
+ 
+ #include "acpi_board.h"
+ 
++const char *sf_acpi_tree(const SfAcpiBoard *board, uint64_t running_mpidr, SfAcpiTree *tree)
++{
++  const uint64_t affinity_mask = UINT64_C(0xff00ffffff);
++  const uint64_t uart_size = 0x1000, gicd_size = 0x10000;
++  const uint64_t base[] = {board->uart_base, board->gicd_base, board->gicr_base};
++  const uint64_t size[] = {uart_size, gicd_size, board->gicr_size};
++  uint64_t lo = UINT64_MAX, hi = 0;
++  for (size_t i = 0; i < sizeof(base) / sizeof(base[0]); i++) {
++    if (base[i] == 0 || size[i] == 0 || base[i] > UINT64_MAX - size[i])
++      return "ACPI device tree MMIO range";
++    if (base[i] < lo)
++      lo = base[i];
++    if (base[i] + size[i] > hi)
++      hi = base[i] + size[i];
++  }
++
++  if (board->timer_virt_gsi < 16 || board->timer_virt_gsi > 31)
++    return "GTDT virtual timer is not a PPI";
++  if (board->cpu_count == 0 || board->cpu_count > SF_ACPI_MAX_CPUS)
++    return "ACPI device tree CPU count";
++
++  SfAcpiTree translated = {
++    .soc_base = lo, .soc_size = hi - lo,
++    .uart_reg = {board->uart_base - lo, uart_size},
++    .gic_reg = {board->gicd_base - lo, gicd_size, board->gicr_base - lo, board->gicr_size},
++    .cpu_count = board->cpu_count, .timer_ppi = board->timer_virt_gsi,
++    .psci_method = board->psci == SF_ACPI_PSCI_HVC ? "hvc" : "smc",
++  };
++  bool found = false;
++  size_t secondary = 1;
++  for (size_t i = 0; i < board->cpu_count; i++) {
++    uint64_t id = board->mpidr[i] & affinity_mask;
++    for (size_t earlier = 0; earlier < i; earlier++)
++      if ((board->mpidr[earlier] & affinity_mask) == id)
++        return "duplicate CPU affinity in MADT";
++
++    if (id == (running_mpidr & affinity_mask)) {
++      translated.mpidr[0] = id;
++      found = true;
++    } else if (secondary < board->cpu_count) {
++      translated.mpidr[secondary++] = id;
++    }
++  }
++  if (!found)
++    return "boot CPU absent from MADT";
++  *tree = translated;
++  return NULL;
++}
++
+ enum {
+   SF_ACPI_SDT_HEADER = 36,
+   SF_ACPI_RSDP_LEGACY = 20,
+diff --git a/src/app.c b/src/app.c
+index 5d4b036..d85a811 100644
+--- a/src/app.c
++++ b/src/app.c
+@@ -5,6 +5,7 @@
+ #include "acpi_board.h"
+ 
+ bool sf_acpi_boot;
++SfAcpiTree sf_acpi_tree_data;
+ 
+ #if defined(__aarch64__) && defined(XNU_LOADER_PLATFORM_GENERIC) && !defined(LEGACY_BIOS)
+ typedef struct {
+@@ -90,6 +91,11 @@ static EFI_STATUS sf_start_acpi_console(AppContext *ctx, bool fdt_present)
+     return EFI_SUCCESS;
+   }
+   log_info(L"platform: probing ACPI via EFI ConOut\r\n");
++  if (error == NULL) {
++    UINT64 mpidr;
++    __asm__ volatile ("mrs %0, mpidr_el1" : "=r"(mpidr));
++    error = sf_acpi_tree(&board, mpidr, &sf_acpi_tree_data);
++  }
+   if (error != NULL) {
+     log_error(L"platform: %a; ACPI refused: %a\r\n",
+               fdt_present ? "FDT rejected" : "no FDT found", error);
+diff --git a/src/devtree.c b/src/devtree.c
+index 6db528b..304bec5 100644
+--- a/src/devtree.c
++++ b/src/devtree.c
+@@ -1,6 +1,7 @@
+ #include "devtree.h"
+ #include "console.h"
+ #include "app.h"
++#include "acpi_board.h"
+ #include "boot.h"
+ #include "platform.h"
+ #include "ramlog.h"
+@@ -1807,9 +1808,15 @@ EFI_STATUS dt_build(
+   {
+     UINT64 mpidr[32];
+     UINT32 cap[32] = { 0 }, cap_min = 0, cap_max = 0;
+-    UINTN ncpu = acpi_cpu_mpidrs(ctx, mpidr, 32);
+-    if (ncpu == 0)
+-      ncpu = fdt_cpu_mpidrs(ctx, mpidr, cap, 32);
++    UINTN ncpu;
++    if (sf_acpi_boot) {
++      ncpu = sf_acpi_tree_data.cpu_count;
++      CopyMem(mpidr, sf_acpi_tree_data.mpidr, ncpu * sizeof(*mpidr));
++    } else {
++      ncpu = acpi_cpu_mpidrs(ctx, mpidr, 32);
++      if (ncpu == 0)
++        ncpu = fdt_cpu_mpidrs(ctx, mpidr, cap, 32);
++    }
+     for (UINTN ci = 0; ci < ncpu; ci++) {
+       if (cap[ci] != 0 && (cap_min == 0 || cap[ci] < cap_min))
+         cap_min = cap[ci];
+@@ -1854,7 +1861,9 @@ EFI_STATUS dt_build(
+    * know keep theirs; anything else read from its device tree is "fdt-io". */
+   {
+     CONST CHAR8 *io_type = "fdt-io";
+-    if (g_board.is_qemu_virt)
++    if (sf_acpi_boot)
++      io_type = "acpi-io";
++    else if (g_board.is_qemu_virt)
+       io_type = "qemuvirt-io";
+ #if defined(XNU_LOADER_PLATFORM_SUN50I)
+     io_type = "sun50i-io";
+@@ -1867,6 +1876,10 @@ EFI_STATUS dt_build(
+     /* Peripheral window. XNU's pe_arm_get_soc_base_phys() returns the second
+      * cell, and the reg offsets below are relative to it. */
+     UINT64 ranges[3] = { 0, g_board.soc_base, g_board.soc_size };
++    if (sf_acpi_boot) {
++      ranges[1] = sf_acpi_tree_data.soc_base;
++      ranges[2] = sf_acpi_tree_data.soc_size;
++    }
+     dt_prop(ctx, armio, "ranges", ranges, sizeof(ranges));
+   }
+ #if defined(XNU_LOADER_RAMLOG)
+@@ -1882,6 +1895,8 @@ EFI_STATUS dt_build(
+      * pe_serial.c's DesignWare driver, with its layout and clock spelled out. */
+     DeviceTreeNode *uart0 = dt_create_node(ctx);
+     UINT64 uart_reg[2] = { g_board.uart_base - g_board.soc_base, g_board.uart_size };
++    if (sf_acpi_boot)
++      CopyMem(uart_reg, sf_acpi_tree_data.uart_reg, sizeof(uart_reg));
+ #if defined(XNU_LOADER_RAMLOG)
+     uart_reg[0] = XNU_LOADER_RAMLOG - g_board.soc_base;
+     uart_reg[1] = RAMLOG_TOTAL;
+@@ -1895,7 +1910,7 @@ EFI_STATUS dt_build(
+     } else
+ #endif
+     if (g_board.uart_kind == FDT_UART_PL011) {
+-      dt_prop_str(ctx, uart0, "compatible", "arm,pl011");
++      dt_prop_str(ctx, uart0, "compatible", sf_acpi_boot ? "arm,sbsa-uart" : "arm,pl011");
+     } else {
+       dt_prop_str(ctx, uart0, "compatible", "snps,dw-apb-uart");
+       dt_prop_u32(ctx, uart0, "reg-shift", g_board.uart_shift);
+@@ -1908,14 +1923,17 @@ EFI_STATUS dt_build(
+   }
+-  if (g_board.gic_version) {
++  if (sf_acpi_boot || g_board.gic_version) {
+     /* gic-400: distributor then cpu interface. gic-v3: distributor then the
+      * redistributor region, walked per cpu by GICR_TYPER. */
+     DeviceTreeNode *gic = dt_create_node(ctx);
+     UINT64 gic_reg[4] = { g_board.gicd_base - g_board.soc_base, g_board.gicd_size,
+                           g_board.gic2_base - g_board.soc_base, g_board.gic2_size };
++    if (sf_acpi_boot)
++      CopyMem(gic_reg, sf_acpi_tree_data.gic_reg, sizeof(gic_reg));
+     dt_prop_str(ctx, gic, "name", "gic");
+-    dt_prop_str(ctx, gic, "compatible", g_board.gic_version == 3 ? "arm,gic-v3" : "arm,gic-400");
++    dt_prop_str(ctx, gic, "compatible", sf_acpi_boot || g_board.gic_version == 3 ? "arm,gic-v3" : "arm,gic-400");
+     dt_prop(ctx, gic, "reg", gic_reg, sizeof(gic_reg));
+     /* the virtual timer's INTID when the board's /timer gives one (27 is xnu's default) */
+-    if (g_board.timer_virt_intid)
+-      dt_prop_u32(ctx, gic, "timer-ppi", g_board.timer_virt_intid);
++    UINT32 timer_ppi = sf_acpi_boot ? sf_acpi_tree_data.timer_ppi : g_board.timer_virt_intid;
++    if (timer_ppi)
++      dt_prop_u32(ctx, gic, "timer-ppi", timer_ppi);
+ #if defined(XNU_LOADER_PLATFORM_SC8280XP)
+@@ -1943,10 +1961,16 @@ EFI_STATUS dt_build(
+     dt_add_child(ctx, armio, wdt);
+   }
+ #endif
+-  log_info(L"DT: board uart 0x%lx gic%u 0x%lx/0x%lx timer INTID %u arm-io 0x%lx+0x%lx%s\r\n",
+-           g_board.uart_base, g_board.gic_version, g_board.gicd_base, g_board.gic2_base,
+-           g_board.timer_virt_intid, g_board.soc_base, g_board.soc_size,
+-           g_board.from_fdt ? L" (from fdt)" : L"");
++  if (sf_acpi_boot) {
++    log_info(L"DT: ACPI arm-io 0x%lx+0x%lx boot MPIDR 0x%lx timer INTID %u\r\n",
++             sf_acpi_tree_data.soc_base, sf_acpi_tree_data.soc_size,
++             sf_acpi_tree_data.mpidr[0], sf_acpi_tree_data.timer_ppi);
++  } else {
++    log_info(L"DT: board uart 0x%lx gic%u 0x%lx/0x%lx timer INTID %u arm-io 0x%lx+0x%lx%s\r\n",
++             g_board.uart_base, g_board.gic_version, g_board.gicd_base, g_board.gic2_base,
++             g_board.timer_virt_intid, g_board.soc_base, g_board.soc_size,
++             g_board.from_fdt ? L" (from fdt)" : L"");
++  }
+ #else
+   dt_prop_str(ctx, armio, "device_type", "bcm2837-io");
+   {
+@@ -1984,8 +2008,12 @@ EFI_STATUS dt_build(
+    * properties being present on the root node. Without them the entire IOKit
+    * driver cascade fails to start and XNU hangs waiting for the root device. */
+   dt_prop_str(ctx, root, "compatible", "ACPI");
+-  dt_prop_str(ctx, root, "model", "ACPI");
++  dt_prop_str(ctx, root, "model", sf_acpi_boot ? "ACPI ARM64" : "ACPI");
+ #if defined(__aarch64__) && defined(XNU_LOADER_PLATFORM_GENERIC)
++  if (sf_acpi_boot)
++    dt_prop_str(ctx, root, "sf,firmware-platform", "acpi");
++  else if (g_board.is_qemu_virt)
++    dt_prop_str(ctx, root, "sf,firmware-platform", "qemu-virt");
+   /* A real board's enabled devices come over from its tree, so the platform
+    * expert can publish nubs for them. QEMU virt keeps the tree it always had. */
+ #if !defined(XNU_LOADER_NO_FDT_IMPORT)
+@@ -2027,12 +2055,14 @@ EFI_STATUS dt_build(
+ #if defined(XNU_LOADER_PLATFORM_SC8280XP)
+   dt_add_child(ctx, root, sc8280xp_soc(ctx));
+ #endif
+-  if (g_board.psci_method) {
++  if (sf_acpi_boot || g_board.psci_method) {
+     // how to reach psci firmware; an hvc with no el2 underneath is an undefined instruction
+     DeviceTreeNode *psci = dt_create_node(ctx);
+     dt_prop_str(ctx, psci, "name", "psci");
+     dt_prop_str(ctx, psci, "compatible", "arm,psci-1.0");
+-    dt_prop_str(ctx, psci, "method", g_board.psci_method == 2 ? "smc" : "hvc");
++    CONST CHAR8 *method = sf_acpi_boot ? sf_acpi_tree_data.psci_method
++                                      : (g_board.psci_method == 2 ? "smc" : "hvc");
++    dt_prop_str(ctx, psci, "method", method);
+     dt_add_child(ctx, root, psci);
+   }
+ #endif
+diff --git a/tests/acpi_board_test.c b/tests/acpi_board_test.c
+index 8a80420..235908c 100644
+--- a/tests/acpi_board_test.c
++++ b/tests/acpi_board_test.c
+@@ -130,6 +130,21 @@ static void sf_check_capture(SfFixture *fixture)
+   assert(board.cpu_count == 2 && board.mpidr[0] == 0 && board.mpidr[1] == 1);
+   assert(board.timer_virt_gsi == 27 && board.timer_virt_flags == 2);
+   assert(board.psci == SF_ACPI_PSCI_SMC && board.arm_boot_flags == 1);
++  SfAcpiTree tree = {0};
++  assert(sf_acpi_tree(&board, 0x80000001, &tree) == NULL);
++  assert(tree.soc_base == 0x02010000 && tree.soc_size == 0x530000);
++  assert(tree.uart_reg[0] == 0x100000 && tree.uart_reg[1] == 0x1000);
++  assert(tree.gic_reg[0] == 0 && tree.gic_reg[1] == 0x10000);
++  assert(tree.gic_reg[2] == 0x4f0000 && tree.gic_reg[3] == 0x40000);
++  assert(tree.mpidr[0] == 1 && tree.mpidr[1] == 0 && tree.cpu_count == 2);
++  assert(tree.timer_ppi == 27 && strcmp(tree.psci_method, "smc") == 0);
++  assert(strcmp(sf_acpi_tree(&board, 2, &tree), "boot CPU absent from MADT") == 0);
++  board.cpu_count = 3;
++  board.mpidr[0] = 1;
++  board.mpidr[1] = 0;
++  board.mpidr[2] = UINT64_C(0x80000000);
++  const char *duplicate = sf_acpi_tree(&board, 1, &tree);
++  assert(duplicate != NULL && strcmp(duplicate, "duplicate CPU affinity in MADT") == 0);
+ }
+ 
+ static void sf_expect_error(const char *test, SfFixture *fixture, const char *expected)
+@@ -223,6 +238,9 @@ int main(int argc, char **argv)
+   SfAcpiBoard board = {0};
+   assert(sf_acpi_read(sf_fixture_map, &hvc, sf_address(RSDP), &board) == NULL);
+   assert(board.psci == SF_ACPI_PSCI_HVC);
++  SfAcpiTree tree = {0};
++  assert(sf_acpi_tree(&board, 0, &tree) == NULL);
++  assert(strcmp(tree.psci_method, "hvc") == 0);
+   puts("FADT HVC selection: accepted");
+   return 0;
+ }

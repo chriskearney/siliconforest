@@ -9,7 +9,7 @@ let
   series = builtins.fromJSON (builtins.readFile ./chonkstep/series.json);
   source = pkgs.runCommand "siliconforest-chonkstep-source" {
     nativeBuildInputs = [ pkgs.patch pkgs.gzip pkgs.python3 ];
-  } ''
+  } (''
     cp -R ${sources.chonkstep} "$out"
     chmod -R u+w "$out"
     gzip -dc ${./chonkstep/0001-darwin-port.patch.gz} | patch -d "$out" -p1 --batch --fuzz=0
@@ -17,7 +17,9 @@ let
     ${lib.concatMapStrings (entry: ''
       patch -d "$out" -p${toString entry.strip} --batch --fuzz=0 < ${sf + "/terminal-app/compositor/${entry.path}"}
     '') series}
-  '';
+  '' + lib.optionalString (pkgs.stdenv.buildPlatform.system == "aarch64-linux" && (base.parallelsGuest or false)) ''
+    patch -d "$out" -p1 --batch --fuzz=0 < ${./patches/chonkstep-aarch64-linux-virtio-present.patch}
+  '');
   terminalSource = pkgs.runCommand "siliconforest-terminal-source" {
     nativeBuildInputs = [ pkgs.patch ];
   } ''

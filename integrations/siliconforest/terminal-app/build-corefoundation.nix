@@ -14,7 +14,7 @@
 { autorelease ? true }:
 let
   pd = (import ../rebase/pd.nix).pd;
-  p = pd.packages.x86_64-linux;
+  p = pd.packages.${pd.buildSystem};
   flags = "-O2 -fno-strict-aliasing ";
 in p.coreFoundation-arm64.overrideAttrs (old: {
   pname = if autorelease then "siliconforest-corefoundation" else "siliconforest-corefoundation-o2";

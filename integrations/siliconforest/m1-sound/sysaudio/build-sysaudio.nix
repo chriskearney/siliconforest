@@ -13,8 +13,8 @@
 let
   source = import ../../rebase/pd.nix;
   pd = source.pd;
-  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
-  p = pd.packages.x86_64-linux;
+  pkgs = pd.buildPkgs;
+  p = pd.packages.${pd.buildSystem};
   # the libSystem of the RAM root the binaries run on
   libSystem = source.pick {
     pin = import ../../m1-userspace-diagnostics/build-libsystem-spawnattr.nix;

@@ -1,0 +1,20 @@
+EHCI: Decline PCI devices without an interrupt route
+
+diff --git a/src/Kernel/Extensions/IOUSBFamily/AppleUSBEHCI/AppleUSBEHCI.cpp b/src/Kernel/Extensions/IOUSBFamily/AppleUSBEHCI/AppleUSBEHCI.cpp
+index 4377be2..2f4a645 100644
+--- a/src/Kernel/Extensions/IOUSBFamily/AppleUSBEHCI/AppleUSBEHCI.cpp
++++ b/src/Kernel/Extensions/IOUSBFamily/AppleUSBEHCI/AppleUSBEHCI.cpp
+@@ -69,6 +69,13 @@ bool AppleUSBEHCI::init(OSDictionary *propTable)
+ 
+ bool AppleUSBEHCI::start(IOService *provider)
+ {
++    if (provider->getProperty("sf,no-pci-intx")) {
++        int interruptType = 0;
++        if (provider->getInterruptType(0, &interruptType) != kIOReturnSuccess) {
++            EHCI_Log("no PCI interrupt, refusing to start");
++            return false;
++        }
++    }
+     if (!super::start(provider))
+         return false;
+ 

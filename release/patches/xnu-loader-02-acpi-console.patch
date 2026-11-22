@@ -1,0 +1,275 @@
+arm64: Select the SPCR console on ACPI firmware
+
+QEMU supplies ACPI tables even on its default machine. When no device tree is usable, use the build defaults for a valid BOCHS RSDP so QEMU retains its platform identity, memory window, and PCI interrupt routing. Other firmware still has to pass ACPI validation.
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ade1cf7..8b7b52f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -77,6 +77,7 @@ message(STATUS "libgcc: ${LIBGCC_FILE}")
+ set(SOURCES
+   src/main.c
+   src/app.c
++  src/acpi_board.c
+   src/boot.c
+   src/logo.c
+   src/panic.c
+diff --git a/include/acpi_board.h b/include/acpi_board.h
+index c435a44..ebf2b5a 100644
+--- a/include/acpi_board.h
++++ b/include/acpi_board.h
+@@ -40,6 +40,9 @@ typedef struct {
+ /* A successful mapping covers the whole requested interval. */
+ typedef const uint8_t *(*SfAcpiMap)(void *context, uint64_t address, size_t length);
+ 
++/* The caller maps the first 20 bytes of the RSDP before calling. */
++bool sf_acpi_rsdp_is_qemu(const uint8_t *rsdp);
++
+ /* Returns NULL on success. A failure leaves the caller's board unchanged. */
+ const char *sf_acpi_read(SfAcpiMap map, void *context, uint64_t rsdp_address,
+                          SfAcpiBoard *board);
+diff --git a/src/acpi_board.c b/src/acpi_board.c
+index a934ebc..8d236b7 100644
+--- a/src/acpi_board.c
++++ b/src/acpi_board.c
+@@ -63,6 +63,12 @@ static bool sf_checksum(const uint8_t *bytes, size_t length)
+   return sum == 0;
+ }
+ 
++bool sf_acpi_rsdp_is_qemu(const uint8_t *rsdp)
++{
++  return rsdp != NULL && sf_signature(rsdp, "RSD PTR ", 8) &&
++         sf_checksum(rsdp, SF_ACPI_RSDP_LEGACY) && sf_signature(rsdp + 9, "BOCHS ", 6);
++}
++
+ static const char *sf_read_sdt(SfAcpiMap map, void *context, uint64_t address,
+                                const uint8_t *header, const SfAcpiSpec *spec,
+                                SfAcpiTable *table)
+diff --git a/src/app.c b/src/app.c
+index 5236593..5d4b036 100644
+--- a/src/app.c
++++ b/src/app.c
+@@ -2,6 +2,133 @@
+ #include "console.h"
+ #include "serial.h"
+ #include "platform.h"
++#include "acpi_board.h"
++
++bool sf_acpi_boot;
++
++#if defined(__aarch64__) && defined(XNU_LOADER_PLATFORM_GENERIC) && !defined(LEGACY_BIOS)
++typedef struct {
++  const UINT8 *descriptors;
++  UINTN size;
++  UINTN stride;
++} SfEfiMemoryMap;
++
++static const uint8_t *sf_map_acpi(void *context, uint64_t address, size_t length)
++{
++  const SfEfiMemoryMap *map = context;
++  if (address == 0 || length == 0 || length - 1 > UINT64_MAX - address)
++    return NULL;
++
++  for (UINTN offset = 0; offset < map->size; offset += map->stride) {
++    const EFI_MEMORY_DESCRIPTOR *d = (const VOID *)(map->descriptors + offset);
++    if (d->Type != EfiACPIReclaimMemory && d->Type != EfiACPIMemoryNVS &&
++        d->Type != EfiBootServicesData && d->Type != EfiRuntimeServicesData)
++      continue;
++    if (address < d->PhysicalStart || d->NumberOfPages > (UINT64_MAX >> EFI_PAGE_SHIFT))
++      continue;
++    UINT64 span = d->NumberOfPages << EFI_PAGE_SHIFT;
++    UINT64 delta = address - d->PhysicalStart;
++    if (delta < span && length <= span - delta)
++      return (const uint8_t *)(UINTN)address;
++  }
++  return NULL;
++}
++
++static const char *sf_read_efi_acpi(AppContext *ctx, SfAcpiBoard *board, bool *use_defaults)
++{
++  static const EFI_GUID acpi20 = ACPI_20_TABLE_GUID;
++  uint64_t address = 0;
++  for (UINTN i = 0; i < ctx->st->NumberOfTableEntries; i++) {
++    const EFI_CONFIGURATION_TABLE *entry = &ctx->st->ConfigurationTable[i];
++    if (CompareMem(&entry->VendorGuid, &acpi20, sizeof(acpi20)) == 0) {
++      address = (UINTN)entry->VendorTable;
++      break;
++    }
++  }
++  if (address == 0)
++    return "ACPI 2.0 EFI configuration table missing";
++
++  enum { MAP_LIMIT = 1024 * 1024 };
++  UINTN size = 0, key = 0, stride = 0;
++  UINT32 version = 0;
++  EFI_STATUS status = uefi_call_wrapper(ctx->bs->GetMemoryMap, 5,
++                                        &size, NULL, &key, &stride, &version);
++  for (unsigned attempt = 0; attempt < 2 && status == EFI_BUFFER_TOO_SMALL; attempt++) {
++    if (size == 0 || size > MAP_LIMIT || stride < sizeof(EFI_MEMORY_DESCRIPTOR) ||
++        stride > (MAP_LIMIT - size) / 8)
++      return "EFI memory map dimensions";
++    UINTN capacity = size + 8 * stride;
++    VOID *descriptors = NULL;
++    if (EFI_ERROR(app_alloc_pool(ctx, capacity, &descriptors)))
++      return "EFI memory map allocation";
++    size = capacity;
++    status = uefi_call_wrapper(ctx->bs->GetMemoryMap, 5, &size, descriptors,
++                               &key, &stride, &version);
++    const char *error = "EFI memory map dimensions";
++    if (status == EFI_SUCCESS && size != 0 && size <= capacity &&
++        stride >= sizeof(EFI_MEMORY_DESCRIPTOR) &&
++        stride % _Alignof(EFI_MEMORY_DESCRIPTOR) == 0 && size % stride == 0) {
++      SfEfiMemoryMap map = {descriptors, size, stride};
++      *use_defaults = sf_acpi_rsdp_is_qemu(sf_map_acpi(&map, address, 20));
++      error = *use_defaults ? NULL : sf_acpi_read(sf_map_acpi, &map, address, board);
++    }
++    app_free_pool(ctx, descriptors);
++    if (status == EFI_SUCCESS)
++      return error;
++  }
++  return "EFI GetMemoryMap failed";
++}
++
++static EFI_STATUS sf_start_acpi_console(AppContext *ctx, bool fdt_present)
++{
++  SfAcpiBoard board;
++  bool use_defaults = false;
++  const char *error = sf_read_efi_acpi(ctx, &board, &use_defaults);
++  if (use_defaults) {
++    fdt_board_parse(NULL);
++    serial_init();
++    return EFI_SUCCESS;
++  }
++  log_info(L"platform: probing ACPI via EFI ConOut\r\n");
++  if (error != NULL) {
++    log_error(L"platform: %a; ACPI refused: %a\r\n",
++              fdt_present ? "FDT rejected" : "no FDT found", error);
++    return EFI_COMPROMISED_DATA;
++  }
++
++  // Start with only the devices described by this firmware.
++  SetMem(&g_board, sizeof(g_board), 0);
++  g_board.uart_kind = FDT_UART_PL011;
++  g_board.uart_base = board.uart_base;
++  g_board.uart_width = board.uart_width;
++  serial_init();
++  sf_acpi_boot = true;
++
++  UINT64 current_el;
++  __asm__ volatile ("mrs %0, CurrentEL" : "=r"(current_el));
++  log_info(L"platform: %a; ACPI used\r\n", fdt_present ? "FDT rejected" : "no FDT found");
++  log_info(L"SPCR UART 0x%lx interface 0x%x width %u GSI %u baud code %u\r\n",
++           (UINT64)board.uart_base, (UINT32)board.uart_type, (UINT32)board.uart_width * 8,
++           board.uart_gsi, (UINT32)board.uart_baud_code);
++  log_info(L"MADT GICD 0x%lx GICR 0x%lx length 0x%x\r\n",
++           (UINT64)board.gicd_base, (UINT64)board.gicr_base, board.gicr_size);
++  if (board.msi_frame_base != 0) {
++    log_info(L"MADT GICv2m frame 0x%lx ID %u flags 0x%x SPI base %u count %u\r\n",
++             (UINT64)board.msi_frame_base, board.msi_frame_id, board.msi_frame_flags,
++             (UINT32)board.msi_spi_base, (UINT32)board.msi_spi_count);
++  } else {
++    log_info(L"MADT GICv2m frame absent\r\n");
++  }
++  log_info(L"MADT enabled CPUs %u\r\n", (UINT32)board.cpu_count);
++  for (size_t i = 0; i < board.cpu_count; i++)
++    log_info(L"MADT CPU %u MPIDR 0x%lx\r\n", (UINT32)i, (UINT64)board.mpidr[i]);
++  log_info(L"GTDT virtual timer GSI %u flags 0x%x\r\n", board.timer_virt_gsi, board.timer_virt_flags);
++  log_info(L"FADT PSCI conduit %a ARM flags 0x%x\r\n",
++           board.psci == SF_ACPI_PSCI_HVC ? "HVC" : "SMC", (UINT32)board.arm_boot_flags);
++  log_info(L"Current EL %u\r\n", (UINT32)((current_el >> 2) & 3));
++  return EFI_SUCCESS;
++}
++#endif
+ 
+ EFI_STATUS app_init(AppContext *ctx, EFI_HANDLE image, EFI_SYSTEM_TABLE *st) {
+   if (!st)
+@@ -22,8 +149,16 @@ EFI_STATUS app_init(AppContext *ctx, EFI_HANDLE image, EFI_SYSTEM_TABLE *st) {
+   InitializeLib(image, st);
+ 
+ #if defined(__aarch64__) && defined(XNU_LOADER_PLATFORM_GENERIC)
+-  // the console and the rest of the board come from the firmware's device tree, else the build's defaults
++#if !defined(LEGACY_BIOS)
++  const VOID *fdt = fdt_board_find(st);
++  if (fdt == NULL || !fdt_board_parse(fdt))
++    return sf_start_acpi_console(ctx, fdt != NULL);
++  serial_init();
++  serial_mark((CONST CHAR8 *)"platform: FDT used");
++  return EFI_SUCCESS;
++#else
+   fdt_board_parse(fdt_board_find(st));
++#endif
+ #endif
+ 
+   /* Bring up the serial console before any logging so serial captures the full
+diff --git a/src/console.c b/src/console.c
+index 1ee5de6..ad0fd4b 100644
+--- a/src/console.c
++++ b/src/console.c
+@@ -1,5 +1,6 @@
+ #include "console.h"
+ #include "serial.h"
++#include "acpi_board.h"
+ #include <stdarg.h>
+ 
+ /* Format once, then fan the result out to both the EFI console (while boot
+@@ -21,6 +22,11 @@ static VOID log_emit(CONST CHAR16 *fmt, va_list args) {
+ 
+   VSPrint(buf, sizeof(buf), (CHAR16 *)fmt, args);
+ 
++  if (sf_acpi_boot) {
++    serial_put16(buf);
++    return;
++  }
++
+   if (!log_screen_off && ST != NULL && ST->ConOut != NULL)
+     uefi_call_wrapper(ST->ConOut->OutputString, 2, ST->ConOut, buf);
+ 
+diff --git a/src/main.c b/src/main.c
+index 8116629..0a82821 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -1,5 +1,6 @@
+ #include "common.h"
+ #include "app.h"
++#include "acpi_board.h"
+ #include "boot.h"
+ #include "console.h"
+ #include "fileio.h"
+diff --git a/tests/acpi_board_test.c b/tests/acpi_board_test.c
+index 21519bb..8a80420 100644
+--- a/tests/acpi_board_test.c
++++ b/tests/acpi_board_test.c
+@@ -153,9 +153,33 @@ static void sf_read_capture(SfFixture *fixture, char **paths)
+   }
+ }
+ 
++static void sf_test_rsdp_selection(void)
++{
++  SfFixture fixture = sf_synthetic();
++  uint8_t *rsdp = fixture.bytes[RSDP];
++  memcpy(rsdp + 9, "BOCHS ", 6);
++  sf_checksum(rsdp, 20, 8);
++  assert(sf_acpi_rsdp_is_qemu(rsdp));
++  puts("no FDT, BOCHS RSDP: build defaults");
++
++  memcpy(rsdp + 9, "PRLS  ", 6);
++  sf_checksum(rsdp, 20, 8);
++  sf_checksum(rsdp, 36, 32);
++  assert(!sf_acpi_rsdp_is_qemu(rsdp));
++  SfAcpiBoard board;
++  assert(sf_acpi_read(sf_fixture_map, &fixture, sf_address(RSDP), &board) == NULL);
++  puts("no FDT, PRLS RSDP: ACPI");
++
++  memcpy(rsdp + 9, "BOCHS ", 6);
++  sf_checksum(rsdp, 20, 8);
++  rsdp[8] ^= 1;
++  assert(!sf_acpi_rsdp_is_qemu(rsdp));
++}
++
+ int main(int argc, char **argv)
+ {
+   assert(argc == 1 || argc == 6);
++  sf_test_rsdp_selection();
+   SfFixture valid = sf_synthetic();
+   sf_check_capture(&valid);
+   puts("synthetic tables: accepted");

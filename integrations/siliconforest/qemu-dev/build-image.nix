@@ -10,18 +10,23 @@
 #   [SF_PD=pin] nix-build ... build-image.nix [--argstr kernelConfig debug] --no-out-link
 # variant "wayland" starts from upstream's image-arm64-virt-wayland instead: the full userland
 # without X11 (clang, git, curl, openssl, openssh, python, cmake, ...), a 3 GiB class root.
-{ kernelConfig ? "release", variant ? "minimal" }:
+# source is the base to build from; the flake passes its aarch64-linux base for the minimal image.
+args@{ kernelConfig ? "release", variant ? "minimal", source ? import ../rebase/pd.nix }:
 let
   # the SiliconForest source: ../rebase/pd.nix (the tip by default, SF_PD=pin for e7aa00a6). The
   # full userland comes from ./sf-userland.nix: at the tip upstream's Security package, and so
   # the wayland image, builds only with the tree patch named there.
-  pd = if variant == "wayland" then import ./sf-userland.nix else (import ../rebase/pd.nix).pd;
-  p = pd.packages.x86_64-linux;
+  pd = if variant == "wayland" then import ./sf-userland.nix else source.pd;
+  p = assert variant != "wayland" || !(args ? source) ||
+    throw "the wayland variant is built from ./sf-userland.nix and takes no source";
+    pd.packages.${source.pkgs.stdenv.hostPlatform.system};
   base = if variant == "wayland" then (if kernelConfig == "debug" then p.image-arm64-virt-wayland-debug else p.image-arm64-virt-wayland)
     else if kernelConfig == "debug" then p.image-arm64-virt-minimal else p.image-arm64-virt-minimal-release;
 in base.override (old: {
-  kc = import ./build-kc.nix { inherit kernelConfig; };
+  kc = import ./build-kc.nix { inherit kernelConfig source; };
   xnuLoader = old.xnuLoader.overrideAttrs (o: {
     patches = (o.patches or [ ]) ++ [ ./loader-gop-mode.patch ];
   });
+} // source.pkgs.lib.optionalAttrs (source.parallelsGuest or false) {
+  bootArgs = old.bootArgs + " sf_net_autoname=1";
 })

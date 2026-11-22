@@ -13,7 +13,7 @@ let
   source = import ../rebase/pd.nix;
   pd = source.pd;
   pkgs = source.pkgs;
-  p = pd.packages.x86_64-linux;
+  p = pd.packages.${pd.buildSystem};
   xkb = p.xkbcommon-arm64.override { withX11 = false; libxcb = null; libXau = null; libXdmcp = null; };
   system = source.pick { pin = p.libsystem-arm64; tip = import ../libsystem-default/build-libsystem.nix; };
 in pkgs.writeText "siliconforest-chonkstep-link-inputs.json" (builtins.toJSON {

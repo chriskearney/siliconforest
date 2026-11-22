@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2007-Present The PureDarwin Project. All rights reserved.
+# Applied by release/base-tree.nix to the base source when the build system is aarch64-darwin.
+# From upstream PureDarwin 9190470a6785afe9c88511eadfa6d8ac3e322954, nix/pkgs/apple/icucore.nix and src/Kernel/fbsdkpi/fbsdkpi.cmake, on the renamed tree.
+
+--- a/nix/pkgs/apple/icucore.nix
++++ b/nix/pkgs/apple/icucore.nix
+@@ -25,6 +25,7 @@
+ 
+   nativeBuildInputs = [ stdenv.cc ];
+ 
++  # a mac build host runs the x86_64 configure tests through rosetta, an explicit --build keeps it a cross build
+   configurePhase = ''
+     runHook preConfigure
+ 
+@@ -52,7 +53,7 @@
+       CXXFLAGS="-isysroot $DARWIN_SDK_ROOT -I${libSystem}/usr/include ${lib.optionalString (!isArmv6) "-mmacosx-version-min=26.5"} ${lib.optionalString isArmv6 "-O1"}" \
+       LDFLAGS="-fuse-ld=${nativeLd}/bin/ld -nostdlib -L${libSystem}/usr/lib -Wl,-dylib_file,/usr/lib/system/libdyld.dylib:${libSystem}/usr/lib/system/libdyld.dylib ${lib.optionalString (!isArmv6) "-Wl,-platform_version,macos,26.5,26.5 -Wl,-fixup_chains"} -L${libcxxabiDylib}/usr/lib -L${libcxxDylib}/usr/lib -lc++ -lSystem ${lib.optionalString (compilerRt != null) "${compilerRt}/lib/libcompiler_rt.a"}" \
+       ../source/configure \
+-        --host=${targetTriple} \
++        --host=${targetTriple}${lib.optionalString stdenv.buildPlatform.isDarwin " --build=${stdenv.buildPlatform.config}"} \
+         --with-cross-build=$PWD/../native-build \
+         --disable-renaming \
+         --disable-tests --disable-samples --disable-extras --disable-icuio \
+--- a/src/Kernel/fbsdkpi/fbsdkpi.cmake
++++ b/src/Kernel/fbsdkpi/fbsdkpi.cmake
+@@ -66,8 +66,9 @@
+         "${FBSDKPI_DIR}/sf/haiku-headers/private-kernel"
+         "${FBSDKPI_DIR}/sf/haiku-headers"
+         "${FBSDKPI_DIR}/sf/haiku-headers/os"
+-        ${osdirs}
+-        "${FBSDKPI_DIR}/sf/haiku-headers/posix")
++        # posix ahead of os/*, else a case-insensitive fs answers <string.h> with os/support/String.h
++        "${FBSDKPI_DIR}/sf/haiku-headers/posix"
++        ${osdirs})
+     target_compile_definitions(${target} PRIVATE
+         _KERNEL=1 _KERNEL_MODE=1 __HAIKU__=1 __SILICONFOREST__=1
+         # the kernel's own panic stays reachable from the xnu side

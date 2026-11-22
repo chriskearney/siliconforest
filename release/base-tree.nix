@@ -2,7 +2,7 @@
 # Copyright (c) 2026 SiliconForest contributors
 # Evaluate upstream's flake with its own pinned dependency graph, after the
 # deterministic source rename. No local Git checkout or registry is consulted.
-{ sourceName ? "upstream-base", corecryptoName ? "corecrypto", forkRev ? null }:
+{ sourceName ? "upstream-base", corecryptoName ? "corecrypto", forkRev ? null, system ? "x86_64-linux" }:
 let
   lock = builtins.fromJSON (builtins.readFile ../sources.lock);
   sources = import ./sources.nix;
@@ -10,7 +10,9 @@ let
   load = name:
     let
       node = nodes.${name};
-      tree = sources.${name};
+      tree = if parallelsGuest && name == "xnu-loader"
+        then sources.${name} // { outPath = patchedLoader; }
+        else sources.${name};
       inputs = builtins.mapAttrs (_: target: load target) (node.inputs or { });
       result = tree // ((import (tree.outPath + "/flake.nix")).outputs
         (inputs // { self = result; })) // { inherit inputs; };
@@ -18,7 +20,21 @@ let
   rootInputs = builtins.mapAttrs (_: load)
     (pkgs.lib.filterAttrs (_: target: nodes.${target}.locked.type != "path") nodes.${lock.upstreamFlakeRoot}.inputs);
   nixpkgs = load nodes.${lock.upstreamFlakeRoot}.inputs.nixpkgs;
-  pkgs = import nixpkgs { system = "x86_64-linux"; };
+  pkgs = import nixpkgs { inherit system; };
+  patchedLoader = pkgs.applyPatches {
+    name = "siliconforest-parallels-xnu-loader-source";
+    src = sources."xnu-loader";
+    patches = [
+      ./patches/xnu-loader-01-acpi-tables.patch
+      ./patches/xnu-loader-02-acpi-console.patch
+      ./patches/xnu-loader-03-acpi-platform.patch
+      ./patches/xnu-loader-04-efi-conventional-memory.patch
+      ./patches/xnu-loader-05-acpi-pci-resources.patch
+      ./patches/xnu-loader-06-efi-pci-msi.patch
+      ./patches/xnu-loader-07-acpi-platform-ahci.patch
+    ];
+    patchFlags = [ "-p1" "--fuzz=0" ];
+  };
   renameTools = builtins.path {
     path = ../tools;
     name = "siliconforest-rename-tools";
@@ -59,15 +75,62 @@ let
     path.write_text(source.replace(needle, 'export ZERO_AR_DATE=1\n' + needle))
     PY
   '';
+  parallelsGuest = sourceName == "upstream-base";
+  cocoaAarch64 = sourceName == "upstream-cocoa" && system == "aarch64-linux";
+  prepared = if parallelsGuest then
+    pkgs.applyPatches {
+      name = "siliconforest-parallels-guest-source";
+      src = buildSource;
+      patches = pkgs.lib.optional (system == "aarch64-linux") ./patches/aarch64-linux-xnu-headers.patch
+        ++ pkgs.lib.optional (system == "aarch64-darwin") ./patches/aarch64-darwin-host.patch
+        ++ [
+          ./patches/parallels-01-sbsa-uart.patch
+          ./patches/parallels-02-firmware-platform.patch
+          ./patches/parallels-03-gic-interface.patch
+          ./patches/parallels-04-gic-pending-signal.patch
+          ./patches/parallels-05-firmware-ecam.patch
+          ./patches/parallels-06-ehci-interrupt.patch
+          ./patches/parallels-07-gicv2m-msi.patch
+          ./patches/parallels-08-ecam-offsets.patch
+          ./patches/parallels-09-bridge-bar-windows.patch
+          ./patches/parallels-10-platform-ahci.patch
+          ./patches/parallels-11-pci-io-apertures.patch
+          ./patches/parallels-12-legacy-virtio.patch
+          ./patches/parallels-13-virtio-net-msix.patch
+          ./patches/parallels-14-bsd-autoname.patch
+          ./patches/parallels-15-dhcp-build.patch
+          ./patches/parallels-17-gpu-backing-descriptors.patch
+          ./patches/parallels-18-gpu-backing-pages.patch
+          ./patches/parallels-19-gpu-msix.patch
+          ./patches/parallels-20-vsock-transport.patch
+          ./patches/parallels-21-vsock-probe.patch
+          ./patches/parallels-22-timesync.patch
+        ];
+      patchFlags = [ "-p1" "--fuzz=0" ];
+    }
+  else if cocoaAarch64 then pkgs.applyPatches {
+    name = "siliconforest-cocoa-aarch64-linux-source";
+    src = buildSource;
+    patches = [
+      ./patches/cocoa-aarch64-linux-swift.patch
+      ./patches/cocoa-aarch64-linux-mig-sdk.patch
+      ./patches/cocoa-aarch64-linux-cctools.patch
+    ];
+    patchFlags = [ "-p1" "--fuzz=0" ];
+  }
+  else buildSource;
   inputs = rootInputs // {
-    corecrypto-src = renamed + "/external/corecrypto";
+    # An aarch64 Linux host needs corecrypto f577aafe, which the base tree pins: corecrypto-pin plus its aarch64 Linux host case.
+    corecrypto-src = (if cocoaAarch64 then (import ./base-tree.nix { inherit system; }).renamed else renamed) + "/external/corecrypto";
   } // pkgs.lib.optionalAttrs (sourceName != "upstream-cocoa") {
     sf-sb-key = renamed + "/nix/secureboot/no-key";
+  } // pkgs.lib.optionalAttrs cocoaAarch64 {
+    sf-swift-host-source = sources."swift-6.3.3-ubuntu24.04-aarch64";
   };
-  pd = (import (buildSource + "/flake.nix")).outputs (inputs // { self = pd; })
-    // { outPath = buildSource; inherit inputs; };
+  pd = (import (prepared + "/flake.nix")).outputs (inputs // { self = pd; })
+    // { outPath = prepared; inherit inputs; buildSystem = system; buildPkgs = pkgs; };
 in {
-  inherit pd pkgs sources renamed renameTools buildSource;
+  inherit pd pkgs sources renamed renameTools buildSource parallelsGuest;
   rev = if forkRev != null then forkRev
     else if sourceName == "upstream-cocoa" then lock.cocoaRename.expectedForkCommit
     else lock.baseRename.expectedForkCommit;

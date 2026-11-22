@@ -1,0 +1,30 @@
+Security: Expose the XNU content protection header to trustd
+
+The arm64 trustd build includes System/sys/content_protection.h. Add the XNU header to the existing Security header farm under that path so the build can find it. Export the arm64 SymptomReporter package from the flake for the guest image overlay.
+
+diff --git a/flake.nix b/flake.nix
+index 6e3250b..20f5fc5 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -5683,6 +5683,7 @@
+             python-arm64 = pythonArm64Build;
+             security-arm64 = securityArm64Build;
+             systemConfiguration-arm64 = systemConfigurationArm64Build;
++            symptomReporter-arm64 = arm64.imageExtraPackageSetArm64.symptomReporter;
+             diskArbitration = diskArbitrationBuild;
+             symptomReporter = symptomReporterBuild;
+             protocolBuffer = protocolBufferBuild;
+diff --git a/src/Libraries/Security/CMakeLists.txt b/src/Libraries/Security/CMakeLists.txt
+index 1b6c07b..ab8c448 100644
+--- a/src/Libraries/Security/CMakeLists.txt
++++ b/src/Libraries/Security/CMakeLists.txt
+@@ -299,6 +299,9 @@ install(FILES
+     DESTINATION System/Library/Frameworks/Security.framework/Versions/A/Headers
+     COMPONENT BaseSystem)
+ 
++# trustdFileLocations.m includes the private XNU header under its SDK spelling on arm64.
++_sec_farm_dir(System/sys ${CMAKE_SOURCE_DIR}/src/Kernel/xnu/bsd/sys/content_protection.h)
++
+ # libtrustd: Apple's trust server, the code behind SecTrust evaluation. The trustd daemon serves it over XPC,
+ # and trustd_spi.c can install it in a process directly, as Apple's own tests do
+ file(GLOB _trustd_src

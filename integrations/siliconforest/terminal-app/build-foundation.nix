@@ -36,7 +36,7 @@
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-foundation.nix
 let
   pd = (import ../rebase/pd.nix).pd;
-in pd.packages.x86_64-linux."foundation-arm64".overrideAttrs (old: {
+in pd.packages.${pd.buildSystem}."foundation-arm64".overrideAttrs (old: {
   pname = "siliconforest-foundation-macos-apps";
   patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ];
   patchFlags = [ "-p4" ];
