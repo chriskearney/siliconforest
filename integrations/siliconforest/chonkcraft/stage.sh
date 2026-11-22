@@ -8,11 +8,11 @@
 #   lib/sffill/*.dylib            fills built by fills.py (re-export + missing symbols)
 #   libawt_lwawt.dylib            framework loads pointed at those fills
 # and OUT/fw/ holds JavaRuntimeSupport, CoreMIDI and ExceptionHandling for
-# DYLD_FRAMEWORK_PATH, and OUT/fwlib/ the two leaf-name links for
-# DYLD_LIBRARY_PATH: libGL.dylib (the JBR opens OpenGL's Libraries/libGL.dylib,
-# which SiliconForest does not have) and libEGL.1.dylib (Mesa's EGL, which
-# AppKit and QuartzCore look for at /usr/lib). The DMG and the M1's /System
-# are not modified.
+# DYLD_FRAMEWORK_PATH. OUT/fwlib/ holds legacy leaf-name fallbacks for pre-bakein
+# systems; since bake-in step 5 (bk5 Java2D->Metal fallback fix), the system
+# provides OpenGL.framework/Versions/Current/Libraries/libGL.dylib -> ../OpenGL
+# and /usr/lib/libEGL.1.dylib directly, so sf-open-chonkcraft no longer sets
+# DYLD_LIBRARY_PATH=$B/fwlib. The DMG and the M1's /System are not modified.
 # Needs ROOT (a copy of the M1's /System and /usr/lib) for linking.
 set -euo pipefail
 S=$(cd "$(dirname "$0")" && pwd)
