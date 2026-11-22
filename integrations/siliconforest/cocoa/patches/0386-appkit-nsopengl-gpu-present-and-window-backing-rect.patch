@@ -522,8 +522,8 @@ diff -ru a/src/Frameworks/AppKit/NSOpenGL/NSOpenGLPixelFormat.m b/src/Frameworks
  @end
 diff -ru a/src/Frameworks/AppKit/NSWindow.h b/src/Frameworks/AppKit/NSWindow.h
 --- a/src/Frameworks/AppKit/NSWindow.h	2026-11-21 20:09:57.938269914 -0800
-+++ b/src/Frameworks/AppKit/NSWindow.h	2026-11-21 20:11:47.147218250 -0800
-@@ -503,6 +503,8 @@
++++ b/src/Frameworks/AppKit/NSWindow.h	2026-11-21 21:17:15.076858360 -0800
+@@ -503,10 +503,13 @@
  - (NSRect)convertRectToScreen:(NSRect)rect;
  - (NSRect)backingAlignedRect:(NSRect)rect options:(NSAlignmentOptions)options;
  - (NSRect)convertRectFromScreen:(NSRect)rect;
@@ -532,9 +532,14 @@ diff -ru a/src/Frameworks/AppKit/NSWindow.h b/src/Frameworks/AppKit/NSWindow.h
  - (NSPoint)convertPointToScreen:(NSPoint)point;
  - (NSPoint)convertPointFromScreen:(NSPoint)point;
  
+ - (NSRect)frameRectForContentRect:(NSRect)rect;
++- (NSRect)frameRectForContentRect:(NSRect)contentRect styleMask:(unsigned)styleMask;
+ - (NSRect)contentRectForFrameRect:(NSRect)rect;
+ - (NSRect)constrainFrameRect:(NSRect)rect toScreen:(NSScreen *)screen;
+ 
 diff -ru a/src/Frameworks/AppKit/NSWindow.m b/src/Frameworks/AppKit/NSWindow.m
 --- a/src/Frameworks/AppKit/NSWindow.m	2026-11-21 20:09:57.940397231 -0800
-+++ b/src/Frameworks/AppKit/NSWindow.m	2026-11-21 20:11:48.333228852 -0800
++++ b/src/Frameworks/AppKit/NSWindow.m	2026-11-21 21:17:34.108043453 -0800
 @@ -1952,6 +1952,18 @@
     return rect;
  }
@@ -554,3 +559,16 @@ diff -ru a/src/Frameworks/AppKit/NSWindow.m b/src/Frameworks/AppKit/NSWindow.m
  -(NSPoint)convertPointToScreen:(NSPoint)point {
     return [self convertBaseToScreen:point];
  }
+@@ -1975,6 +1987,12 @@
+     return result;
+ }
+ 
++// GLFW sends the two-argument form to the window. The style mask may be one it
++// is about to apply, so this is the class calculation, not the live frame.
++-(NSRect)frameRectForContentRect:(NSRect)contentRect styleMask:(unsigned)styleMask {
++   return [[self class] frameRectForContentRect:contentRect styleMask:styleMask];
++}
++
+ -(NSRect)contentRectForFrameRect:(NSRect)frameRect {
+    NSRect result=CGInsetRectForNativeWindowBorder(frameRect,[self styleMask]);
+ 

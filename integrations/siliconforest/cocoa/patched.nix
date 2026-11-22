@@ -475,7 +475,8 @@
 #         the display; a mode whose refresh is 0 is reported as 60 Hz
 #   0386  AppKit: -[NSOpenGLContext flushBuffer] presents through the GPU IOSurface ring (SF_NSGL_GPU_PRESENT=0
 #         keeps the CPU readback; any failure falls back to it); NSWindow backing-rect conversion; the pixel
-#         format query writes a GLint; -[NSApplication setAppleMenu:] keeps the menu and -appleMenu returns it
+#         format query writes a GLint; -[NSApplication setAppleMenu:] keeps the menu and -appleMenu returns it;
+#         -[NSWindow frameRectForContentRect:styleMask:] answers GLFW's instance call with the class calculation
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
