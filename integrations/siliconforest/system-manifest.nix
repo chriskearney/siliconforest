@@ -14,11 +14,16 @@ let
   libsystemLegacy = import ./libsystem-default/build-libsystem-legacy-exports.nix;
   colorsync = import ./finch/ColorSync/build.nix;
   audiotoolbox = import ./finch/AudioToolbox/install.nix;
+  audiotoolboxClock = import ./finch/firefox-media/clock-family.nix;
   opengl = import ./firefox/perf/tools/term12/cgl.nix { with0303 = true; with0009 = true; };
   iosurface = import ./cocoa/iosurface.nix;
   surfaceSession = import ./firefox/surface-session.nix;
-  corevideo = import ./cocoa/corevideo-displaylink.nix;
-  videotoolbox = import ./m1-avd/build-videotoolbox.nix;
+  # Bake-in step 8: clocked CoreVideo (DisplayLink + frame-lifetime/0172), full
+  # 172-symbol VideoToolbox (encoder + VTSupplement + VTMoreConstants + cb809571e
+  # IOSurface GL texture compatibility fix; bare m1-avd/build-videotoolbox.nix only
+  # exports 42 symbols and broke VLC HW decode and QuickTime launch in bk8).
+  corevideo = import ./finch/firefox-media/clocked-corevideo.nix;
+  videotoolbox = import ./finch/VideoToolbox/encoder/build.nix;
   launchers = pkgs.runCommand "siliconforest-system-launchers" { } ''
     mkdir -p $out/usr/bin
     install -m 0755 ${./desktop/system/sf-open-chonkcraft} $out/usr/bin/sf-open-chonkcraft
@@ -36,6 +41,13 @@ let
     chmod -R u+w $out/System/Library/Frameworks/ColorSync.framework
     cp -L ${audiotoolbox}/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox \
       $out/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox
+    cp -L ${audiotoolboxClock}/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox.output-sf \
+      $out/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox.output-sf
+    cp -L ${corevideo}/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo \
+      $out/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo
+    mkdir -p $out/System/Library/Frameworks/VideoToolbox.framework/Versions/A
+    cp -L ${videotoolbox}/System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox \
+      $out/System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox
     # Bake-in step 5 (bk5 Java2D->Metal fallback): install canonical OpenGL.framework
     # (Versions/Current -> A, Versions/A/Libraries/libGL.dylib -> ../OpenGL,
     # OpenGL -> Versions/A/OpenGL, Libraries -> Versions/Current/Libraries) and One GL in /usr/lib.
@@ -56,6 +68,6 @@ let
       $out/usr/bin/sf-open-*
   '';
 in {
-  inherit macosAppsRoot cocoa libsystemLegacy colorsync audiotoolbox opengl iosurface surfaceSession corevideo videotoolbox launchers systemRoot;
+  inherit macosAppsRoot cocoa libsystemLegacy colorsync audiotoolbox audiotoolboxClock opengl iosurface surfaceSession corevideo videotoolbox launchers systemRoot;
   chonkcraftFillsScript = ./chonkcraft/fills.py;
 }
