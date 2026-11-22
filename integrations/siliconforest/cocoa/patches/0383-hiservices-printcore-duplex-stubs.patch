@@ -1,0 +1,23 @@
+--- a/src/Frameworks/HIServices/PrintCore.c
++++ b/src/Frameworks/HIServices/PrintCore.c
+@@ -441,3 +441,20 @@
+     *printerList = CFArrayCreate(NULL, NULL, 0, &kCFTypeArrayCallBacks);
+     return kPMNoError;
+ }
++
++// (bake-in step 9b) Printing duplex queries: no print system, so duplex is not implemented
++// (kPMNotImplemented = -30097).
++OSStatus PMGetDuplex(PMPrintSettings settings, UInt32 *duplexSetting)
++{
++    (void)settings;
++    if (duplexSetting != NULL)
++        *duplexSetting = 1;
++    return -30097;
++}
++
++OSStatus PMSetDuplex(PMPrintSettings settings, UInt32 duplexSetting)
++{
++    (void)settings;
++    (void)duplexSetting;
++    return -30097;
++}

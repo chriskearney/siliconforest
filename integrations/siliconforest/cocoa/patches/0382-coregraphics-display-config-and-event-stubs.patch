@@ -1,0 +1,47 @@
+--- a/src/Frameworks/CoreGraphics/CGDirectDisplay_siliconforest.m
++++ b/src/Frameworks/CoreGraphics/CGDirectDisplay_siliconforest.m
+@@ -670,3 +670,44 @@
+     }
+     return create != NULL ? create() : nil;
+ }
++
++// (bake-in step 9b) Additive display-configuration and event-suppression stubs formerly
++// supplied only in ChonkCraft's fills.py (CGContextDrawLinearGradient / RadialGradient
++// no-ops are deliberately excluded). One fixed display: mode switches fail cleanly with
++// kCGErrorFailure, no mirroring, no stereo.
++CGError CGBeginDisplayConfiguration(CGDisplayConfigRef *config) {
++    if (config != NULL) *config = NULL;
++    return kCGErrorFailure;
++}
++
++CGError CGCancelDisplayConfiguration(CGDisplayConfigRef config) {
++    (void)config;
++    return kCGErrorSuccess;
++}
++
++CGError CGCompleteDisplayConfiguration(CGDisplayConfigRef config, CGConfigureOption option) {
++    (void)config;
++    (void)option;
++    return kCGErrorFailure;
++}
++
++CGError CGConfigureDisplayWithDisplayMode(CGDisplayConfigRef config, CGDirectDisplayID display,
++                                          CGDisplayModeRef mode, CFDictionaryRef options) {
++    (void)config;
++    (void)display;
++    (void)mode;
++    (void)options;
++    return kCGErrorFailure;
++}
++
++boolean_t CGDisplayIsAlwaysInMirrorSet(CGDirectDisplayID display) { (void)display; return 0; }
++boolean_t CGDisplayIsInHWMirrorSet(CGDirectDisplayID display) { (void)display; return 0; }
++boolean_t CGDisplayIsInMirrorSet(CGDirectDisplayID display) { (void)display; return 0; }
++boolean_t CGDisplayIsStereo(CGDirectDisplayID display) { (void)display; return 0; }
++CGDirectDisplayID CGDisplayPrimaryDisplay(CGDirectDisplayID display) { return display; }
++CGError CGEnableEventStateCombining(boolean_t combineState) { (void)combineState; return kCGErrorSuccess; }
++CGError CGSetLocalEventsFilterDuringSuppressionState(uint32_t filter, uint32_t state) {
++    (void)filter;
++    (void)state;
++    return kCGErrorSuccess;
++}

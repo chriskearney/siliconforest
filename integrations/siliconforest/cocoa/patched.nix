@@ -865,6 +865,7 @@ let
     ./patches/0367-appkit-mutable-attributed-string-methods-on-bridged-strings.patch
     ./patches/0370-appkit-zero-maximum-size-is-no-maximum.patch
     ./patches/0379-appkit-auto-gpu-present-for-gpu-layers.patch
+    ./patches/0381-appkit-chonkcraft-additive-symbols.patch
   ];
   windowserverPatches = [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
@@ -909,6 +910,9 @@ let
   authenticationServicesSrc = patchedDir "src/Frameworks/AuthenticationServices" [
     ./patches/0003-authenticationservices-web-session-browser-side.patch
   ];
+  hiServicesSrc = patchedDir "src/Frameworks/HIServices" [
+    ./patches/0383-hiservices-printcore-duplex-stubs.patch
+  ];
   onyx2dSrc = patchedDir "src/Frameworks/Onyx2D" [
     ./patches/0006-onyx2d-glyphs-at-device-scale.patch
     ./patches/0013-onyx2d-png-straight-alpha-byte-order.patch
@@ -947,6 +951,7 @@ let
     ./patches/0118-coregraphics-icc-and-indexed-color-spaces.patch
     ./patches/0135-coregraphics-display-fade-opengl-acceleration.patch
     ./patches/0342-coregraphics-displays-with-point-and-rect.patch
+    ./patches/0382-coregraphics-display-config-and-event-stubs.patch
   ];
   coregraphics = optimised (pd."coregraphics-arm64".override { src = coregraphicsSrc; });
   # QuartzCore: upstream's recipe (not optimised, as installed; its library is the root's QuartzCore.pd, beside the
@@ -1022,7 +1027,7 @@ let
   });
   appFrameworks = a.appFrameworks.override (old: {
     inherit appkit windowserver;
-    srcs = old.srcs // { AuthenticationServices = authenticationServicesSrc; };
+    srcs = old.srcs // { AuthenticationServices = authenticationServicesSrc; HIServices = hiServicesSrc; };
   });
 in {
   inherit appkitSrc windowserverSrc authenticationServicesSrc onyx2dSrc windowserver appkit appFrameworks onyx2d security;

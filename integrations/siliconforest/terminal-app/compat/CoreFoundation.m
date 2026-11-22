@@ -32,6 +32,8 @@ NSString *const NSURLVolumeIsReadOnlyKey = @"NSURLVolumeIsReadOnlyKey";
 NSString *const NSURLHasHiddenExtensionKey = @"NSURLHasHiddenExtensionKey";
 NSString *const NSURLEffectiveIconKey = @"NSURLEffectiveIconKey";
 NSString *const NSURLFileResourceIdentifierKey = @"NSURLFileResourceIdentifierKey";
+// (bake-in step 9b) Additive URL key formerly supplied only in ChonkCraft's fills.py
+NSString *const NSURLIsRegularFileKey = @"NSURLIsRegularFileKey";
 
 // ---- CFStringTokenizer: word and other boundaries of a string, from ICU's break iterators
 typedef struct __SFStringTokenizer {
