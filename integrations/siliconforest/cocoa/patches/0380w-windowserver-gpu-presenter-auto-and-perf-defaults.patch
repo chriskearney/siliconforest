@@ -1,0 +1,60 @@
+diff -ru a/src/Frameworks/WindowServer/rpc_wayland.c b/src/Frameworks/WindowServer/rpc_wayland.c
+--- a/src/Frameworks/WindowServer/rpc_wayland.c	2026-11-21 15:58:06.618450063 -0800
++++ b/src/Frameworks/WindowServer/rpc_wayland.c	2026-11-21 15:58:06.630448304 -0800
+@@ -5158,7 +5158,7 @@
+ int _windowServerSFFXSetGPULayer(int windowID,uintptr_t key,void *surface,
+     double sx,double sy,double sw,double sh,double dx,double dy,double dw,double dh){
+     const char *enabled=getenv("SFFX_GPU_PRESENT");
+-    if(!enabled||strcmp(enabled,"1")||!ensureConnected()||!ws.dmabuf)return 0;
++    if((enabled&&!strcmp(enabled,"0"))||!ensureConnected()||!ws.dmabuf)return 0;
+     pthread_mutex_lock(&ws.pixelsLock);
+     struct wsWindow *window=windowForID(windowID);int good=0;
+     // (TERM10) a window the compositor shows as a popup or layer surface takes only shared-memory buffers: AppKit
+@@ -5174,7 +5174,7 @@
+ // takes as shared memory only): AppKit asks before it copies a frame for it, and reads the layers back instead
+ int _windowServerSFFXTakesGPULayers(int windowID){
+     const char *enabled=getenv("SFFX_GPU_PRESENT");
+-    if(!enabled||strcmp(enabled,"1")||!ensureConnected()||!ws.dmabuf)return 0;
++    if((enabled&&!strcmp(enabled,"0"))||!ensureConnected()||!ws.dmabuf)return 0;
+     pthread_mutex_lock(&ws.pixelsLock);
+     struct wsWindow *window=windowForID(windowID);int good=window&&sfGPURoleTakesDmabuf(window);
+     pthread_mutex_unlock(&ws.pixelsLock);return good;
+@@ -5184,7 +5184,7 @@
+ int _windowServerSFFXSetGPULayerDamaged(int windowID,uintptr_t key,void *surface,
+     double sx,double sy,double sw,double sh,double dx,double dy,double dw,double dh,const int *damage){
+     const char *enabled=getenv("SFFX_GPU_PRESENT");
+-    if(!enabled||strcmp(enabled,"1")||!ensureConnected()||!ws.dmabuf)return 0;
++    if((enabled&&!strcmp(enabled,"0"))||!ensureConnected()||!ws.dmabuf)return 0;
+     pthread_mutex_lock(&ws.pixelsLock);
+     struct wsWindow *window=windowForID(windowID);int good=0;
+     if(window&&!sfGPURoleTakesDmabuf(window)){pthread_mutex_unlock(&ws.pixelsLock);return 0;}
+@@ -5216,7 +5216,7 @@
+  * layers' geometry out under; else 0 and the main thread does this frame (its flush prepares what the window needs). */
+ int _windowServerSFFXPresentLayers(int windowID,uint64_t geometry){
+     const char *enabled=getenv("SFFX_GPU_PRESENT");
+-    if(!enabled||strcmp(enabled,"1")||!ws.connected||!ws.dmabuf)return 0;
++    if((enabled&&!strcmp(enabled,"0"))||!ws.connected||!ws.dmabuf)return 0;
+     double began = wsTiming() ? wsNowMs() : 0;
+     pthread_mutex_lock(&ws.pixelsLock);
+     struct wsWindow *window=windowForID(windowID);
+diff -ru a/src/Frameworks/WindowServer/sffx_gpu_present.h b/src/Frameworks/WindowServer/sffx_gpu_present.h
+--- a/src/Frameworks/WindowServer/sffx_gpu_present.h	2026-11-21 15:58:06.620596509 -0800
++++ b/src/Frameworks/WindowServer/sffx_gpu_present.h	2026-11-21 15:58:06.630574721 -0800
+@@ -20,7 +20,7 @@
+  const unsigned char *a=left,*b=right;size_t i=0;
+ #ifdef __aarch64__
+  static int vector=-1; // (IOSURF) read once: it is asked once per row now
+- if(vector<0)vector=getenv("SFFX_GPU_VECTOR_COMPARE")!=NULL;
++ if(vector<0){const char *v=getenv("SFFX_GPU_VECTOR_COMPARE");vector=!(v&&!strcmp(v,"0"));}
+  if(vector){
+   uint8x16_t x0=vdupq_n_u8(0),x1=x0,x2=x0,x3=x0;
+   for(;bytes-i>=64;i+=64){
+@@ -102,7 +102,7 @@
+ 
+ static int sfGPUDamageEnabled(void){
+  static int on=-1;
+- if(on<0){const char *v=getenv("SFFX_GPU_DAMAGE");on=v&&!strcmp(v,"1");}
++ if(on<0){const char *v=getenv("SFFX_GPU_DAMAGE");on=!(v&&!strcmp(v,"0"));}
+  return on;
+ }
+ static void sfGPUBoxEmpty(int *b){b[0]=b[1]=INT32_MAX;b[2]=b[3]=INT32_MIN;}

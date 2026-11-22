@@ -1,0 +1,107 @@
+diff -ru a/src/Frameworks/QuartzCore/CALayerContext.m b/src/Frameworks/QuartzCore/CALayerContext.m
+--- a/src/Frameworks/QuartzCore/CALayerContext.m	2026-11-21 15:58:06.583368113 -0800
++++ b/src/Frameworks/QuartzCore/CALayerContext.m	2026-11-21 15:58:06.597515633 -0800
+@@ -103,7 +103,7 @@
+  static int on=-1;
+  if(on<0){
+   const char *v=getenv("SFFX_GPU_RENDER_THREAD"),*gpu=getenv("SFFX_GPU_PRESENT");
+-  on=v!=NULL&&!strcmp(v,"1")&&gpu!=NULL&&!strcmp(gpu,"1");
++  on=!(v!=NULL&&!strcmp(v,"0"))&&!(gpu!=NULL&&!strcmp(gpu,"0"));
+  }
+  return on;
+ }
+@@ -604,7 +604,7 @@
+    uint64_t generation=__atomic_load_n(&_sffxGeneration,__ATOMIC_ACQUIRE);
+    // (TERM9) the environment is read once: Firefox's launcher sets it, no other application has it
+    static int dirtyFrames=-1;
+-   if(dirtyFrames<0)dirtyFrames=getenv("SFFX_GPU_DIRTY_FRAMES")!=NULL;
++   if(dirtyFrames<0){const char *v=getenv("SFFX_GPU_DIRTY_FRAMES");dirtyFrames=!(v!=NULL&&!strcmp(v,"0"));}
+    BOOL enabled=dirtyFrames,uncertain=NO;
+    struct SFFXLayerStamp stamps[SFFX_MAX_STAMPS];unsigned count=0;
+    if(enabled){
+@@ -865,7 +865,7 @@
+ // An opt-in GPU frame, never a CPU bitmap disguised as GPU storage.
+ -(CFTypeRef)copySFFXRenderedSurface {
+    const char *enabled=getenv("SFFX_GPU_PRESENT");
+-   if(!enabled||strcmp(enabled,"1"))return NULL;
++   if(enabled&&!strcmp(enabled,"0"))return NULL;
+    static dispatch_once_t once;
+    static void *cachedLibrary;
+    static CFTypeRef (*cachedCreate)(CFDictionaryRef);
+@@ -874,7 +874,8 @@
+    CFTypeRef (*create)(CFDictionaryRef)=NULL;
+    size_t (*width)(CFTypeRef)=NULL,(*height)(CFTypeRef)=NULL;
+    int (*copy)(CFTypeRef,int)=NULL;
+-   if(getenv("SFFX_GPU_CACHE_LOOKUPS")){
++   const char *cacheEnv=getenv("SFFX_GPU_CACHE_LOOKUPS");
++   if(!(cacheEnv&&!strcmp(cacheEnv,"0"))){
+     dispatch_once(&once,^{
+      cachedLibrary=dlopen("/System/Library/Frameworks/IOSurface.framework/IOSurface",RTLD_LAZY|RTLD_GLOBAL);
+      if(cachedLibrary){
+@@ -898,7 +899,8 @@
+    if(w<=0||h<=0||w>16384||h>16384)return NULL;
+    BOOL damageFrames=CARendererSFFXDamageEnabled();
+ 
+-   if((damageFrames || getenv("SFFX_GPU_DIRTY_FRAMES")) && _sffxLastSurface &&
++   const char *dfEnv=getenv("SFFX_GPU_DIRTY_FRAMES");
++   if((damageFrames || !(dfEnv&&!strcmp(dfEnv,"0"))) && _sffxLastSurface &&
+       _sffxCopiedSerial==_sffxRenderSerial && width(_sffxLastSurface)==(size_t)w && height(_sffxLastSurface)==(size_t)h){
+     _sfdExportPartial=damageFrames;
+     _sfdExportDamage[0]=_sfdExportDamage[1]=_sfdExportDamage[2]=_sfdExportDamage[3]=0;
+@@ -914,9 +916,9 @@
+    if(!surface){
+     CFMutableDictionaryRef props=CFDictionaryCreateMutable(NULL,0,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
+     if(!props)return NULL;
+-    CFStringRef keys[]={CFSTR("IOSurfaceWidth"),CFSTR("IOSurfaceHeight"),CFSTR("IOSurfaceBytesPerElement"),CFSTR("IOSurfacePixelFormat")};
+-    int values[]={w,h,4,0x42475241};
+-    for(int i=0;i<4;i++){CFNumberRef n=CFNumberCreate(NULL,kCFNumberIntType,&values[i]);if(!n){CFRelease(props);return NULL;}CFDictionarySetValue(props,keys[i],n);CFRelease(n);}
++    CFStringRef keys[]={CFSTR("IOSurfaceWidth"),CFSTR("IOSurfaceHeight"),CFSTR("IOSurfaceBytesPerElement"),CFSTR("IOSurfacePixelFormat"),CFSTR("SFIOSurfaceGPUStorage")};
++    int values[]={w,h,4,0x42475241,1};
++    for(int i=0;i<5;i++){CFNumberRef n=CFNumberCreate(NULL,kCFNumberIntType,&values[i]);if(!n){CFRelease(props);return NULL;}CFDictionarySetValue(props,keys[i],n);CFRelease(n);}
+     _sffxFrames[index]=surface=create(props);CFRelease(props);
+    }
+    CGLSetCurrentContext(_glContext);
+diff -ru a/src/Frameworks/QuartzCore/CAOpenGLLayer.m b/src/Frameworks/QuartzCore/CAOpenGLLayer.m
+--- a/src/Frameworks/QuartzCore/CAOpenGLLayer.m	2026-11-21 15:58:06.580861525 -0800
++++ b/src/Frameworks/QuartzCore/CAOpenGLLayer.m	2026-11-21 15:58:06.596380368 -0800
+@@ -79,13 +79,13 @@
+ 
+ static CFTypeRef sfCreateFrame(GLint width, GLint height) {
+     CFMutableDictionaryRef props = CFDictionaryCreateMutable(NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+-    CFStringRef keys[] = { CFSTR("IOSurfaceWidth"), CFSTR("IOSurfaceHeight"), CFSTR("IOSurfaceBytesPerElement"), CFSTR("IOSurfacePixelFormat") };
+-    int values[] = { width, height, 4, 0x42475241 /* 'BGRA' */ };
++    CFStringRef keys[] = { CFSTR("IOSurfaceWidth"), CFSTR("IOSurfaceHeight"), CFSTR("IOSurfaceBytesPerElement"), CFSTR("IOSurfacePixelFormat"), CFSTR("SFIOSurfaceGPUStorage") };
++    int values[] = { width, height, 4, 0x42475241 /* 'BGRA' */, 1 };
+     CFTypeRef surface;
+ 
+     if (props == NULL)
+         return NULL;
+-    for (int i = 0; i < 4; i++) {
++    for (int i = 0; i < 5; i++) {
+         CFNumberRef n = CFNumberCreate(NULL, kCFNumberIntType, &values[i]);
+ 
+         CFDictionarySetValue(props, keys[i], n);
+diff -ru a/src/Frameworks/QuartzCore/CARenderer.m b/src/Frameworks/QuartzCore/CARenderer.m
+--- a/src/Frameworks/QuartzCore/CARenderer.m	2026-11-21 15:58:06.587658422 -0800
++++ b/src/Frameworks/QuartzCore/CARenderer.m	2026-11-21 15:58:06.597672148 -0800
+@@ -1133,7 +1133,7 @@
+     const char *v=getenv("SFFX_GPU_DAMAGE");
+     const char *p=getenv("SFFX_GPU_PRESENT");
+ 
+-    on=v!=NULL && strcmp(v,"1")==0 && p!=NULL && strcmp(p,"1")==0;
++    on=!(v!=NULL && strcmp(v,"0")==0) && !(p!=NULL && strcmp(p,"0")==0);
+    }
+    return on;
+ }
+diff -ru a/src/Frameworks/QuartzCore/CATransaction.m b/src/Frameworks/QuartzCore/CATransaction.m
+--- a/src/Frameworks/QuartzCore/CATransaction.m	2026-11-21 15:58:06.585723219 -0800
++++ b/src/Frameworks/QuartzCore/CATransaction.m	2026-11-21 15:58:06.597566276 -0800
+@@ -35,7 +35,7 @@
+    static int on=-1;
+    if(on<0){
+     const char *v=getenv("SFFX_GPU_RENDER_THREAD"),*gpu=getenv("SFFX_GPU_PRESENT");
+-    on=v!=NULL&&!strcmp(v,"1")&&gpu!=NULL&&!strcmp(gpu,"1")&&getenv("SF_CA_NO_GATE")==NULL;
++    on=!(v!=NULL&&!strcmp(v,"0"))&&!(gpu!=NULL&&!strcmp(gpu,"0"))&&getenv("SF_CA_NO_GATE")==NULL;
+    }
+    return on;
+ }

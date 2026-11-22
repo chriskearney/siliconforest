@@ -39,9 +39,9 @@ export CHONKCRAFT_ASSET_PACK="$PACK"
 GPU=${SF_CHONK_GPU_PRESENT:-1}
 SESSION=
 if [ "$GPU" != 0 ]; then
-    export SF_CHONK_GPU_PRESENT="$GPU" SFFX_GPU_PRESENT=1
+    export SF_CHONK_GPU_PRESENT="$GPU"
     if [ "${SF_CHONK_PRIVATE_IOSURFACED:-0}" = 1 ] && [ -x "$B/bin/surface-session" ] && [ -x /usr/libexec/iosurfaced ]; then
-        export SFFX_IOSURFACE_GPU=1
+        export SFFX_GPU_PRESENT=1 SFFX_IOSURFACE_GPU=1
         export SFFX_IOSURFACE_SERVICE="org.siliconforest.iosurfaced.sffx.chonkcraft.$$"
         SESSION="$B/bin/surface-session"
     fi

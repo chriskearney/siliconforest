@@ -461,6 +461,12 @@
 #         0375w's hold-copy and 0156w's 100 ms missing-callback guard active
 #   0377w WindowServer (bake-in step 6): sfGPUFrameCreate passes SFIOSurfaceGPUStorage=1 so GPU output frames get
 #         dma-buf storage without requiring global SFFX_IOSURFACE_GPU=1
+#   0378  QuartzCore (bake-in step 7): CAOpenGLLayer and CALayerContext pass SFIOSurfaceGPUStorage=1; GPU path perf
+#         flags (dirty frames, damage, render thread, cached lookups) default on when GPU present is active (=0 disables)
+#   0379  AppKit (bake-in step 7): automatic GPU presentation for windows whose layer tree holds a CAOpenGLLayer or
+#         IOSurface contents; CPU-drawn windows keep the backing-store path (SFFX_GPU_PRESENT=0 disables, =1 forces)
+#   0380w WindowServer (bake-in step 7): GPU presenter entry points accept calls unless SFFX_GPU_PRESENT=0; vector
+#         compare and GPU damage default on (=0 disables)
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
@@ -858,6 +864,7 @@ let
     ./patches/0366-appkit-open-recent-menus-filled-when-shown.patch
     ./patches/0367-appkit-mutable-attributed-string-methods-on-bridged-strings.patch
     ./patches/0370-appkit-zero-maximum-size-is-no-maximum.patch
+    ./patches/0379-appkit-auto-gpu-present-for-gpu-layers.patch
   ];
   windowserverPatches = [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
@@ -892,6 +899,7 @@ let
     ./patches/0375w-windowserver-paced-present-copies-the-backing-store-at-the-flush.patch
     ./patches/0376w-windowserver-pace-presents-default-on.patch
     ./patches/0377w-windowserver-gpu-frame-requests-gpu-storage.patch
+    ./patches/0380w-windowserver-gpu-presenter-auto-and-perf-defaults.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" windowserverPatches;
   # (IOSURF) VLC's private copy only: the system's patches and the opt-in cadence hold (SF_WS_CADENCE)
@@ -967,6 +975,7 @@ let
     ./patches/0344-quartzcore-keyframe-animation.patch
     ./patches/0345-quartzcore-constraint-layout-manager.patch
     ./patches/0369-quartzcore-layer-contents-types.patch
+    ./patches/0378-quartzcore-gpu-storage-and-auto-gpu-perf.patch
   ];
   quartzcore = pd."quartzcore-msm-arm64".override { src = quartzcoreSrc; };
   wp = "${pd."wayland-protocols"}/share/wayland-protocols";

@@ -423,7 +423,7 @@ static int sf_gpu_setup(void) {
     const char *why = 0;
     const char *p = getenv("SFFX_GPU_PRESENT"), *s = getenv("SFFX_IOSURFACE_GPU");
     const char *svc = getenv("SFFX_IOSURFACE_SERVICE");
-    if (mode == 1 && (!p || strcmp(p, "1"))) why = "SFFX_GPU_PRESENT=1 not set";
+    if (mode == 1 && p && !strcmp(p, "0")) why = "SFFX_GPU_PRESENT=0 disabled";
     else if (s && !strcmp(s, "0")) why = "SFFX_IOSURFACE_GPU=0 disabled";
     void *ios = why ? 0 : dlopen("/System/Library/Frameworks/IOSurface.framework/IOSurface", RTLD_LAZY);
     void *gl = why ? 0 : dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", RTLD_LAZY);
