@@ -1,0 +1,278 @@
+--- a/libavcodec/Makefile
++++ b/libavcodec/Makefile
+@@ -859,6 +859,7 @@
+ OBJS-$(CONFIG_WMV2_DECODER)            += wmv2dec.o wmv2data.o
+ OBJS-$(CONFIG_WMV2_ENCODER)            += wmv2enc.o wmv2data.o
+ OBJS-$(CONFIG_WNV1_DECODER)            += wnv1.o
++OBJS-$(CONFIG_H264_SFAVE_ENCODER)      += sfaveenc.o
+ OBJS-$(CONFIG_WRAPPED_AVFRAME_DECODER) += wrapped_avframe.o
+ OBJS-$(CONFIG_WRAPPED_AVFRAME_ENCODER) += wrapped_avframe.o
+ OBJS-$(CONFIG_WS_SND1_DECODER)         += ws-snd1.o
+--- a/libavcodec/allcodecs.c
++++ b/libavcodec/allcodecs.c
+@@ -888,6 +888,7 @@
+ extern const FFCodec ff_h264_v4l2m2m_encoder;
+ extern const FFCodec ff_h264_vaapi_encoder;
+ extern const FFCodec ff_h264_videotoolbox_encoder;
++extern const FFCodec ff_h264_sfave_encoder;
+ extern const FFCodec ff_h264_vulkan_encoder;
+ extern const FFCodec ff_hevc_amf_encoder;
+ extern const FFCodec ff_hevc_amf_decoder;
+--- a/libavcodec/sfaveenc.c
++++ b/libavcodec/sfaveenc.c
+@@ -0,0 +1,255 @@
++/*
++ * H.264 through the Apple Video Encoder on SiliconForest (/dev/sfave)
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++/*
++ * One stream of IPPP H.264 at a time. The driver copies each NV12 frame and
++ * returns its Annex-B access unit; every wait is bounded in the driver. A
++ * size that is not whole macroblocks is padded by edge repetition and cropped
++ * in the SPS. Without the device, opening fails: use libx264.
++ */
++
++#include <errno.h>
++#include <fcntl.h>
++#include <string.h>
++#include <unistd.h>
++#include <sys/ioctl.h>
++
++#include "sfave/sfave_ioctl.h"
++
++#include "libavutil/common.h"
++#include "libavutil/error.h"
++#include "libavutil/mem.h"
++#include "libavutil/opt.h"
++
++#include "avcodec.h"
++#include "codec_internal.h"
++#include "encode.h"
++
++typedef struct SFAveContext {
++    const AVClass *class;
++    int fd;
++    int started;
++    int coded_w, coded_h;
++    uint8_t *y, *uv, *out;
++    size_t out_cap;
++    int64_t frames;
++    int qp;
++    int cabac;
++    int profile;
++} SFAveContext;
++
++static av_cold int sfave_close(AVCodecContext *avctx)
++{
++    SFAveContext *s = avctx->priv_data;
++
++    if (s->fd >= 0) {
++        if (s->started && ioctl(s->fd, SFAVE_IOC_ENC_STOP) < 0)
++            av_log(avctx, AV_LOG_ERROR, "Stopping the stream failed: %s\n", strerror(errno));
++        close(s->fd);
++    }
++    s->fd = -1;
++    s->started = 0;
++    av_freep(&s->y);
++    av_freep(&s->uv);
++    av_freep(&s->out);
++    return 0;
++}
++
++static av_cold int sfave_init(AVCodecContext *avctx)
++{
++    SFAveContext *s = avctx->priv_data;
++    struct sfave_info info = { 0 };
++    struct sfave_enc_start start = { 0 };
++    int fps, err;
++
++    s->fd = -1;
++    if ((avctx->width & 1) || (avctx->height & 1)) {
++        av_log(avctx, AV_LOG_ERROR, "Width and height must be even.\n");
++        return AVERROR(EINVAL);
++    }
++    s->coded_w = FFALIGN(avctx->width, 16);
++    s->coded_h = FFALIGN(avctx->height, 16);
++    if (s->profile != 66 && s->profile != 77 && s->profile != 100) {
++        av_log(avctx, AV_LOG_ERROR, "Only baseline, main and high are supported.\n");
++        return AVERROR(EINVAL);
++    }
++    if (s->coded_w < 192 || s->coded_h < 96 || s->coded_w > 4096 || s->coded_h > 4096) {
++        av_log(avctx, AV_LOG_ERROR, "%dx%d is outside 192x96..4096x4096.\n", avctx->width, avctx->height);
++        return AVERROR(EINVAL);
++    }
++
++    s->fd = open("/dev/sfave", O_RDWR | O_CLOEXEC);
++    if (s->fd < 0) {
++        err = AVERROR(errno);
++        av_log(avctx, AV_LOG_ERROR, "/dev/sfave: %s (use libx264 for software encoding)\n", strerror(errno));
++        return err;
++    }
++    /* The first INFO boots the coprocessor (bounded). */
++    if (ioctl(s->fd, SFAVE_IOC_INFO, &info) < 0) {
++        err = AVERROR(errno);
++        av_log(avctx, AV_LOG_ERROR, "SFAVE INFO: %s\n", strerror(errno));
++        return err;
++    }
++    if (info.abi != SFAVE_ABI_VERSION || info.size != sizeof(info) || info.error ||
++        info.handshake != SFAVE_HS_READY || !(info.caps & SFAVE_CAP_H264)) {
++        av_log(avctx, AV_LOG_ERROR, "The encoder is not ready (abi %u, error %u, handshake %u).\n",
++               info.abi, info.error, info.handshake);
++        return AVERROR(ENODEV);
++    }
++
++    if (avctx->framerate.num > 0 && avctx->framerate.den > 0)
++        fps = av_rescale(1, avctx->framerate.num, avctx->framerate.den);
++    else
++        fps = av_rescale(1, avctx->time_base.den, FFMAX(avctx->time_base.num, 1));
++    fps = av_clip(fps, 1, 240);
++
++    s->out_cap = (size_t)s->coded_w * s->coded_h * 3 / 2 + 65536;
++    s->out = av_malloc(s->out_cap);
++    if (!s->out)
++        return AVERROR(ENOMEM);
++    if (s->coded_w != avctx->width || s->coded_h != avctx->height) {
++        s->y  = av_malloc((size_t)s->coded_w * s->coded_h);
++        s->uv = av_malloc((size_t)s->coded_w * s->coded_h / 2);
++        if (!s->y || !s->uv)
++            return AVERROR(ENOMEM);
++    }
++
++    start.width       = s->coded_w;
++    start.height      = s->coded_h;
++    start.crop_w      = s->coded_w != avctx->width  || s->coded_h != avctx->height ? avctx->width  : 0;
++    start.crop_h      = s->coded_w != avctx->width  || s->coded_h != avctx->height ? avctx->height : 0;
++    start.fps         = fps;
++    start.qp          = s->qp;
++    start.bitrate     = avctx->bit_rate > 0 ? FFMIN(avctx->bit_rate, UINT32_MAX) : 0;
++    start.profile_idc = s->profile;
++    start.level_idc   = avctx->level > 0 ? avctx->level : 0;
++    start.cabac       = s->profile != 66 && s->cabac;
++    if (ioctl(s->fd, SFAVE_IOC_ENC_START, &start) < 0) {
++        err = AVERROR(errno);
++        av_log(avctx, AV_LOG_ERROR, "Starting the stream failed: %s (use libx264 for software encoding)\n",
++               strerror(errno));
++        return err;
++    }
++    s->started = 1;
++    avctx->has_b_frames = 0;
++    avctx->max_b_frames = 0;
++    av_log(avctx, AV_LOG_INFO, "AVE stream %dx%d (coded %dx%d) %d fps, %s, GOP %d\n", avctx->width,
++           avctx->height, s->coded_w, s->coded_h, fps, start.bitrate ? "rate control" : "fixed QP", avctx->gop_size);
++    return 0;
++}
++
++/* Copies a plane and repeats its last column and row out to the coded size. */
++static void pad_plane(uint8_t *dst, int coded_w, int coded_h, const uint8_t *src, int stride,
++                      int w, int h, int pixel)
++{
++    for (int r = 0; r < h; r++) {
++        uint8_t *row = dst + (size_t)r * coded_w;
++
++        memcpy(row, src + (ptrdiff_t)r * stride, w);
++        for (int c = w; c < coded_w; c++)
++            row[c] = row[c - pixel];
++    }
++    for (int r = h; r < coded_h; r++)
++        memcpy(dst + (size_t)r * coded_w, dst + (size_t)(h - 1) * coded_w, coded_w);
++}
++
++static int sfave_encode(AVCodecContext *avctx, AVPacket *pkt, const AVFrame *frame, int *got_packet)
++{
++    SFAveContext *s = avctx->priv_data;
++    struct sfave_enc_frame e = { 0 };
++    const uint8_t *y = frame->data[0], *uv = frame->data[1];
++    int ystride = frame->linesize[0], uvstride = frame->linesize[1], ret;
++
++    if (s->y) {
++        pad_plane(s->y, s->coded_w, s->coded_h, y, ystride, avctx->width, avctx->height, 1);
++        pad_plane(s->uv, s->coded_w, s->coded_h / 2, uv, uvstride, avctx->width, avctx->height / 2, 2);
++        y = s->y;
++        uv = s->uv;
++        ystride = uvstride = s->coded_w;
++    } else if (ystride < s->coded_w || uvstride < s->coded_w) {
++        av_log(avctx, AV_LOG_ERROR, "Negative or short line sizes are not supported.\n");
++        return AVERROR(EINVAL);
++    }
++    e.y         = (uint64_t)(uintptr_t)y;
++    e.uv        = (uint64_t)(uintptr_t)uv;
++    e.out       = (uint64_t)(uintptr_t)s->out;
++    e.y_stride  = ystride;
++    e.uv_stride = uvstride;
++    e.out_cap   = s->out_cap;
++    e.idr       = frame->pict_type == AV_PICTURE_TYPE_I ||
++                  (avctx->gop_size > 0 && s->frames % avctx->gop_size == 0);
++    if (ioctl(s->fd, SFAVE_IOC_ENC_FRAME, &e) < 0) {
++        ret = AVERROR(errno);
++        av_log(avctx, AV_LOG_ERROR, "Frame %"PRId64": %s\n", s->frames, strerror(errno));
++        return ret;
++    }
++    s->frames++;
++    if (!e.out_len)
++        return AVERROR_EXTERNAL;
++    if ((ret = ff_get_encode_buffer(avctx, pkt, e.out_len, 0)) < 0)
++        return ret;
++    memcpy(pkt->data, s->out, e.out_len);
++    if (e.keyframe)
++        pkt->flags |= AV_PKT_FLAG_KEY;
++    *got_packet = 1;
++    return 0;
++}
++
++#define OFFSET(x) offsetof(SFAveContext, x)
++#define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
++static const AVOption options[] = {
++    { "qp",    "QP with no bitrate; the starting QP with one", OFFSET(qp), AV_OPT_TYPE_INT, { .i64 = 26 }, 1, 51, VE },
++    { "cabac", "CABAC entropy coding (Main and High)", OFFSET(cabac), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, VE },
++    { "profile", "H.264 profile", OFFSET(profile), AV_OPT_TYPE_INT, { .i64 = 100 }, 66, 100, VE, .unit = "profile" },
++    { "baseline", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 66 },  0, 0, VE, .unit = "profile" },
++    { "main",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 77 },  0, 0, VE, .unit = "profile" },
++    { "high",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 100 }, 0, 0, VE, .unit = "profile" },
++    { NULL },
++};
++
++static const AVClass sfave_class = {
++    .class_name = "h264_sfave",
++    .item_name  = av_default_item_name,
++    .option     = options,
++    .version    = LIBAVUTIL_VERSION_INT,
++};
++
++static const FFCodecDefault sfave_defaults[] = {
++    { "b", "0" },
++    { "g", "60" },
++    { NULL },
++};
++
++const FFCodec ff_h264_sfave_encoder = {
++    .p.name         = "h264_sfave",
++    CODEC_LONG_NAME("H.264 through the Apple Video Encoder (SiliconForest)"),
++    .p.type         = AVMEDIA_TYPE_VIDEO,
++    .p.id           = AV_CODEC_ID_H264,
++    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_HARDWARE,
++    .p.priv_class   = &sfave_class,
++    .p.wrapper_name = "sfave",
++    .priv_data_size = sizeof(SFAveContext),
++    .init           = sfave_init,
++    FF_CODEC_ENCODE_CB(sfave_encode),
++    .close          = sfave_close,
++    .defaults       = sfave_defaults,
++    CODEC_PIXFMTS(AV_PIX_FMT_NV12),
++    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
++};
