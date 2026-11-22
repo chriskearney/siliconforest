@@ -11,7 +11,7 @@
 #endif
 int sfave_program_dapf(const struct sfave_preload *p,uint64_t start,uint64_t end,
  int cpu_stopped,const struct sfave_dapf_io *io) {
- int e=sfave_validate_preload(p);
+ int e=sfave_preload_bootable(p);
  if(e)return e;
  /* Only the known T8103 address window. End's low bits are dropped by
   * hardware; accept the live inclusive ADT endpoint or its readback form. */

@@ -2,19 +2,12 @@
 add_kext_bundle(SFAppleAVE.kext INFO_PLIST Info.plist KERNEL_PRIVATE
  BUNDLE_IDENTIFIER org.siliconforest.driver.SFAppleAVE BUNDLE_VERSION 0.1.0)
 set_property(TARGET SFAppleAVE.kext PROPERTY OUTPUT_NAME SFAppleAVE)
-target_sources(SFAppleAVE.kext PRIVATE SFAppleAVE.cpp sfave_identity.c)
-target_include_directories(SFAppleAVE.kext PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+target_sources(SFAppleAVE.kext PRIVATE
+ SFAppleAVE.cpp sfave_bringup.cpp sf_soc.cpp sf_dart_table.c
+ sfave_identity.c sfave_preload.c sfave_ipc.c sfave_dapf.c)
+target_include_directories(SFAppleAVE.kext PRIVATE
+ ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 target_link_libraries(SFAppleAVE.kext PRIVATE xnu_kernel_private_headers)
 target_compile_options(SFAppleAVE.kext PRIVATE -Wall -Os)
 set_property(TARGET SFAppleAVE.kext PROPERTY CXX_STANDARD 14)
-# Keep unfinished hardware helpers SDK-checked, outside the live INFO image.
-add_library(SFAppleAVEPortObjects OBJECT sfave_preload.c sfave_ipc.c sfave_dapf.c)
-foreach(prop COMPILE_OPTIONS COMPILE_DEFINITIONS INCLUDE_DIRECTORIES)
- get_target_property(ave_property SFAppleAVE.kext ${prop})
- if(ave_property)
-  set_property(TARGET SFAppleAVEPortObjects PROPERTY ${prop} "${ave_property}")
- endif()
-endforeach()
-target_link_libraries(SFAppleAVEPortObjects PRIVATE xnu_kernel_private_headers)
-add_dependencies(SFAppleAVE.kext SFAppleAVEPortObjects)
 install(TARGETS SFAppleAVE.kext DESTINATION System/Library/Extensions COMPONENT BaseSystem)

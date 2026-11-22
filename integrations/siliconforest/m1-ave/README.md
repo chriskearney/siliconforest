@@ -1,18 +1,18 @@
-# SFAppleAVE source port — paused 2026-11-15
+# SFAppleAVE source port — milestone 1 boot on the INFO ioctl
 
-Owner paused all AVE encoder work. Do not build/include/boot/probe this driver,
-query its firmware or extract further inputs until explicitly resumed. Existing
-source, artifacts and ignored private inputs are preserved. CODEX-TB restored
-non-AVE CIO07 after the first diagnostic; subsequent CIO08 omits AVE. All older
-inclusion requests are withdrawn. See [SF-AD](../../../docs/roadmap/issues/SF-AD-ave-encoder.md)
-for exact first-probe values, private paths and the conditional resume step.
+The 2026-11-15 pause is lifted for the diagnostic coprocessor boot only.
+`start()` publishes `/dev/sfave` and does not touch the hardware. The first
+root INFO ioctl maps preloaded TEXT/DATA, snapshots cold DATA, and runs the
+T8103 ASC/RTKit handshake. `SFAVE_CAP_H264` means that handshake reached READY.
+There is no H.264 encode session in this driver. Do not commit Apple firmware,
+DPE tables, or boot blobs.
 
 The first INFO boot had no panic but returned ENODEV19, flags0/caps0,
 soc0x8103/segments0 and empty identities, before TEXT mapping. A padded metadata
 property guard was fixed and SDK-built as v11, not booted. No encoder hardware
 was started. Detached transport/DAPF helpers compile as a separate SDK OBJECT
 target, not into the live diagnostic. The commands below document reproducibility
-for a future authorized resume, not work to run while paused.
+for the host checks. Milestone 1 stops at the handshake; it is not an encoder.
 
 `kernel/upstream` contains unchanged GPL command/ADT parsers from the pinned
 upstream in NOTICE. `sfave_preload.c` rejects unknown firmware identities,

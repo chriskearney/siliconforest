@@ -17,6 +17,10 @@ struct sfave_preload {
  * cold_reserved is an adapter assertion about a REAL early boot reservation;
  * this pure check does not reserve pages or establish that assertion. */
 int sfave_validate_preload(const struct sfave_preload *);
+/* Geometry, iBoot and RTKit as validate_preload. Firmware may be the exact
+ * dash tag, the cstring 6070.11.1, or a source path starting AppleAVE2FW/.
+ * Unknown identities stay ENOTSUP. */
+int sfave_preload_bootable(const struct sfave_preload *);
 /* Validate the entire blob before the first register callback. Offsets passed
  * are relative to AVE's DPE bank. No bank mapping or power occurs here; programming includes DPE enable. */
 struct sfave_register_io {

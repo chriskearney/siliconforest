@@ -13,11 +13,10 @@
 static uint32_t le32(const unsigned char *p) {
     return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
 }
-int sfave_validate_preload(const struct sfave_preload *p) {
+static int geometry(const struct sfave_preload *p) {
     if(!p || p->soc!=0x8103 || p->preloaded!=1 || p->segment_count!=2 || p->cold_reserved!=1)
         return ENODEV;
     if(!p->iboot || strcmp(p->iboot,"iBoot-8422.141.2") ||
-       !p->firmware || strcmp(p->firmware,"AppleAVE2FW-6070.11.1") ||
        !p->rtkit || strcmp(p->rtkit,"RTKit-2062.141.1"))return ENOTSUP;
     for(unsigned n=0;n<2;n++) {
         const struct sfave_segment *s=&p->segment[n];
@@ -28,6 +27,21 @@ int sfave_validate_preload(const struct sfave_preload *p) {
     const struct sfave_segment *a=&p->segment[0],*b=&p->segment[1];
     if(a->physical<b->physical+b->size && b->physical<a->physical+a->size)return EINVAL;
     return 0;
+}
+int sfave_validate_preload(const struct sfave_preload *p) {
+    int e=geometry(p);
+    if(e)return e;
+    if(!p->firmware || strcmp(p->firmware,"AppleAVE2FW-6070.11.1"))return ENOTSUP;
+    return 0;
+}
+int sfave_preload_bootable(const struct sfave_preload *p) {
+    int e=geometry(p);
+    if(e)return e;
+    if(!p->firmware)return ENOTSUP;
+    if(!strcmp(p->firmware,"AppleAVE2FW-6070.11.1") ||
+       !strncmp(p->firmware,"AppleAVE2FW/",12) ||
+       !strcmp(p->firmware,"6070.11.1"))return 0;
+    return ENOTSUP;
 }
 int sfave_validate_dpe(const void *data,size_t size) {
     const unsigned char *p=data;
