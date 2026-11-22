@@ -5,6 +5,9 @@
 // CoreFoundation and neither library has.
 #import <CoreFoundation/CoreFoundation.h>
 #import <Foundation/Foundation.h>
+#include <dlfcn.h>
+#include <limits.h>
+#include <stdlib.h>
 
 // ICU's break iterator (libicucore), declared here: the SDK this is built with has no ICU headers
 typedef struct UBreakIterator UBreakIterator;
@@ -137,3 +140,66 @@ CFDictionaryRef _CFWebServicesCopyProviderInfo(CFStringRef serviceType, Boolean 
 // The value is the identifier itself: +[NSCalendar calendarWithIdentifier:] takes it as it takes
 // NSCalendarIdentifierGregorian.
 CFStringRef const NSGregorianCalendar = CFSTR("gregorian");
+
+// ---- CFBundle symbol lookup fallback for dyld-loaded system frameworks.
+// libCoreFoundation's _CFBundleDlfcnCheckLoaded passes the uncanonicalised framework
+// symlink (e.g. .../HIToolbox.framework/HIToolbox) to dlopen(..., RTLD_NOLOAD), which
+// returns NULL on SiliconForest dyld, leaving _handleCookie NULL while _isLoaded is set
+// to true. Delegate to libCoreFoundation first; on NULL, resolve the bundle executable
+// with realpath() and look up the symbol via dlopen(RTLD_NOLOAD | RTLD_FIRST) + dlsym.
+static void *SFCFBundledSymbolFallback(CFBundleRef bundle, CFStringRef name)
+{
+    if (bundle == NULL || name == NULL) return NULL;
+    char sym[1024];
+    if (!CFStringGetCString(name, sym, sizeof(sym), kCFStringEncodingUTF8) || sym[0] == '\0')
+        return NULL;
+    CFURLRef url = CFBundleCopyExecutableURL(bundle);
+    if (url == NULL) return NULL;
+    char path[PATH_MAX], resolved[PATH_MAX];
+    Boolean ok = CFURLGetFileSystemRepresentation(url, true, (UInt8 *)path, sizeof(path));
+    CFRelease(url);
+    if (!ok) return NULL;
+    const char *canon = realpath(path, resolved);
+    void *h = NULL;
+    if (canon != NULL)
+        h = dlopen(canon, RTLD_LAZY | RTLD_LOCAL | RTLD_NOLOAD | RTLD_FIRST);
+    if (h == NULL)
+        h = dlopen(path, RTLD_LAZY | RTLD_LOCAL | RTLD_NOLOAD | RTLD_FIRST);
+    if (h == NULL && CFBundleIsExecutableLoaded(bundle))
+        h = dlopen(canon != NULL ? canon : path, RTLD_LAZY | RTLD_LOCAL | RTLD_FIRST);
+    return h != NULL ? dlsym(h, sym) : NULL;
+}
+
+static void *SFLibCFSym(const char *name)
+{
+    static void *libcf;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        libcf = dlopen("/usr/lib/libCoreFoundation.dylib", RTLD_LAZY | RTLD_NOLOAD);
+        if (libcf == NULL)
+            libcf = dlopen("/usr/lib/libCoreFoundation.dylib", RTLD_LAZY);
+    });
+    return libcf != NULL ? dlsym(libcf, name) : NULL;
+}
+
+void *CFBundleGetFunctionPointerForName(CFBundleRef bundle, CFStringRef functionName)
+{
+    typedef void *(*fn_t)(CFBundleRef, CFStringRef);
+    static fn_t orig;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ orig = (fn_t)SFLibCFSym("CFBundleGetFunctionPointerForName"); });
+    void *p = orig != NULL ? orig(bundle, functionName) : NULL;
+    if (p == NULL) p = SFCFBundledSymbolFallback(bundle, functionName);
+    return p;
+}
+
+void *CFBundleGetDataPointerForName(CFBundleRef bundle, CFStringRef symbolName)
+{
+    typedef void *(*fn_t)(CFBundleRef, CFStringRef);
+    static fn_t orig;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ orig = (fn_t)SFLibCFSym("CFBundleGetDataPointerForName"); });
+    void *p = orig != NULL ? orig(bundle, symbolName) : NULL;
+    if (p == NULL) p = SFCFBundledSymbolFallback(bundle, symbolName);
+    return p;
+}
