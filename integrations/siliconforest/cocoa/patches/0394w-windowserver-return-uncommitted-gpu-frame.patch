@@ -1,0 +1,115 @@
+--- a/src/Frameworks/WindowServer/rpc_wayland.c
++++ b/src/Frameworks/WindowServer/rpc_wayland.c
+@@ -63,6 +63,7 @@
+     double usedAt;         // when a flush last took it (ms, wall clock): frames unused a while are let go
+     int damage[4];         // (FXPERF2) buffer pixels changed since the frame presented before (x0,y0,x1,y1)
+     int damageKnown;
++    int given;             // (0394w) 1 once wl_surface.commit handed this frame to the compositor
+ };
+ 
+ #define WS_FRAMES 4
+@@ -125,6 +126,8 @@
+     int presentMaySkip;    // (FXPERF2) this present may be left out when the picture is the one shown
+     int gpuStaged;         // (0388w) a live GPU frame is attached and not committed; the frame callback commits it
+     struct wsFrame *gpuComposed; // (0390w) the frame the last GPU compose wrote; the commit attaches this buffer
++    struct wsFrame *gpuCommitted; // (0394w) the frame the last commit gave the compositor; busy until wl_buffer.release
++    double noFreeSince;    // (0394w) ms when every frame was first busy; 0 while a frame is free
+     struct wsFrame *held;  // (0375w) the backing store copied at a flush held back by SF_WS_PACE_PRESENTS
+     int baseClean;         // (FXPERF2) AppKit drew nothing into the backing store before the flush it precedes
+     int baseDirty;         // (FXPERF2) a flush since the last compare may have changed the backing store
+@@ -1354,6 +1357,7 @@
+     return on;
+ }
+ static void windowPacedCommit(struct wsWindow *window);
++static void windowReleaseStaged(struct wsWindow *window);
+ /* (0375w, ChonkCraft's white bars) A present held back by SF_WS_PACE_PRESENTS used to copy the backing store when the
+  * frame callback came, from the thread that reads the connection, while the application's main thread was free to be
+  * in the middle of its next drawing: the compositor got the window half drawn (ChonkCraft: the window's background
+@@ -1452,7 +1456,7 @@
+                         fprintf(stderr, "WSTIME %.1f commit-on-frame%s surface=%d\n", wsNowMs(), held ? "-held" : "", window->windowID);
+                 }
+             } else
+-                window->gpuStaged = 0;
++                windowReleaseStaged(window);
+         }
+     }
+     pthread_mutex_unlock(&ws.pixelsLock);
+@@ -1533,8 +1537,30 @@
+     sfGPUBufTrace(window, frame, "commit");
+ }
+ // the commit of a presented frame, with the callback that paces the next one (called with ws.pixelsLock held)
++/* (0394w) 0388 takes a frame (gpuStaged) and commits it from the frame callback. When that
++ * callback is later than 100 ms the present path clears gpuStaged and takes another frame.
++ * The first frame stays busy, and the compositor never received it, so wl_buffer.release
++ * never comes. Hand that frame back. A frame already given to the compositor stays busy. */
++static void windowReleaseStaged(struct wsWindow *window) {
++    struct wsFrame *frame = window->front;
++    int staged = window->gpuStaged;
++    window->gpuStaged = 0;
++    if (!staged || frame == NULL || frame->given || frame == window->gpuCommitted || !frame->busy)
++        return;
++    pthread_mutex_lock(&ws.queueLock);
++    if (frame->busy && !frame->given && frame != window->gpuCommitted) {
++        frame->busy = 0;
++        pthread_cond_broadcast(&ws.queueReady);
++    }
++    pthread_mutex_unlock(&ws.queueLock);
++    fprintf(stderr, "SFWS RELEASE-STAGED buffer=%u\n",
++            frame->buffer != NULL ? wl_proxy_get_id((struct wl_proxy *)frame->buffer) : 0u);
++}
+ static void windowPacedCommit(struct wsWindow *window) {
+     windowAttachComposed(window);
++    if (window->front != NULL)
++        window->front->given = 1;
++    window->gpuCommitted = window->front;
+     if (wsPacePresents()) {
+         struct wl_callback *callback = wl_surface_frame(window->surface);
+         if (callback != NULL) {
+@@ -1712,9 +1738,36 @@
+     if (pick != NULL) {
+         pick->busy = 1;
+         pick->usedAt = wsNowMs();
++        pick->given = 0;
++        window->noFreeSince = 0;
++    } else if (!wait) {
++        /* (0394w) Last resort. Reclaim a busy frame that was never committed.
++         * Skip one the compositor still holds (given, or the last commit). */
++        double now = wsNowMs();
++        if (window->noFreeSince <= 0 || now < window->noFreeSince || now - window->noFreeSince > 60000)
++            window->noFreeSince = now;
++        if (now - window->noFreeSince > 100) {
++            struct wsFrame *oldest = NULL;
++            for (int i = 0; i < WS_FRAMES; i++) {
++                struct wsFrame *frame = &window->frames[i];
++                if (!frame->busy || frame->buffer == NULL || frame->given || frame == window->gpuCommitted)
++                    continue;
++                if (oldest == NULL || frame->usedAt < oldest->usedAt)
++                    oldest = frame;
++            }
++            if (oldest != NULL) {
++                double held = oldest->usedAt > 0 ? now - oldest->usedAt : 0;
++                unsigned id = wl_proxy_get_id((struct wl_proxy *)oldest->buffer);
++                oldest->usedAt = now;
++                oldest->given = 0;
++                window->noFreeSince = 0;
++                pick = oldest;
++                fprintf(stderr, "SFWS RECLAIM-UNRELEASED buffer=%u held_ms=%.0f\n", id, held);
++            }
++        }
++        if (pick == NULL)
++            window->presentPending = 1;
+     }
+-    else if (!wait)
+-        window->presentPending = 1;
+     pthread_mutex_unlock(&ws.queueLock);
+ 
+     if (pick == NULL) {
+@@ -5581,7 +5634,7 @@
+                 window->gpuStaged=1;
+         }else{
+             window->presentPending=0;
+-            window->gpuStaged=0;
++            windowReleaseStaged(window);
+             if(!gpuLive)window->presentMaySkip=1;
+             if(windowPresent(window)){
+                 __atomic_add_fetch(&wsPresentCounts[1],1,__ATOMIC_RELAXED);

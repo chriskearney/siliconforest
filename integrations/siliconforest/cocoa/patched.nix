@@ -495,6 +495,12 @@
 #         front buffer) and damages the whole window before wl_surface.commit. SFFX_GPU_BUF_TRACE=1 logs
 #         the buffer id, fd, offset, and whether that buffer is the one just composed. CPU windows are
 #         unchanged.
+#   0394w WindowServer: a GPU frame taken while a callback is in flight (0388w) is returned to the
+#         pool when that path commits a different frame instead (callback later than 100 ms). The
+#         abandoned frame was never committed, so the compositor will never release it. A frame
+#         already given to the compositor is left busy. If every non-given frame stays busy for
+#         more than 100 ms, reclaim the oldest of those and log SFWS RECLAIM-UNRELEASED. The
+#         scanout buffer is not reclaimed. 0393w (reclaim any oldest frame) is not in this series.
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
@@ -935,6 +941,7 @@ let
     ./patches/0388w-windowserver-gpu-commit-on-frame-callback.patch
     ./patches/0389w-windowserver-opaque-gl-layer-and-probe.patch
     ./patches/0390w-windowserver-commit-the-composed-gpu-frame.patch
+    ./patches/0394w-windowserver-return-uncommitted-gpu-frame.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" windowserverPatches;
   # (IOSURF) VLC's private copy only: the system's patches and the opt-in cadence hold (SF_WS_CADENCE)
