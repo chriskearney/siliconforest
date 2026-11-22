@@ -25,6 +25,14 @@ let
   corevideo = import ./finch/firefox-media/clocked-corevideo.nix;
   videotoolbox = import ./finch/VideoToolbox/encoder/build.nix;
   firefoxCompat = import ./firefox/compat.nix { };
+  firefoxFonts = import ./firefox/fonts.nix { };
+  previewCombine = import ./finch/Preview/Combine/build.nix;
+  previewPaperKit = import ./finch/Preview/paperkit.nix;
+  previewAnnotationKit = import ./finch/Preview/annotationkit.nix;
+  previewVisionKit = import ./finch/Preview/visionkit.nix;
+  previewLeaf = import ./finch/Preview/leaf/build.nix;
+  previewObservation = import ./finch/Preview/Observation/build.nix;
+  previewSynchronization = import ./finch/Preview/Synchronization/build.nix;
   libsystemBase = import ./libsystem-default/build-libsystem.nix;
   p = pd.packages.x86_64-linux;
   sdk = "${p.apple-sdk}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk";
@@ -57,6 +65,29 @@ let
     }
     build_stub CoreMIDI 69 ${./chonkcraft/frameworks/CoreMIDI.c}
     build_stub ExceptionHandling 15 ${./chonkcraft/frameworks/ExceptionHandling.c}
+  '';
+  # Bake-in step 9c: additive Preview/Swift frameworks (Combine, PaperKit, AnnotationKit,
+  # VisionKitCore, _LocationEssentials, SoftLinking, libswiftObservation,
+  # libswiftSynchronization) and NotoSansDevanagari font. RecapPerformanceTesting stays
+  # private to TextEdit; Preview's SwiftUI/libSystem.sf-extra overlay stays until step 10.
+  previewFrameworks = pkgs.runCommand "siliconforest-preview-frameworks-arm64" { } ''
+    F=$out/System/Library/Frameworks
+    PF=$out/System/Library/PrivateFrameworks
+    mkdir -p "$F" "$PF" "$out/usr/lib/swift" "$out/System/Library/Fonts"
+    cp -a ${previewCombine}/System/Library/Frameworks/Combine.framework "$F/"
+    cp -a ${previewPaperKit}/System/Library/Frameworks/PaperKit.framework "$F/"
+    cp -a ${previewAnnotationKit}/System/Library/PrivateFrameworks/AnnotationKit.framework "$PF/"
+    cp -a ${previewVisionKit}/System/Library/PrivateFrameworks/VisionKitCore.framework "$PF/"
+    cp -a ${previewLeaf}/System/Library/Frameworks/_LocationEssentials.framework "$F/"
+    cp -a ${previewLeaf}/System/Library/PrivateFrameworks/SoftLinking.framework "$PF/"
+    chmod -R u+w "$F/_LocationEssentials.framework" "$PF/SoftLinking.framework"
+    ln -sfn A "$F/_LocationEssentials.framework/Versions/Current"
+    ln -sfn Versions/Current/_LocationEssentials "$F/_LocationEssentials.framework/_LocationEssentials"
+    ln -sfn A "$PF/SoftLinking.framework/Versions/Current"
+    ln -sfn Versions/Current/SoftLinking "$PF/SoftLinking.framework/SoftLinking"
+    cp -L ${previewObservation}/usr/lib/swift/libswiftObservation.dylib "$out/usr/lib/swift/"
+    cp -L ${previewSynchronization}/usr/lib/swift/libswiftSynchronization.dylib "$out/usr/lib/swift/"
+    cp -L ${firefoxFonts}/NotoSansDevanagari-Regular.ttf "$out/System/Library/Fonts/"
   '';
   launchers = pkgs.runCommand "siliconforest-system-launchers" { } ''
     mkdir -p $out/usr/bin
@@ -99,11 +130,16 @@ let
     cp -L ${launchers}/usr/bin/sf-open-* $out/usr/bin/
     cp -a ${systemStubs}/System/Library/Frameworks/*.framework $out/System/Library/Frameworks/
     cp -L ${systemStubs}/usr/lib/libcups.2.dylib $out/usr/lib/libcups.2.dylib
+    mkdir -p $out/System/Library/PrivateFrameworks $out/System/Library/Fonts $out/usr/lib/swift
+    cp -a ${previewFrameworks}/System/Library/Frameworks/*.framework $out/System/Library/Frameworks/
+    cp -a ${previewFrameworks}/System/Library/PrivateFrameworks/*.framework $out/System/Library/PrivateFrameworks/
+    cp -L ${previewFrameworks}/usr/lib/swift/*.dylib $out/usr/lib/swift/
+    cp -L ${previewFrameworks}/System/Library/Fonts/*.ttf $out/System/Library/Fonts/
     chmod 0755 $out/usr/lib/libSystem.B.dylib $out/usr/lib/libGL.1.dylib $out/usr/lib/libcups.2.dylib \
       $out/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox \
       $out/usr/bin/sf-open-*
   '';
 in {
-  inherit macosAppsRoot cocoa libsystemLegacy colorsync audiotoolbox audiotoolboxClock opengl iosurface surfaceSession corevideo videotoolbox systemStubs launchers systemRoot;
+  inherit macosAppsRoot cocoa libsystemLegacy colorsync audiotoolbox audiotoolboxClock opengl iosurface surfaceSession corevideo videotoolbox systemStubs previewFrameworks launchers systemRoot;
   chonkcraftFillsScript = ./chonkcraft/fills.py;
 }
