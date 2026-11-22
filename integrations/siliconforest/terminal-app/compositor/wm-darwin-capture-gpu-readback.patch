@@ -1,0 +1,103 @@
+diff --git c/crates/wm-darwin/src/capture.rs w/crates/wm-darwin/src/capture.rs
+index 5d7f645..0390abc 100644
+--- c/crates/wm-darwin/src/capture.rs
++++ w/crates/wm-darwin/src/capture.rs
+@@ -20,8 +20,10 @@
+ //!   a capture: a request is a live connection from a process of the desktop's own user.
+ //!
+ //! The picture is the scene as the compositor composes it, without the pointer (unless Options
+-//! say "Show Mouse Pointer"); a window capture is that window alone with its frame. A socket
+-//! request gets the PNG back on the connection; the client writes the file.
++//! say "Show Mouse Pointer"); a window capture is that window alone with its frame. A window
++//! showing a client GPU buffer, and a screen or area while any such window is mapped, is the
++//! last rendered output (`glReadPixels`), cropped: the CPU composite has no bytes for that
++//! buffer. A socket request gets the PNG back on the connection; the client writes the file.
+ use crate::server::Server;
+ use std::collections::VecDeque;
+ use std::io::{Read, Write};
+@@ -746,8 +748,8 @@
+                     self.wm.client(client).ok_or("no window is focused")?.window
+                 }
+             };
+-            // A window alone (what covers it is not in the picture), unless it shows a
+-            // client's GPU buffer, whose pixels the CPU does not have: then the screen's.
++            // A window alone (what covers it is not in the picture). A client GPU buffer has
++            // no CPU pixels, so that window is the last rendered output, cropped to its frame.
+             if self.wm.backend().windows.get(&id).is_some_and(|w| w.external.is_none()) {
+                 let (pixmap, area) = self.wm.backend().render_window(id)?;
+                 let png = encode_png(&pixmap, Rect::new(Point::new(0, 0), area.size))?;
+@@ -755,6 +757,9 @@
+             }
+             let rect = self.wm.backend().window_frame_rect(id).ok_or("the window is not on the screen")?;
+             let rect = clip(rect, screen).ok_or("the window is off the screen")?;
++            if let Some(png) = self.capture_shown_frame(rect, pointer)? {
++                return Ok((png, rect));
++            }
+             let pixmap = self.wm.backend_mut().render_for_capture()?;
+             return Ok((encode_png(&pixmap, rect)?, rect));
+         }
+@@ -763,10 +768,49 @@
+             _ => Rect::new(Point::new(0, 0), screen),
+         };
+         let rect = clip(rect, screen).ok_or("the area is off the screen")?;
++        // A full screen or an area while a GPU window is mapped: the CPU composite draws the
++        // desk through that window. The rendered frame is what the panel shows.
++        if self.wm.backend().windows.values().any(|w| w.mapped && w.external.is_some()) {
++            if let Some(png) = self.capture_shown_frame(rect, pointer)? {
++                return Ok((png, rect));
++            }
++        }
+         let pixmap = if pointer { self.wm.backend().render()? } else { self.wm.backend_mut().render_for_capture()? };
+         let png = encode_png(&pixmap, rect)?;
+         Ok((png, rect))
+     }
++    /// The last rendered output, cropped to `rect`, as a PNG. `None` when the renderer has no
++    /// frame yet (a CPU desk): the caller keeps the CPU composite. A socket capture leaves the
++    /// pointer out; a key capture includes it when Options ask.
++    fn capture_shown_frame(&mut self, rect: Rect, pointer: bool) -> Result<Option<Vec<u8>>, String> {
++        let screen = self.wm.backend().screen_size();
++        let frame = if pointer { self.read_back()? } else { self.renderer.read_back()? };
++        let Some(pixels) = frame else {
++            return Ok(None);
++        };
++        let need = (screen.w as usize).saturating_mul(screen.h as usize).saturating_mul(4);
++        if pixels.len() != need {
++            eprintln!(
++                "WMCAPTURE gpu read_back {} bytes != screen {}x{} ({} bytes); CPU composite",
++                pixels.len(),
++                screen.w,
++                screen.h,
++                need
++            );
++            return Ok(None);
++        }
++        let Some(size) = tiny_skia::IntSize::from_wh(screen.w, screen.h) else {
++            return Ok(None);
++        };
++        let Some(pixmap) = tiny_skia::Pixmap::from_vec(pixels, size) else {
++            return Ok(None);
++        };
++        eprintln!(
++            "WMCAPTURE gpu read_back crop={},{} {}x{} screen={}x{} pointer={}",
++            rect.pos.x, rect.pos.y, rect.size.w, rect.size.h, screen.w, screen.h, u8::from(pointer)
++        );
++        Ok(Some(encode_png(&pixmap, rect)?))
++    }
+     /// The PNG on the clipboard (`image/png`), served by the compositor.
+     fn offer_png(&mut self, png: Arc<Vec<u8>>) {
+         let Some(seat) = self.input.as_ref().map(|i| i.seat.clone()) else { return };
+diff --git c/crates/wm-darwin/src/scene.rs w/crates/wm-darwin/src/scene.rs
+index 5d7f645..0390abc 100644
+--- c/crates/wm-darwin/src/scene.rs
++++ w/crates/wm-darwin/src/scene.rs
+@@ -1509,8 +1509,8 @@
+ }
+ 
+ /// A mapped window whose picture is a dma-buf (size set, `pixels` empty) or a buffer shorter
+-/// than `width * height * 4`. `CpuBackend::render` is what `--screencapture` composites; it
+-/// must not panic, and the corners fall back to the border.
++/// than `width * height * 4`. The CPU composite must not panic, and the corners fall back to
++/// the border. `--screencapture` of a mapped dma-buf window reads the rendered frame instead.
+ #[cfg(test)]
+ mod gpu_window_capture_tests {
+     use super::*;

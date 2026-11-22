@@ -1,0 +1,32 @@
+--- a/src/Frameworks/WindowServer/rpc_wayland.c
++++ b/src/Frameworks/WindowServer/rpc_wayland.c
+@@ -5227,19 +5227,27 @@
+                 window?window->flushed:-1,window?window->attached:-1,window?window->configured:-1,window?window->state:-1);
+     if(good){
+         window->presentPending=0;
+-        if(wsPacePresents()&&window->frameOut&&wsNowMs()-window->frameOutAt<100)
++        /* (0387w) A live GPU layer is a new IOSurface on every swap. Pace-holding
++         * that present only set presentPending and returned success: the frame
++         * callback's held-copy path refuses a GPU presenter's frames (0375w), and
++         * Minecraft's compose counter stayed at 3 while PresentLayers returned 1
++         * for hundreds of swaps (the window stayed the desk wallpaper). Present
++         * the layer now, and do not mark the present skippable: the new surface
++         * must be committed. A window with no layer still pace-holds. */
++        int gpuLive=window->gpuPresenter->count>0;
++        if(!gpuLive&&wsPacePresents()&&window->frameOut&&wsNowMs()-window->frameOutAt<100)
+             window->presentPending=1;
+         else{
+-            window->presentMaySkip=1;
++            if(!gpuLive)window->presentMaySkip=1;
+             if(windowPresent(window)){
+                 __atomic_add_fetch(&wsPresentCounts[1],1,__ATOMIC_RELAXED);
+                 windowPacedCommit(window);
+                 if(wsTiming())
+                     fprintf(stderr,"WSTIME %.1f commit-render-thread surface=%d frame=%p took=%.1f\n",wsNowMs(),window->windowID,
+                             (void *)window->front,wsNowMs()-began);
+             }
+         }
+     }
+     pthread_mutex_unlock(&ws.pixelsLock);
+     return good;
+ }

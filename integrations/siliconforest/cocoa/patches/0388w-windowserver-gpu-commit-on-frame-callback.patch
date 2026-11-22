@@ -1,0 +1,89 @@
+--- a/src/Frameworks/WindowServer/rpc_wayland.c	2026-11-21 23:47:08.592894076 -0800
++++ b/src/Frameworks/WindowServer/rpc_wayland.c	2026-11-21 23:47:23.694792883 -0800
+@@ -123,6 +123,7 @@
+     int presentPending;    // a flush found every frame busy: the next release presents it
+     int frameOut;          // (TERM9) a commit whose frame callback has not come (SF_WS_PACE_PRESENTS)
+     int presentMaySkip;    // (FXPERF2) this present may be left out when the picture is the one shown
++    int gpuStaged;         // (0388w) a live GPU frame is attached and not committed; the frame callback commits it
+     struct wsFrame *held;  // (0375w) the backing store copied at a flush held back by SF_WS_PACE_PRESENTS
+     int baseClean;         // (FXPERF2) AppKit drew nothing into the backing store before the flush it precedes
+     int baseDirty;         // (FXPERF2) a flush since the last compare may have changed the backing store
+@@ -1430,13 +1431,27 @@
+         window->frameOut = 0;
+         if (window->presentPending && window->state != MINIMIZED && window->state != HIDDEN && window->surface != NULL) {
+             window->presentPending = 0;
+-            window->presentMaySkip = 1;
+-            int held = windowPresentHeld(window);
+-            if (held || windowPresent(window)) {
++            /* (0388w) A GPU frame was composed and attached on the render thread, which owns the
++             * GL context. This callback only commits it, once per refresh, so the compositor can
++             * scan that commit out. Composing here dropped the frame (0375w) and committing every
++             * swap (0387w) replaced the commit before any flip (WMPACING shown=0). */
++            int gpuLive = window->gpuPresenter && !window->gpuPresenter->failed && window->gpuPresenter->count > 0;
++            if (gpuLive && window->gpuStaged && window->front != NULL) {
++                window->gpuStaged = 0;
++                window->presentMaySkip = 0;
+                 windowPacedCommit(window);
+                 if (wsTiming())
+-                    fprintf(stderr, "WSTIME %.1f commit-on-frame%s surface=%d\n", wsNowMs(), held ? "-held" : "", window->windowID);
+-            }
++                    fprintf(stderr, "WSTIME %.1f commit-on-frame-gpu surface=%d\n", wsNowMs(), window->windowID);
++            } else if (!gpuLive) {
++                window->presentMaySkip = 1;
++                int held = windowPresentHeld(window);
++                if (held || windowPresent(window)) {
++                    windowPacedCommit(window);
++                    if (wsTiming())
++                        fprintf(stderr, "WSTIME %.1f commit-on-frame%s surface=%d\n", wsNowMs(), held ? "-held" : "", window->windowID);
++                }
++            } else
++                window->gpuStaged = 0;
+         }
+     }
+     pthread_mutex_unlock(&ws.pixelsLock);
+@@ -3947,6 +3962,7 @@
+     memcpy(shown->title, next->title, sizeof(title));
+     memcpy(next->title, title, sizeof(title));
+     shown->presentPending = next->presentPending = 0;
++    shown->gpuStaged = next->gpuStaged = 0;
+     windowDropHeld(shown);
+     windowDropHeld(next);
+     for (int i = 0; i < WS_FRAMES; i++) {
+@@ -5463,18 +5479,27 @@
+                 windowID,window!=NULL,window?(unsigned long long)window->geometrySerial:0ULL,(unsigned long long)geometry,
+                 window?window->flushed:-1,window?window->attached:-1,window?window->configured:-1,window?window->state:-1);
+     if(good){
+-        window->presentPending=0;
+-        /* (0387w) A live GPU layer is a new IOSurface on every swap. Pace-holding
+-         * that present only set presentPending and returned success: the frame
+-         * callback's held-copy path refuses a GPU presenter's frames (0375w), and
+-         * Minecraft's compose counter stayed at 3 while PresentLayers returned 1
+-         * for hundreds of swaps (the window stayed the desk wallpaper). Present
+-         * the layer now, and do not mark the present skippable: the new surface
+-         * must be committed. A window with no layer still pace-holds. */
++        /* (0388w) One Wayland commit per frame callback for a live GPU layer. 0387w committed
++         * every swap: the compositor replaced those commits before a flip (shown=0). The render
++         * thread composes into one attached buffer while a callback is outstanding; the callback
++         * commits that buffer. A lost callback commits once, then waits again, instead of flooding. */
+         int gpuLive=window->gpuPresenter->count>0;
+-        if(!gpuLive&&wsPacePresents()&&window->frameOut&&wsNowMs()-window->frameOutAt<100)
++        int paced=gpuLive&&wsPacePresents();
++        int inFlight=window->frameOut&&wsNowMs()-window->frameOutAt<100;
++        if(paced&&inFlight){
+             window->presentPending=1;
+-        else{
++            if(window->gpuStaged&&window->front&&window->front->gpuOutput&&
++               window->front->w==window->pixelsW&&window->front->h==window->pixelsH){
++                if(sfGPUDamageEnabled()){
++                    sfGPUPrepare(window->gpuPresenter,window->pixels,window->pixelsW,window->pixelsH,window->baseDirty);
++                    window->baseDirty=0;
++                }
++                sfGPUCompose(window->gpuPresenter,window->front->gpuOutput,window->pixels,window->pixelsW,window->pixelsH);
++            }else if(windowPresent(window))
++                window->gpuStaged=1;
++        }else{
++            window->presentPending=0;
++            window->gpuStaged=0;
+             if(!gpuLive)window->presentMaySkip=1;
+             if(windowPresent(window)){
+                 __atomic_add_fetch(&wsPresentCounts[1],1,__ATOMIC_RELAXED);

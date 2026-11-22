@@ -1,0 +1,138 @@
+diff -ru a/src/Frameworks/WindowServer/rpc_wayland.c b/src/Frameworks/WindowServer/rpc_wayland.c
+--- a/src/Frameworks/WindowServer/rpc_wayland.c	2026-11-22 01:22:50.997943816 -0800
++++ b/src/Frameworks/WindowServer/rpc_wayland.c	2026-11-22 01:22:50.998722274 -0800
+@@ -120,6 +120,7 @@
+     int frameOut;          // (TERM9) a commit whose frame callback has not come (SF_WS_PACE_PRESENTS)
+     int presentMaySkip;    // (FXPERF2) this present may be left out when the picture is the one shown
+     int gpuStaged;         // (0388w) a live GPU frame is attached and not committed; the frame callback commits it
++    struct wsFrame *gpuComposed; // (0390w) the frame the last GPU compose wrote; the commit attaches this buffer
+     struct wsFrame *held;  // (0375w) the backing store copied at a flush held back by SF_WS_PACE_PRESENTS
+     int baseClean;         // (FXPERF2) AppKit drew nothing into the backing store before the flush it precedes
+     int baseDirty;         // (FXPERF2) a flush since the last compare may have changed the backing store
+@@ -1436,8 +1437,83 @@
+     pthread_mutex_unlock(&ws.pixelsLock);
+ }
+ static const struct wl_callback_listener pacedFrameListener = { .done = pacedFrameDone };
++/* (0390w) SFFX_GPU_BUF_TRACE=1: which wl_buffer a GPU frame is, at recompose, attach, and commit.
++ * Logs the client's wl_buffer id, the dma-buf inode, the protocol offset, and the center pixel. */
++static int sfGPUBufTraceOn(void) {
++    static int on = -1;
++    if (on < 0) {
++        const char *v = getenv("SFFX_GPU_BUF_TRACE");
++        on = v != NULL && v[0] != '\0' && strcmp(v, "0") != 0;
++    }
++    return on;
++}
++static void sfGPUBufTrace(struct wsWindow *window, struct wsFrame *frame, const char *where) {
++    if (!sfGPUBufTraceOn() || window == NULL || frame == NULL || frame->gpuOutput == NULL || frame->gpuOutput->surface == NULL)
++        return;
++    if (sfGPU.IOSurfaceGetBaseAddress == NULL || sfGPU.IOSurfaceSFGPUCopyFD == NULL || sfGPU.IOSurfaceSFGPUGetOffset == NULL || sfGPU.IOSurfaceGetBytesPerRow == NULL)
++        return;
++    int kind = where[0] == 'a' ? 1 : where[0] == 'r' ? 2 : 0;
++    static unsigned count[3];
++    unsigned seq = ++count[kind];
++    int same = frame == window->gpuComposed;
++    if (same && seq > 4 && (seq % 30 != 0 || seq > 150))
++        return;
++    void *surface = frame->gpuOutput->surface;
++    int fd = sfGPU.IOSurfaceSFGPUCopyFD(surface);
++    struct stat st;
++    unsigned long long ino = 0;
++    if (fd >= 0 && fstat(fd, &st) == 0)
++        ino = (unsigned long long)st.st_ino;
++    if (fd >= 0)
++        close(fd);
++    size_t offset = sfGPU.IOSurfaceSFGPUGetOffset(surface);
++    size_t stride = sfGPU.IOSurfaceGetBytesPerRow(surface);
++    const unsigned char *raw = sfGPU.IOSurfaceGetBaseAddress(surface);
++    int cx = frame->w > 0 ? frame->w / 2 : 0, cy = frame->h > 0 ? frame->h / 2 : 0;
++    unsigned b = 0, g = 0, r = 0, a = 0, pb = 0, pg = 0, pr = 0, pa = 0;
++    int have = raw != NULL && stride >= (size_t)(cx + 1) * 4 && cy < frame->h;
++    if (have) {
++        const unsigned char *p = raw + (size_t)cy * stride + (size_t)cx * 4;
++        b = p[0]; g = p[1]; r = p[2]; a = p[3];
++    }
++    int px = 640, py = 393;
++    int haveP = raw != NULL && px < frame->w && py < frame->h && stride >= (size_t)(px + 1) * 4;
++    if (haveP) {
++        const unsigned char *p = raw + (size_t)py * stride + (size_t)px * 4;
++        pb = p[0]; pg = p[1]; pr = p[2]; pa = p[3];
++    }
++    int slot = (frame >= window->frames && frame < window->frames + WS_FRAMES) ? (int)(frame - window->frames) : -1;
++    unsigned bufId = frame->buffer != NULL ? wl_proxy_get_id((struct wl_proxy *)frame->buffer) : 0;
++    unsigned surfId = window->surface != NULL ? wl_proxy_get_id((struct wl_proxy *)window->surface) : 0;
++    unsigned composedId = (window->gpuComposed != NULL && window->gpuComposed->buffer != NULL) ? wl_proxy_get_id((struct wl_proxy *)window->gpuComposed->buffer) : 0;
++    fprintf(stderr, "SFGPUBUF %s n=%u window=%d slot=%d frame=%p composed=%p same=%d wl_buffer=%u composed_buffer=%u wl_surface=%u ino=%llu offset=%zu stride=%zu centerBGRA=%u,%u,%u,%u at640x393=%d:%u,%u,%u,%u\n",
++            where, seq, window->windowID, slot, (void *)frame, (void *)window->gpuComposed, same, bufId, composedId, surfId, ino, offset, stride, b, g, r, a, haveP, pb, pg, pr, pa);
++}
++/* (0390w) The render thread composes while a frame callback is outstanding, and this callback
++ * commits. Attach the composed frame here so the commit's wl_buffer is that frame. */
++static void windowAttachComposed(struct wsWindow *window) {
++    int gpuLive = window->gpuPresenter && !window->gpuPresenter->failed && window->gpuPresenter->count > 0;
++    struct wsFrame *frame = window->gpuComposed;
++    if (!gpuLive)
++        return;
++    if (frame == NULL || frame->gpuOutput == NULL || frame->buffer == NULL || frame->w != window->pixelsW || frame->h != window->pixelsH)
++        frame = window->front;
++    if (frame == NULL || frame->gpuOutput == NULL || frame->buffer == NULL || window->surface == NULL)
++        return;
++    if (frame->w != window->pixelsW || frame->h != window->pixelsH)
++        return;
++    window->front = frame;
++    wl_surface_attach(window->surface, frame->buffer, 0, 0);
++    if (window->viewport != NULL && frame->pointsW > 0 && frame->pointsH > 0)
++        wl_surface_damage(window->surface, 0, 0, frame->pointsW, frame->pointsH);
++    else
++        wl_surface_damage(window->surface, 0, 0, frame->w, frame->h);
++    window->attached = 1;
++    sfGPUBufTrace(window, frame, "commit");
++}
+ // the commit of a presented frame, with the callback that paces the next one (called with ws.pixelsLock held)
+ static void windowPacedCommit(struct wsWindow *window) {
++    windowAttachComposed(window);
+     if (wsPacePresents()) {
+         struct wl_callback *callback = wl_surface_frame(window->surface);
+         if (callback != NULL) {
+@@ -1567,6 +1643,7 @@
+     if(!frame->gpuOutput)return 0;
+     // Complete the first draw before the compositor imports the storage.
+     if(!sfGPUCompose(window->gpuPresenter,frame->gpuOutput,window->pixels,w,h)){frameDestroy(frame);return 0;}
++    window->gpuComposed=frame;
+     int fd=sfGPU.IOSurfaceSFGPUCopyFD(frame->gpuOutput->surface);
+     size_t offset=sfGPU.IOSurfaceSFGPUGetOffset(frame->gpuOutput->surface);
+     size_t stride=sfGPU.IOSurfaceGetBytesPerRow(frame->gpuOutput->surface);
+@@ -1704,6 +1781,7 @@
+     }
+     windowAskPresentation(window, frame);
+     wl_surface_attach(window->surface, frame->buffer, 0, 0);
++    sfGPUBufTrace(window, frame, "attach");
+     // (FXPERF2) a damage present on a surface already showing the window: only what changed, in buffer pixels
+     int partial = frame->damageKnown && window->attached;
+     frame->damageKnown = 0;
+@@ -1778,6 +1856,7 @@
+             pthread_mutex_lock(&ws.queueLock);frame->busy=0;pthread_cond_broadcast(&ws.queueReady);pthread_mutex_unlock(&ws.queueLock);
+             pthread_mutex_unlock(&ws.pixelsLock);return 0;
+         }
++        window->gpuComposed=frame;
+         struct sfGPUPresenter *p=window->gpuPresenter;
+         if(sfGPUDamageEnabled()){
+             // against the picture shown last, when that was one of these GPU frames of the same size
+@@ -3797,6 +3876,7 @@
+     memcpy(next->title, title, sizeof(title));
+     shown->presentPending = next->presentPending = 0;
+     shown->gpuStaged = next->gpuStaged = 0;
++    shown->gpuComposed = next->gpuComposed = NULL;
+     windowDropHeld(shown);
+     windowDropHeld(next);
+     for (int i = 0; i < WS_FRAMES; i++) {
+@@ -5259,7 +5339,9 @@
+                     sfGPUPrepare(window->gpuPresenter,window->pixels,window->pixelsW,window->pixelsH,window->baseDirty);
+                     window->baseDirty=0;
+                 }
+-                sfGPUCompose(window->gpuPresenter,window->front->gpuOutput,window->pixels,window->pixelsW,window->pixelsH);
++                if(sfGPUCompose(window->gpuPresenter,window->front->gpuOutput,window->pixels,window->pixelsW,window->pixelsH))
++                    window->gpuComposed=window->front;
++                sfGPUBufTrace(window,window->front,"recompose");
+             }else if(windowPresent(window))
+                 window->gpuStaged=1;
+         }else{

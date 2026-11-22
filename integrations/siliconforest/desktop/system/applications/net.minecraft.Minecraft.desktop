@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Minecraft
+Comment=Minecraft 1.21.11 (local game under /private/var/db/sfminecraft; icon generated on the machine, not committed)
+TryExec=/Applications/Minecraft.app/Contents/MacOS/Minecraft
+Exec=/usr/bin/sf-open-minecraft
+Icon=/Applications/Minecraft.app
+Categories=Game;
+StartupWMClass=net.minecraft.Minecraft

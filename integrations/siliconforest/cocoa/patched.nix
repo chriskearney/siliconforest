@@ -477,6 +477,24 @@
 #         keeps the CPU readback; any failure falls back to it); NSWindow backing-rect conversion; the pixel
 #         format query writes a GLint; -[NSApplication setAppleMenu:] keeps the menu and -appleMenu returns it;
 #         -[NSWindow frameRectForContentRect:styleMask:] answers GLFW's instance call with the class calculation
+#   0387w WindowServer: _windowServerSFFXPresentLayers presents a live GPU layer directly. The pace-hold used to
+#         set presentPending and return success; the frame callback does not compose that layer (0375w), so
+#         Minecraft's compose counter stayed at 3 and the window stayed the wallpaper. SF_WS_PACE_PRESENTS
+#         still holds a window that has no GPU layer.
+#   0388w WindowServer: a live GPU layer commits once per frame callback. 0387w committed every swap, and
+#         the compositor replaced those commits before a flip (WMPACING shown=0). The render thread composes
+#         into one attached buffer while the callback is outstanding; the callback commits it. A callback
+#         that does not arrive within 100 ms commits once and waits again. A window with no GPU layer is
+#         unchanged.
+#   0389w WindowServer: a GL layer is drawn opaque (texture RGB, alpha written as 1). Premultiplied
+#         source-over was keeping Minecraft's partial alpha (FBO0 alpha 64) and the content area stayed
+#         clear, so the desk wallpaper showed through. SFFX_GPU_LAYER_ALPHA=keep is the old blend.
+#         SFFX_GPU_LAYER_PROBE=1 logs the layer IOSurface (CPU and the imported texture, with the import's
+#         glGetError) and the composed dma-buf inside the layer rect.
+#   0390w WindowServer: a paced GPU commit re-attaches the last composed frame (gpuComposed, else the
+#         front buffer) and damages the whole window before wl_surface.commit. SFFX_GPU_BUF_TRACE=1 logs
+#         the buffer id, fd, offset, and whether that buffer is the one just composed. CPU windows are
+#         unchanged.
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
@@ -913,6 +931,10 @@ let
     ./patches/0377w-windowserver-gpu-frame-requests-gpu-storage.patch
     ./patches/0380w-windowserver-gpu-presenter-auto-and-perf-defaults.patch
     ./patches/0384w-windowserver-pointer-lock-and-relative-motion.patch
+    ./patches/0387w-windowserver-gpu-layer-present-not-paced.patch
+    ./patches/0388w-windowserver-gpu-commit-on-frame-callback.patch
+    ./patches/0389w-windowserver-opaque-gl-layer-and-probe.patch
+    ./patches/0390w-windowserver-commit-the-composed-gpu-frame.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" windowserverPatches;
   # (IOSURF) VLC's private copy only: the system's patches and the opt-in cadence hold (SF_WS_CADENCE)
