@@ -17,10 +17,15 @@ run() { tag=$1; home=$2; shift 2; mkdir -p $home; ( cd /; env -i HOME=$home CFFI
 # processes whose command line holds <text> (fixed string), as "pid command"
 procs() { ps ax -o pid=,command= | grep -F -- "$1" | grep -v -e 'grep -F' -e 'sh -s' | cut -c1-160; }
 # quit by process: TERM to <pids>, then wait up to <s> for no process holding <text>; KILL only after that (reported)
-quit_by_term() { text=$1; s=$2; shift 2; [ -n "$*" ] && kill -TERM "$@" 2>/dev/null; i=0
+pid_ok() { case "${1:-}" in ''|0*|*[!0-9]*) return 1;; esac; [ "$1" -gt 1 ]; }
+quit_by_term() { text=$1; s=$2; shift 2
+  _pids=""; for p in "$@"; do pid_ok "$p" && _pids="$_pids $p"; done
+  [ -n "$_pids" ] && kill -TERM $_pids 2>/dev/null; i=0
   while [ -n "$(procs "$text")" ] && [ $i -lt $((s * 5)) ]; do sleep 0.2; i=$((i+1)); done
   left=$(procs "$text"); if [ -z "$left" ]; then say "quit by TERM: no process left after $((i / 5)).$((i % 5 * 2)) s"; return 0; fi
-  say "quit by TERM: still there after $s s: $(echo "$left" | tr '\n' '|')"; echo "$left" | awk '{print $1}' | xargs kill -KILL 2>/dev/null; return 1; }
+  say "quit by TERM: still there after $s s: $(echo "$left" | tr '\n' '|')"
+  _kp=""; for p in $(echo "$left" | awk '{print $1}'); do pid_ok "$p" && _kp="$_kp $p"; done
+  [ -n "$_kp" ] && kill -KILL $_kp 2>/dev/null; return 1; }
 term_start() { mkdir -p $W/home-term/Library/Preferences; cat > $W/home-term/Library/Preferences/com.apple.Terminal.plist <<P
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -53,7 +58,7 @@ chord() { id=$1; clr=$2; k=$3; shift 3; l="target $id\n"; for m in "$@"; do l="$
   for m in "$@"; do l="${l}key $m up\n"; done; req "${l}wait ${CW:-1200}\n" 100 | cut -c1-80; mods_clear $clr > /dev/null; }
 typ() { req "target $1\n$2wait 300\n" 200 | cut -c1-60; }
 rec_start() { OUT=$W/$1.mov; rm -f "$OUT"; ( exec $(BIN) --screencapture -V $2 -F $OUT ) > $W/cli-$1.txt 2>&1 & CLI=$!; sleep ${3:-1.2}; }
-rec_wait() { w=0; while kill -0 $CLI 2>/dev/null && [ $w -lt 900 ]; do sleep 0.2; w=$((w+1)); done; echo "CLI: $(tr '\n' ' ' < $W/cli-$1.txt | cut -c1-200)"; ls -la $W/$1.mov | cut -c24-; }
+rec_wait() { w=0; while pid_ok "${CLI:-}" && kill -0 "$CLI" 2>/dev/null && [ $w -lt 900 ]; do sleep 0.2; w=$((w+1)); done; echo "CLI: $(tr '\n' ' ' < $W/cli-$1.txt | cut -c1-200)"; ls -la $W/$1.mov | cut -c24-; }
 grow2() { set -- $1 $2 $3 ${4:-40} ${5:-50} $(wrect $1); rx=$(( $6 + $8 - 3 )); ry=$(( $7 + $9 - 3 ))
   lines="abs $(ax $rx) $(ay $ry)\nwait 100\nbuttons 1\nwait 100\n"; i=1
   while [ $i -le $4 ]; do lines="${lines}abs $(ax $(( rx + $2 * i / $4 ))) $(ay $(( ry + $3 * i / $4 )))\nwait $5\n"; i=$((i+1)); done
@@ -69,21 +74,30 @@ state_check() { ( cd $ST; for f in $STATEF; do [ -e $W/state-owner/$f ] || conti
 newest_shell_rect() { req "list $T-sh\n" 30 > /dev/null; grep '^shell' $D/$T-sh.txt | grep 'mapped=true' | while read -r line; do id=$(echo "$line" | cut -d' ' -f2); grep -q "^shell $id " $D/$T-l0.txt || echo "$line"; done | grep -o 'rect=Rect { pos: Point { x: [-0-9]*, y: [-0-9]* }, size: Size { w: [0-9]*, h: [0-9]* }' | while read -r r; do set -- $(echo "$r" | grep -o '[-0-9][0-9]*'); [ "$4" -gt 60 ] && echo "$1 $2 $3 $4"; done | tail -1; }
 # quit from the app's own menu (its first menu, last row: "Quit <app>", 48 px above the menu surface's bottom), as the
 # owner does; <window> <pid to TERM after 10 s> <processes that must end>
-quit_menu() { w=$1; sig=$2; shift 2; set_=$*; set -- $(wrect $w); [ -n "$4" ] || { quit_set "$sig" 15 $set_; return; }
+quit_menu() { w=$1; sig=${2:-}; [ $# -ge 2 ] && shift 2 || shift $#
+  set_=""; for p in "$@"; do pid_ok "$p" && set_="$set_ $p"; done
+  if ! pid_ok "$sig" && [ -z "$set_" ]; then say "FAIL quit_menu refused empty/unsafe pid '${sig:-empty}'"; return 1; fi
+  [ -n "$set_" ] || set_="$sig"
+  set -- $(wrect $w); [ -n "$4" ] || { quit_set "$sig" 15 $set_; return; }
   click $(( $1 + 45 )) $(( $2 + 17 )) 900; m=$(newest_shell_rect); cap $T-quitmenu 50
   set -- $m; if [ -n "$4" ]; then click $(( $1 + 80 )) $(( $2 + $4 - 48 )) 200; fi; i=0
   while [ -n "$(alive_of $set_)" ] && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
   if [ -z "$(alive_of $set_)" ]; then say "PASS quit from its menu: all $(nw $set_) processes gone after $((i / 5)).$((i % 5 * 2)) s"; return 0; fi
   say "FAIL quit from its menu: processes left after 10 s ($(alive_of $set_)): TERM as the fallback"; quit_set "$sig" 15 $set_; return 1; }
-# every descendant of <pid> and itself
-tree() { ps ax -o pid=,ppid= > $W/ps.txt; t=" $1 "; n=0; m=1; while [ $n -lt $m ]; do n=$m
-  for p in $(awk -v T="$t" 'index(T, " " $2 " ") && !index(T, " " $1 " ") {print $1}' $W/ps.txt); do t="$t$p "; done; set -- $t; m=$#; done; echo $t; }
-alive_of() { for p in $*; do kill -0 $p 2>/dev/null && echo $p; done | tr '\n' ' '; }
+# every descendant of <pid> and itself (refuses empty or pid <= 1)
+tree() { pid_ok "${1:-}" || return 1
+  ps ax -o pid=,ppid= > $W/ps.txt; t=" $1 "; n=0; m=1; while [ $n -lt $m ]; do n=$m
+  for p in $(awk -v T="$t" 'index(T, " " $2 " ") && !index(T, " " $1 " ") {print $1}' $W/ps.txt); do pid_ok "$p" && t="$t$p "; done; set -- $t; m=$#; done; echo $t; }
+alive_of() { for p in "$@"; do pid_ok "$p" && kill -0 "$p" 2>/dev/null && echo "$p"; done | tr '\n' ' '; }
 # quit by process: TERM to <pid to signal>; wait up to <s> for every pid of <set> to end; KILL only after that (reported)
-quit_set() { sig=$1; s=$2; shift 2; set_=$*; kill -TERM $sig 2>/dev/null; i=0
+quit_set() { sig=${1:-}; s=${2:-15}; [ $# -ge 2 ] && shift 2 || shift $#
+  if ! pid_ok "$sig"; then say "FAIL quit_set refused unsafe pid '${sig:-empty}'"; return 1; fi
+  set_=""; for p in "$@"; do pid_ok "$p" && set_="$set_ $p"; done
+  [ -n "$set_" ] || set_="$sig"
+  kill -TERM "$sig" 2>/dev/null; i=0
   while [ -n "$(alive_of $set_)" ] && [ $i -lt $((s * 5)) ]; do sleep 0.2; i=$((i+1)); done
   left=$(alive_of $set_); if [ -z "$left" ]; then say "PASS quit by TERM to $sig: all $(nw $set_) processes gone after $((i / 5)).$((i % 5 * 2)) s"; return 0; fi
-  say "FAIL quit by TERM to $sig: still alive after $s s: $left ($(for p in $left; do ps -o comm= -p $p; done | tr '\n' ' '))"; kill -KILL $left 2>/dev/null; return 1; }
+  say "FAIL quit by TERM to $sig: still alive after $s s: $left ($(for p in $left; do ps -o comm= -p "$p"; done | tr '\n' ' '))"; kill -KILL $left 2>/dev/null; return 1; }
 VLCAPP=org.videolan.vlc
 vlc_win() { Wn=""; until=$(( $(date +%s) + ${2:-40} )); while [ $(date +%s) -lt $until ] && [ -z "$Wn" ]; do sleep 0.7
   req "list $1-vw\n" 30 > /dev/null

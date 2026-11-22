@@ -5,9 +5,9 @@
 req "list $T-l0\n" > /dev/null; say "to Space 2: $(space_next)"
 a0=$(avd); ff_start https://en.wikipedia.org/wiki/XNU file://$W/video.html
 WF=$(win $T org.mozilla.firefox 60); ok "Firefox window mapped ($WF)" '[ -n "$WF" ]'
-SET=$(tree $(cat $W/ff.pid))
+SET=$(tree "$(cat $W/ff.pid 2>/dev/null)")
 if [ -n "$WF" ]; then
-  mods_clear $WF > /dev/null; sleep 7; SET=$(tree $(cat $W/ff.pid))
+  mods_clear $WF > /dev/null; sleep 7; SET=$(tree "$(cat $W/ff.pid 2>/dev/null)")
   t1=$(title_of $WF); say "title tab 1: $t1"; cap $T-a 100
   ok "a web page loaded (title names XNU)" 'echo "$t1" | grep -q XNU'
   say "RECT $(wrect $WF)"; set -- $(wrect $WF); cx=$(( $1 + $3 / 2 )); cy=$(( $2 + $4 / 2 ))
@@ -20,10 +20,10 @@ if [ -n "$WF" ]; then
   cap $T-d 300
   [ -n "$W2" ] && { CW=1500 chord $W2 $WF 1a e3 > /dev/null; sleep 1; }
   ids=$(wins_of org.mozilla.firefox); ok "second window closed (my Firefox windows: $ids)" '[ "$(nw $ids)" = 1 ]'
-  cap $T-e 200; SET=$(tree $(cat $W/ff.pid))
+  cap $T-e 200; SET=$(tree "$(cat $W/ff.pid 2>/dev/null)")
 fi
 say "processes of my Firefox: $(nw $SET): $(for p in $SET; do ps -o comm= -p $p | sed "s|.*/||"; done | sort | uniq -c | tr -s ' ' | tr '\n' ',')"
 main=$(for p in $SET; do ps -o pid=,command= -p $p; done | grep -F "Contents/MacOS/firefox" | grep -v -e contentproc -e surface-session | awk '{print $1}' | head -1)
-if [ -n "$WF" ]; then quit_menu $WF "${main:-$(cat $W/ff.pid)}" $SET; else quit_set "${main:-$(cat $W/ff.pid)}" 25 $SET; fi
+if [ -n "$WF" ]; then quit_menu $WF "${main:-$(cat $W/ff.pid 2>/dev/null)}" $SET; else quit_set "${main:-$(cat $W/ff.pid 2>/dev/null)}" 25 $SET; fi
 left=$(procs "$FFP"); ok "no process with my profile left" '[ -z "$left" ]'
 say "back to Space 1: $(space_back)"

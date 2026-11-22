@@ -21,8 +21,8 @@ about_check() { # <label> <app id> <main window>
 esc_all() { req "target $1\nkey 29 down\nkey 29 up\nwait 300\n" 50 > /dev/null; }
 term_start; WT=$(win $T com.apple.Terminal 40); ok "Terminal window mapped ($WT)" '[ -n "$WT" ]'
 [ -n "$WT" ] && { mods_clear $WT > /dev/null; sleep 2; about_check term com.apple.Terminal $WT; }
-SET=$(tree $(cat $W/term.pid)); quit_set "$(cat $W/term.pid)" 15 $SET
+SET=$(tree "$(cat $W/term.pid 2>/dev/null)"); quit_set "$(cat $W/term.pid 2>/dev/null)" 15 $SET
 am_start; WA=$(win $T com.apple.ActivityMonitor 40); ok "Activity Monitor window mapped ($WA)" '[ -n "$WA" ]'
 [ -n "$WA" ] && { mods_clear $WA > /dev/null; sleep 3; about_check am com.apple.ActivityMonitor $WA; }
-SET=$(tree $(cat $W/am.pid)); quit_set "$(cat $W/am.pid)" 15 $SET
+SET=$(tree "$(cat $W/am.pid 2>/dev/null)"); quit_set "$(cat $W/am.pid 2>/dev/null)" 15 $SET
 say "back to Space 1: $(space_back)"

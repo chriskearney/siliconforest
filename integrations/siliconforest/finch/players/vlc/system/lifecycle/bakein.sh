@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
 # BAKEIN baseline (observe mode, the daily desktop): each app launched ONCE, then the desktop basics. One gui.lock hold
-# per pass (m1.sh). After every pass the M1 is checked: no answer over ssh twice (30 s apart) = a hang: the M1 is reset
-# through the M5's hpm0 (macvdmtool reboot serial) and the run STOPS. The desktop gone (ssh fine) = stop, no reset.
+# per pass (m1.sh). After every pass the M1 is checked: no answer over ssh twice (30 s apart) = stop and report (no
+# automatic hpm0 reset; reset by hand only if wedged). The desktop gone (ssh fine) = stop, no reset.
 #   bakein.sh <label> [term am ff vlc qt pv te cc desk]
 HERE=$(cd "$(dirname "$(readlink -f "$0")")" && pwd); LAB=${SF_LAB:-$(cd "$HERE" && cd "$(git rev-parse --git-common-dir)/.." && pwd)}; H=$LAB/runs/sysinstall; mkdir -p $H/work; L=${1:?label}; shift; P=${*:-term am ff vlc qt pv te cc desk}
 SF=(ssh -o UserKnownHostsFile="$HOME/.ssh/known_hosts_m1_siliconforest" -o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes -o HostKeyAlias=m1-siliconforest -o BatchMode=yes -o ConnectTimeout=10 root@10.1.1.211)
@@ -14,8 +14,7 @@ m1_alive() { timeout 25 "${SF[@]}" 'pgrep -x chonkstep-darwin-desktop.next || pg
 check() { d=$(m1_alive); if [ -z "$d" ]; then sleep 30; d=$(m1_alive); fi
   if [ -n "$d" ]; then log "after $1: M1 answers, desktop pid $d"; return 0; fi
   if timeout 25 "${SF[@]}" true 2>/dev/null; then log "after $1: M1 answers but NO desktop process: STOP (no reset)"; exit 20; fi
-  log "after $1: M1 does not answer over ssh (twice, 30 s apart): HANG: reset through the M5's hpm0 and STOP"
-  "${M5[@]}" "$VDM reboot serial" 2>&1 | tail -3 | tee -a $H/work/bakein-$L.txt; exit 21; }
+  log "after $1: M1 not answering: STOP, no automatic reset; reset by hand only if wedged"; exit 21; }
 log "start $L: passes $P; hpm0 link: $("${M5[@]}" "$VDM nop" 2>&1 | grep -E 'Found|Status|Connection' | tr '\n' ' ' | cut -c1-200)"
 check start; D0=$(m1_alive)
 for p in $P; do
