@@ -25,6 +25,7 @@ let
     ln -s ../var/run/resolv.conf "$out/etc/resolv.conf"
   '';
   qemuOverlays = pkgs.lib.optionals (base.parallelsGuest or false) [
+    (qemuGuestTool "sf-timesync")
     p.systemConfiguration-arm64
     p.symptomReporter-arm64
     qemuResolver

@@ -104,6 +104,7 @@ let
           ./patches/parallels-19-gpu-msix.patch
           ./patches/parallels-20-vsock-transport.patch
           ./patches/parallels-21-vsock-probe.patch
+          ./patches/parallels-22-timesync.patch
         ];
       patchFlags = [ "-p1" "--fuzz=0" ];
     }
