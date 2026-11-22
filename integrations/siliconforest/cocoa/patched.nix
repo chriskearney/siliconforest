@@ -471,6 +471,8 @@
 #         (zwp_pointer_constraints_v1, persistent) and takes zwp_relative_pointer_v1 dx/dy (positive right,
 #         positive down, as NSEvent's deltas are on macOS). Without a relative pointer, motion stays absolute
 #         and its dy is positive down only while disassociated. (true) unlocks. Unlocked motion is unchanged.
+#   0385  CoreGraphics: those two calls go to WindowServer and succeed; CGDisplayMoveCursorToPoint moves within
+#         the display; a mode whose refresh is 0 is reported as 60 Hz
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
@@ -957,6 +959,7 @@ let
     ./patches/0135-coregraphics-display-fade-opengl-acceleration.patch
     ./patches/0342-coregraphics-displays-with-point-and-rect.patch
     ./patches/0382-coregraphics-display-config-and-event-stubs.patch
+    ./patches/0385-coregraphics-pointer-lock-and-cursor-warp.patch
   ];
   coregraphics = optimised (pd."coregraphics-arm64".override { src = coregraphicsSrc; });
   # QuartzCore: upstream's recipe (not optimised, as installed; its library is the root's QuartzCore.pd, beside the
