@@ -1,0 +1,500 @@
+diff -Naur '--exclude=target' source/crates/wm-darwin/src/encoder_ave.rs /home/chrisk/.t3/worktrees/darwin-lab/sf-integration/runs/m1-desktop-010/ave-rec-001/source/crates/wm-darwin/src/encoder_ave.rs
+--- a/crates/wm-darwin/src/encoder_ave.rs
++++ b/crates/wm-darwin/src/encoder_ave.rs
+@@ -0,0 +1,143 @@
++//! The Apple Video Encoder through `/dev/sfave` (`integrations/siliconforest/m1-ave`): H.264 IPPP, one stream at a
++//! time. A frame is copied by the driver, encoded, and its Annex-B bytes go into our own MP4 writer (`mp4.rs`), so
++//! a hardware recording needs no ffmpeg. Every wait is in the driver and bounded. A size the encoder does not take,
++//! or a device that is not there, is an error from `open`, and `record_encoder=auto` then uses the software encoder.
++use super::{Encoder, EncoderSummary, NvFrame, Settings};
++use crate::mp4;
++use std::fs::{File, OpenOptions};
++use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
++use std::os::unix::fs::OpenOptionsExt;
++use std::time::Instant;
++
++const DEVICE: &[u8] = b"/dev/sfave\0";
++// sfave_ioctl.h: _IOR('E',1,232 bytes), _IOW('E',2,48), _IOWR('E',3,56), _IO('E',4)
++const IOC_INFO: libc::c_ulong = 0x40E8_4501;
++const IOC_START: libc::c_ulong = 0x8030_4502;
++const IOC_FRAME: libc::c_ulong = 0xC038_4503;
++const IOC_STOP: libc::c_ulong = 0x2000_4504;
++const INFO_BYTES: usize = 232;
++const ABI: u32 = 2;
++const HANDSHAKE_READY: u32 = 5;
++const CAP_H264: u32 = 1;
++/// An IDR picture at least this often, so a player can seek.
++const IDR_US: u64 = 2_000_000;
++
++#[repr(C)]
++#[derive(Default)]
++struct Start {
++    width: u32, height: u32, crop_w: u32, crop_h: u32,
++    fps: u32, qp: u32, bitrate: u32, profile_idc: u32,
++    level_idc: u32, cabac: u32, flags: u32, reserved: u32,
++}
++#[repr(C)]
++#[derive(Default)]
++struct Frame {
++    y: u64, uv: u64, out: u64,
++    y_stride: u32, uv_stride: u32, out_cap: u32, out_len: u32,
++    idr: u32, keyframe: u32, n: u32, reserved: u32,
++}
++const _: () = assert!(std::mem::size_of::<Start>() == 48 && std::mem::size_of::<Frame>() == 56);
++
++fn device() -> Result<OwnedFd, String> {
++    // SAFETY: a NUL-terminated path; the descriptor is owned from here on
++    let fd = unsafe { libc::open(DEVICE.as_ptr().cast(), libc::O_RDWR | libc::O_CLOEXEC) };
++    if fd < 0 {
++        return Err(format!("/dev/sfave: {}", std::io::Error::last_os_error()));
++    }
++    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
++    let mut info = [0u8; INFO_BYTES];
++    // SAFETY: the buffer is the size this request writes. The first INFO starts the coprocessor (bounded).
++    if unsafe { libc::ioctl(fd.as_raw_fd(), IOC_INFO, info.as_mut_ptr()) } < 0 {
++        return Err(format!("SFAVE INFO: {}", std::io::Error::last_os_error()));
++    }
++    let word = |i: usize| u32::from_ne_bytes([info[i * 4], info[i * 4 + 1], info[i * 4 + 2], info[i * 4 + 3]]);
++    if word(0) != ABI || word(1) as usize != INFO_BYTES {
++        return Err("SFAVE INFO: another driver ABI".into());
++    }
++    if word(6) != 0 || word(7) != HANDSHAKE_READY || word(3) & CAP_H264 == 0 {
++        return Err(format!("the encoder is not ready (error {}, handshake {})", word(6), word(7)));
++    }
++    Ok(fd)
++}
++
++pub fn probe() -> Result<(), String> {
++    device().map(|_| ())
++}
++
++pub fn open(s: &Settings) -> Result<Box<dyn Encoder>, String> {
++    if s.width % 16 != 0 || s.height % 16 != 0 || s.width < 192 || s.height < 96 || s.width > 4096 || s.height > 4096 {
++        return Err(format!("the AVE takes whole macroblocks, not {}x{}", s.width, s.height));
++    }
++    let fd = device()?;
++    let fps = s.fps.clamp(1, 60);
++    // about 0.1 bit per pixel: a clean desktop recording, firmware rate control
++    let bitrate = (u64::from(s.width) * u64::from(s.height) * u64::from(fps) / 10).clamp(2_000_000, 40_000_000) as u32;
++    let start = Start { width: s.width, height: s.height, fps, qp: 26, bitrate, profile_idc: 100, cabac: 1, ..Default::default() };
++    // SAFETY: the struct is the size this request reads
++    if unsafe { libc::ioctl(fd.as_raw_fd(), IOC_START, &start as *const Start) } < 0 {
++        return Err(format!("SFAVE start: {}", std::io::Error::last_os_error()));
++    }
++    // record.rs made the file (its name and mode 0600); it is ours to fill
++    let file = OpenOptions::new().write(true).truncate(true).custom_flags(libc::O_NOFOLLOW).open(&s.path)
++        .map_err(|e| format!("{}: {e}", s.path.display()))?;
++    let mux = mp4::Writer::new(file, s.width, s.height)?;
++    let cap = s.width as usize * s.height as usize * 3 / 2 + 65536;
++    Ok(Box::new(Ave { fd, mux: Some(mux), out: vec![0; cap], width: s.width, height: s.height, fps, bitrate, last_idr: None, push_s: 0.0, push_max_ms: 0.0 }))
++}
++
++struct Ave {
++    fd: OwnedFd,
++    mux: Option<mp4::Writer<File>>,
++    out: Vec<u8>,
++    width: u32,
++    height: u32,
++    fps: u32,
++    bitrate: u32,
++    last_idr: Option<u64>,
++    push_s: f64,
++    push_max_ms: f64,
++}
++
++impl Encoder for Ave {
++    fn name(&self) -> &'static str {
++        "ave"
++    }
++    fn push(&mut self, f: &NvFrame<'_>) -> Result<(), String> {
++        let luma = self.width as usize * self.height as usize;
++        if f.width != self.width || f.height != self.height || f.data.len() < luma + luma / 2 {
++            return Err("a frame of another size".into());
++        }
++        let t = Instant::now();
++        let idr = self.last_idr.is_none_or(|at| f.at_us.saturating_sub(at) >= IDR_US);
++        let y = f.data.as_ptr() as u64;
++        let mut e = Frame { y, uv: y + luma as u64, out: self.out.as_mut_ptr() as u64, y_stride: self.width, uv_stride: self.width,
++            out_cap: self.out.len() as u32, idr: u32::from(idr), ..Default::default() };
++        // SAFETY: the planes and the output stay valid for the call, which copies from and into them
++        if unsafe { libc::ioctl(self.fd.as_raw_fd(), IOC_FRAME, &mut e as *mut Frame) } < 0 {
++            return Err(format!("SFAVE frame: {}", std::io::Error::last_os_error()));
++        }
++        if idr {
++            self.last_idr = Some(f.at_us);
++        }
++        let n = (e.out_len as usize).min(self.out.len());
++        self.mux.as_mut().ok_or("the movie is closed")?.add(&self.out[..n], f.at_us)?;
++        let s = t.elapsed().as_secs_f64();
++        self.push_s += s;
++        self.push_max_ms = self.push_max_ms.max(s * 1000.0);
++        Ok(())
++    }
++    fn finish(mut self: Box<Self>) -> Result<EncoderSummary, String> {
++        // SAFETY: no argument
++        let stopped = unsafe { libc::ioctl(self.fd.as_raw_fd(), IOC_STOP) };
++        let stop_error = (stopped < 0).then(|| std::io::Error::last_os_error().to_string());
++        let mux = self.mux.take().ok_or("the movie is closed")?;
++        let frames = mux.frames();
++        let file = mux.finish(self.fps)?;
++        file.sync_all().map_err(|e| e.to_string())?;
++        if let Some(e) = stop_error {
++            return Err(format!("SFAVE stop: {e}"));
++        }
++        Ok(EncoderSummary { frames, cpu_s: 0.0, push_s: self.push_s, push_max_ms: self.push_max_ms,
++            detail: format!("encoder=ave bitrate={} fps={}", self.bitrate, self.fps) })
++    }
++}
+diff -Naur '--exclude=target' source/crates/wm-darwin/src/encoder.rs /home/chrisk/.t3/worktrees/darwin-lab/sf-integration/runs/m1-desktop-010/ave-rec-001/source/crates/wm-darwin/src/encoder.rs
+--- a/crates/wm-darwin/src/encoder.rs
++++ b/crates/wm-darwin/src/encoder.rs
+@@ -6,11 +6,10 @@
+ //!   into this one). The frames go to its standard input as a Matroska stream of raw NV12 frames, each with its
+ //!   time in microseconds (a variable frame rate: a frame only when the screen changed), and ffmpeg writes a
+ //!   QuickTime movie of H.264 (`+faststart`). ffmpeg is also the muxer.
+-//! - **hardware** (`hardware`): the Apple Video Encoder through our VideoToolbox (`VTCompressionSession`),
+-//!   when the AVE driver (SF-AD, paused) works. A seam only: `hardware::probe` says it is not available. What
+-//!   it gets is the same `NvFrame`: the dma-buf of the frame (NV12, linear, Y at 0 and U/V at
+-//!   `width * height`, pitch `width`) and its time, so it can take the buffer without a copy; it would give
+-//!   back an H.264/HEVC elementary stream, muxed by ffmpeg (`-c copy`) or by our own movie writer.
++//! - **hardware** (`hardware`, `encoder_ave.rs`): the Apple Video Encoder through `/dev/sfave`. It gets the same
++//!   `NvFrame` (NV12, linear, Y at 0 and U/V at `width * height`, pitch `width`) with its time and writes an
++//!   H.264 MP4 with our own movie writer (`mp4.rs`). `record_encoder=auto` falls back to software when it
++//!   cannot open (no device, or a size that is not whole macroblocks).
+ use std::io::Write;
+ use std::os::fd::{FromRawFd, OwnedFd};
+ use std::path::{Path, PathBuf};
+@@ -77,19 +76,8 @@
+     std::fs::metadata(ffmpeg).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+ }
+ 
+-pub mod hardware {
+-    /// The Apple Video Encoder (SF-AD) through VideoToolbox's `VTCompressionSession`. Not available: the
+-    /// driver work is paused and our VideoToolbox has no encoder. When it comes, `probe` opens a session for
+-    /// NV12 frames of the recording's size and `open` returns an `Encoder` whose `push` passes the frame's
+-    /// dma-buf (as an IOSurface-compatible `CVPixelBuffer`) with its time, without a copy.
+-    pub fn probe() -> Result<(), String> {
+-        Err("no hardware video encoder: the Apple Video Encoder driver (SF-AD) is not finished and VideoToolbox here has no encoder".into())
+-    }
+-    pub fn open(_: &super::Settings) -> Result<Box<dyn super::Encoder>, String> {
+-        probe()?;
+-        Err("not available".into())
+-    }
+-}
++#[path = "encoder_ave.rs"]
++pub mod hardware;
+ 
+ // --- Matroska, as much as a stream of raw frames with times needs -----------------------------------
+ 
+diff -Naur '--exclude=target' source/crates/wm-darwin/src/lib.rs /home/chrisk/.t3/worktrees/darwin-lab/sf-integration/runs/m1-desktop-010/ave-rec-001/source/crates/wm-darwin/src/lib.rs
+--- a/crates/wm-darwin/src/lib.rs
++++ b/crates/wm-darwin/src/lib.rs
+@@ -24,6 +24,8 @@
+ pub mod record;
+ #[cfg(feature = "desktop-shell")]
+ pub mod encoder;
++#[cfg(feature = "desktop-shell")]
++pub mod mp4;
+ pub mod glrender;
+ mod foreign;
+ mod gesture;
+diff -Naur '--exclude=target' source/crates/wm-darwin/src/mp4.rs /home/chrisk/.t3/worktrees/darwin-lab/sf-integration/runs/m1-desktop-010/ave-rec-001/source/crates/wm-darwin/src/mp4.rs
+--- a/crates/wm-darwin/src/mp4.rs
++++ b/crates/wm-darwin/src/mp4.rs
+@@ -0,0 +1,271 @@
++//! A small MP4 writer for one H.264 track without B frames: samples go straight to the file's `mdat`, the index
++//! is written at the end. It takes Annex-B access units as the encoder returns them; SPS and PPS move to `avcC`.
++use std::io::{Seek, SeekFrom, Write};
++
++const TIMESCALE: u64 = 90_000;
++
++fn atom(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
++    let mut v = Vec::with_capacity(body.len() + 8);
++    v.extend_from_slice(&(body.len() as u32 + 8).to_be_bytes());
++    v.extend_from_slice(kind);
++    v.extend_from_slice(body);
++    v
++}
++fn be32(v: &mut Vec<u8>, x: u32) {
++    v.extend_from_slice(&x.to_be_bytes());
++}
++fn be16(v: &mut Vec<u8>, x: u16) {
++    v.extend_from_slice(&x.to_be_bytes());
++}
++const MATRIX: [u32; 9] = [0x1_0000, 0, 0, 0, 0x1_0000, 0, 0, 0, 0x4000_0000];
++
++/// The NAL units of an Annex-B buffer, without start codes or trailing zero bytes.
++pub fn nal_units(b: &[u8]) -> Vec<&[u8]> {
++    let mut starts = Vec::new();
++    let mut i = 0;
++    while i + 3 <= b.len() {
++        if b[i] == 0 && b[i + 1] == 0 && b[i + 2] == 1 {
++            starts.push(i + 3);
++            i += 3;
++        } else {
++            i += 1;
++        }
++    }
++    let mut out = Vec::with_capacity(starts.len());
++    for (k, &s) in starts.iter().enumerate() {
++        let mut e = if k + 1 < starts.len() { starts[k + 1] - 3 } else { b.len() };
++        while e > s && b[e - 1] == 0 {
++            e -= 1;
++        }
++        if e > s {
++            out.push(&b[s..e]);
++        }
++    }
++    out
++}
++
++pub struct Writer<W: Write + Seek> {
++    out: W,
++    width: u16,
++    height: u16,
++    mdat_at: u64,
++    data_bytes: u64,
++    sizes: Vec<u32>,
++    ticks: Vec<u64>,
++    sync: Vec<u32>,
++    sps: Option<Vec<u8>>,
++    pps: Option<Vec<u8>>,
++    sample: Vec<u8>,
++}
++
++impl<W: Write + Seek> Writer<W> {
++    pub fn new(mut out: W, width: u32, height: u32) -> Result<Self, String> {
++        let width = u16::try_from(width).map_err(|_| "width")?;
++        let height = u16::try_from(height).map_err(|_| "height")?;
++        let mut ftyp = Vec::new();
++        ftyp.extend_from_slice(b"isom");
++        be32(&mut ftyp, 0x200);
++        for brand in [b"isom", b"iso2", b"avc1", b"mp41"] {
++            ftyp.extend_from_slice(brand);
++        }
++        let head = atom(b"ftyp", &ftyp);
++        out.write_all(&head).map_err(|e| e.to_string())?;
++        // mdat with a 64-bit size, filled in at the end
++        let mut mdat = Vec::new();
++        be32(&mut mdat, 1);
++        mdat.extend_from_slice(b"mdat");
++        mdat.extend_from_slice(&0u64.to_be_bytes());
++        out.write_all(&mdat).map_err(|e| e.to_string())?;
++        Ok(Self { out, width, height, mdat_at: head.len() as u64, data_bytes: 0, sizes: Vec::new(), ticks: Vec::new(),
++            sync: Vec::new(), sps: None, pps: None, sample: Vec::new() })
++    }
++
++    /// One access unit, at `at_us` microseconds.
++    pub fn add(&mut self, annexb: &[u8], at_us: u64) -> Result<(), String> {
++        self.sample.clear();
++        let mut key = false;
++        for nal in nal_units(annexb) {
++            match nal[0] & 0x1f {
++                7 => match &self.sps {
++                    Some(s) if s != nal => return Err("the SPS changed during the stream".into()),
++                    Some(_) => {}
++                    None => self.sps = Some(nal.to_vec()),
++                },
++                8 => match &self.pps {
++                    Some(p) if p != nal => return Err("the PPS changed during the stream".into()),
++                    Some(_) => {}
++                    None => self.pps = Some(nal.to_vec()),
++                },
++                9 => {}
++                t => {
++                    key |= t == 5;
++                    self.sample.extend_from_slice(&(nal.len() as u32).to_be_bytes());
++                    self.sample.extend_from_slice(nal);
++                }
++            }
++        }
++        if self.sample.is_empty() {
++            return Err("an access unit without a picture".into());
++        }
++        if self.sizes.is_empty() && !key {
++            return Err("the stream does not start with an IDR picture".into());
++        }
++        self.out.write_all(&self.sample).map_err(|e| e.to_string())?;
++        self.data_bytes += self.sample.len() as u64;
++        self.sizes.push(self.sample.len() as u32);
++        let tick = at_us * TIMESCALE / 1_000_000;
++        let tick = match self.ticks.last() {
++            Some(&last) if tick <= last => last + 1,
++            _ => tick,
++        };
++        self.ticks.push(tick);
++        if key {
++            self.sync.push(self.sizes.len() as u32);
++        }
++        Ok(())
++    }
++
++    pub fn frames(&self) -> u64 {
++        self.sizes.len() as u64
++    }
++
++    /// Writes the index; the file is complete when this returns. `fps` gives the last frame its duration.
++    pub fn finish(mut self, fps: u32) -> Result<W, String> {
++        let (Some(sps), Some(pps)) = (self.sps.take(), self.pps.take()) else { return Err("no SPS/PPS: no frame was encoded".into()) };
++        if sps.len() < 4 || sps.len() > 0xffff || pps.len() > 0xffff {
++            return Err("bad SPS/PPS".into());
++        }
++        let first = self.ticks[0];
++        let mut durations: Vec<u32> = self.ticks.windows(2).map(|w| (w[1] - w[0]) as u32).collect();
++        durations.push((TIMESCALE / u64::from(fps.max(1))) as u32);
++        let total: u64 = durations.iter().map(|d| u64::from(*d)).sum();
++        let total = u32::try_from(total).map_err(|_| "recording too long for this index")?;
++        let _ = first;
++
++        let mut avcc = vec![1, sps[1], sps[2], sps[3], 0xff, 0xe1];
++        be16(&mut avcc, sps.len() as u16);
++        avcc.extend_from_slice(&sps);
++        avcc.push(1);
++        be16(&mut avcc, pps.len() as u16);
++        avcc.extend_from_slice(&pps);
++        if matches!(sps[1], 100 | 110 | 122 | 144) {
++            avcc.extend_from_slice(&[0xfd, 0xf8, 0xf8, 0]); // 4:2:0, 8 bit, no SPS extensions
++        }
++        let mut colr = Vec::new();
++        colr.extend_from_slice(b"nclx");
++        be16(&mut colr, 1);
++        be16(&mut colr, 1);
++        be16(&mut colr, 1);
++        colr.push(0); // limited range: what the compositor's BT.709 conversion makes
++
++        let mut e = vec![0u8; 6];
++        be16(&mut e, 1);
++        e.extend_from_slice(&[0u8; 16]);
++        be16(&mut e, self.width);
++        be16(&mut e, self.height);
++        be32(&mut e, 0x0048_0000);
++        be32(&mut e, 0x0048_0000);
++        be32(&mut e, 0);
++        be16(&mut e, 1);
++        e.extend_from_slice(&[0u8; 32]);
++        be16(&mut e, 0x18);
++        be16(&mut e, 0xffff);
++        e.extend_from_slice(&atom(b"avcC", &avcc));
++        e.extend_from_slice(&atom(b"colr", &colr));
++        let mut stsd = vec![0u8; 4];
++        be32(&mut stsd, 1);
++        stsd.extend_from_slice(&atom(b"avc1", &e));
++
++        let mut runs: Vec<(u32, u32)> = Vec::new();
++        for d in &durations {
++            match runs.last_mut() {
++                Some((n, v)) if v == d => *n += 1,
++                _ => runs.push((1, *d)),
++            }
++        }
++        let mut stts = vec![0u8; 4];
++        be32(&mut stts, runs.len() as u32);
++        for (n, v) in runs {
++            be32(&mut stts, n);
++            be32(&mut stts, v);
++        }
++        let mut stss = vec![0u8; 4];
++        be32(&mut stss, self.sync.len() as u32);
++        for s in &self.sync {
++            be32(&mut stss, *s);
++        }
++        let mut stsz = vec![0u8; 8];
++        be32(&mut stsz, self.sizes.len() as u32);
++        for s in &self.sizes {
++            be32(&mut stsz, *s);
++        }
++        let mut stsc = vec![0u8; 4];
++        be32(&mut stsc, 1);
++        be32(&mut stsc, 1);
++        be32(&mut stsc, self.sizes.len() as u32);
++        be32(&mut stsc, 1);
++        let mut co64 = vec![0u8; 4];
++        be32(&mut co64, 1);
++        co64.extend_from_slice(&(self.mdat_at + 16).to_be_bytes());
++        let mut stbl = atom(b"stsd", &stsd);
++        for (k, b) in [(b"stts", &stts), (b"stss", &stss), (b"stsc", &stsc), (b"stsz", &stsz), (b"co64", &co64)] {
++            stbl.extend_from_slice(&atom(k, b));
++        }
++
++        let mut url = vec![0u8; 3];
++        url.push(1);
++        let mut dref = vec![0u8; 4];
++        be32(&mut dref, 1);
++        dref.extend_from_slice(&atom(b"url ", &url));
++        let mut minf = atom(b"vmhd", &[0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]);
++        minf.extend_from_slice(&atom(b"dinf", &atom(b"dref", &dref)));
++        minf.extend_from_slice(&atom(b"stbl", &stbl));
++
++        let mut mdhd = vec![0u8; 12];
++        be32(&mut mdhd, TIMESCALE as u32);
++        be32(&mut mdhd, total);
++        be16(&mut mdhd, 0x55c4); // und
++        be16(&mut mdhd, 0);
++        let mut hdlr = vec![0u8; 8];
++        hdlr.extend_from_slice(b"vide");
++        hdlr.extend_from_slice(&[0u8; 12]);
++        hdlr.extend_from_slice(b"SiliconForest AVE\0");
++        let mut mdia = atom(b"mdhd", &mdhd);
++        mdia.extend_from_slice(&atom(b"hdlr", &hdlr));
++        mdia.extend_from_slice(&atom(b"minf", &minf));
++
++        let mut tkhd = vec![0, 0, 0, 3];
++        tkhd.extend_from_slice(&[0u8; 8]);
++        be32(&mut tkhd, 1);
++        be32(&mut tkhd, 0);
++        be32(&mut tkhd, total);
++        tkhd.extend_from_slice(&[0u8; 16]);
++        for m in MATRIX {
++            be32(&mut tkhd, m);
++        }
++        be32(&mut tkhd, u32::from(self.width) << 16);
++        be32(&mut tkhd, u32::from(self.height) << 16);
++        let mut trak = atom(b"tkhd", &tkhd);
++        trak.extend_from_slice(&atom(b"mdia", &mdia));
++
++        let mut mvhd = vec![0u8; 12];
++        be32(&mut mvhd, TIMESCALE as u32);
++        be32(&mut mvhd, total);
++        be32(&mut mvhd, 0x1_0000);
++        be16(&mut mvhd, 0x100);
++        mvhd.extend_from_slice(&[0u8; 10]);
++        for m in MATRIX {
++            be32(&mut mvhd, m);
++        }
++        mvhd.extend_from_slice(&[0u8; 24]);
++        be32(&mut mvhd, 2);
++        let mut moov = atom(b"mvhd", &mvhd);
++        moov.extend_from_slice(&atom(b"trak", &trak));
++        let moov = atom(b"moov", &moov);
++        self.out.write_all(&moov).map_err(|e| e.to_string())?;
++        self.out.seek(SeekFrom::Start(self.mdat_at + 8)).map_err(|e| e.to_string())?;
++        self.out.write_all(&(self.data_bytes + 16).to_be_bytes()).map_err(|e| e.to_string())?;
++        self.out.flush().map_err(|e| e.to_string())?;
++        Ok(self.out)
++    }
++}
+diff -Naur '--exclude=target' source/crates/wm-darwin/src/record.rs /home/chrisk/.t3/worktrees/darwin-lab/sf-integration/runs/m1-desktop-010/ave-rec-001/source/crates/wm-darwin/src/record.rs
+--- a/crates/wm-darwin/src/record.rs
++++ b/crates/wm-darwin/src/record.rs
+@@ -789,14 +789,19 @@
+         if !due {
+             return;
+         }
++        // one frame per slot of the movie's clock: frames taken faster than that would run the times ahead of
++        // the wall clock and the movie would play slow. The change stays pending for a later turn.
++        let elapsed = rec.started.elapsed().as_micros() as u64;
++        let slot = (elapsed + H264_SLOT_US / 2) / H264_SLOT_US;
++        if h.taken > 0 && slot * H264_SLOT_US <= h.last_at_us {
++            return;
++        }
+         match why {
+             0 => h.by_frame += 1,
+             1 => h.by_commit += 1,
+             _ => h.by_idle += 1,
+         }
+         h.last_commits = Some(commits_now);
+-        let elapsed = rec.started.elapsed().as_micros() as u64;
+-        let slot = (elapsed + H264_SLOT_US / 2) / H264_SLOT_US;
+         let at_us = (slot * H264_SLOT_US).max(if h.taken > 0 { h.last_at_us + H264_SLOT_US } else { 0 });
+         let t = Instant::now();
+         let result = self.renderer.record_capture((rec.target.pos.x, rec.target.pos.y, rec.target.size.w, rec.target.size.h), (rec.out.w, rec.out.h), h.writeback, H264_SLOTS);
