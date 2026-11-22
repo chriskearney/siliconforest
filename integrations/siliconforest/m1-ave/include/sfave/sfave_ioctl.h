@@ -35,4 +35,21 @@ struct sfave_info {
     uint64_t phys_base, text_phys, data_phys;
 };
 #define SFAVE_IOC_INFO _IOR('E',1,struct sfave_info)
+/* H.264 IPPP, one stream at a time. width/height are the coded size (multiples
+ * of 16); crop_* (0 = none) go in the SPS. qp 0 = 30, bitrate 0 = fixed QP. */
+#define SFAVE_ENC_VERBOSE (1u<<0)
+struct sfave_enc_start {
+    uint32_t width, height, crop_w, crop_h;
+    uint32_t fps, qp, bitrate, profile_idc;
+    uint32_t level_idc, cabac, flags, reserved;
+};
+/* y/uv: NV12 planes in the caller, height and height/2 rows. out: Annex-B. */
+struct sfave_enc_frame {
+    uint64_t y, uv, out;
+    uint32_t y_stride, uv_stride, out_cap, out_len;
+    uint32_t idr, keyframe, n, reserved;
+};
+#define SFAVE_IOC_ENC_START _IOW('E',2,struct sfave_enc_start)
+#define SFAVE_IOC_ENC_FRAME _IOWR('E',3,struct sfave_enc_frame)
+#define SFAVE_IOC_ENC_STOP _IO('E',4)
 #endif

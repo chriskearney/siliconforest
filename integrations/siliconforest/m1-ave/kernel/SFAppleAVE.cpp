@@ -41,13 +41,27 @@ static bool gInventoried;
 static IOBufferMemoryDescriptor *gColdMD;
 static int inventory();
 static int openNode(dev_t,int,int,proc_t){return 0;}
-static int closeNode(dev_t,int,int,proc_t){return 0;}
+// Last close ends a stream its owner left open (a crashed recorder).
+static int closeNode(dev_t,int,int,proc_t) {
+ IOLockLock(gInfoLock);int e=gInventoried?sfave_enc_stop():0;IOLockUnlock(gInfoLock);
+ if(e)LOG("close: stream stop failed: %d",e);
+ return 0;
+}
 static int ioctlNode(dev_t,u_long command,caddr_t data,int,proc_t) {
- if(command!=SFAVE_IOC_INFO)return ENOTTY;
+ if(command!=SFAVE_IOC_INFO&&command!=SFAVE_IOC_ENC_START&&command!=SFAVE_IOC_ENC_FRAME&&
+    command!=SFAVE_IOC_ENC_STOP)return ENOTTY;
+ int err=0;
  IOLockLock(gInfoLock);
  if(!gInventoried){gInfo.error=inventory();gInventoried=true;}
- memcpy(data,&gInfo,sizeof(gInfo));
- IOLockUnlock(gInfoLock);return 0;
+ if(command==SFAVE_IOC_INFO)memcpy(data,&gInfo,sizeof(gInfo));
+ else if(!(gInfo.flags&SFAVE_INFO_HANDSHAKE))err=ENXIO;
+ else if(command==SFAVE_IOC_ENC_START) {
+  err=sfave_enc_start((struct sfave_enc_start *)data);
+  if(!err)gInfo.flags|=SFAVE_INFO_ENCODER_READY;
+ }
+ else if(command==SFAVE_IOC_ENC_FRAME)err=sfave_enc_frame((struct sfave_enc_frame *)data);
+ else err=sfave_enc_stop();
+ IOLockUnlock(gInfoLock);return err;
 }
 static struct cdevsw methods={.d_open=openNode,.d_close=closeNode,.d_read=eno_rdwrt,
  .d_write=eno_rdwrt,.d_ioctl=ioctlNode,.d_stop=eno_stop,.d_reset=eno_reset,

@@ -1,20 +1,30 @@
-# SFAppleAVE source port — milestone 1 boot on the INFO ioctl
+# SFAppleAVE: the Apple Video Encoder on T8103
 
-The 2026-11-15 pause is lifted for the diagnostic coprocessor boot only.
-`start()` publishes `/dev/sfave` and does not touch the hardware. The first
-root INFO ioctl maps preloaded TEXT/DATA, snapshots cold DATA, and runs the
-T8103 ASC/RTKit handshake. `SFAVE_CAP_H264` means that handshake reached READY.
-There is no H.264 encode session in this driver. Do not commit Apple firmware,
-DPE tables, or boot blobs.
+`/dev/sfave` encodes H.264 IPPP on the M1. `start()` publishes the node and does not touch the
+hardware. The first ioctl maps the preloaded TEXT and DATA, snapshots cold DATA, powers the block,
+programs DAPF and both DARTs (streams 0 and 1, one table), and runs the ASC/RTKit handshake. A
+stream then runs upstream's encode session (`kernel/upstream/ave_session.c`, byte-identical at the
+pin in `NOTICE`) on a small Linux API shim (`kernel/lxshim`, `kernel/sfave_lx.c`). There is no
+interrupt handler: replies are read by polling the IPC rings, and every wait has a deadline.
+B frames and two-reference P frames are off, because H.264 hangs with them on T8103.
 
-The first INFO boot had no panic but returned ENODEV19, flags0/caps0,
-soc0x8103/segments0 and empty identities, before TEXT mapping. A padded metadata
-property guard was fixed and SDK-built as v11, not booted. No encoder hardware
-was started. Detached transport/DAPF helpers compile as a separate SDK OBJECT
-target, not into the live diagnostic. The commands below document reproducibility
-for the host checks. Milestone 1 stops at the handshake; it is not an encoder.
+- `SFAVE_IOC_INFO`, `SFAVE_IOC_ENC_START`, `SFAVE_IOC_ENC_FRAME`, `SFAVE_IOC_ENC_STOP`:
+  `include/sfave/sfave_ioctl.h`. The last close ends a stream its owner left open.
+- `user/sfave-info.c`: the state of the coprocessor. `user/sfave-enc.c`: NV12 (a synthetic pattern or
+  stdin) to Annex-B.
+- The desktop's recorder encodes through this device, with software only when it cannot open:
+  `../terminal-app/compositor/wm-darwin-record-ave.patch`, `../desktop/system/sf-screenrecord`.
+- FFmpeg: `build-ffmpeg-hw.nix` adds `h264_sfave` (`ffmpeg/0001-h264-sfave-encoder.patch`) and the AVD
+  hwaccel to the recorder's build. libx264 stays the default H.264 encoder.
 
-`kernel/upstream` contains unchanged GPL command/ADT parsers from the pinned
+Do not commit Apple firmware, DPE tables, or boot blobs. The AVE firmware is the one iBoot preloaded.
+The DPE tunables are read at the first start from
+`/Library/Firmware/apple/ave-13.5-dpe-acis_8103.bin`, a file generated from the machine owner's macOS
+13.5 kernelcache with the commands below and kept out of this repository. The driver holds only the
+loader and the programming path. Without the file the handshake still completes and the miss is logged;
+encoding without it has not been tested.
+
+`kernel/upstream` contains unchanged GPL session, command and ADT code from the pinned
 upstream in NOTICE. `sfave_preload.c` rejects unknown firmware identities,
 missing cold reservations, malformed/overlapping ranges and malformed Acis
 input. Its DPE callback adapter ports upstream RMW, enable and masked readback

@@ -19,6 +19,7 @@ extern "C" {
 #include <sys/fcntl.h>
 #include <sys/uio.h>
 #include <sys/vnode.h>
+#include <kern/clock.h>
 
 #define LOG(fmt, ...) IOLog("SFAppleAVE: " fmt "\n", ##__VA_ARGS__)
 
@@ -273,6 +274,8 @@ static int maybe_dpe(SFMmio *dpe) {
 	return error;
 }
 
+static const unsigned kDartPages = 96;
+
 struct DartPage {
 	IOBufferMemoryDescriptor *md;
 	uint64_t *va;
@@ -280,10 +283,16 @@ struct DartPage {
 };
 
 struct DartState {
-	DartPage pages[8];
+	DartPage pages[kDartPages];
 	unsigned npages;
 	struct sf_dart_tables tables;
 };
+
+/* Kept after READY: the encoder uses them until reboot. */
+static SFMmio gDpe, gAsc, gSve, gCpu, gFilt, gDart1;
+static DartState gDart;
+static struct sfave_ipc gIpc;
+static bool gHwReady;
 
 extern "C" uint64_t *dart_table(void *ctx, uint64_t phys) {
 	DartState *d = (DartState *)ctx;
@@ -295,7 +304,7 @@ extern "C" uint64_t *dart_table(void *ctx, uint64_t phys) {
 
 extern "C" uint64_t dart_alloc(void *ctx) {
 	DartState *d = (DartState *)ctx;
-	if (d->npages >= 8)
+	if (d->npages >= kDartPages)
 		return 0;
 	IOBufferMemoryDescriptor *md = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task,
 	    kIODirectionInOut | kIOMemoryPhysicallyContiguous, 0x4000, 0x0000000fffffc000ULL);
@@ -366,7 +375,7 @@ static int map_md(struct sf_dart_tables *t, IOBufferMemoryDescriptor *md, uint64
 }
 
 static int dart_invalidate(SFMmio &regs) {
-	regs.w32(0x34, 1u);
+	regs.w32(0x34, 3u);	/* streams 0 and 1 */
 	regs.w32(0x20, 1u << 20);
 	for (int i = 0; i < 1000; i++) {
 		if ((regs.r32(0x20) & 4u) == 0)
@@ -375,6 +384,25 @@ static int dart_invalidate(SFMmio &regs) {
 	}
 	LOG("DART TLB invalidate timed out");
 	return ETIMEDOUT;
+}
+
+/* Same tables on streams 0 and 1 of a DART; stream 15 is left alone. */
+static int dart_attach(SFMmio &r, uint64_t l1pa) {
+	int e;
+	for (unsigned sid = 0; sid < 2; sid++) {
+		r.w32(0x100 + 4 * sid, 0);
+		for (unsigned i = 0; i < 4; i++)
+			r.w32(0x200 + 0x10 * sid + 4 * i, 0);
+	}
+	r.w32(0xfc, r.r32(0xfc) | 3u);
+	r.w32(0x40, r.r32(0x40));
+	if ((e = dart_invalidate(r)))
+		return e;
+	for (unsigned sid = 0; sid < 2; sid++) {
+		r.w32(0x200 + 0x10 * sid, (1u << 31) | (uint32_t)(l1pa >> 12));
+		r.w32(0x100 + 4 * sid, 1u << 7);
+	}
+	return dart_invalidate(r);
 }
 
 static int fill_preload(const struct sfave_boot_in *in, struct sfave_preload *pre) {
@@ -400,14 +428,14 @@ static int fill_preload(const struct sfave_boot_in *in, struct sfave_preload *pr
 }
 
 int sfave_bringup(const struct sfave_boot_in *in, uint32_t *handshake, uint32_t *caps) {
-	SFMmio dpe, asc, sve, cpu, filt;
+	SFMmio &dpe = gDpe, &asc = gAsc, &sve = gSve, &cpu = gCpu, &filt = gFilt, &dart1 = gDart1;
 	IOBufferMemoryDescriptor *ipc_md = NULL;
 	IOBufferMemoryDescriptor *heap_md = NULL;
-	DartState dart;
+	DartState &dart = gDart;
 	struct sfave_preload pre;
 	DapfCtx dapf_io;
 	struct sfave_dapf_io dio;
-	struct sfave_ipc ipc;
+	struct sfave_ipc &ipc = gIpc;
 	struct sfave_ipc_ops ops;
 	uint64_t cpu_phys = 0, cpu_len = 0, dapf_phys = 0, dapf_len = 0, l1pa = 0, rvbar = 0;
 	uint32_t sid = 0, status = 0, dart_config = 0, dapf_lock = 0, magic = 0;
@@ -453,6 +481,16 @@ int sfave_bringup(const struct sfave_boot_in *in, uint32_t *handshake, uint32_t 
 		err = ENXIO;
 		goto out;
 	}
+	/* reg[1], the datapath's DART: it must translate exactly like the CPUDART. */
+	{
+		uint64_t phys[16], len[16];
+		unsigned n = dart_regs(phys, len, 16);
+		if (n < 2 || phys[1] != 0x267030000ULL || len[1] < 0x4000 || !dart1.mapPhys(phys[1], 0x4000)) {
+			LOG("datapath DART not found");
+			err = ENXIO;
+			goto out;
+		}
+	}
 	if (sf_adt_u32("/arm-io/dart-ave", "sids", 0, &sid) || sf_adt_u32("/arm-io/ave", "sids", 0, &sid))
 		LOG("ADT sid 0x%x; programming stream 0 only", sid);
 
@@ -474,6 +512,11 @@ int sfave_bringup(const struct sfave_boot_in *in, uint32_t *handshake, uint32_t 
 	}
 	if (((cpu.r32(0x00) >> 24) & 0xfu) != 14) {
 		err = ENOTSUP;
+		goto out;
+	}
+	LOG("DART1 config=0x%x params1=0x%x tcr0=0x%x", dart1.r32(0x60), dart1.r32(0x00), dart1.r32(0x100));
+	if ((dart1.r32(0x60) & (1u << 15)) || ((dart1.r32(0x00) >> 24) & 0xfu) != 14) {
+		err = EPERM;
 		goto out;
 	}
 	if ((err = maybe_dpe(&dpe)))
@@ -515,19 +558,10 @@ int sfave_bringup(const struct sfave_boot_in *in, uint32_t *handshake, uint32_t 
 	l1pa = dart.pages[0].phys;
 	__asm__ volatile("dsb sy" ::: "memory");
 	dart_live = 1;
-	cpu.w32(0x100, 0);
-	for (int i = 0; i < 4; i++)
-		cpu.w32(0x200 + 4 * i, 0);
-	cpu.w32(0xfc, cpu.r32(0xfc) | 1u);
-	cpu.w32(0x40, cpu.r32(0x40));
-	if ((err = dart_invalidate(cpu)))
+	if ((err = dart_attach(cpu, l1pa)) || (err = dart_attach(dart1, l1pa)))
 		goto out;
-	cpu.w32(0x200, (1u << 31) | (uint32_t)(l1pa >> 12));
-	cpu.w32(0x100, 1u << 7);
-	if ((err = dart_invalidate(cpu)))
-		goto out;
-	LOG("DART stream0 data=0x%llx/0x%x ipc=0x%llx/0x%x heap=0x%llx/0x%x ttbr=0x%x",
-	    kDataDva, in->data_size, kIpcDva, kIpcBytes, kHeapDva, kHeapBytes, cpu.r32(0x200));
+	LOG("DART streams0+1 data=0x%llx/0x%x ipc=0x%llx/0x%x heap=0x%llx/0x%x ttbr=0x%x dart1=0x%x",
+	    kDataDva, in->data_size, kIpcDva, kIpcBytes, kHeapDva, kHeapBytes, cpu.r32(0x200), dart1.r32(0x200));
 
 	ops.context = &sve;
 	ops.read = sve_rd;
@@ -576,7 +610,8 @@ int sfave_bringup(const struct sfave_boot_in *in, uint32_t *handshake, uint32_t 
 	*handshake = SFAVE_HS_READY;
 	*caps = SFAVE_CAP_H264;
 	LOG("handshake ready; caps=0x%x (booted, no encode session)", *caps);
-	err = 0;
+	gHwReady = true;
+	return 0;
 out:
 	if (!dart_live) {
 		md_free(&ipc_md);
@@ -589,5 +624,177 @@ out:
 	sve.unmap();
 	cpu.unmap();
 	filt.unmap();
+	dart1.unmap();
 	return err;
+}
+
+/* ---- What the encoder (sfave_lx.c) uses after READY; all under the driver's lock. ---- */
+
+extern "C" struct sfave_ipc *sfave_hw_ipc(void) { return gHwReady ? &gIpc : NULL; }
+
+extern "C" int sfave_hw_bank(unsigned which, volatile void **va, uint64_t *phys, uint64_t *len) {
+	SFMmio *m = which == 0 ? &gDpe : which == 1 ? &gAsc : which == 2 ? &gSve : NULL;
+	if (!gHwReady || m == NULL || m->va == NULL)
+		return ENXIO;
+	*va = m->va;
+	*phys = m->phys;
+	*len = m->len;
+	return 0;
+}
+
+extern "C" int sfave_hw_dart_check(void) {
+	if (!gHwReady)
+		return ENXIO;
+	for (unsigned sid = 0; sid < 2; sid++) {
+		uint32_t t = gCpu.r32(0x200 + 0x10 * sid);
+		if (!(t & (1u << 31)) || t != gDart1.r32(0x200 + 0x10 * sid) ||
+		    gCpu.r32(0x100 + 4 * sid) != gDart1.r32(0x100 + 4 * sid))
+			return EIO;
+	}
+	return 0;
+}
+
+extern "C" void *sfave_lx_alloc(size_t n) {
+	size_t t = n + 32;
+	if (t < n)
+		return NULL;
+	uint8_t *p = (uint8_t *)IOMalloc(t);
+	if (p == NULL)
+		return NULL;
+	bzero(p, t);
+	*(size_t *)p = t;
+	return p + 32;
+}
+
+extern "C" void sfave_lx_free(void *v) {
+	if (v == NULL)
+		return;
+	uint8_t *p = (uint8_t *)v - 32;
+	IOFree(p, *(size_t *)p);
+}
+
+extern "C" uint64_t ktime_get_ns(void) {
+	uint64_t t, ns;
+	clock_get_uptime(&t);
+	absolutetime_to_nanoseconds(t, &ns);
+	return ns;
+}
+
+/*
+ * dma_alloc_coherent for the session: normal-NC pages (upstream's device is not
+ * dma-coherent), mapped at a low IOVA and its window alias on both DARTs. An
+ * unmapped guard page follows each buffer, so an overrun is a DART fault.
+ */
+struct DmaEnt { IOBufferMemoryDescriptor *md; void *cpu; uint64_t iova; uint32_t bytes; };
+static DmaEnt gDma[128];
+static struct { uint64_t iova; uint32_t bytes; } gIovaFree[64];
+static uint64_t gIovaNext = 0x10000000ULL;
+static const uint64_t kIovaEnd = 0xe0000000ULL;
+
+static void dma_unmap_range(uint64_t iova, uint32_t bytes) {
+	sf_dart_table_unmap(&gDart.tables, iova, bytes);
+	sf_dart_table_unmap(&gDart.tables, kWindow + iova, bytes);
+	__asm__ volatile("dsb sy" ::: "memory");
+	dart_invalidate(gCpu);
+	dart_invalidate(gDart1);
+}
+
+static bool iova_take(uint32_t bytes, uint64_t *iova) {
+	for (unsigned i = 0; i < 64; i++) {
+		if (gIovaFree[i].bytes == bytes) {
+			*iova = gIovaFree[i].iova;
+			gIovaFree[i].bytes = 0;
+			return true;
+		}
+	}
+	if (gIovaNext + bytes + 0x4000 > kIovaEnd)
+		return false;
+	*iova = gIovaNext;
+	gIovaNext += (uint64_t)bytes + 0x4000;
+	return true;
+}
+
+static void iova_give(uint64_t iova, uint32_t bytes) {
+	for (unsigned i = 0; i < 64; i++) {
+		if (gIovaFree[i].bytes == 0) {
+			gIovaFree[i].iova = iova;
+			gIovaFree[i].bytes = bytes;
+			return;
+		}
+	}
+	/* table full: this IOVA range is simply not reused */
+}
+
+struct device;
+extern "C" void *dma_alloc_coherent(struct device *, size_t size, uint64_t *iova, unsigned int) {
+	if (!gHwReady || size == 0 || size > 0x10000000)
+		return NULL;
+	uint32_t bytes = (uint32_t)((size + 0x3fff) & ~(size_t)0x3fff);
+	unsigned slot = 0;
+	while (slot < 128 && gDma[slot].md != NULL)
+		slot++;
+	uint64_t at = 0;
+	if (slot == 128 || !iova_take(bytes, &at))
+		return NULL;
+	IOBufferMemoryDescriptor *md = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task,
+	    kIODirectionInOut | kIOMapWriteCombineCache, bytes, 0x0000000fffffc000ULL);
+	if (md == NULL) {
+		iova_give(at, bytes);
+		return NULL;
+	}
+	if (md->prepare() != kIOReturnSuccess) {
+		md->release();
+		iova_give(at, bytes);
+		return NULL;
+	}
+	void *cpu = md->getBytesNoCopy();
+	/* no dirty line of an earlier owner may land on these pages later */
+	md->performOperation(kIOMemoryIncoherentIOFlush, 0, bytes);
+	if (cpu != NULL)
+		bzero(cpu, bytes);
+	__asm__ volatile("dsb sy" ::: "memory");
+	uint32_t off = 0;
+	bool ok = cpu != NULL;
+	for (; ok && off < bytes; off += 0x4000) {
+		uint64_t pa = md->getPhysicalSegment(off, NULL, kIOMemoryMapperNone);
+		if (pa == 0 || (pa & 0x3fff) || map_alias(&gDart.tables, at + off, pa, 0x4000))
+			ok = false;
+	}
+	if (!ok) {
+		LOG("DMA map of 0x%x bytes at 0x%llx failed", bytes, at);
+		dma_unmap_range(at, bytes);
+		md->complete();
+		md->release();
+		iova_give(at, bytes);
+		return NULL;
+	}
+	__asm__ volatile("dsb sy" ::: "memory");
+	if (dart_invalidate(gCpu) || dart_invalidate(gDart1)) {
+		/* the device may hold stale state: keep the pages, never reuse them */
+		gDma[slot].md = md;
+		gDma[slot].cpu = cpu;
+		gDma[slot].iova = at;
+		gDma[slot].bytes = bytes;
+		return NULL;
+	}
+	gDma[slot].md = md;
+	gDma[slot].cpu = cpu;
+	gDma[slot].iova = at;
+	gDma[slot].bytes = bytes;
+	*iova = at;
+	return cpu;
+}
+
+extern "C" void dma_free_coherent(struct device *, size_t, void *cpu, uint64_t iova) {
+	for (unsigned i = 0; i < 128; i++) {
+		if (gDma[i].md != NULL && gDma[i].cpu == cpu && gDma[i].iova == iova) {
+			dma_unmap_range(iova, gDma[i].bytes);
+			iova_give(iova, gDma[i].bytes);
+			gDma[i].md->complete();
+			gDma[i].md->release();
+			bzero(&gDma[i], sizeof gDma[i]);
+			return;
+		}
+	}
+	LOG("dma_free_coherent of an unknown buffer 0x%llx", iova);
 }
