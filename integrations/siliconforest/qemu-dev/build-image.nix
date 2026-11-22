@@ -27,4 +27,6 @@ in base.override (old: {
   xnuLoader = old.xnuLoader.overrideAttrs (o: {
     patches = (o.patches or [ ]) ++ [ ./loader-gop-mode.patch ];
   });
+} // source.pkgs.lib.optionalAttrs (source.parallelsGuest or false) {
+  bootArgs = old.bootArgs + " sf_net_autoname=1";
 })

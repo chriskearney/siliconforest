@@ -13,6 +13,18 @@ let
   x86SourceManifest = builtins.concatStringsSep "" (builtins.filter builtins.isString
     (builtins.split nativeHostArchive sourceManifest));
   p = base.pd.packages.${system};
+  qemuResolver = pkgs.runCommand "siliconforest-qemu-resolver" { } ''
+    mkdir -p "$out/etc"
+    ln -s ../var/run/resolv.conf "$out/etc/resolv.conf"
+  '';
+  qemuOverlays = pkgs.lib.optionals (base.parallelsGuest or false) [
+    p.systemConfiguration-arm64
+    p.symptomReporter-arm64
+    qemuResolver
+    (pieces.mdnsd-quiet.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ ./patches/parallels-16-resolver-watch.patch ];
+    }))
+  ];
   cocoa = builtins.scopedImport { import = importRecipe; } ./cocoa-base.nix;
   # The release copies these source directories whole. Scope their existing
   # host selectors without changing the files copied into x86_64 derivations.
@@ -174,8 +186,8 @@ in {
     bootfiles = image.bootfiles;
     release = image.release;
     qemu-reference-image = image.qemu;
-    qemu-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; };
-    qemu-proof-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; proof = true; };
+    qemu-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; overlays = qemuOverlays; };
+    qemu-proof-image = import ./qemu-image.nix { inherit pkgs; disk = image.qemu; overlays = qemuOverlays; proof = true; };
     default = image.release;
     # x86_64-linux keeps the recipe's own source, ../rebase/pd.nix, and with it the SF_PD check
     qemu-base = recipe "qemu-dev/build-image.nix"

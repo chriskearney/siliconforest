@@ -1,0 +1,514 @@
+VirtIO: Add legacy PCI support and order split rings
+
+Use a contiguous split ring for both transport layouts and write modern queue addresses as two 32-bit fields.
+
+diff --git a/src/Kernel/Extensions/IOVirtIOFamily/IOVirtIOTransport.cpp b/src/Kernel/Extensions/IOVirtIOFamily/IOVirtIOTransport.cpp
+index 6ac8e2e..f0f1951 100644
+--- a/src/Kernel/Extensions/IOVirtIOFamily/IOVirtIOTransport.cpp
++++ b/src/Kernel/Extensions/IOVirtIOFamily/IOVirtIOTransport.cpp
+@@ -1,12 +1,12 @@
+ /*
+- * IOVirtIOTransport.cpp - the virtio 1.0 modern PCI transport the virtio
+- * drivers share (VIRTIO 1.1, section 4.1).
++ * Shared virtio PCI transport (VIRTIO 1.3, section 4.1).
+  *
+  * Copyright (c) 2026 The PureDarwin Project
+  *
+  * SPDX-License-Identifier: MPL-2.0 OR BSD-2-Clause
+  */
+ #include "IOVirtIOTransport.h"
++#include "SFVirtIOLegacy.h"
+ #include <IOKit/IOLib.h>
+ #include <kern/clock.h>
+ 
+@@ -53,7 +53,13 @@ enum {
+ static inline void w8(volatile uint8_t *p, uint8_t v)   { *p = v; }
+ static inline void w16(volatile uint8_t *p, uint16_t v) { *(volatile uint16_t *)p = v; }
+ static inline void w32(volatile uint8_t *p, uint32_t v) { *(volatile uint32_t *)p = v; }
+-static inline void w64(volatile uint8_t *p, uint64_t v) { *(volatile uint64_t *)p = v; }
++
++// Virtio PCI configuration exposes the halves as two 32-bit fields.
++static inline void sf_write_queue_address(volatile uint8_t *p, uint64_t value)
++{
++    w32(p, (uint32_t)value);
++    w32(p + 4, (uint32_t)(value >> 32));
++}
+ static inline uint8_t  r8(volatile uint8_t *p)  { return *p; }
+ static inline uint16_t r16(volatile uint8_t *p) { return *(volatile uint16_t *)p; }
+ static inline uint32_t r32(volatile uint8_t *p) { return *(volatile uint32_t *)p; }
+@@ -129,7 +135,8 @@ static IOMemoryMap *mapBar(IOPCIDevice *pci, uint8_t bar)
+ }
+ 
+ IOVirtIOTransport::IOVirtIOTransport()
+-    : fPCIDevice(0), fCommonCfgMap(0), fNotifyCfgMap(0), fIsrCfgMap(0), fDeviceCfgMap(0),
++    : fPCIDevice(0), fLegacy(false), fLegacyPortIO(false), fMsixCapability(0),
++      fDeviceCfgLength(0), fCommonCfgMap(0), fNotifyCfgMap(0), fIsrCfgMap(0), fDeviceCfgMap(0),
+       fCommonCfg(0), fNotifyCfg(0), fIsrCfg(0), fDeviceCfg(0), fNotifyOffMultiplier(0),
+       fShmCount(0)
+ {
+@@ -139,6 +146,7 @@ bool
+ IOVirtIOTransport::attach(IOPCIDevice *pci)
+ {
+     fPCIDevice = pci;
++    pci->extendedFindPCICapability(kIOPCIMSIXCapability, &fMsixCapability);
+ 
+     // Enable decode before touching any BAR - mapping (and even the
+     // fallback BAR-sizing dance's temporary command-register state) can
+@@ -180,7 +188,8 @@ IOVirtIOTransport::attach(IOPCIDevice *pci)
+         if (cfgType == VIRTIO_PCI_CAP_PCI_CFG) continue;
+ 
+         IOMemoryMap *map = mapBar(pci, bar);
+-        if (!map) {
++        if (!map || off > map->getLength() || len > map->getLength() - off) {
++            OSSafeReleaseNULL(map);
+             IOLog("IOVirtIOTransport: failed to map BAR%u for cap type=%u\n", bar, cfgType);
+             continue;
+         }
+@@ -199,6 +208,7 @@ IOVirtIOTransport::attach(IOPCIDevice *pci)
+             break;
+         case VIRTIO_PCI_CAP_DEVICE_CFG:
+             fDeviceCfgMap = map; fDeviceCfg = base_va;
++            fDeviceCfgLength = len;
+             break;
+         default:
+             map->release();
+@@ -206,6 +216,11 @@ IOVirtIOTransport::attach(IOPCIDevice *pci)
+         }
+     }
+ 
++    const uint16_t device = pci->configRead16(kIOPCIConfigDeviceID);
++    if (nCaps == 0 && device >= 0x1000 && device <= 0x103f &&
++        pci->configRead8(kIOPCIConfigRevisionID) == 0)
++        return sf_attachLegacy();
++
+     IOLog("IOVirtIOTransport: %u vendor caps, common=%d notify=%d isr=%d device=%d shm=%u\n",
+           nCaps, fCommonCfg != 0, fNotifyCfg != 0, fIsrCfg != 0, fDeviceCfg != 0, fShmCount);
+ 
+@@ -222,10 +237,110 @@ IOVirtIOTransport::attach(IOPCIDevice *pci)
+     return true;
+ }
+ 
++template <typename T>
++T IOVirtIOTransport::sf_readLegacy(unsigned reg) const
++{
++    if (fLegacyPortIO) {
++        if (sizeof(T) == 1)
++            return static_cast<T>(fPCIDevice->ioRead8(reg, fCommonCfgMap));
++        if (sizeof(T) == 2)
++            return static_cast<T>(fPCIDevice->ioRead16(reg, fCommonCfgMap));
++        return static_cast<T>(fPCIDevice->ioRead32(reg, fCommonCfgMap));
++    }
++    return *reinterpret_cast<volatile T *>(fCommonCfg + reg);
++}
++
++template <typename T>
++void IOVirtIOTransport::sf_writeLegacy(unsigned reg, T value)
++{
++    if (fLegacyPortIO) {
++        if (sizeof(T) == 1)
++            fPCIDevice->ioWrite8(reg, static_cast<uint8_t>(value), fCommonCfgMap);
++        else if (sizeof(T) == 2)
++            fPCIDevice->ioWrite16(reg, static_cast<uint16_t>(value), fCommonCfgMap);
++        else
++            fPCIDevice->ioWrite32(reg, static_cast<uint32_t>(value), fCommonCfgMap);
++    } else {
++        *reinterpret_cast<volatile T *>(fCommonCfg + reg) = value;
++        OSSynchronizeIO();
++    }
++}
++
++bool IOVirtIOTransport::sf_msixEnabled() const
++{
++    return fMsixCapability &&
++        (fPCIDevice->configRead16(static_cast<UInt8>(fMsixCapability + 2)) & 0x8000) != 0;
++}
++
++bool IOVirtIOTransport::sf_attachLegacy()
++{
++    fLegacyPortIO = (fPCIDevice->configRead32(kIOPCIConfigBaseAddress0) & 1) != 0;
++    if (fLegacyPortIO) {
++        fPCIDevice->setIOEnable(true);
++        fCommonCfgMap = fPCIDevice->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress0);
++    } else {
++        fCommonCfgMap = mapBar(fPCIDevice, 0);
++    }
++    if (!fCommonCfgMap ||
++        fCommonCfgMap->getLength() < sf_virtio_legacy_config_offset(sf_msixEnabled())) {
++        IOLog("IOVirtIOTransport: cannot map legacy %s BAR 0\n", fLegacyPortIO ? "I/O" : "memory");
++        OSSafeReleaseNULL(fCommonCfgMap);
++        return false;
++    }
++    fCommonCfg = reinterpret_cast<volatile uint8_t *>(fCommonCfgMap->getVirtualAddress());
++    fLegacy = true;
++    sf_writeLegacy<uint8_t>(sf_virtio_legacy_status, 0);
++    for (unsigned attempt = 0; attempt < 1000; attempt++) {
++        if (sf_readLegacy<uint8_t>(sf_virtio_legacy_status) == 0) {
++            sf_writeLegacy<uint8_t>(sf_virtio_legacy_status, VIRTIO_STATUS_ACKNOWLEDGE);
++            sf_writeLegacy<uint8_t>(sf_virtio_legacy_status,
++                                    VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER);
++            IOLog("IOVirtIOTransport: legacy PCI on %s BAR 0\n", fLegacyPortIO ? "I/O" : "memory");
++            return true;
++        }
++        IODelay(100);
++    }
++    IOLog("IOVirtIOTransport: legacy device reset timed out\n");
++    return false;
++}
++
++volatile uint8_t *IOVirtIOTransport::deviceConfig() const
++{
++    if (!fLegacy)
++        return fDeviceCfg;
++    unsigned offset = sf_virtio_legacy_config_offset(sf_msixEnabled());
++    if (fLegacyPortIO || offset >= fCommonCfgMap->getLength())
++        return NULL;
++    return fCommonCfg + offset;
++}
++
++bool IOVirtIOTransport::sf_readDeviceConfig(unsigned offset, void *buffer, size_t length) const
++{
++    auto *out = static_cast<uint8_t *>(buffer);
++    if (!fLegacy) {
++        if (!fDeviceCfg || offset > fDeviceCfgLength || length > fDeviceCfgLength - offset)
++            return false;
++        for (size_t i = 0; i < length; i++)
++            out[i] = fDeviceCfg[offset + i];
++        return true;
++    }
++    unsigned base = sf_virtio_legacy_config_offset(sf_msixEnabled());
++    size_t end = fCommonCfgMap->getLength();
++    if (fLegacyPortIO && end > 65536)
++        end = 65536;
++    if (base > end || offset > end - base || length > end - base - offset)
++        return false;
++    for (size_t i = 0; i < length; i++)
++        out[i] = sf_readLegacy<uint8_t>(base + offset + i);
++    return true;
++}
++
+ void
+ IOVirtIOTransport::detach()
+ {
+-    if (fCommonCfg)
++    if (fLegacy)
++        sf_writeLegacy<uint8_t>(sf_virtio_legacy_status, 0);
++    else if (fCommonCfg)
+         w8(fCommonCfg + kCommonDeviceStatus, 0); // reset the device
+ 
+     if (fCommonCfgMap) { fCommonCfgMap->release(); fCommonCfgMap = 0; }
+@@ -234,11 +349,17 @@ IOVirtIOTransport::detach()
+     if (fDeviceCfgMap) { fDeviceCfgMap->release();  fDeviceCfgMap = 0; }
+     fCommonCfg = fNotifyCfg = fIsrCfg = fDeviceCfg = 0;
+     fPCIDevice = 0;
++    fLegacy = fLegacyPortIO = false;
++    fMsixCapability = 0;
++    fDeviceCfgLength = 0;
++    fShmCount = 0;
+ }
+ 
+ uint32_t
+ IOVirtIOTransport::deviceFeaturesLow()
+ {
++    if (fLegacy)
++        return sf_readLegacy<uint32_t>(sf_virtio_legacy_host_features);
+     w32(fCommonCfg + kCommonDeviceFeatureSelect, 0);
+     return r32(fCommonCfg + kCommonDeviceFeature);
+ }
+@@ -246,6 +367,12 @@ IOVirtIOTransport::deviceFeaturesLow()
+ bool
+ IOVirtIOTransport::negotiateFeatures(uint32_t driverFeatureBitsLow)
+ {
++    if (fLegacy) {
++        if (driverFeatureBitsLow & ~deviceFeaturesLow())
++            return false;
++        sf_writeLegacy<uint32_t>(sf_virtio_legacy_guest_features, driverFeatureBitsLow);
++        return true;
++    }
+     w32(fCommonCfg + kCommonDriverFeatureSelect, 0);
+     w32(fCommonCfg + kCommonDriverFeature, driverFeatureBitsLow);
+     // Word 1 (features 32-63): always ack VIRTIO_F_VERSION_1 (bit 32,
+@@ -264,6 +391,11 @@ IOVirtIOTransport::negotiateFeatures(uint32_t driverFeatureBitsLow)
+ void
+ IOVirtIOTransport::setDriverOk()
+ {
++    if (fLegacy) {
++        sf_writeLegacy<uint8_t>(sf_virtio_legacy_status,
++            sf_readLegacy<uint8_t>(sf_virtio_legacy_status) | VIRTIO_STATUS_DRIVER_OK);
++        return;
++    }
+     uint8_t status = r8(fCommonCfg + kCommonDeviceStatus);
+     w8(fCommonCfg + kCommonDeviceStatus, status | VIRTIO_STATUS_DRIVER_OK);
+ }
+@@ -271,13 +403,17 @@ IOVirtIOTransport::setDriverOk()
+ bool
+ IOVirtIOTransport::isDeviceOk()
+ {
+-    uint8_t status = r8(fCommonCfg + kCommonDeviceStatus);
+-    return (status & VIRTIO_STATUS_DRIVER_OK) && !(status & VIRTIO_STATUS_DEVICE_NEEDS_RESET);
++    uint8_t status = fLegacy ? sf_readLegacy<uint8_t>(sf_virtio_legacy_status)
++                             : r8(fCommonCfg + kCommonDeviceStatus);
++    return (status & VIRTIO_STATUS_DRIVER_OK) &&
++        !(status & (VIRTIO_STATUS_DEVICE_NEEDS_RESET | VIRTIO_STATUS_FAILED));
+ }
+ 
+ uint8_t
+ IOVirtIOTransport::readIsr()
+ {
++    if (fLegacy)
++        return sf_readLegacy<uint8_t>(sf_virtio_legacy_isr);
+     return fIsrCfg ? r8(fIsrCfg) : 0;
+ }
+ 
+@@ -286,6 +422,16 @@ IOVirtIOTransport::readIsr()
+ bool
+ IOVirtIOTransport::setMsixVectors(VirtQueue *vq, uint16_t queueVector, uint16_t configVector)
+ {
++    if (fLegacy) {
++        if (!sf_msixEnabled() || fCommonCfgMap->getLength() < sf_virtio_legacy_config_offset(true))
++            return false;
++        sf_writeLegacy<uint16_t>(sf_virtio_legacy_config_vector, configVector);
++        if (sf_readLegacy<uint16_t>(sf_virtio_legacy_config_vector) != configVector)
++            return false;
++        sf_writeLegacy<uint16_t>(sf_virtio_legacy_queue_select, vq->queueIndex);
++        sf_writeLegacy<uint16_t>(sf_virtio_legacy_queue_vector, queueVector);
++        return sf_readLegacy<uint16_t>(sf_virtio_legacy_queue_vector) == queueVector;
++    }
+     if (!fCommonCfg)
+         return false;
+     w16(fCommonCfg + kCommonMsixConfig, configVector);
+@@ -296,11 +442,44 @@ IOVirtIOTransport::setMsixVectors(VirtQueue *vq, uint16_t queueVector, uint16_t
+     return r16(fCommonCfg + kCommonQueueMsixVector) == queueVector;
+ }
+ 
++bool IOVirtIOTransport::sf_initLegacyQueue(VirtQueue *vq, uint16_t index)
++{
++    sf_writeLegacy<uint16_t>(sf_virtio_legacy_queue_select, index);
++    uint16_t size = sf_readLegacy<uint16_t>(sf_virtio_legacy_queue_size);
++    if (size == 0 || (size & (size - 1)) != 0 ||
++        sf_readLegacy<uint32_t>(sf_virtio_legacy_queue_pfn) != 0)
++        return false;
++
++    unsigned usedOffset = sf_virtio_legacy_used_offset(size);
++    size_t bytes = usedOffset + sizeof(VRingUsedHdr) + sizeof(VRingUsedElem) * size + sizeof(uint16_t);
++    vq->ringMem = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
++        kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous, bytes, 0xFFFFF000ULL);
++    if (!vq->ringMem)
++        return false;
++    uint64_t address = vq->ringMem->getPhysicalAddress();
++    if (!address || address % sf_virtio_legacy_page_size != 0 ||
++        address / sf_virtio_legacy_page_size > UINT32_MAX) {
++        OSSafeReleaseNULL(vq->ringMem);
++        return false;
++    }
++    auto *ring = static_cast<uint8_t *>(vq->ringMem->getBytesNoCopy());
++    bzero(ring, bytes);
++    vq->desc = ring;
++    vq->avail = ring + sizeof(VRingDesc) * size;
++    vq->used = ring + usedOffset;
++    vq->queueSize = size;
++    OSSynchronizeIO();
++    sf_writeLegacy<uint32_t>(sf_virtio_legacy_queue_pfn, address / sf_virtio_legacy_page_size);
++    return true;
++}
++
+ bool
+ IOVirtIOTransport::initQueue(VirtQueue *vq, uint16_t index, uint16_t size)
+ {
+     bzero(vq, sizeof(*vq));
+     vq->queueIndex = index;
++    if (fLegacy)
++        return sf_initLegacyQueue(vq, index);
+ 
+     w16(fCommonCfg + kCommonQueueSelect, index);
+     uint16_t maxSize = r16(fCommonCfg + kCommonQueueSize);
+@@ -309,30 +488,31 @@ IOVirtIOTransport::initQueue(VirtQueue *vq, uint16_t index, uint16_t size)
+     if (size > maxSize) size = maxSize;
+     vq->queueSize = size;
+ 
+-    size_t descBytes  = sizeof(VRingDesc) * size;
+-    size_t availBytes = sizeof(VRingAvailHdr) + sizeof(uint16_t) * size;
+-    size_t usedBytes  = sizeof(VRingUsedHdr) + sizeof(VRingUsedElem) * size;
+-
+-    vq->descMem = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
+-        kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous, descBytes, 0xFFFFFFFFULL);
+-    vq->availMem = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
+-        kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous, availBytes, 0xFFFFFFFFULL);
+-    vq->usedMem = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
+-        kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous, usedBytes, 0xFFFFFFFFULL);
+-    if (!vq->descMem || !vq->availMem || !vq->usedMem)
++    // Keep the ring areas ordered and reserve the two event index fields.
++    // Align the used ring to its own cache line, as in Linux's PCI split ring.
++    constexpr size_t usedAlignment = 64;
++    const size_t availOffset = sizeof(VRingDesc) * size;
++    const size_t availEnd = availOffset + sizeof(VRingAvailHdr) + sizeof(uint16_t) * (size + 1);
++    const size_t usedOffset = (availEnd + usedAlignment - 1) & ~(usedAlignment - 1);
++    const size_t ringBytes = usedOffset + sizeof(VRingUsedHdr) + sizeof(VRingUsedElem) * size +
++        sizeof(uint16_t);
++
++    vq->ringMem = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
++        kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous, ringBytes, 0xFFFFFFFFULL);
++    if (!vq->ringMem)
+         return false;
+ 
+-    vq->desc  = vq->descMem->getBytesNoCopy();
+-    vq->avail = vq->availMem->getBytesNoCopy();
+-    vq->used  = vq->usedMem->getBytesNoCopy();
+-    bzero(vq->desc, descBytes);
+-    bzero(vq->avail, availBytes);
+-    bzero(vq->used, usedBytes);
++    uint8_t *base = (uint8_t *)vq->ringMem->getBytesNoCopy();
++    bzero(base, ringBytes);
++    vq->desc = base;
++    vq->avail = base + availOffset;
++    vq->used = base + usedOffset;
++    const uint64_t phys = vq->ringMem->getPhysicalAddress();
+ 
+-    w64(fCommonCfg + kCommonQueueDesc, vq->descMem->getPhysicalAddress());
+-    w64(fCommonCfg + kCommonQueueDriver, vq->availMem->getPhysicalAddress());
+-    w64(fCommonCfg + kCommonQueueDevice, vq->usedMem->getPhysicalAddress());
+     w16(fCommonCfg + kCommonQueueSize, vq->queueSize);
++    sf_write_queue_address(fCommonCfg + kCommonQueueDesc, phys);
++    sf_write_queue_address(fCommonCfg + kCommonQueueDriver, phys + availOffset);
++    sf_write_queue_address(fCommonCfg + kCommonQueueDevice, phys + usedOffset);
+     w16(fCommonCfg + kCommonQueueEnable, 1);
+ 
+     vq->notifyAddr = fNotifyCfg +
+@@ -343,9 +523,10 @@ IOVirtIOTransport::initQueue(VirtQueue *vq, uint16_t index, uint16_t size)
+ void
+ IOVirtIOTransport::freeQueue(VirtQueue *vq)
+ {
+-    if (vq->descMem)  { vq->descMem->release();  vq->descMem = 0; }
+-    if (vq->availMem) { vq->availMem->release(); vq->availMem = 0; }
+-    if (vq->usedMem)  { vq->usedMem->release();  vq->usedMem = 0; }
++    if (vq->ringMem) {
++        vq->ringMem->release();
++        vq->ringMem = NULL;
++    }
+ }
+ 
+ uint16_t
+@@ -394,6 +575,10 @@ IOVirtIOTransport::addDescChain(VirtQueue *vq, const VirtIOChainEntry *entries,
+ void
+ IOVirtIOTransport::notify(VirtQueue *vq)
+ {
++    if (fLegacy) {
++        sf_writeLegacy<uint16_t>(sf_virtio_legacy_queue_notify, vq->queueIndex);
++        return;
++    }
+     w16(vq->notifyAddr, vq->queueIndex);
+ }
+ 
+diff --git a/src/Kernel/Extensions/IOVirtIOFamily/IOVirtIOTransport.h b/src/Kernel/Extensions/IOVirtIOFamily/IOVirtIOTransport.h
+index 4beed98..9613c8e 100644
+--- a/src/Kernel/Extensions/IOVirtIOFamily/IOVirtIOTransport.h
++++ b/src/Kernel/Extensions/IOVirtIOFamily/IOVirtIOTransport.h
+@@ -1,6 +1,5 @@
+ /*
+- * IOVirtIOTransport.h - the virtio 1.0 modern PCI transport the virtio drivers
+- * share (VIRTIO 1.1, section 4.1).
++ * Shared virtio PCI transport (VIRTIO 1.3, section 4.1).
+  *
+  * Copyright (c) 2026 The PureDarwin Project
+  *
+@@ -12,12 +11,10 @@
+ #include <IOKit/IOBufferMemoryDescriptor.h>
+ #include <IOKit/pci/IOPCIDevice.h>
+ 
+-// One split virtqueue: descriptor table + avail ring + used ring, each a
+-// separate physically-contiguous allocation.
++// One split virtqueue: descriptor table, avail ring and used ring share
++// a physically contiguous allocation in that order.
+ struct VirtQueue {
+-    IOBufferMemoryDescriptor *descMem;
+-    IOBufferMemoryDescriptor *availMem;
+-    IOBufferMemoryDescriptor *usedMem;
++    IOBufferMemoryDescriptor *ringMem;
+     void      *desc;   // struct VRingDesc[queueSize]
+     void      *avail;  // struct VRingAvailHdr + ring[queueSize]
+     void      *used;   // struct VRingUsedHdr + ring[queueSize] of VRingUsedElem
+@@ -117,14 +114,25 @@ public:
+     // a VIRTIO_PCI_CAP_SHARED_MEMORY_CFG region by shmid: guest physical address and length
+     bool sharedMemoryRegion(uint8_t shmid, uint64_t *outPhys, uint64_t *outLength);
+ 
+-    volatile uint8_t *deviceConfig() const { return fDeviceCfg; }
++    volatile uint8_t *deviceConfig() const;
++    bool sf_readDeviceConfig(unsigned offset, void *buffer, size_t length) const;
++    unsigned sf_netHeaderSize() const { return fLegacy ? 10 : 12; }
++    bool sf_msixEnabled() const;
+     uint8_t readIsr(); // clears the ISR status bits on read, per spec
+     // msi-x table entries for one queue and for config changes, kNoVector leaves one silent
+     enum { kNoVector = 0xffff };
+     bool setMsixVectors(VirtQueue *vq, uint16_t queueVector, uint16_t configVector);
+ 
+ private:
++    bool sf_attachLegacy();
++    bool sf_initLegacyQueue(VirtQueue *vq, uint16_t index);
++    template <typename T> T sf_readLegacy(unsigned reg) const;
++    template <typename T> void sf_writeLegacy(unsigned reg, T value);
++
+     IOPCIDevice       *fPCIDevice;
++    bool               fLegacy, fLegacyPortIO;
++    IOByteCount        fMsixCapability;
++    uint32_t           fDeviceCfgLength;
+     IOMemoryMap       *fCommonCfgMap;
+     IOMemoryMap       *fNotifyCfgMap;
+     IOMemoryMap       *fIsrCfgMap;
+diff --git a/src/Kernel/Extensions/IOVirtIOFamily/SFVirtIOLegacy.h b/src/Kernel/Extensions/IOVirtIOFamily/SFVirtIOLegacy.h
+new file mode 100644
+index 0000000..d18122d
+--- /dev/null
++++ b/src/Kernel/Extensions/IOVirtIOFamily/SFVirtIOLegacy.h
+@@ -0,0 +1,29 @@
++/* SPDX-License-Identifier: MIT */
++/* Copyright (c) 2026 SiliconForest contributors */
++#pragma once
++
++enum {
++    sf_virtio_legacy_host_features = 0,
++    sf_virtio_legacy_guest_features = 4,
++    sf_virtio_legacy_queue_pfn = 8,
++    sf_virtio_legacy_queue_size = 12,
++    sf_virtio_legacy_queue_select = 14,
++    sf_virtio_legacy_queue_notify = 16,
++    sf_virtio_legacy_status = 18,
++    sf_virtio_legacy_isr = 19,
++    sf_virtio_legacy_config_vector = 20,
++    sf_virtio_legacy_queue_vector = 22,
++    sf_virtio_legacy_page_size = 4096,
++};
++
++constexpr unsigned sf_virtio_legacy_config_offset(bool msix)
++{
++    return msix ? 24 : 20;
++}
++
++constexpr unsigned sf_virtio_legacy_used_offset(unsigned queueSize)
++{
++    // 16 bytes per descriptor, followed by the available ring and used_event.
++    const unsigned availableEnd = 16 * queueSize + 4 + 2 * queueSize + 2;
++    return (availableEnd + sf_virtio_legacy_page_size - 1) & ~(sf_virtio_legacy_page_size - 1);
++}
+diff --git a/src/Kernel/Extensions/IOVirtIOFamily/tests/legacy_layout_test.cpp b/src/Kernel/Extensions/IOVirtIOFamily/tests/legacy_layout_test.cpp
+new file mode 100644
+index 0000000..604c981
+--- /dev/null
++++ b/src/Kernel/Extensions/IOVirtIOFamily/tests/legacy_layout_test.cpp
+@@ -0,0 +1,18 @@
++// SPDX-License-Identifier: MIT
++// Copyright (c) 2026 SiliconForest contributors
++
++#include <SFVirtIOLegacy.h>
++
++#include <assert.h>
++#include <stdio.h>
++
++int main()
++{
++    assert(sf_virtio_legacy_config_offset(false) == 20);
++    assert(sf_virtio_legacy_config_offset(true) == 24);
++    assert(sf_virtio_legacy_config_vector == 20);
++    assert(sf_virtio_legacy_queue_vector == 22);
++    assert(sf_virtio_legacy_used_offset(32) == 4096);
++    assert(sf_virtio_legacy_used_offset(256) == 8192);
++    puts("legacy configuration offsets and split ring alignment passed");
++}

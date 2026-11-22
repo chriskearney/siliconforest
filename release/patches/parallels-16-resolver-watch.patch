@@ -1,0 +1,191 @@
+Network: Follow the published resolver configuration
+
+Have the Darwin POSIX daemon watch the file and its directory so the existing unicast configuration update sees new, replaced, and withdrawn server lists.
+
+diff --git a/src/Libraries/mDNSResponder/mDNSPosix/PosixDaemon.c b/src/Libraries/mDNSResponder/mDNSPosix/PosixDaemon.c
+index 0191b5b..73b1354 100644
+--- a/src/Libraries/mDNSResponder/mDNSPosix/PosixDaemon.c
++++ b/src/Libraries/mDNSResponder/mDNSPosix/PosixDaemon.c
+@@ -39,6 +39,8 @@
+ #include <sys/socket.h>
+ 
+ #if __APPLE__
++#include <sys/event.h>
++#include <sys/stat.h>
+ #undef daemon
+ extern int daemon(int, int);
+ #endif
+@@ -49,6 +51,9 @@ extern int daemon(int, int);
+ #include "mDNSUNP.h"        // For daemon()
+ #include "uds_daemon.h"
+ #include "PlatformCommon.h"
++#if __APPLE__
++#include "uDNS.h"
++#endif
+ #include "posix_utilities.h"    // For getLocalTimestamp()
+ 
+ #define CONFIG_FILE "/etc/mdnsd.conf"
+@@ -91,6 +96,9 @@ static void Reconfigure(mDNS *m)
+     mDNSAddr DynDNSIP;
+     const mDNSAddr dummy = { mDNSAddrType_IPv4, { { { 1, 1, 1, 1 } } } };;
+     mDNS_SetPrimaryInterfaceInfo(m, NULL, NULL, NULL);
++#if __APPLE__
++    uDNS_SetupDNSConfig(m);
++#else
+     /* mDNS_AddDNSServer(), reached through ParseDNSServers(), is one of the few
+      * core entry points that expects the caller to already hold the lock - it
+      * asserts on m->mDNS_busy instead of taking it. Without this the daemon
+@@ -105,6 +113,7 @@ static void Reconfigure(mDNS *m)
+     if (ParseDNSServers(m, uDNS_SERVERS_FILE) < 0)
+         LogMsg("Unable to parse DNS server list. Unicast DNS-SD unavailable");
+     mDNS_Unlock(m);
++#endif
+     ReadDDNSSettingsFromConfFile(m, CONFIG_FILE, &DynDNSHostname, &DynDNSZone, NULL);
+     mDNSPlatformSourceAddrForDest(&DynDNSIP, &dummy);
+     if (DynDNSHostname.c[0]) mDNS_AddDynDNSHostName(m, &DynDNSHostname, NULL, NULL);
+@@ -155,10 +164,78 @@ mDNSlocal void DumpStateLog()
+     LogRedact(MDNS_LOG_CATEGORY_DEFAULT, MDNS_LOG_DEFAULT, "---- END STATE LOG ---- (%s mDNSResponder Build %d.%02d.%02d)", timestamp, major_version, minor_version1, minor_version2);
+ }
+ 
++#if __APPLE__
++struct sf_resolver_watch
++{
++    mDNS *mdns;
++    int queue;
++    int directory;
++    int file;
++};
++
++// Follow the new inode after configd's rename. Keep the current watch when
++// another file in /var/run changes.
++static mDNSBool sf_watch_resolver_file(struct sf_resolver_watch *watch)
++{
++    struct stat current, watched;
++    struct kevent event;
++    int file = open(uDNS_SERVERS_FILE, O_EVTONLY);
++
++    if (file < 0 && (errno != ENOENT || watch->file < 0)) return mDNSfalse;
++    if (file >= 0 && watch->file >= 0 && fstat(file, &current) == 0 && fstat(watch->file, &watched) == 0
++        && current.st_dev == watched.st_dev && current.st_ino == watched.st_ino)
++    {
++        close(file);
++        return mDNSfalse;
++    }
++
++    if (watch->file >= 0) close(watch->file);
++    watch->file = file;
++    if (file >= 0)
++    {
++        EV_SET(&event, file, EVFILT_VNODE, EV_ADD | EV_CLEAR, NOTE_WRITE | NOTE_DELETE | NOTE_RENAME, 0, NULL);
++        if (kevent(watch->queue, &event, 1, NULL, 0, NULL) < 0)
++        {
++            LogMsg("Unable to watch resolver file: %s", strerror(errno));
++            close(file);
++            watch->file = -1;
++        }
++    }
++    return mDNStrue;
++}
++
++static void sf_resolver_changed(int fd, void *context)
++{
++    struct sf_resolver_watch *watch = context;
++    struct kevent events[2];
++    const struct timespec immediate = {0};
++    int count = kevent(fd, NULL, 0, events, 2, &immediate);
++    mDNSBool fileChanged = mDNSfalse;
++
++    if (count <= 0) return;
++    for (int i = 0; i < count; i++)
++        if (watch->file >= 0 && events[i].ident == (uintptr_t)watch->file) fileChanged = mDNStrue;
++
++    if (sf_watch_resolver_file(watch) || fileChanged)
++        uDNS_SetupDNSConfig(watch->mdns);
++}
++#endif
++
+ mDNSlocal mStatus MainLoop(mDNS *m) // Loop until we quit.
+ {
+     sigset_t signals;
+     mDNSBool gotData = mDNSfalse;
++#if __APPLE__
++    struct sf_resolver_watch watch = {m, kqueue(), open("/var/run", O_EVTONLY | O_DIRECTORY), -1};
++    struct kevent directoryEvent;
++    EV_SET(&directoryEvent, watch.directory, EVFILT_VNODE, EV_ADD | EV_CLEAR, NOTE_WRITE, 0, NULL);
++    mDNSBool watching = watch.queue >= 0 && watch.directory >= 0
++        && kevent(watch.queue, &directoryEvent, 1, NULL, 0, NULL) == 0
++        && mDNSPosixAddFDToEventLoop(watch.queue, sf_resolver_changed, &watch) == mStatus_NoError;
++    if (watching) sf_watch_resolver_file(&watch);
++    else LogMsg("Unable to watch for resolver configuration changes");
++    uDNS_SetupDNSConfig(m);
++#endif
+ 
+     mDNSPosixListenForSignalInEventLoop(SIGINT);
+     mDNSPosixListenForSignalInEventLoop(SIGTERM);
+@@ -194,6 +271,12 @@ mDNSlocal mStatus MainLoop(mDNS *m) // L
+         if (sigismember(&signals, SIGPIPE)) LogMsg("Received SIGPIPE - ignoring");
+         if (sigismember(&signals, SIGINT) || sigismember(&signals, SIGTERM)) break;
+     }
++#if __APPLE__
++    if (watching) mDNSPosixRemoveFDFromEventLoop(watch.queue);
++    if (watch.file >= 0) close(watch.file);
++    if (watch.directory >= 0) close(watch.directory);
++    if (watch.queue >= 0) close(watch.queue);
++#endif
+     return EINTR;
+ }
+ 
+diff --git a/src/Libraries/mDNSResponder/mDNSPosix/mDNSPosix.c b/src/Libraries/mDNSResponder/mDNSPosix/mDNSPosix.c
+index dcc4b58..3cc6008 100755
+--- a/src/Libraries/mDNSResponder/mDNSPosix/mDNSPosix.c
++++ b/src/Libraries/mDNSResponder/mDNSPosix/mDNSPosix.c
+@@ -863,6 +863,14 @@ mDNSexport mDNSBool mDNSPlatformSetDNSConfig(mDNSBool setservers, mDNSBool setse
+     if (RegDomains   ) *RegDomains     = NULL;
+     if (BrowseDomains) *BrowseDomains  = NULL;
+ 
++#if __APPLE__
++    if (setservers)
++    {
++        extern mDNS mDNSStorage;
++        return ParseDNSServers(&mDNSStorage, uDNS_SERVERS_FILE) >= 0;
++    }
++#endif
++
+     /* Return "configuration unchanged".
+      *
+      * uDNS_SetupDNSConfig() marks every entry in m->DNSServers for deletion,
+@@ -922,6 +930,9 @@ mDNSexport int ParseDNSServers(mDNS *m, const char *filePath)
+     char keyword[11];
+     int numOfServers = 0;
+     FILE *fp = fopen(filePath, "r");
++#if __APPLE__
++    if (fp == NULL && errno == ENOENT) return 0; // The resolver configuration was withdrawn.
++#endif
+     if (fp == NULL) return -1;
+     while (fgets(line,sizeof(line),fp))
+     {
+@@ -939,7 +950,11 @@ mDNSexport int ParseDNSServers(mDNS *m, const char *filePath)
+         }
+     }
+     fclose(fp);
++#if __APPLE__
++    return numOfServers; // An empty list removes the previous servers.
++#else
+     return (numOfServers > 0) ? 0 : -1;
++#endif
+ }
+ 
+ // Searches the interface list looking for the named interface.
+@@ -1773,10 +1788,12 @@ mDNSexport mStatus mDNSPlatformInit(mDNS *const m)
+     // Tell mDNS core about the network interfaces on this machine.
+     if (err == mStatus_NoError) err = SetupInterfaceList(m);
+ 
++#if !__APPLE__
+     // Tell mDNS core about DNS Servers
+     mDNS_Lock(m);
+     if (err == mStatus_NoError) ParseDNSServers(m, uDNS_SERVERS_FILE);
+     mDNS_Unlock(m);
++#endif
+ 
+     if (err == mStatus_NoError)
+     {

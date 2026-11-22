@@ -95,6 +95,10 @@ let
           ./patches/parallels-09-bridge-bar-windows.patch
           ./patches/parallels-10-platform-ahci.patch
           ./patches/parallels-11-pci-io-apertures.patch
+          ./patches/parallels-12-legacy-virtio.patch
+          ./patches/parallels-13-virtio-net-msix.patch
+          ./patches/parallels-14-bsd-autoname.patch
+          ./patches/parallels-15-dhcp-build.patch
         ];
       patchFlags = [ "-p1" "--fuzz=0" ];
     }
@@ -120,7 +124,7 @@ let
   pd = (import (prepared + "/flake.nix")).outputs (inputs // { self = pd; })
     // { outPath = prepared; inherit inputs; buildSystem = system; buildPkgs = pkgs; };
 in {
-  inherit pd pkgs sources renamed renameTools buildSource;
+  inherit pd pkgs sources renamed renameTools buildSource parallelsGuest;
   rev = if forkRev != null then forkRev
     else if sourceName == "upstream-cocoa" then lock.cocoaRename.expectedForkCommit
     else lock.baseRename.expectedForkCommit;

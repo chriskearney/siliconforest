@@ -1,0 +1,420 @@
+VirtIONet: Handle queue completions on MSI-X
+
+diff --git a/src/Kernel/Extensions/IOVirtIONet/IOVirtIONet.cpp b/src/Kernel/Extensions/IOVirtIONet/IOVirtIONet.cpp
+index 6bc13a7..0855690 100644
+--- a/src/Kernel/Extensions/IOVirtIONet/IOVirtIONet.cpp
++++ b/src/Kernel/Extensions/IOVirtIONet/IOVirtIONet.cpp
+@@ -11,6 +11,7 @@
+ #include <IOKit/IOLib.h>
+ #include <IOKit/network/IONetworkMedium.h>
+ #include <IOKit/network/IOOutputQueue.h>
++#include <IOKit/IOInterruptEventSource.h>
+ #include <libkern/OSByteOrder.h>
+ 
+ #define super IOEthernetController
+@@ -35,8 +36,10 @@ bool IOVirtIONet::init(OSDictionary *pro
+     bzero(&fTxQ, sizeof(fTxQ));
+     bzero(fRxBuf, sizeof(fRxBuf));
+     bzero(fTxBuf, sizeof(fTxBuf));
+-    fTxNextSlot = 0;
+-    fTxOutstanding = 0;
++    fTxLock = NULL;
++    fTxActive = 0;
++    fRxCount = fTxCount = fHeaderSize = 0;
++    bzero(fIrq, sizeof(fIrq));
+     fEnabled = false;
+     fRxPackets = fTxPackets = 0;
+     bzero(&fMACAddress, sizeof(fMACAddress));
+@@ -67,32 +70,28 @@ IOService *IOVirtIONet::probe(IOService
+ 
+ bool IOVirtIONet::readMACAddress()
+ {
+-    volatile uint8_t *cfg = fTransport.deviceConfig();
+-    if (!cfg)
+-        return false;
+-
+-    for (int i = 0; i < 6; i++)
+-        fMACAddress.bytes[i] = cfg[i];
+-    return true;
++    return fTransport.sf_readDeviceConfig(0, fMACAddress.bytes, sizeof(fMACAddress.bytes));
+ }
+ 
+-void IOVirtIONet::postRxBuffer(unsigned slot)
++bool IOVirtIONet::postRxBuffer(unsigned slot)
+ {
+     VirtIOChainEntry entry = { fRxBuf[slot]->getPhysicalAddress(),
+-                              (uint32_t)(kVNetHdrSize + kVNetMaxPacket), true };
+-    fTransport.addDescChain(&fRxQ, &entry, 1);
++                              (uint32_t)(fHeaderSize + kVNetMaxPacket), true };
++    // Initial heads are sequential. After reclaiming, the freed head is reused.
++    return fTransport.addDescChainFree(&fRxQ, &entry, 1) == static_cast<int>(slot);
+ }
+ 
+ bool IOVirtIONet::initRxRing()
+ {
+-    for (int i = 0; i < kVNetRxCount; i++) {
++    for (unsigned i = 0; i < fRxCount; i++) {
+         fRxBuf[i] = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
+             kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous,
+-            kVNetHdrSize + kVNetMaxPacket, 0xFFFFFFFFULL);
++            fHeaderSize + kVNetMaxPacket, 0xFFFFFFFFULL);
+         if (!fRxBuf[i])
+             return false;
+-        bzero(fRxBuf[i]->getBytesNoCopy(), kVNetHdrSize + kVNetMaxPacket);
+-        postRxBuffer(i); // addDescChain's cyclic head index == i here (fresh queue)
++        bzero(fRxBuf[i]->getBytesNoCopy(), fHeaderSize + kVNetMaxPacket);
++        if (!postRxBuffer(i))
++            return false;
+     }
+     return true;
+ }
+@@ -112,12 +111,12 @@ bool IOVirtIONet::start(IOService *provi
+         return false;
+     }
+ 
+-    // completions are polled, and an unacknowledged intx would hold a shared level line high
++    // No INTx handler: use MSI-X where available and poll otherwise.
+     fPCIDevice->configWrite16(kIOPCIConfigCommand,
+         fPCIDevice->configRead16(kIOPCIConfigCommand) | kIOPCICommandInterruptDisable);
+ 
+     if (!fTransport.attach(fPCIDevice)) {
+-        IOLog("IOVirtIONet: failed to find/map virtio-pci capabilities\n");
++        IOLog("IOVirtIONet: failed to attach the virtio PCI transport\n");
+         return false;
+     }
+     if (!fTransport.negotiateFeatures(VIRTIO_NET_F_MAC)) {
+@@ -125,23 +124,20 @@ bool IOVirtIONet::start(IOService *provi
+         return false;
+     }
+ 
+-    if (!readMACAddress()) {
+-        IOLog("IOVirtIONet: failed to read MAC from device config\n");
+-        return false;
+-    }
+-    IOLog("IOVirtIONet: MAC %02x:%02x:%02x:%02x:%02x:%02x\n",
+-        fMACAddress.bytes[0], fMACAddress.bytes[1], fMACAddress.bytes[2],
+-        fMACAddress.bytes[3], fMACAddress.bytes[4], fMACAddress.bytes[5]);
+-
++    fHeaderSize = fTransport.sf_netHeaderSize();
+     if (!fTransport.initQueue(&fRxQ, 0, kVNetRxCount) ||
+         !fTransport.initQueue(&fTxQ, 1, kVNetTxCount)) {
+         IOLog("IOVirtIONet: failed to init virtqueues\n");
+         return false;
+     }
+-    for (int i = 0; i < kVNetTxCount; i++) {
++    fTransport.enableFreeList(&fRxQ);
++    fTransport.enableFreeList(&fTxQ);
++    fRxCount = fRxQ.queueSize < kVNetRxCount ? fRxQ.queueSize : kVNetRxCount;
++    fTxCount = fTxQ.queueSize < kVNetTxCount ? fTxQ.queueSize : kVNetTxCount;
++    for (unsigned i = 0; i < fTxCount; i++) {
+         fTxBuf[i] = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
+             kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous,
+-            kVNetHdrSize + kVNetMaxPacket, 0xFFFFFFFFULL);
++            fHeaderSize + kVNetMaxPacket, 0xFFFFFFFFULL);
+         if (!fTxBuf[i])
+             return false;
+     }
+@@ -150,18 +146,29 @@ bool IOVirtIONet::start(IOService *provi
+         return false;
+     }
+ 
+-    fTransport.setDriverOk();
+-    fTransport.notify(&fRxQ); // kick the device to start filling posted RX buffers
+-
++    fTxLock = IOLockAlloc();
+     fWorkLoop = getWorkLoop();
+-    if (!fWorkLoop)
++    if (!fTxLock || !fWorkLoop)
+         return false;
+ 
+-    fPollTimer = IOTimerEventSource::timerEventSource(this, &IOVirtIONet::pollTimerAction);
+-    if (!fPollTimer || fWorkLoop->addEventSource(fPollTimer) != kIOReturnSuccess) {
+-        IOLog("IOVirtIONet: failed to create poll timer\n");
++    if (!sf_setupInterrupts()) {
++        fPollTimer = IOTimerEventSource::timerEventSource(this, &IOVirtIONet::pollTimerAction);
++        if (!fPollTimer || fWorkLoop->addEventSource(fPollTimer) != kIOReturnSuccess) {
++            IOLog("IOVirtIONet: failed to create poll timer\n");
++            return false;
++        }
++        IOLog("IOVirtIONet: completions use polling\n");
++    }
++
++    if (!readMACAddress()) {
++        IOLog("IOVirtIONet: failed to read MAC from device config\n");
+         return false;
+     }
++    IOLog("IOVirtIONet: MAC %02x:%02x:%02x:%02x:%02x:%02x\n",
++        fMACAddress.bytes[0], fMACAddress.bytes[1], fMACAddress.bytes[2],
++        fMACAddress.bytes[3], fMACAddress.bytes[4], fMACAddress.bytes[5]);
++    fTransport.setDriverOk();
++    fTransport.notify(&fRxQ);
+ 
+     if (!publishLinkMedium())
+         return false;
+@@ -180,20 +187,32 @@ void IOVirtIONet::stop(IOService *provid
+ {
+     if (fEnabled)
+         disable(fInterface);
++    sf_removeInterrupts();
++    if (fWorkLoop && fPollTimer) {
++        fWorkLoop->removeEventSource(fPollTimer);
++        OSSafeReleaseNULL(fPollTimer);
++    }
+ 
+     if (fInterface) {
+         detachInterface(fInterface, true);
+         fInterface->release();
+         fInterface = NULL;
+     }
+-    if (fWorkLoop && fPollTimer)
+-        fWorkLoop->removeEventSource(fPollTimer);
++    fTransport.detach();
+ 
+     super::stop(provider);
+ }
+ 
+ void IOVirtIONet::free()
+ {
++    sf_removeInterrupts();
++    if (fWorkLoop && fPollTimer)
++        fWorkLoop->removeEventSource(fPollTimer);
++    fTransport.detach();
++    if (fTxLock) {
++        IOLockFree(fTxLock);
++        fTxLock = NULL;
++    }
+     for (int i = 0; i < kVNetRxCount; i++)
+         if (fRxBuf[i]) { fRxBuf[i]->release(); fRxBuf[i] = NULL; }
+     for (int i = 0; i < kVNetTxCount; i++)
+@@ -201,7 +220,6 @@ void IOVirtIONet::free()
+ 
+     fTransport.freeQueue(&fRxQ);
+     fTransport.freeQueue(&fTxQ);
+-    fTransport.detach();
+ 
+     if (fPollTimer) { fPollTimer->release(); fPollTimer = NULL; }
+ 
+@@ -214,6 +232,62 @@ void IOVirtIONet::free()
+     super::free();
+ }
+ 
++bool IOVirtIONet::sf_setupInterrupts()
++{
++    int sources[3];
++    unsigned count = 0;
++    int type;
++    for (int i = 0; count < 3 && fPCIDevice->getInterruptType(i, &type) == kIOReturnSuccess; i++)
++        if (type & kIOInterruptTypePCIMessaged)
++            sources[count++] = i;
++    if (count != 3)
++        return false;
++
++    for (unsigned i = 0; i < 3; i++) {
++        fIrq[i] = IOInterruptEventSource::interruptEventSource(this, &IOVirtIONet::sf_interrupt,
++                                                             fPCIDevice, sources[i]);
++        if (!fIrq[i] || fWorkLoop->addEventSource(fIrq[i]) != kIOReturnSuccess) {
++            sf_removeInterrupts();
++            return false;
++        }
++        fIrq[i]->enable();
++    }
++
++    if (!fTransport.sf_msixEnabled() ||
++        !fTransport.setMsixVectors(&fRxQ, 1, 0) ||
++        !fTransport.setMsixVectors(&fTxQ, 2, 0)) {
++        sf_removeInterrupts();
++        return false;
++    }
++
++    return true;
++}
++
++void IOVirtIONet::sf_removeInterrupts()
++{
++    for (auto &source : fIrq) {
++        if (source) {
++            source->disable();
++            fWorkLoop->removeEventSource(source);
++            OSSafeReleaseNULL(source);
++        }
++    }
++}
++
++void IOVirtIONet::sf_interrupt(OSObject *owner, IOInterruptEventSource *source, int)
++{
++    auto *self = static_cast<IOVirtIONet *>(owner);
++    for (unsigned i = 0; i < 3; i++) {
++        if (source != self->fIrq[i])
++            continue;
++        if (i == 1)
++            self->pollReceive();
++        else if (i == 2)
++            self->sf_reapTx();
++        return;
++    }
++}
++
+ bool IOVirtIONet::publishLinkMedium()
+ {
+     OSDictionary *mediumDict = OSDictionary::withCapacity(2);
+@@ -281,39 +355,50 @@ void IOVirtIONet::pollTimerAction(OSObje
+ void IOVirtIONet::pollReceive()
+ {
+     bool reposted = false;
+-    uint32_t len; uint16_t id;
++    uint32_t len;
++    uint16_t id;
+ 
+     while (fTransport.pollForCompletion(&fRxQ, 0, &len, &id)) {
+-        if (id < kVNetRxCount && len > kVNetHdrSize && len <= kVNetHdrSize + kVNetMaxPacket) {
+-            size_t pktLen = len - kVNetHdrSize;
+-            uint8_t *payload = (uint8_t *)fRxBuf[id]->getBytesNoCopy() + kVNetHdrSize;
+-
++        if (id >= fRxCount)
++            continue;
++        if (len > fHeaderSize && len <= fHeaderSize + kVNetMaxPacket) {
++            size_t pktLen = len - fHeaderSize;
++            uint8_t *payload = (uint8_t *)fRxBuf[id]->getBytesNoCopy() + fHeaderSize;
+             mbuf_t m = allocatePacket((UInt32)pktLen);
+             if (m) {
+-                if (mbuf_copyback(m, 0, pktLen, payload, MBUF_WAITOK) == 0) {
++                if (fInterface && mbuf_copyback(m, 0, pktLen, payload, MBUF_WAITOK) == 0) {
+                     mbuf_pkthdr_setlen(m, pktLen);
+                     mbuf_setlen(m, pktLen);
+-                }
+-                fRxPackets++;
+-                if (fInterface)
++                    fRxPackets++;
+                     fInterface->inputPacket(m, (UInt32)pktLen, IONetworkInterface::kInputOptionQueuePacket);
++                } else {
++                    freePacket(m);
++                }
+             }
+         }
+-        if (id < kVNetRxCount)
+-            postRxBuffer(id); // hand the same buffer back to the device
+-        reposted = true;
+-    }
+-
+-    // Also reclaim any finished TX slots so outputPacket() doesn't stall
+-    // waiting for a free one under sustained send load.
+-    while (fTransport.pollForCompletion(&fTxQ, 0, 0, 0)) {
+-        if (fTxOutstanding) fTxOutstanding--;
++        fTransport.freeDescChain(&fRxQ, id);
++        reposted |= postRxBuffer(id);
+     }
+ 
+     if (reposted)
+         fTransport.notify(&fRxQ);
+     if (fInterface)
+         fInterface->flushInputQueue();
++    if (fPollTimer)
++        sf_reapTx();
++}
++
++void IOVirtIONet::sf_reapTx()
++{
++    IOLockLock(fTxLock);
++    uint16_t id;
++    while (fTransport.pollForCompletion(&fTxQ, 0, 0, &id)) {
++        if (id < fTxCount && (fTxActive & (1U << id))) {
++            fTxActive &= ~(1U << id);
++            fTransport.freeDescChain(&fTxQ, id);
++        }
++    }
++    IOLockUnlock(fTxLock);
+ }
+ 
+ UInt32 IOVirtIONet::outputPacket(mbuf_t m, void *param)
+@@ -324,31 +409,26 @@ UInt32 IOVirtIONet::outputPacket(mbuf_t
+         return kIOReturnOutputDropped;
+     }
+ 
+-    if (fTxOutstanding >= kVNetTxCount) {
+-        // Ring full - give the device a brief window to drain before
+-        // dropping (no backpressure signaling to the output queue yet).
+-        uint32_t len; uint16_t id;
+-        if (fTransport.pollForCompletion(&fTxQ, 50, &len, &id) && fTxOutstanding)
+-            fTxOutstanding--;
+-        if (fTxOutstanding >= kVNetTxCount) {
+-            freePacket(m);
+-            return kIOReturnOutputDropped;
+-        }
++    sf_reapTx();
++    IOLockLock(fTxLock);
++    unsigned slot = fTxQ.freeHead;
++    if (!fTxQ.numFree || slot >= fTxCount) {
++        IOLockUnlock(fTxLock);
++        freePacket(m);
++        return kIOReturnOutputDropped;
+     }
+ 
+-    unsigned slot = fTxNextSlot;
+     uint8_t *buf = (uint8_t *)fTxBuf[slot]->getBytesNoCopy();
+-    bzero(buf, kVNetHdrSize); // zeroed virtio_net_hdr_v1: no offload/GSO
+-    mbuf_copydata(m, 0, pktLen, buf + kVNetHdrSize);
++    bzero(buf, fHeaderSize); // No offload or GSO.
++    mbuf_copydata(m, 0, pktLen, buf + fHeaderSize);
+ 
+     VirtIOChainEntry entry = { fTxBuf[slot]->getPhysicalAddress(),
+-                              (uint32_t)(kVNetHdrSize + pktLen), false };
+-    fTransport.addDescChain(&fTxQ, &entry, 1);
++                              (uint32_t)(fHeaderSize + pktLen), false };
++    fTransport.addDescChainFree(&fTxQ, &entry, 1);
++    fTxActive |= 1U << slot;
+     fTransport.notify(&fTxQ);
+-
+-    fTxOutstanding++;
+-    fTxNextSlot = (fTxNextSlot + 1) % kVNetTxCount;
+     fTxPackets++;
++    IOLockUnlock(fTxLock);
+ 
+     freePacket(m);
+     return kIOReturnOutputSuccess;
+diff --git a/src/Kernel/Extensions/IOVirtIONet/IOVirtIONet.h b/src/Kernel/Extensions/IOVirtIONet/IOVirtIONet.h
+index 53ace02..1496507 100644
+--- a/src/Kernel/Extensions/IOVirtIONet/IOVirtIONet.h
++++ b/src/Kernel/Extensions/IOVirtIONet/IOVirtIONet.h
+@@ -10,6 +10,7 @@
+ 
+ #include <IOKit/IOService.h>
+ #include <IOKit/IOBufferMemoryDescriptor.h>
++#include <IOKit/IOInterruptEventSource.h>
+ #include <IOKit/IOTimerEventSource.h>
+ #include <IOKit/IOWorkLoop.h>
+ #include <IOKit/pci/IOPCIDevice.h>
+@@ -20,7 +21,6 @@
+ #define kVNetRxCount     32
+ #define kVNetTxCount     32
+ #define kVNetMaxPacket   2048
+-#define kVNetHdrSize     12   // struct virtio_net_hdr_v1 (VERSION_1 always negotiated)
+ 
+ class IOVirtIONet : public IOEthernetController
+ {
+@@ -60,8 +60,10 @@ private:
+ 
+     IOBufferMemoryDescriptor *fRxBuf[kVNetRxCount]; // hdr+packet, one descriptor each
+     IOBufferMemoryDescriptor *fTxBuf[kVNetTxCount];
+-    uint32_t fTxNextSlot;
+-    uint32_t fTxOutstanding;
++    IOLock *fTxLock;
++    uint32_t fTxActive;
++    unsigned fRxCount, fTxCount, fHeaderSize;
++    IOInterruptEventSource *fIrq[3];
+ 
+     IOEthernetAddress fMACAddress;
+     bool     fEnabled;
+@@ -70,8 +72,12 @@ private:
+ 
+     bool     readMACAddress();
+     bool     initRxRing();
+-    void     postRxBuffer(unsigned slot);
++    bool     postRxBuffer(unsigned slot);
+     void     pollReceive();
++    void     sf_reapTx();
++    bool     sf_setupInterrupts();
++    void     sf_removeInterrupts();
++    static void sf_interrupt(OSObject *owner, IOInterruptEventSource *source, int count);
+     bool     publishLinkMedium();
+     static void pollTimerAction(OSObject *owner, IOTimerEventSource *sender);
+ };
