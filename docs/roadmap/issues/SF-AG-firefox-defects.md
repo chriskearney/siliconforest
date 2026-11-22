@@ -296,3 +296,16 @@ Raw runs/sffinch/firefox-media-cadence-packet-frame-hook-v6/{diagnostic-admissio
   installed, NOT verified on the installed app.
 - RESTORE (new, pre-existing): maximise then restore through window.maximize()/restore(): Firefox keeps sizemode
   "maximised" and the desk logs "stale buffer ... not adopted"; INSTALLED t11c 2/4 runs, candidates 4/5 + 2/2. Open.
+
+## SYSINSTALL 2026-11-18 ~17:30Z — a test profile quit by TERM stops starting (not investigated)
+
+- Symptom (M1, synthetic input, own profile `/private/var/db/sfsysinst/p-ff`, own HOME): after about ten passes, each
+  ending with SIGTERM to the parent `firefox`, Firefox started (`NSApplication: waiting for the menu bar server` in
+  its log), exited without mapping a window, and `org.mozilla.updater` was then started and died in dyld:
+  `Symbol not found: _kSecDigestLengthAttribute ... Expected in: /System/Library/Frameworks/Security.framework/Versions/A/Security`.
+- The profile (kept unchanged as `p-ff.s5fail`) has `.startup-incomplete` (dated 17:04Z, the start of an earlier pass)
+  and an (empty) `crashes/events/` directory: this points at Firefox's startup-crash detection (Safe Mode prompt, crash
+  or update path); inferred, not checked.
+- Not caused by the libFoundation of VLC's system install step 5: with that step put back the same profile fails the
+  same way; a fresh profile and home pass every check (page, video, second window), with and without the step.
+- The harness now quits Firefox from its own menu (Firefox > Quit Firefox), as the owner does; SIGTERM only after 10 s.

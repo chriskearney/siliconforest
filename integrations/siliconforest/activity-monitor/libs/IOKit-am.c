@@ -18,3 +18,12 @@ EXPORT IOReturn IOPSGetSupportedPowerSources(int *active, bool *battery, bool *u
 	if (ups) *ups = false;
 	return 0;
 }
+// (bake-in step 9b) Additive HID modifier lock state stub (kIOReturnUnsupported = 0xe00002c7)
+// formerly supplied only in ChonkCraft's fills.py.
+EXPORT IOReturn IOHIDSetModifierLockState(unsigned connect, int selector, int state)
+{
+	(void)connect;
+	(void)selector;
+	(void)state;
+	return (IOReturn)0xe00002c7;
+}

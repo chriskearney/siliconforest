@@ -1,0 +1,76 @@
+diff -ru a/src/Frameworks/AppKit/NSView.m b/src/Frameworks/AppKit/NSView.m
+--- a/src/Frameworks/AppKit/NSView.m	2026-11-21 15:58:06.603730429 -0800
++++ b/src/Frameworks/AppKit/NSView.m	2026-11-21 15:58:06.612380466 -0800
+@@ -109,16 +109,52 @@
+ // (TERM9) the whole-window GPU presenter is asked for only with SFFX_GPU_PRESENT=1 (Firefox's launcher sets it);
+ // the answer and WindowServer's entry are looked up once: every other application never calls it
+ typedef int (*sfSFFXSetGPULayerFn)(int,uintptr_t,void *,double,double,double,double,double,double,double,double);
++/* (0379, bake-in step 7) Automatic GPU presentation for windows holding GPU layers
++ * (CAOpenGLLayer or IOSurface contents); CPU-drawn windows keep the backing-store path.
++ * SFFX_GPU_PRESENT=1 forces on (Firefox/ChonkCraft); SFFX_GPU_PRESENT=0 disables. */
++static int sfSFFXGPUMode(void){
++ static int mode=-1;
++ if(mode<0){
++  const char *gpu=getenv("SFFX_GPU_PRESENT");
++  if(gpu&&!strcmp(gpu,"0"))mode=0;
++  else if(gpu&&!strcmp(gpu,"1"))mode=2;
++  else mode=1; /* auto for GPU-content layer trees */
++ }
++ return mode;
++}
++static BOOL sfLayerTreeHasGPUContent(CALayer *layer,int depth){
++ if(layer==nil||depth>16)return NO;
++ static Class caoglCls;
++ static CFTypeID (*iosTypeID)(void);
++ static int looked;
++ if(!looked){
++  caoglCls=NSClassFromString(@"CAOpenGLLayer");
++  void *ios=dlopen("/System/Library/Frameworks/IOSurface.framework/IOSurface",RTLD_LAZY|RTLD_GLOBAL);
++  iosTypeID=ios?(CFTypeID (*)(void))dlsym(ios,"IOSurfaceGetTypeID"):NULL;
++  looked=1;
++ }
++ if(caoglCls!=Nil && [layer isKindOfClass:caoglCls])return YES;
++ id contents=[layer contents];
++ if(contents!=nil && iosTypeID!=NULL && CFGetTypeID((CFTypeRef)contents)==iosTypeID())return YES;
++ for(CALayer *sub in [layer sublayers])
++  if(sfLayerTreeHasGPUContent(sub,depth+1))return YES;
++ return NO;
++}
+ static sfSFFXSetGPULayerFn sfSFFXGPUPresenter(void){
+  static sfSFFXSetGPULayerFn set;
+  static int known;
+  if(!known){
+-  const char *gpu=getenv("SFFX_GPU_PRESENT");
+-  set=(gpu&&!strcmp(gpu,"1"))?(sfSFFXSetGPULayerFn)dlsym(RTLD_DEFAULT,"_windowServerSFFXSetGPULayer"):NULL;
++  set=sfSFFXGPUMode()>0?(sfSFFXSetGPULayerFn)dlsym(RTLD_DEFAULT,"_windowServerSFFXSetGPULayer"):NULL;
+   known=1;
+  }
+  return set;
+ }
++static sfSFFXSetGPULayerFn sfSFFXGPUPresenterForLayer(CALayer *layer){
++ int mode=sfSFFXGPUMode();
++ if(mode==0)return NULL;
++ if(mode==1 && !sfLayerTreeHasGPUContent(layer,0))return NULL;
++ return sfSFFXGPUPresenter();
++}
+ static int sfSFFXSetGPULayer(NSView *view,NSWindow *window,CFTypeRef surface,
+  double sx,double sy,double sw,double sh,double dx,double dy,double dw,double dh){
+  sfSFFXSetGPULayerFn set=sfSFFXGPUPresenter();
+@@ -214,7 +250,7 @@
+  static int looked;
+  if(!looked){
+   const char *gpu=getenv("SFFX_GPU_DAMAGE");
+-  unchanged=(gpu&&!strcmp(gpu,"1"))?(void (*)(int))dlsym(RTLD_DEFAULT,"_windowServerSFFXBaseUnchanged"):NULL;
++  unchanged=!(gpu&&!strcmp(gpu,"0"))?(void (*)(int))dlsym(RTLD_DEFAULT,"_windowServerSFFXBaseUnchanged"):NULL;
+   looked=1;
+  }
+  BOOL drawn=objc_getAssociatedObject(window,&sfSFFXBaseDrawnKey)!=nil;
+@@ -2136,7 +2172,7 @@
+    CGImageRef image;
+ 
+    [_layerContext render];
+-   if(sfSFFXGPUPresenter()!=NULL&&sfSFFXWindowTakesGPULayers(_window)&&[_layerContext respondsToSelector:@selector(copySFFXRenderedSurface)]){
++   if(sfSFFXGPUPresenterForLayer(_layer)!=NULL&&sfSFFXWindowTakesGPULayers(_window)&&[_layerContext respondsToSelector:@selector(copySFFXRenderedSurface)]){
+     CGAffineTransform transform=[self transformToWindow];
+     if(fabs(transform.b)<.0001&&fabs(transform.c)<.0001&&fabs(fabs(transform.a)-1)<.0001&&fabs(fabs(transform.d)-1)<.0001){
+      CFTypeRef surface=[_layerContext copySFFXRenderedSurface];

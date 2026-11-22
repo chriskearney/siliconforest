@@ -258,3 +258,32 @@ static NSMutableArray *sfPresenters;
     [super dealloc];
 }
 @end
+
+// ---- NSAppleScript (VLC media player 3.0's interface links the class; docs/roadmap/issues/SF-AH-vlc.md).
+// This system has no AppleScript interpreter and no Apple Events between programs. The class keeps
+// its source text and says so when asked to compile or run: the error dictionary carries
+// number -1753 (errOSAScriptError) and a message; nothing is executed
+// and nothing is reported as done.
+NSString * const NSAppleScriptErrorMessage = @"NSAppleScriptErrorMessage";
+NSString * const NSAppleScriptErrorNumber = @"NSAppleScriptErrorNumber";
+NSString * const NSAppleScriptErrorAppName = @"NSAppleScriptErrorAppName";
+NSString * const NSAppleScriptErrorBriefMessage = @"NSAppleScriptErrorBriefMessage";
+NSString * const NSAppleScriptErrorRange = @"NSAppleScriptErrorRange";
+@interface NSAppleScript : NSObject { NSString *_source; }
+@end
+@implementation NSAppleScript
+static void SFAppleScriptUnavailable(NSDictionary **info)
+{
+    if (info) *info = [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithInt:-1753], NSAppleScriptErrorNumber,
+        @"AppleScript is not available on SiliconForest", NSAppleScriptErrorMessage,
+        @"AppleScript is not available", NSAppleScriptErrorBriefMessage, nil];
+}
+- (id)initWithSource:(NSString *)source { if ((self = [super init])) _source = [source copy]; return self; }
+- (id)initWithContentsOfURL:(NSURL *)url error:(NSDictionary **)info { SFAppleScriptUnavailable(info); [self release]; return nil; }
+- (void)dealloc { [_source release]; [super dealloc]; }
+- (NSString *)source { return _source; }
+- (BOOL)isCompiled { return NO; }
+- (BOOL)compileAndReturnError:(NSDictionary **)info { SFAppleScriptUnavailable(info); return NO; }
+- (id)executeAndReturnError:(NSDictionary **)info { SFAppleScriptUnavailable(info); return nil; }
+- (id)executeAppleEvent:(id)event error:(NSDictionary **)info { SFAppleScriptUnavailable(info); return nil; }
+@end

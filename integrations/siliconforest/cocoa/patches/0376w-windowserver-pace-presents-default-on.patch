@@ -1,0 +1,18 @@
+--- a/src/Frameworks/WindowServer/rpc_wayland.c
++++ b/src/Frameworks/WindowServer/rpc_wayland.c
+@@ -1321,12 +1321,13 @@
+ /* (TERM9, FXPERF's FX-029 ask) SF_WS_PACE_PRESENTS=1: a window presents at most once per frame callback, as a Wayland
+  * client paced by the compositor does (and as Core Animation coalesces commits per refresh): a flush that comes while
+  * the window's last commit has not been drawn yet only marks presentPending, and the callback presents the newest
+- * backing store once. A callback that has not come in 100 ms no longer holds a flush back. */
++ * backing store once. A callback that has not come in 100 ms no longer holds a flush back.
++ * (0376w, bake-in step 4) Default on now that 0375w holds a finished backing-store copy; SF_WS_PACE_PRESENTS=0 turns it off. */
+ static int wsPacePresents(void) {
+     static int on = -1;
+     if (on < 0) {
+         const char *v = getenv("SF_WS_PACE_PRESENTS");
+-        on = v != NULL && strcmp(v, "1") == 0;
++        on = !(v != NULL && strcmp(v, "0") == 0);
+     }
+     return on;
+ }

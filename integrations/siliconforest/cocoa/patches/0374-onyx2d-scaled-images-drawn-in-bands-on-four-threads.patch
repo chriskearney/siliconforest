@@ -1,0 +1,178 @@
+--- a/src/Frameworks/Onyx2D/O2Context_builtin.m
++++ b/src/Frameworks/Onyx2D/O2Context_builtin.m
+@@ -1143,40 +1143,49 @@
+    return rb|(ag<<8);
+ }
+ 
+-/* opaque: the alpha byte is skipped (set opaque); over: a premultiplied image in the normal blend mode, blended
+-   over what the surface has; neither: a premultiplied image in the copy mode, its pixels as they are */
+-static BOOL sfDrawImageScaled(const uint8_t *src,size_t srcRow,long width,long height,BOOL opaque,BOOL over,uint8_t *dst,size_t dstRow,
+-                              long x0,long x1,long y0,long y1,O2AffineTransform inverse){
+-   long      count=x1-x0;
+-   long     *c0=malloc((size_t)count*sizeof(long)),*c1=malloc((size_t)count*sizeof(long));
+-   uint16_t *cf=malloc((size_t)count*sizeof(uint16_t));
+-   uint32_t *ha=malloc((size_t)count*4),*hb=malloc((size_t)count*4);
+-   uint32_t  opaqueBits=opaque ? 0xFF000000u : 0;
+-   long      ra=-1,rb=-1;   // the source rows ha and hb hold, resampled across
+-
+-   if(c0==NULL || c1==NULL || cf==NULL || ha==NULL || hb==NULL){
+-    free(c0); free(c1); free(cf); free(ha); free(hb);
+-    return NO;
+-   }
+-   for(long i=0;i<count;i++){
+-    double   sx=inverse.a*(x0+i+0.5)+inverse.tx-0.5;
+-    long     a=(long)floor(sx),b=a+1;
+-    unsigned f=(unsigned)((sx-a)*256+0.5);
+-
+-    if(f>=256){ a=b; f=0; }
+-    c0[i]=MAX(0,MIN(width-1,a));
+-    c1[i]=MAX(0,MIN(width-1,b));
+-    cf[i]=(uint16_t)f;
++/* (CHONK3, 0374) the device rows are split into bands drawn at once on up to four threads (the caller draws the
++   first): each band resamples its own source rows across, so a source row at a band's edge is resampled by both.
++   ChonkCraft's frame, 1280x778 at 1.5 over 1920x1167 pixels, held the main thread about 12 ms a draw on one
++   thread; it is the part of a frame that comes after the desk's frame callback. O2_IMAGE_SCALE_THREADS=n (1..4)
++   sets the threads, 1: one, as 0373 */
++typedef struct {
++   const uint8_t *src;
++   size_t         srcRow;
++   long           width,height;
++   uint32_t       opaqueBits;
++   BOOL           over;
++   uint8_t       *dst;
++   size_t         dstRow;
++   long           x0,count,y0,y1;
++   O2AffineTransform inverse;
++   const long    *c0,*c1;
++   const uint16_t *cf;
++   BOOL           ok;
++} sfScaleBand;
++
++static void *sfDrawImageScaledBand(void *arg){
++   sfScaleBand    *b=arg;
++   long            count=b->count;
++   const long     *c0=b->c0,*c1=b->c1;
++   const uint16_t *cf=b->cf;
++   uint32_t        opaqueBits=b->opaqueBits;
++   uint32_t       *ha=malloc((size_t)count*4),*hb=malloc((size_t)count*4);
++   long            ra=-1,rb=-1;   // the source rows ha and hb hold, resampled across
++
++   if(ha==NULL || hb==NULL){
++    free(ha); free(hb);
++    b->ok=NO;
++    return NULL;
+    }
+-   for(long y=y0;y<y1;y++){
+-    double    sy=inverse.d*(y+0.5)+inverse.ty-0.5;
++   for(long y=b->y0;y<b->y1;y++){
++    double    sy=b->inverse.d*(y+0.5)+b->inverse.ty-0.5;
+     long      r0=(long)floor(sy),r1=r0+1;
+     uint32_t  fy=(uint32_t)((sy-r0)*256+0.5);
+-    uint32_t *out=(uint32_t *)(dst+(size_t)y*dstRow)+x0;
++    uint32_t *out=(uint32_t *)(b->dst+(size_t)y*b->dstRow)+b->x0;
+ 
+     if(fy>=256){ r0=r1; fy=0; }
+-    r0=MAX(0,MIN(height-1,r0));
+-    r1=MAX(0,MIN(height-1,r1));
++    r0=MAX(0,MIN(b->height-1,r0));
++    r1=MAX(0,MIN(b->height-1,r1));
+     for(int k=0;k<2;k++){
+      long r=k ? r1 : r0,other=k ? r0 : r1;
+ 
+@@ -1184,7 +1193,7 @@
+       continue;
+ 
+      uint32_t       *buf;
+-     const uint32_t *line=(const uint32_t *)(src+(size_t)r*srcRow);
++     const uint32_t *line=(const uint32_t *)(b->src+(size_t)r*b->srcRow);
+ 
+      if(ra==other){ buf=hb; rb=r; } else { buf=ha; ra=r; }
+      for(long i=0;i<count;i++)
+@@ -1193,7 +1202,7 @@
+ 
+     const uint32_t *p0=(r0==ra) ? ha : hb,*p1=(r1==ra) ? ha : hb;
+ 
+-    if(over){
++    if(b->over){
+      if(fy==0)
+       for(long i=0;i<count;i++)
+        out[i]=sfOver8888(p0[i],out[i]);
+@@ -1208,8 +1217,76 @@
+      for(long i=0;i<count;i++)
+       out[i]=sfLerp8888(p0[i],p1[i],fy)|opaqueBits;
+    }
+-   free(c0); free(c1); free(cf); free(ha); free(hb);
+-   return YES;
++   free(ha); free(hb);
++   b->ok=YES;
++   return NULL;
++}
++
++static int sfScaleThreads(void){
++   static int threads=0;
++
++   if(threads==0){
++    const char *s=getenv("O2_IMAGE_SCALE_THREADS");
++    int         n=(s!=NULL) ? atoi(s) : 4;
++
++    threads=MAX(1,MIN(4,n));
++   }
++   return threads;
++}
++
++/* the threads a scaled image is drawn on (the guarded install's probe looks for this name) */
++int O2ImageScaleThreadCount(void){
++   return sfScaleThreads();
++}
++
++/* opaque: the alpha byte is skipped (set opaque); over: a premultiplied image in the normal blend mode, blended
++   over what the surface has; neither: a premultiplied image in the copy mode, its pixels as they are */
++static BOOL sfDrawImageScaled(const uint8_t *src,size_t srcRow,long width,long height,BOOL opaque,BOOL over,uint8_t *dst,size_t dstRow,
++                              long x0,long x1,long y0,long y1,O2AffineTransform inverse){
++   long      count=x1-x0,rows=y1-y0;
++   long     *c0=malloc((size_t)count*sizeof(long)),*c1=malloc((size_t)count*sizeof(long));
++   uint16_t *cf=malloc((size_t)count*sizeof(uint16_t));
++
++   if(c0==NULL || c1==NULL || cf==NULL){
++    free(c0); free(c1); free(cf);
++    return NO;
++   }
++   for(long i=0;i<count;i++){
++    double   sx=inverse.a*(x0+i+0.5)+inverse.tx-0.5;
++    long     a=(long)floor(sx),b=a+1;
++    unsigned f=(unsigned)((sx-a)*256+0.5);
++
++    if(f>=256){ a=b; f=0; }
++    c0[i]=MAX(0,MIN(width-1,a));
++    c1[i]=MAX(0,MIN(width-1,b));
++    cf[i]=(uint16_t)f;
++   }
++
++   int         n=sfScaleThreads();
++   sfScaleBand band[4];
++   pthread_t   thread[4];
++   BOOL        started[4]={NO,NO,NO,NO};
++   BOOL        ok=YES;
++
++   // small pictures on the drawing thread alone: a thread costs more than it saves under a quarter million pixels
++   if(rows<64 || count*rows<250000)
++    n=1;
++   for(int k=0;k<n;k++){
++    band[k]=(sfScaleBand){src,srcRow,width,height,opaque ? 0xFF000000u : 0,over,dst,dstRow,x0,count,
++                          y0+rows*k/n,y0+rows*(k+1)/n,inverse,c0,c1,cf,NO};
++   }
++   for(int k=1;k<n;k++)
++    started[k]=(pthread_create(&thread[k],NULL,sfDrawImageScaledBand,&band[k])==0);
++   for(int k=0;k<n;k++)
++    if(k==0 || !started[k])
++     sfDrawImageScaledBand(&band[k]);   // the caller's band, and any band whose thread did not start
++   for(int k=1;k<n;k++)
++    if(started[k])
++     pthread_join(thread[k],NULL);
++   for(int k=0;k<n;k++)
++    ok=ok && band[k].ok;
++   free(c0); free(c1); free(cf);
++   return ok;
+ }
+ 
+ static const char *sfDrawImageAtDevicePixels(O2Context_builtin *self,O2Image *image,O2AffineTransform t){

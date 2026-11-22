@@ -55,7 +55,22 @@ let
   pd = (import ../rebase/pd.nix).pd;
 in pd.packages.x86_64-linux."foundation-arm64".overrideAttrs (old: {
   pname = "siliconforest-foundation-macos-apps";
-  patches = (old.patches or []) ++ [ ./patches/foundation-macos-applications.patch ../cocoa/patches/0347-foundation-url-resource-values.patch ../cocoa/patches/0348-foundation-bundle-without-a-path-is-nil.patch ../cocoa/patches/0349-foundation-path-with-components.patch ../cocoa/patches/0352-foundation-file-reference-urls-by-path.patch ../cocoa/patches/0354-foundation-to-many-change-notifications.patch ../cocoa/patches/0355-foundation-file-set-locale-names.patch ../cocoa/patches/0359-foundation-error-recovery-attempter.patch ../cocoa/patches/0361-foundation-intersection-of-unbounded-rects.patch ../cocoa/patches/0365-foundation-url-bookmarks.patch ];
+  patches = (old.patches or []) ++ [
+    ./patches/foundation-macos-applications.patch
+    # -performSelectorOnMainThread:withObject:waitUntilDone:NO is queued on the main thread too
+    # (VLC media player: docs/roadmap/issues/SF-AH-vlc.md)
+    ./patches/foundation-main-thread-perform-is-queued.patch
+    ../cocoa/patches/0347-foundation-url-resource-values.patch
+    ../cocoa/patches/0348-foundation-bundle-without-a-path-is-nil.patch
+    ../cocoa/patches/0349-foundation-path-with-components.patch
+    ../cocoa/patches/0352-foundation-file-reference-urls-by-path.patch
+    ../cocoa/patches/0354-foundation-to-many-change-notifications.patch
+    ../cocoa/patches/0355-foundation-file-set-locale-names.patch
+    ../cocoa/patches/0359-foundation-error-recovery-attempter.patch
+    ../cocoa/patches/0361-foundation-intersection-of-unbounded-rects.patch
+    # NSURL bookmark data (QuickTime Player's Open Recent; QTP2, branch media-quicktime: cocoa 0365)
+    ../cocoa/patches/0365-foundation-url-bookmarks.patch
+  ];
   patchFlags = [ "-p4" ];
   buildPhase = let
     r = builtins.replaceStrings

@@ -1,0 +1,142 @@
+--- a/src/Frameworks/WindowServer/rpc_wayland.c
++++ b/src/Frameworks/WindowServer/rpc_wayland.c
+@@ -119,6 +119,7 @@
+     int presentPending;    // a flush found every frame busy: the next release presents it
+     int frameOut;          // (TERM9) a commit whose frame callback has not come (SF_WS_PACE_PRESENTS)
+     int presentMaySkip;    // (FXPERF2) this present may be left out when the picture is the one shown
++    struct wsFrame *held;  // (0375w) the backing store copied at a flush held back by SF_WS_PACE_PRESENTS
+     int baseClean;         // (FXPERF2) AppKit drew nothing into the backing store before the flush it precedes
+     int baseDirty;         // (FXPERF2) a flush since the last compare may have changed the backing store
+     double frameOutAt;
+@@ -1330,6 +1331,75 @@
+     return on;
+ }
+ static void windowPacedCommit(struct wsWindow *window);
++/* (0375w, ChonkCraft's white bars) A present held back by SF_WS_PACE_PRESENTS used to copy the backing store when the
++ * frame callback came, from the thread that reads the connection, while the application's main thread was free to be
++ * in the middle of its next drawing: the compositor got the window half drawn (ChonkCraft: the window's background
++ * filled and the game's picture in the top part of each of Onyx2D's four bands, the rest white, a few times a
++ * minute). The flush is the moment AppKit has finished drawing, so the held-back flush now copies the backing store
++ * into a frame there and then, and the callback only puts that copy on the surface and commits it. A later flush
++ * before the callback copies into the same frame (the newest picture wins, as before). Not for a GPU presenter's
++ * frames (they compose from the backing store when presented, as before). SF_WS_PACE_HOLD=0: as before. */
++static int wsPaceHold(void) {
++    static int on = -1;
++    if (on < 0) {
++        const char *v = getenv("SF_WS_PACE_HOLD");
++        on = !(v != NULL && strcmp(v, "0") == 0);
++    }
++    return on;
++}
++static struct wsFrame *windowFreeFrame(struct wsWindow *window, int w, int h, int gpu);
++static int sfGPURoleTakesDmabuf(struct wsWindow *window);
++static void windowAttachFrame(struct wsWindow *window, struct wsFrame *frame);
++// lets the held copy go unpresented (ws.pixelsLock held)
++static void windowDropHeld(struct wsWindow *window) {
++    struct wsFrame *frame = window->held;
++    if (frame == NULL)
++        return;
++    window->held = NULL;
++    pthread_mutex_lock(&ws.queueLock);
++    frame->busy = 0;
++    pthread_cond_broadcast(&ws.queueReady);
++    pthread_mutex_unlock(&ws.queueLock);
++}
++// copies the finished backing store into the held frame (ws.pixelsLock held); 0: nothing held (the callback copies)
++static int windowHold(struct wsWindow *window) {
++    if (!wsPaceHold() || window->pixels == NULL || window->pixelsW <= 0 || window->pixelsH <= 0)
++        return 0;
++    if (window->gpuPresenter && !window->gpuPresenter->failed && window->gpuPresenter->count > 0 && ws.dmabuf && sfGPURoleTakesDmabuf(window)) {
++        windowDropHeld(window);
++        return 0;
++    }
++    struct wsFrame *frame = window->held;
++    if (frame != NULL && (frame->buffer == NULL || frame->gpuOutput != NULL || frame->w != window->pixelsW || frame->h != window->pixelsH)) {
++        windowDropHeld(window);
++        frame = NULL;
++    }
++    if (frame == NULL) {
++        frame = windowFreeFrame(window, window->pixelsW, window->pixelsH, 0);
++        if (frame == NULL)
++            return 0;
++        window->held = frame;
++    }
++    memcpy(frame->pixels, window->pixels, frame->size);
++    frame->pointsW = window->pointsW;
++    frame->pointsH = window->pointsH;
++    frame->damageKnown = 0;
++    return 1;
++}
++// puts the held copy on the surface (ws.pixelsLock held), the caller commits; 0: none, or of a size gone by
++static int windowPresentHeld(struct wsWindow *window) {
++    struct wsFrame *frame = window->held;
++    if (frame == NULL)
++        return 0;
++    if (frame->w != window->pixelsW || frame->h != window->pixelsH) {
++        windowDropHeld(window);
++        return 0;
++    }
++    window->held = NULL;
++    window->front = frame;
++    windowAttachFrame(window, frame);
++    return 1;
++}
+ static void pacedFrameDone(void *data, struct wl_callback *callback, uint32_t time) {
+     int windowID = (int)(intptr_t)data;
+     wl_callback_destroy(callback);
+@@ -1340,10 +1410,11 @@
+         if (window->presentPending && window->state != MINIMIZED && window->state != HIDDEN && window->surface != NULL) {
+             window->presentPending = 0;
+             window->presentMaySkip = 1;
+-            if (windowPresent(window)) {
++            int held = windowPresentHeld(window);
++            if (held || windowPresent(window)) {
+                 windowPacedCommit(window);
+                 if (wsTiming())
+-                    fprintf(stderr, "WSTIME %.1f commit-on-frame surface=%d\n", wsNowMs(), window->windowID);
++                    fprintf(stderr, "WSTIME %.1f commit-on-frame%s surface=%d\n", wsNowMs(), held ? "-held" : "", window->windowID);
+             }
+         }
+     }
+@@ -1373,7 +1444,7 @@
+         window->presentPending = 0;
+         window->presentMaySkip = 1;
+         if (window->state != MINIMIZED && window->state != HIDDEN && window->surface != NULL &&
+-            !(window->frameOut && wsNowMs() - window->frameOutAt < 100) && windowPresent(window)) {
++            !(window->frameOut && wsNowMs() - window->frameOutAt < 100) && (windowPresentHeld(window) || windowPresent(window))) {
+             __atomic_add_fetch(&wsPresentCounts[2],1,__ATOMIC_RELAXED);
+             windowPacedCommit(window);
+             if (wsTiming())
+@@ -1731,6 +1802,7 @@
+ }
+ 
+ static void windowReleaseFrames(struct wsWindow *window) {
++    window->held = NULL;
+     for (int i = 0; i < WS_FRAMES; i++)
+         frameDestroy(&window->frames[i]);
+     window->front = NULL;
+@@ -3709,6 +3781,8 @@
+     memcpy(shown->title, next->title, sizeof(title));
+     memcpy(next->title, title, sizeof(title));
+     shown->presentPending = next->presentPending = 0;
++    windowDropHeld(shown);
++    windowDropHeld(next);
+     for (int i = 0; i < WS_FRAMES; i++) {
+         shown->frames[i].ownerID = shown->windowID;
+         next->frames[i].ownerID = next->windowID;
+@@ -4098,11 +4172,14 @@
+             window->baseClean = 0;
+             if (wsPacePresents() && window->frameOut && wsNowMs() - window->frameOutAt < 100 &&
+                 window->state != MINIMIZED && window->state != HIDDEN) {
+-                // the last commit is not drawn yet: its frame callback presents the newest backing store
++                // the last commit is not drawn yet: its frame callback presents the newest backing store, copied
++                // here while AppKit is between drawings (0375w)
+                 window->presentPending = 1;
++                windowHold(window);
+                 pthread_mutex_unlock(&ws.pixelsLock);
+                 return KERN_SUCCESS;
+             }
++            windowDropHeld(window);
+             window->presentMaySkip = 1;
+             if (window->state != MINIMIZED && window->state != HIDDEN && windowPresent(window)) {
+                 __atomic_add_fetch(&wsPresentCounts[0],1,__ATOMIC_RELAXED);

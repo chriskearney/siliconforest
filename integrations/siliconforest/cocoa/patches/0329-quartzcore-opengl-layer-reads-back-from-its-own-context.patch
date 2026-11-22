@@ -1,0 +1,109 @@
+--- a/src/Frameworks/QuartzCore/CAOpenGLLayer.m
++++ b/src/Frameworks/QuartzCore/CAOpenGLLayer.m
+@@ -12,6 +12,8 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <stdio.h>
++#include <pthread.h>
++#include <sys/time.h>
+ 
+ @interface CALayer (CAOpenGLLayerPrivate)
+ - (void)_setNeedsRender;
+@@ -31,6 +33,22 @@
+     return available;
+ }
+ 
++static int sfTraceLevel(void) {
++    static int level = -1;
++    if (level < 0) { const char *e = getenv("SF_CAOGL_TRACE"); level = e == NULL ? 0 : atoi(e) > 0 ? atoi(e) : 1; }
++    return level;
++}
++static double sfNow(void) { struct timeval tv; gettimeofday(&tv, NULL); return tv.tv_sec + tv.tv_usec / 1e6; }
++static int sfLuma(const uint8_t *px, size_t row, GLint w, GLint h) {
++    int best = 0;
++    for (int i = 1; i <= 3; i++) for (int j = 1; j <= 3; j++) {
++        const uint8_t *q = px + (size_t)(h * j / 4) * row + (size_t)(w * i / 4) * 4;
++        int l = (q[0] + 2 * q[1] + q[2]) / 4;
++        if (l > best) best = l;
++    }
++    return best;
++}
++
+ static void releasePixels(void *info, const void *data, size_t size) {
+     free((void *)data);
+ }
+@@ -164,31 +182,53 @@
+      * waits for the other while holding what the other needs; then the size, which the context takes at once since
+      * it is current here. Where it cannot be made current nothing is drawn or read back: the layer keeps its last
+      * picture (it showed a black frame, read from no context, while its window was resized). */
++    double t0 = sfNow();
+     if (CGLSetCurrentContext(_sfContext) != kCGLNoError) {
++        if (sfTraceLevel() >= 2)
++            fprintf(stderr, "SFCAOGL %.4f %s %p %dx%d no-current %.1fms\n", t0, pthread_main_np() ? "main" : "other", self, width, height, (sfNow() - t0) * 1e3);
+         static int traced = -1;
+ 
+         if (traced < 0)
+-            traced = getenv("SF_CAOGL_TRACE") != NULL;
++            traced = sfTraceLevel() > 0;
+         if (traced)
+             fprintf(stderr, "CAOpenGLLayer %p: its context could not be made current; the last picture stays\n", self);
+         CGLSetCurrentContext(previous);
+         return NO;
+     }
++    double t1 = sfNow();
+     CGLLockContext(_sfContext);
++    double t2 = sfNow();
++    int resized = 0, luma = -1, can = -1, left = 0;
++    GLenum err = 0;
+     if (_sfSurfaceSize[0] != width || _sfSurfaceSize[1] != height) {
++        resized = 1;
+         _sfSurfaceSize[0] = width;
+         _sfSurfaceSize[1] = height;
+         CGLSetParameter(_sfContext, kCGLCPSurfaceBackingSize, _sfSurfaceSize);
+     }
+-    if (forced || [self canDrawInCGLContext:_sfContext pixelFormat:_sfPixelFormat forLayerTime:now displayTime:NULL]) {
++    if (forced || (can = [self canDrawInCGLContext:_sfContext pixelFormat:_sfPixelFormat forLayerTime:now displayTime:NULL])) {
+         size_t row = (size_t)width * 4;
+         uint8_t *pixels = malloc(row * height), *flipped = malloc(row * height);
+ 
+         glViewport(0, 0, width, height);
+         [self drawInCGLContext:_sfContext pixelFormat:_sfPixelFormat forLayerTime:now displayTime:NULL];
+-        if (pixels != NULL && flipped != NULL) {
++        /* (VLC) The picture is read from the layer's context only. A client may leave another context current, or
++         * none: VLC's output keeps the context that was current before its draw in one variable for all its threads,
++         * and when its decoder thread asks for the context while the main thread draws, the main thread's draw ends
++         * by making no context current. Read back then, the picture came from no context: a black frame while the
++         * window was resized. Nothing is read back; the layer keeps its last picture until the next render. */
++        if (CGLGetCurrentContext() != _sfContext) {
++            if (sfTraceLevel() > 0)
++                fprintf(stderr, "CAOpenGLLayer %p: the drawing left context %p current, not the layer's; the last picture stays\n", self, CGLGetCurrentContext());
++            left = 1;
++            free(pixels);
++            free(flipped);
++        }
++        else if (pixels != NULL && flipped != NULL) {
+             glPixelStorei(GL_PACK_ALIGNMENT, 1);
++            err = glGetError();
+             glReadPixels(0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
++            if (sfTraceLevel() >= 2) luma = sfLuma(pixels, row, width, height);
+             for (GLint y = 0; y < height; y++)
+                 memcpy(flipped + y * row, pixels + (height - 1 - y) * row, row);
+             free(pixels);
+@@ -206,13 +246,16 @@
+             CGImageRelease(image);
+             drew = YES;
+         }
+-        else {
++        else if (!left) {
+             free(pixels);
+             free(flipped);
+         }
+     }
+     CGLUnlockContext(_sfContext);
+     CGLSetCurrentContext(previous);
++    if (sfTraceLevel() >= 2)
++        fprintf(stderr, "SFCAOGL %.4f %s %p %dx%d%s%s can=%d drew=%d luma=%d glerr=0x%x current %.1fms lock %.1fms total %.1fms\n", t0, pthread_main_np() ? "main" : "other", self, width, height,
++                resized ? " resized" : "", left ? " left" : "", can, drew, luma, err, (t1 - t0) * 1e3, (t2 - t1) * 1e3, (sfNow() - t0) * 1e3);
+     return drew;
+ }
+ 

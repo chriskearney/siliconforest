@@ -1,0 +1,80 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Start ChonkCraft from the dock: the staged copy of the published macOS app
+# (/private/var/db/sfchonkcraft, made by integrations/siliconforest/chonkcraft/
+# stage.sh) on the app's own runtime, in a window (not full screen), opening
+# on the title sequence and the menu. The game data is the asset pack beside
+# it; nothing here writes inside the bundle. Swing uses Metal: Aqua's look and
+# feel needs the macOS JavaRuntimeSupport UI, which is a stub here.
+#   sf-open-chonkcraft [java options...]   e.g. -Dchonkcraft.map=ALAMO.PUD
+set -eu
+B=${CHONKCRAFT_STAGE:-/private/var/db/sfchonkcraft}
+A="$B/ChonkCraft.app/Contents"
+J="$A/runtime/Contents/Home/bin/java"
+PACK=${CHONKCRAFT_ASSET_PACK:-$B/data/packs/warcraft-ii-battle-net-edition-usa.chonkpack}
+if [ ! -x "$J" ] || [ ! -r "$PACK" ]; then
+    echo "sf-open-chonkcraft: no staged ChonkCraft at $B (or no asset pack)" >&2
+    exit 1
+fi
+mkdir -p "$B/home" "$B/tmp" "$B/logs"
+export HOME="$B/home"
+export CFFIXED_USER_HOME="$B/home"
+export TMPDIR="$B/tmp/"
+export USER=root
+export LOGNAME=root
+export PATH="/usr/bin:/bin"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/private/var/run/gpu-desktop}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export LANG="${LANG:-en_US.UTF-8}"
+# Java2D on OpenGL (CGL on Mesa); the fill in the runtime draws its layer
+# (see integrations/siliconforest/chonkcraft/fills.py)
+export SEVEN_JAVA2D_PIPELINE=opengl
+export SFLayerRendering=0
+export SF_CHONK_CPU_LAYER=1
+export CHONKCRAFT_ASSET_PACK="$PACK"
+# Java's frames go to the screen as GPU buffers instead of a read back (fills.py), by default:
+# IOSurfaces with per-surface dma-buf storage (SFIOSurfaceGPUStorage, bake-in step 6) served by
+# the canonical org.siliconforest.iosurfaced broker, registered with WindowServer's GPU presenter.
+# SF_CHONK_GPU_PRESENT=0: CPU layer path. SF_CHONK_PRIVATE_IOSURFACED=1: private surface-session fallback.
+GPU=${SF_CHONK_GPU_PRESENT:-1}
+SESSION=
+if [ "$GPU" != 0 ]; then
+    export SF_CHONK_GPU_PRESENT="$GPU"
+    if [ "${SF_CHONK_PRIVATE_IOSURFACED:-0}" = 1 ] && [ -x "$B/bin/surface-session" ] && [ -x /usr/libexec/iosurfaced ]; then
+        export SFFX_GPU_PRESENT=1 SFFX_IOSURFACE_GPU=1
+        export SFFX_IOSURFACE_SERVICE="org.siliconforest.iosurfaced.sffx.chonkcraft.$$"
+        SESSION="$B/bin/surface-session"
+    fi
+else
+    unset SF_CHONK_GPU_PRESENT
+fi
+export DYLD_FRAMEWORK_PATH="$B/fw"
+# A process named "java" shows up as "java" in SiliconForest's menu bar.
+# -Xdock:name is already set, but the desk keys off the executable name.
+# A hard link beside java keeps the JRE @rpath (libjli) working; a link
+# in another directory does not. Created at launch, not committed.
+LINK="$(dirname "$J")/ChonkCraft"
+if [ ! -x "$LINK" ] || [ "$J" -nt "$LINK" ]; then
+    ln -f "$J" "$LINK" 2>/dev/null || cp -f "$J" "$LINK"
+fi
+cd "$HOME"
+set -- -XX:ErrorFile="$B/logs/hs_err_%p.log" -Xms256m -Xmx2g -Dchonkcraft.version=0.1.1-beta22 \
+    --add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED \
+    -Dapple.awt.application.name=ChonkCraft \
+    -Dchonkcraft.packaged.native.dir="$A/app" -Djna.boot.library.path="$A/app" -Djna.nounpack=true \
+    -Dchonkcraft.pack="$PACK" -Dswing.defaultlaf=javax.swing.plaf.metal.MetalLookAndFeel -Xdock:name=ChonkCraft -Xdock:icon="$A/Resources/ChonkCraft.icns" \
+    -cp "$A/app/bootstrap-game.jar" "$@" net.chonkbase.chonkcraft.desktop.Main
+if [ -z "$SESSION" ]; then
+    exec "$LINK" "$@" >>"$B/logs/app.out" 2>>"$B/logs/app.err"
+fi
+E0=$(wc -c < "$B/logs/app.err" 2>/dev/null || echo 0)
+rc=0
+"$SESSION" /usr/libexec/iosurfaced "$LINK" "$@" >>"$B/logs/app.out" 2>>"$B/logs/app.err" || rc=$?
+# surface-session ends with 3..8 before the game starts when the private broker cannot be had: the CPU path
+if [ $rc -ge 3 ] && [ $rc -le 8 ] && tail -c +$((E0 + 1)) "$B/logs/app.err" | grep -q "^FXSURFACE" &&
+   ! tail -c +$((E0 + 1)) "$B/logs/app.err" | grep -q "^SF_CHONK"; then
+    echo "sf-open-chonkcraft: no private iosurfaced (surface-session rc=$rc): CPU layer path" >>"$B/logs/app.err"
+    unset SF_CHONK_GPU_PRESENT SFFX_GPU_PRESENT SFFX_IOSURFACE_GPU SFFX_IOSURFACE_SERVICE
+    exec "$LINK" "$@" >>"$B/logs/app.out" 2>>"$B/logs/app.err"
+fi
+exit $rc

@@ -453,6 +453,20 @@
 #   0156w WindowServer (TERM9, FXPERF's FX-029 ask; opt-in SF_WS_PACE_PRESENTS=1, off by default): a window presents at
 #         most once per frame callback; a flush while its last commit is not drawn only marks the present pending and
 #         the callback presents the newest backing store (a callback missing for 100 ms holds nothing back)
+#   0375w WindowServer (CHONKPERF, ChonkCraft's white bars): a flush held back by SF_WS_PACE_PRESENTS copies the
+#         backing store into a frame at the flush (AppKit has finished drawing then); the frame callback only attaches
+#         and commits that copy. Before, the callback copied the backing store while the main thread could be halfway
+#         through its next drawing (white rows below each of Onyx2D's four bands). SF_WS_PACE_HOLD=0: as before
+#   0376w WindowServer (bake-in step 4): SF_WS_PACE_PRESENTS is default on (SF_WS_PACE_PRESENTS=0 turns it off), with
+#         0375w's hold-copy and 0156w's 100 ms missing-callback guard active
+#   0377w WindowServer (bake-in step 6): sfGPUFrameCreate passes SFIOSurfaceGPUStorage=1 so GPU output frames get
+#         dma-buf storage without requiring global SFFX_IOSURFACE_GPU=1
+#   0378  QuartzCore (bake-in step 7): CAOpenGLLayer and CALayerContext pass SFIOSurfaceGPUStorage=1; GPU path perf
+#         flags (dirty frames, damage, render thread, cached lookups) default on when GPU present is active (=0 disables)
+#   0379  AppKit (bake-in step 7): automatic GPU presentation for windows whose layer tree holds a CAOpenGLLayer or
+#         IOSurface contents; CPU-drawn windows keep the backing-store path (SFFX_GPU_PRESENT=0 disables, =1 forces)
+#   0380w WindowServer (bake-in step 7): GPU presenter entry points accept calls unless SFFX_GPU_PRESENT=0; vector
+#         compare and GPU damage default on (=0 disables)
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
@@ -528,6 +542,47 @@
 #   0306  QuartzCore (FXPERF2, adopted by TERM11 unchanged): NV12/x420 video planes go up as R8/RG8 (R16/RG16), Mesa's copy
 #         path, not LUMINANCE/LUMINANCE_ALPHA, which Mesa converted pixel by pixel (44 % of Firefox's parent main thread on
 #         cnn.com; 1080p60 parent 78.4 -> 29.4 % of a core); luminance stays the fallback if the driver refuses
+#   0320  QuartzCore (VLC, docs/roadmap/issues/SF-AH-vlc.md): an opaque CAOpenGLLayer's read-back picture is an image
+#         without alpha (VLC draws its video with alpha 0 into an opaque layer: the window was black)
+#   0321  QuartzCore (VLC): -[CALayerContext setLayer:] with the root it already has gives that root its pointer to
+#         the context back when it lost it (AppKit detaches a view's layer when the view moves under a superview
+#         without a layer): new contents asked for no frame, a player's picture stayed at its first frame
+#   0322  AppKit (VLC): -[NSMenuItem parentItem] (VLC's menu validation asked for it; each of its menus ended in an
+#         exception before it opened)
+#   0323  AppKit (VLC): a layer the view's -makeBackingLayer made follows the window's backingScaleFactor (contentsScale),
+#         a delegate answering -layer:shouldInheritContentsScale:fromWindow: deciding; AppKit's own backing layers are
+#         unchanged (VLC's video was rendered at scale 1 and enlarged 1.5x)
+#   0324  AppKit (VLC): when the desktop answers an application's request for a larger window with a smaller size, the
+#         window keeps to that size until the desktop configures a larger one (VLC asks for its video's size in pixels,
+#         larger than the screen; it was shown cut off, its controls out of sight)
+#   0325  AppKit (VLC): NSAnimation's current value follows its progress (curve or delegate); -startWhenAnimation:reachesProgress:, -stopWhenAnimation:reachesProgress:,
+#         -clearStartAnimation, -clearStopAnimation (VLC chains its fullscreen transition: it ended at the button)
+#   0326  QuartzCore (VLC): CAOpenGLLayer makes its context current before locking it (VLC's order on its own threads)
+#         and, where the context cannot be made current, draws and reads back nothing, keeping its last picture (black
+#         frames while VLC's window was resized)
+#   0327  AppKit (VLC): an NSOpenGLContext flushed from another thread has its frame drawn into its view on the main thread
+#         (the newest only); NSOpenGLView's -reshape runs on the main thread, and at once when its frame changes, as on
+#         macOS (VLC's NSOpenGLView output asserted it); a view wanting the best resolution gets a drawable in pixels
+#   0328  AppKit (VLC): the first layers-only frame after a window was resized draws the window whole (its backing store is
+#         new and empty: VLC's picture stood over the whole window, without menus and controls, during a corner drag)
+#   0329  QuartzCore (VLC): CAOpenGLLayer reads its picture back only from its own context: where the application's drawing
+#         left another context current, or none, the layer keeps its last picture (VLC keeps the context that was current
+#         before its draw in one variable for all its threads; when its video thread asked for the context during a draw
+#         on the main thread, that draw ended with no context current: black frames, about 0.1 s, during a corner drag).
+#         SF_CAOGL_TRACE=1 says when; SF_CAOGL_TRACE=2 also logs every render (time, thread, size, a sample of the picture)
+#   0331  QuartzCore (IOSURF): where IOSurfaces have GPU storage (SFFX_IOSURFACE_GPU=1), CAOpenGLLayer copies its picture
+#         on the GPU (CGLSFFXCopyFramebuffer, rows flipped, alpha 1 for an opaque layer) into the next of two such
+#         surfaces and makes that surface its contents, which the renderer binds without a copy; nothing is read back.
+#         Without GPU storage it reads back as before. (VLC's 1080p picture: ~40 ms a frame of read-back, image and
+#         per-pixel texture conversion on the render thread; the window showed ~24 of 30 pictures a second)
+#   0333w WindowServer (IOSURF): a damage present finds the base's changed rows in one pass with sfGPUBaseEqual's
+#         comparison (NEON under SFFX_GPU_VECTOR_COMPARE), not a whole compare and then memcmp row by row: VLC's control
+#         bar redrawn twice a second cost 18-57 ms under the window server's lock, and its video presents waited
+#   0334w WindowServer (IOSURF, attribute windowserverCadence only: VLC's private copy): SF_WS_CADENCE=1 (opt-in): a steady source's render-thread frames are held, once a frame
+#         before their first layer is handed over, to a fixed phase of the refreshes (SF_WS_CADENCE_PHASE ms after wsClock's
+#         refresh, 13: about the desk's flip, far from its latch) on the source's measured cadence (previous refresh +
+#         interval in refreshes while the frame is ready in time): VLC's 30 fps pictures 2 refreshes apart instead of 1 or 3
+#         when their commits drifted onto the desk's latch. =2 logs each frame
 #   0304, 0305w (FXPERF2's FX-029 follow-ups, adopted by TERM11 unchanged; opt-in SFFX_GPU_DAMAGE=1): a layer-only
 #         flush with nothing drawn into the window's own backing store tells the window server so, which then skips its
 #         whole-backing-store compare (11 MB a present; ~10 % of Firefox's parent main thread on cnn.com)
@@ -657,10 +712,20 @@
 #         NSMutableAttributedString are also answered by Foundation's bridged attributed strings (a mutable one is an
 #         NSAttributedString object): -setBaseWritingDirection:range: on a string built with -appendAttributedString:
 #         raised "unrecognized selector" (QuickTime Player's Open Recent titles)
+#   0370  AppKit (CHONK1; every application, through the guarded install only): a maximum size of zero on an axis
+#         does not constrain -setFrame:. AWT sets every new window maximum to 0x0 until it is shown, so the first
+#         frame Java gave a window collapsed it to 0x0 (ChonkCraft: an empty window, content 0x-22)
 #   0363  Onyx2D (QTP2; every application, through the guarded install only): an opaque image drawn on the device at
 #         its own size (within two pixels) is copied a row at a time instead of resampled and blended pixel by pixel
 #         (QuickTime Player's picture cost 150 ms a draw: two pictures a second); O2_NO_IMAGE_FAST_PATH=1 turns it off,
 #         O2_IMAGE_TRACE=1 says why an image was resampled
+#   0373  Onyx2D (CHONK2; every application, through the guarded install only): the same opaque image at another
+#         scale along the axes (1/4 to 8: a picture made in points on a desk at 150 %) is resampled bilinearly through
+#         a table of source columns and weights instead of pixel by pixel through the general path (ChonkCraft's
+#         1280x778 frame cost 27 ms a draw: 34 frames a second); O2_NO_IMAGE_SCALE_FAST_PATH=1 turns it off
+#   0374  Onyx2D (CHONK3; every application, through the guarded install only): that resampling is split into bands of
+#         device rows drawn at once on up to four threads (ChonkCraft held the main thread ~12 ms a draw on one, after
+#         the desk's frame callback: the frame missed its refresh); O2_IMAGE_SCALE_THREADS=1 draws on one
 #   0009  Security: SecItemCopyMatching writes its result on every path and answers
 #         errSecItemNotFound when nothing was found (Firefox crashed on the unwritten result)
 #   (0007 and 0008 are libSystem's sandbox profile compiler: ./build-libsystem-cocoa.nix)
@@ -779,6 +844,12 @@ let
     ./patches/0176-appkit-clipboard-offered-data-follows-writes.patch
     ./patches/0177-appkit-clipboard-write-not-replaced-before-its-offer.patch
     ./patches/0178a-appkit-gpu-layers-presented-from-the-render-thread.patch
+    ./patches/0322-appkit-menu-item-parent-item.patch
+    ./patches/0323-appkit-custom-backing-layer-follows-window-scale.patch
+    ./patches/0324-appkit-window-keeps-the-size-the-desktop-allows.patch
+    ./patches/0325-appkit-linked-animations-and-current-value.patch
+    ./patches/0327-appkit-opengl-view-drawn-and-reshaped-on-the-main-thread.patch
+    ./patches/0328-appkit-first-layer-frame-after-a-resize-draws-the-window-whole.patch
     ./patches/0340-appkit-binding-and-text-style-names.patch
     ./patches/0341-appkit-file-wrapper-url-interface.patch
     ./patches/0350-appkit-document-application-launch.patch
@@ -792,8 +863,11 @@ let
     ./patches/0364-appkit-about-panel-nib-loaded-when-shown.patch
     ./patches/0366-appkit-open-recent-menus-filled-when-shown.patch
     ./patches/0367-appkit-mutable-attributed-string-methods-on-bridged-strings.patch
+    ./patches/0370-appkit-zero-maximum-size-is-no-maximum.patch
+    ./patches/0379-appkit-auto-gpu-present-for-gpu-layers.patch
+    ./patches/0381-appkit-chonkcraft-additive-symbols.patch
   ];
-  windowserverSrc = patchedDir "src/Frameworks/WindowServer" [
+  windowserverPatches = [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
     ./patches/0018-windowserver-popup-placement.patch
     ./patches/0022-windowserver-presented-frame-dump.patch
@@ -822,9 +896,22 @@ let
     ./patches/0166w-windowserver-momentum-capped-and-timed.patch
     ./patches/0173w-windowserver-pointer-enter-is-a-move.patch
     ./patches/0178w-windowserver-layers-presented-from-the-render-thread.patch
+    ./patches/0333w-windowserver-changed-rows-found-in-one-vector-pass.patch
+    ./patches/0375w-windowserver-paced-present-copies-the-backing-store-at-the-flush.patch
+    ./patches/0376w-windowserver-pace-presents-default-on.patch
+    ./patches/0377w-windowserver-gpu-frame-requests-gpu-storage.patch
+    ./patches/0380w-windowserver-gpu-presenter-auto-and-perf-defaults.patch
   ];
+  windowserverSrc = patchedDir "src/Frameworks/WindowServer" windowserverPatches;
+  # (IOSURF) VLC's private copy only: the system's patches and the opt-in cadence hold (SF_WS_CADENCE)
+  windowserverCadenceSrc = patchedDir "src/Frameworks/WindowServer" (windowserverPatches ++ [
+    ./patches/0334w-windowserver-steady-sources-committed-on-a-steady-cadence.patch
+  ]);
   authenticationServicesSrc = patchedDir "src/Frameworks/AuthenticationServices" [
     ./patches/0003-authenticationservices-web-session-browser-side.patch
+  ];
+  hiServicesSrc = patchedDir "src/Frameworks/HIServices" [
+    ./patches/0383-hiservices-printcore-duplex-stubs.patch
   ];
   onyx2dSrc = patchedDir "src/Frameworks/Onyx2D" [
     ./patches/0006-onyx2d-glyphs-at-device-scale.patch
@@ -840,6 +927,8 @@ let
     ./patches/0146-onyx2d-glyph-cache-knows-a-reused-face.patch
     ./patches/0154-onyx2d-font-files-mapped-once.patch
     ./patches/0363-onyx2d-images-at-device-pixels-copied.patch
+    ./patches/0373-onyx2d-images-at-other-scales-resampled-by-table.patch
+    ./patches/0374-onyx2d-scaled-images-drawn-in-bands-on-four-threads.patch
   ];
   # upstream's framework recipes name no optimisation level: their compile lines get one here
   optimised = d: d.overrideAttrs (old: {
@@ -862,6 +951,7 @@ let
     ./patches/0118-coregraphics-icc-and-indexed-color-spaces.patch
     ./patches/0135-coregraphics-display-fade-opengl-acceleration.patch
     ./patches/0342-coregraphics-displays-with-point-and-rect.patch
+    ./patches/0382-coregraphics-display-config-and-event-stubs.patch
   ];
   coregraphics = optimised (pd."coregraphics-arm64".override { src = coregraphicsSrc; });
   # QuartzCore: upstream's recipe (not optimised, as installed; its library is the root's QuartzCore.pd, beside the
@@ -881,16 +971,22 @@ let
     ./patches/0300-quartzcore-damage-only-frames.patch
     ./patches/0306-quartzcore-video-planes-uploaded-as-red-green.patch
     ./patches/0178-quartzcore-layer-tree-rendered-on-a-render-thread.patch
+    ./patches/0320-quartzcore-opaque-opengl-layer-ignores-alpha.patch
+    ./patches/0321-quartzcore-layer-context-reclaims-its-root.patch
+    ./patches/0326-quartzcore-opengl-layer-current-before-lock-and-keeps-its-picture.patch
+    ./patches/0329-quartzcore-opengl-layer-reads-back-from-its-own-context.patch
+    ./patches/0331-quartzcore-opengl-layer-picture-as-a-gpu-surface.patch
     ./patches/0343-quartzcore-text-layer.patch
     ./patches/0344-quartzcore-keyframe-animation.patch
     ./patches/0345-quartzcore-constraint-layout-manager.patch
     ./patches/0369-quartzcore-layer-contents-types.patch
+    ./patches/0378-quartzcore-gpu-storage-and-auto-gpu-perf.patch
   ];
   quartzcore = pd."quartzcore-msm-arm64".override { src = quartzcoreSrc; };
   wp = "${pd."wayland-protocols"}/share/wayland-protocols";
   # upstream's recipe names every protocol and object file; the three protocols the patch
   # uses are generated and linked the same way
-  windowserver = optimised ((pd."windowserver-arm64".override { src = windowserverSrc; }).overrideAttrs (old: {
+  mkWindowserver = src: optimised ((pd."windowserver-arm64".override { inherit src; }).overrideAttrs (old: {
     buildPhase = builtins.replaceStrings
       [ "cc=\"" "rpc_wayland.o xdg-shell-protocol.o" ]
       [ ''
@@ -908,6 +1004,8 @@ let
               for n in xdg-decoration-unstable-v1 fractional-scale-v1 viewporter xdg-activation-v1 pointer-gestures-unstable-v1 cursor-shape-v1 tablet-unstable-v2 presentation-time; do $cc $cflags -c $n-protocol.c -o $n-protocol.o; done'' ]
         old.buildPhase);
   }));
+  windowserver = mkWindowserver windowserverSrc;
+  windowserverCadence = mkWindowserver windowserverCadenceSrc;
   # (0110) against the libFoundation the root has (NSIndexPath is in it), not upstream's
   foundation = import ../terminal-app/build-foundation.nix;
   # (0364) the About panel's nib, this framework's own (Cocotron's NSSystemInfoPanel, MIT), installed with its resources:
@@ -929,9 +1027,10 @@ let
   });
   appFrameworks = a.appFrameworks.override (old: {
     inherit appkit windowserver;
-    srcs = old.srcs // { AuthenticationServices = authenticationServicesSrc; };
+    srcs = old.srcs // { AuthenticationServices = authenticationServicesSrc; HIServices = hiServicesSrc; };
   });
 in {
   inherit appkitSrc windowserverSrc authenticationServicesSrc onyx2dSrc windowserver appkit appFrameworks onyx2d security;
+  inherit windowserverCadenceSrc windowserverCadence;
   inherit coretextSrc coretext coregraphicsSrc coregraphics quartzcoreSrc quartzcore;
 }

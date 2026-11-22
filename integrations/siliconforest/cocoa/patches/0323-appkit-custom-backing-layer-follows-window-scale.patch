@@ -1,0 +1,48 @@
+--- a/src/Frameworks/AppKit/NSView.m
++++ b/src/Frameworks/AppKit/NSView.m
+@@ -470,11 +470,37 @@
+    }
+ }
+ 
++static BOOL isSurfaceLayer(CALayer *layer);
++
++/* (VLC) A layer the view's -makeBackingLayer made renders at the window's pixel scale, as on macOS: its contentsScale
++ * follows the window's backingScaleFactor. A delegate that answers -layer:shouldInheritContentsScale:fromWindow: (VLC's
++ * video view; a layer an application hosts) decides for its layer. AppKit's own backing layers keep drawing as before.
++ * VLC's video layer stayed at scale 1: its picture was rendered at 1708x960 and scaled up 1.5x to the panel. */
++static void inheritContentsScale(NSView *self){
++   CALayer *layer=self->_layer;
++   NSWindow *window=self->_window;
++
++   if(layer==nil || window==nil || [layer isKindOfClass:[NSViewBackingLayer class]] || isSurfaceLayer(layer))
++    return;
++   CGFloat scale=[window backingScaleFactor];
++   if(!(scale>0) || [layer contentsScale]==scale)
++    return;
++   id delegate=[layer delegate];
++   if([delegate respondsToSelector:@selector(layer:shouldInheritContentsScale:fromWindow:)]){
++    if(!((BOOL (*)(id,SEL,CALayer *,CGFloat,NSWindow *))objc_msgSend)(delegate,@selector(layer:shouldInheritContentsScale:fromWindow:),layer,scale,window))
++     return;
++   }
++   else if(delegate!=self)
++    return;
++   [layer setContentsScale:scale];
++}
++
+ static inline void configureLayerGeometry(NSView *self){
+    CALayer *layer=self->_layer;
+ 
+    if(layer==nil)
+     return;
++   inheritContentsScale(self);
+ 
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+@@ -1943,6 +1969,7 @@
+ 
+ // the window's scale changed: a view that caches anything in pixels hears it here, subviews after it
+ -(void)viewDidChangeBackingProperties {
++   inheritContentsScale(self);
+    for(NSView *view in [[_subviews copy] autorelease])
+     [view viewDidChangeBackingProperties];
+ }

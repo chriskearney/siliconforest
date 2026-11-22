@@ -32,6 +32,8 @@ NSString *const NSURLVolumeIsReadOnlyKey = @"NSURLVolumeIsReadOnlyKey";
 NSString *const NSURLHasHiddenExtensionKey = @"NSURLHasHiddenExtensionKey";
 NSString *const NSURLEffectiveIconKey = @"NSURLEffectiveIconKey";
 NSString *const NSURLFileResourceIdentifierKey = @"NSURLFileResourceIdentifierKey";
+// (bake-in step 9b) Additive URL key formerly supplied only in ChonkCraft's fills.py
+NSString *const NSURLIsRegularFileKey = @"NSURLIsRegularFileKey";
 
 // ---- CFStringTokenizer: word and other boundaries of a string, from ICU's break iterators
 typedef struct __SFStringTokenizer {
@@ -129,3 +131,9 @@ CFDictionaryRef _CFWebServicesCopyProviderInfo(CFStringRef serviceType, Boolean 
     if (outIsUserSelection) *outIsUserSelection = false;
     return NULL;
 }
+
+// ---- The calendar identifier of before macOS 10.10 (VLC media player 3.0 and the Growl framework
+// it carries import it from CoreFoundation, where macOS keeps it; docs/roadmap/issues/SF-AH-vlc.md).
+// The value is the identifier itself: +[NSCalendar calendarWithIdentifier:] takes it as it takes
+// NSCalendarIdentifierGregorian.
+CFStringRef const NSGregorianCalendar = CFSTR("gregorian");

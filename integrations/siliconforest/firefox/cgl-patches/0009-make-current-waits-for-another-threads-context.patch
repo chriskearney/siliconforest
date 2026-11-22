@@ -1,0 +1,233 @@
+--- a/src/Frameworks/OpenGL/CGL.c
++++ b/src/Frameworks/OpenGL/CGL.c
+@@ -99,6 +99,9 @@
+ 	unsigned int      retain_count;
+ 	pthread_mutex_t   lock;
+ 	int               lock_ready;
++	// (VLC) how deep the thread holding the lock holds it; a context made current under its lock is let go with it
++	int               lock_depth;
++	int               lent;
+ #ifdef SF_CGL_USE_EGL
+ 	EGLContext        glx;
+ 	EGLSurface        pbuffer;
+@@ -713,13 +716,87 @@
+ 
+ static CGLError sf_cgl_resize(CGLContextObj ctx, int width, int height);
+ 
+-// the context this thread leaves is no longer drawn into here
++/* (VLC) CGL lets an application make a context current on one thread while another thread still has it current; the
++ * application keeps its own order with CGLLockContext. EGL refuses that (EGL_BAD_ACCESS). VLC makes its context current
++ * on its video thread while the layer draws with it on another: the call failed ("invalid context"), a frame was not
++ * prepared or not drawn, and a black frame was shown. A thread that asks for a context bound elsewhere now waits for
++ * the other thread to let go, at most SF_CGL_HANDOFF_MS (250 ms; 0 turns the wait off). Who holds a context and the
++ * wait are kept under one lock. */
++static pthread_mutex_t sf_cgl_bind_lock = PTHREAD_MUTEX_INITIALIZER;
++static pthread_cond_t sf_cgl_bind_changed = PTHREAD_COND_INITIALIZER;
++
++static int
++sf_cgl_handoff_ms(void)
++{
++	static int ms = -1;
++
++	if (ms < 0) {
++		const char *v = getenv("SF_CGL_HANDOFF_MS");
++		ms = v != NULL ? atoi(v) : 250;
++		if (ms < 0)
++			ms = 0;
++	}
++	return ms;
++}
++
++// waits, bounded, until no other thread has ctx current, and then reserves it for this thread (bound, this thread), so
++// that no other thread tries to bind it between this wait and this thread's eglMakeCurrent; the milliseconds waited, or
++// -1 when it is still held elsewhere (nothing reserved). A failed bind gives the reservation back (sf_cgl_unreserve).
++static double
++sf_cgl_wait_for_handoff(CGLContextObj ctx)
++{
++	struct timespec start, deadline;
++	double waited = 0;
++	int ms = sf_cgl_handoff_ms();
++
++	pthread_mutex_lock(&sf_cgl_bind_lock);
++	if (ctx->bound && !pthread_equal(ctx->current_thread, pthread_self())) {
++		clock_gettime(CLOCK_REALTIME, &start);
++		deadline = start;
++		deadline.tv_sec += ms / 1000;
++		deadline.tv_nsec += (long)(ms % 1000) * 1000000L;
++		if (deadline.tv_nsec >= 1000000000L) {
++			deadline.tv_sec++;
++			deadline.tv_nsec -= 1000000000L;
++		}
++		while (ms > 0 && ctx->bound && !pthread_equal(ctx->current_thread, pthread_self()))
++			if (pthread_cond_timedwait(&sf_cgl_bind_changed, &sf_cgl_bind_lock, &deadline) != 0)
++				break;
++		struct timespec now;
++		clock_gettime(CLOCK_REALTIME, &now);
++		waited = (now.tv_sec - start.tv_sec) * 1e3 + (now.tv_nsec - start.tv_nsec) / 1e6;
++		if (ctx->bound && !pthread_equal(ctx->current_thread, pthread_self()))
++			waited = -1;
++	}
++	if (waited >= 0) {
++		ctx->bound = 1;
++		ctx->current_thread = pthread_self();
++	}
++	pthread_mutex_unlock(&sf_cgl_bind_lock);
++	return waited;
++}
++
++static void
++sf_cgl_unreserve(CGLContextObj ctx)
++{
++	pthread_mutex_lock(&sf_cgl_bind_lock);
++	if (pthread_equal(ctx->current_thread, pthread_self()) && sf_cgl_current != ctx) {
++		ctx->bound = 0;
++		pthread_cond_broadcast(&sf_cgl_bind_changed);
++	}
++	pthread_mutex_unlock(&sf_cgl_bind_lock);
++}
++
++// the context this thread leaves is no longer drawn into here; a thread waiting for it may take it
+ static void
+ sf_cgl_unbind_current(void)
+ {
++	pthread_mutex_lock(&sf_cgl_bind_lock);
+ 	if (sf_cgl_current != NULL)
+ 		sf_cgl_current->bound = 0;
+ 	sf_cgl_current = NULL;
++	pthread_cond_broadcast(&sf_cgl_bind_changed);
++	pthread_mutex_unlock(&sf_cgl_bind_lock);
+ }
+ 
+ static void
+@@ -746,12 +823,22 @@
+ 		return kCGLNoError;
+ 	}
+ 
++	double waited = (sf_cgl_current != ctx || ctx->lent) ? sf_cgl_wait_for_handoff(ctx) : 0;
++
+ 	/* The API binding is per-thread, so it has to be re-asserted here and not
+ 	 * only where the context was created. */
+ 	eglBindAPI(EGL_OPENGL_API);
+ 	if (!eglMakeCurrent(dpy, ctx->pbuffer, ctx->pbuffer, ctx->glx)) {
++		if (waited >= 0 && (sf_cgl_current != ctx || ctx->lent))
++			sf_cgl_unreserve(ctx);
++		// SF_CGL_TRACE=1: why a context could not be made current
++		if (getenv("SF_CGL_TRACE") != NULL)
++			fprintf(stderr, "CGL: make current %p failed: EGL error %x, current on another thread %d, waited %.1f ms\n",
++			    (void *)ctx, eglGetError(), ctx->bound && !pthread_equal(ctx->current_thread, pthread_self()), waited);
+ 		return kCGLBadContext;
+ 	}
++	if (waited > 0 && getenv("SF_CGL_TRACE") != NULL)
++		fprintf(stderr, "CGL: make current %p waited %.1f ms for another thread\n", (void *)ctx, waited);
+ #else
+ 	Display *dpy = sf_cgl_get_display();
+ 	if (dpy == NULL) {
+@@ -771,10 +858,14 @@
+ 	}
+ #endif
+ 
+-	sf_cgl_unbind_current();
++	if (sf_cgl_current != ctx)
++		sf_cgl_unbind_current();
++	pthread_mutex_lock(&sf_cgl_bind_lock);
+ 	sf_cgl_current = ctx;
+ 	ctx->current_thread = pthread_self();
+ 	ctx->bound = 1;
++	ctx->lent = 0;
++	pthread_mutex_unlock(&sf_cgl_bind_lock);
+ 	sf_cgl_apply_pending_size(ctx);
+ 	return kCGLNoError;
+ }
+@@ -2064,6 +2155,68 @@
+ 	c->lock_ready = 1;
+ }
+ 
++/* (VLC) On macOS a context stays current on every thread that made it current, and CGLLockContext orders their use.
++ * EGL binds a context to one thread at a time. So, as a context's lock passes between threads, its binding passes with
++ * it: a thread letting go of the lock completely lets go of the binding as well (its CGLGetCurrentContext still answers
++ * the context), and takes the binding back when it locks the context again or makes it current. VLC's NSOpenGLView
++ * output keeps its context current on the main thread and draws from its video thread too; the video thread's
++ * make-current failed with 10004 for ever. Only with SF_CGL_LEND=1 (off by default) and SF_CGL_HANDOFF_MS other
++ * than 0. */
++#ifdef SF_CGL_USE_EGL
++static void
++sf_cgl_take_back(CGLContextObj ctx)
++{
++	if (sf_cgl_current != ctx || !ctx->lent || sf_cgl_handoff_ms() == 0)
++		return;
++	EGLDisplay dpy = sf_cgl_get_display();
++	double waited = sf_cgl_wait_for_handoff(ctx);
++
++	eglBindAPI(EGL_OPENGL_API);
++	if (waited < 0 || !eglMakeCurrent(dpy, ctx->pbuffer, ctx->pbuffer, ctx->glx)) {
++		if (getenv("SF_CGL_TRACE") != NULL)
++			fprintf(stderr, "CGL: taking back %p failed: EGL error %x, waited %.1f ms\n", (void *)ctx, eglGetError(), waited);
++		if (waited >= 0) {
++			pthread_mutex_lock(&sf_cgl_bind_lock);
++			ctx->bound = 0;
++			pthread_cond_broadcast(&sf_cgl_bind_changed);
++			pthread_mutex_unlock(&sf_cgl_bind_lock);
++		}
++		return;
++	}
++	pthread_mutex_lock(&sf_cgl_bind_lock);
++	ctx->lent = 0;
++	ctx->current_thread = pthread_self();
++	ctx->bound = 1;
++	pthread_mutex_unlock(&sf_cgl_bind_lock);
++	sf_cgl_apply_pending_size(ctx);
++}
++
++static int
++sf_cgl_lending(void)
++{
++	static int on = -1;
++
++	if (on < 0) {
++		const char *v = getenv("SF_CGL_LEND");
++		on = v != NULL && v[0] == '1';
++	}
++	return on;
++}
++
++static void
++sf_cgl_lend(CGLContextObj ctx)
++{
++	if (!sf_cgl_lending() || sf_cgl_current != ctx || ctx->lent || !ctx->bound || sf_cgl_handoff_ms() == 0)
++		return;
++	eglMakeCurrent(sf_cgl_get_display(), EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
++	pthread_mutex_lock(&sf_cgl_bind_lock);
++	ctx->lent = 1;
++	ctx->bound = 0;
++	pthread_cond_broadcast(&sf_cgl_bind_changed);
++	pthread_mutex_unlock(&sf_cgl_bind_lock);
++}
++#endif
++
+ CGLError CGLLockContext(CGLContextObj ctx)
+ {
+ 	if (ctx == NULL) {
+@@ -2071,6 +2224,11 @@
+ 	}
+ 	sf_cgl_init_lock(ctx);
+ 	pthread_mutex_lock(&ctx->lock);
++	if (++ctx->lock_depth == 1) {
++#ifdef SF_CGL_USE_EGL
++		sf_cgl_take_back(ctx);
++#endif
++	}
+ 	return kCGLNoError;
+ }
+ 
+@@ -2079,6 +2237,11 @@
+ 	if (ctx == NULL || !ctx->lock_ready) {
+ 		return kCGLBadContext;
+ 	}
++	if (ctx->lock_depth > 0 && --ctx->lock_depth == 0) {
++#ifdef SF_CGL_USE_EGL
++		sf_cgl_lend(ctx);
++#endif
++	}
+ 	pthread_mutex_unlock(&ctx->lock);
+ 	return kCGLNoError;
+ }

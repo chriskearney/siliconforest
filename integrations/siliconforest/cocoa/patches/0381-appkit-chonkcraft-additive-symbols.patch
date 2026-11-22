@@ -1,0 +1,21 @@
+--- a/src/Frameworks/AppKit/NSMacOS26Additions.m
++++ b/src/Frameworks/AppKit/NSMacOS26Additions.m
+@@ -472,3 +472,18 @@
+ // private: whether the view is being drawn into the yellow "find indicator" bubble. Never here.
+ - (BOOL)isDrawingFindIndicator { return NO; }
+ @end
++
++// (bake-in step 9b) Additive AppKit constants and Carbon-era entry point formerly
++// supplied only in ChonkCraft's fills.py.
++NSString *const NSAccessibilityException = @"NSAccessibilityException";
++NSString *const NSAccessibilityMenuBarItemRole = @"AXMenuBarItem";
++NSString *const NSAccessibilityTabButtonSubrole = @"AXTabButton";
++NSString *const NSDocumentTypeDocumentAttribute = @"DocumentType";
++NSString *const NSPrintMustCollate = @"NSMustCollate";
++NSString *const NSPrintSelectionOnly = @"NSPrintSelectionOnly";
++NSString *const NSRTFTextDocumentType = @"NSRTF";
++NSString *const NSVCardPboardType = @"Apple VCard pasteboard type";
++NSString *const NSWorkspaceScreensDidSleepNotification = @"NSWorkspaceScreensDidSleepNotification";
++NSString *const NSWorkspaceScreensDidWakeNotification = @"NSWorkspaceScreensDidWakeNotification";
++
++BOOL NSApplicationLoad(void) { return YES; }

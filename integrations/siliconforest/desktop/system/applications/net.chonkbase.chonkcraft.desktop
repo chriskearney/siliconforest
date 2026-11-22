@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ChonkCraft
+Comment=ChonkCraft (the published macOS app, staged): opens on its title sequence and menu, in a window
+TryExec=/private/var/db/sfchonkcraft/ChonkCraft.app/Contents/runtime/Contents/Home/bin/java
+Exec=/usr/bin/sf-open-chonkcraft
+Icon=/private/var/db/sfchonkcraft/ChonkCraft.app
+Categories=Game;StrategyGame;
+StartupWMClass=net.chonkbase.chonkcraft

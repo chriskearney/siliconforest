@@ -16,8 +16,9 @@ leaving VLC's vendor GUI, codecs, demuxer and output modules as the target.
 The source API reference is
 [upstream SUUpdater.h](https://github.com/sparkle-project/Sparkle/blob/1.26.0/Sparkle/SUUpdater.h).
 
-`foundation.m` provides NSAppleScript as an unavailable interpreter: source is
-retained; compile and execute fail with an error dictionary. `calendar.m`
+NSAppleScript, an unavailable interpreter (source is retained; compile and execute fail with an
+error dictionary, number -1753), comes from the Foundation wrapper's source,
+`../../../terminal-app/compat/Foundation.m`, which the facade links; `foundation.m` is empty. `calendar.m`
 provides the Gregorian identifier, `gregorian`, in the CoreFoundation facade.
 These are not permissions or scripting engines.
 

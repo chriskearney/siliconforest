@@ -1,0 +1,288 @@
+diff --git c/crates/wm-darwin/src/effects.rs w/crates/wm-darwin/src/effects.rs
+index 2b4eac8..561f059 100644
+--- c/crates/wm-darwin/src/effects.rs
++++ w/crates/wm-darwin/src/effects.rs
+@@ -12,6 +12,7 @@
+ //! multiplies what it draws there by the corner's coverage and draws the border's ring.
+ use crate::damage::DRect;
+ use std::rc::Rc;
++use std::sync::atomic::{AtomicBool, Ordering};
+ use wm_core::Point;
+ use wm_theme_api::{DecorationBuffer, DecorationShadow, DecorationShape};
+ 
+@@ -247,7 +248,12 @@ impl Fx {
+ /// content, its frame's border), the border's ring on the curve, cut to the corner's coverage,
+ /// premultiplied. Drawn over what is behind the window like any picture: the same pixels from
+ /// every renderer. `content`: the window's picture and where its pixel 0,0 is on the output.
++///
++/// A picture with no CPU pixels (a client GPU / dma-buf window stores the size and an empty
++/// `pixels`, and a resized buffer can be shorter than `width * height * 4`) is `None`: the
++/// border, or transparent. One log line per process, not per frame.
+ pub(crate) fn corner_patches(clip: &CornerClip, content: Option<(&DecorationBuffer, Point)>) -> [(Point, DecorationBuffer); 2] {
++    let content = content.filter(|(image, _)| cpu_pixels(image));
+     let border = i32::from(clip.border);
+     clip.squares().map(|square| {
+         let (w, h) = (square.width(), square.height());
+@@ -279,6 +285,25 @@ pub(crate) fn corner_patches(clip: &CornerClip, content: Option<(&DecorationBuff
+     })
+ }
+ 
++/// `image` holds a byte for every texel. Otherwise the CPU cannot sample it.
++fn cpu_pixels(image: &DecorationBuffer) -> bool {
++    let enough = (image.width as usize)
++        .checked_mul(image.height as usize)
++        .and_then(|texels| texels.checked_mul(4))
++        .is_some_and(|need| image.pixels.len() >= need);
++    if !enough {
++        note_missing_cpu_pixels();
++    }
++    enough
++}
++
++fn note_missing_cpu_pixels() {
++    static ONCE: AtomicBool = AtomicBool::new(false);
++    if !ONCE.swap(true, Ordering::Relaxed) {
++        eprintln!("WMCAPTURE corner patches: window picture without CPU pixels (GPU buffer): corners drawn without its content");
++    }
++}
++
+ /// The CPU renderers' corner cut: the pixels of a window's two corner squares are kept before
+ /// the window is drawn and put back afterwards (the corner pictures are drawn over them then).
+ pub(crate) struct CornerKeep {
+@@ -425,4 +450,31 @@ mod tests {
+         let on = px(103, 256);
+         assert!(on[0] > on[2] && on[3] == 255, "the ring is the border's colour over what was behind: {on:?}");
+     }
++
++    /// A dma-buf window's picture has a size and no bytes (`set_window_external`); a resized
++    /// buffer can be short of `width * height * 4`. Either used to panic at `pixels[i]`.
++    #[test]
++    fn a_corner_without_cpu_pixels_uses_the_border_and_does_not_panic() {
++        let clip = CornerClip { rect: DRect::new(100, 100, 300, 260), radius: 12, border: 1, rgb: [200, 100, 50] };
++        let at = Point::new(101, 100);
++        let none = corner_patches(&clip, None);
++        let empty = DecorationBuffer { width: 198, height: 159, pixels: Vec::new() };
++        let short = DecorationBuffer { width: 198, height: 159, pixels: vec![9; 198 * 159 * 4 - 1] };
++        let huge = DecorationBuffer { width: u32::MAX, height: u32::MAX, pixels: Vec::new() };
++        for (name, image) in [("empty", &empty), ("short", &short), ("overflow", &huge)] {
++            let got = corner_patches(&clip, Some((image, at)));
++            for (side, (place, picture)) in got.into_iter().enumerate() {
++                assert_eq!(place, none[side].0, "{name} side {side}");
++                assert_eq!((picture.width, picture.height), (12, 12));
++                assert_eq!(picture.pixels, none[side].1.pixels, "{name}: corners drawn as if there were no picture");
++            }
++        }
++        // a full buffer is still sampled: the square's inner end is the content, not the fallback
++        let mut full = DecorationBuffer { width: 198, height: 159, pixels: vec![0; 198 * 159 * 4] };
++        full.pixels.chunks_exact_mut(4).for_each(|p| p.copy_from_slice(&[10, 20, 30, 255]));
++        let got = corner_patches(&clip, Some((&full, at)));
++        let inner = &got[0].1.pixels[((250 - 248) * 12 + (111 - 100)) * 4..][..4];
++        assert_eq!(inner, &[10, 20, 30, 255], "CPU pixels are still the corner's content");
++        assert_ne!(got[0].1.pixels, none[0].1.pixels);
++    }
+ }
+diff --git c/crates/wm-darwin/src/scene.rs w/crates/wm-darwin/src/scene.rs
+index 227b85f..33a56d5 100644
+--- c/crates/wm-darwin/src/scene.rs
++++ w/crates/wm-darwin/src/scene.rs
+@@ -1508,6 +1508,200 @@ mod output_background_tests {
+     }
+ }
+ 
++/// A mapped window whose picture is a dma-buf (size set, `pixels` empty) or a buffer shorter
++/// than `width * height * 4`. `CpuBackend::render` is what `--screencapture` composites; it
++/// must not panic, and the corners fall back to the border.
++#[cfg(test)]
++mod gpu_window_capture_tests {
++    use super::*;
++    use crate::damage::ItemKey;
++    use crate::presenter::Presenter;
++    use std::os::fd::AsFd;
++    use std::os::unix::net::UnixStream;
++    use std::sync::mpsc;
++    use std::thread;
++    use std::time::{Duration, Instant};
++    use wayland_client::{
++        delegate_noop,
++        protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface},
++        Connection, Dispatch, QueueHandle,
++    };
++    use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
++    use wm_theme_api::DecorationShape;
++
++    struct Sink;
++    impl Presenter for Sink {
++        fn present(&mut self, _: &tiny_skia::Pixmap) -> Result<(), String> {
++            Ok(())
++        }
++    }
++    type Job = Box<dyn FnOnce(&mut crate::server::Server) -> String + Send>;
++    struct Harness {
++        jobs: mpsc::Sender<(Job, mpsc::Sender<String>)>,
++        thread: Option<thread::JoinHandle<()>>,
++    }
++    impl Harness {
++        fn start() -> (Self, Connection) {
++            let (server, client) = UnixStream::pair().unwrap();
++            let (jobs, rx) = mpsc::channel::<(Job, mpsc::Sender<String>)>();
++            let thread = thread::spawn(move || {
++                use smithay::reexports::wayland_server::Display;
++                let mut display = Display::<crate::server::Server>::new().unwrap();
++                let mut state = crate::server::Server::new(&display.handle(), Size::new(320, 240)).unwrap();
++                crate::server::Server::add_client(&mut display, server).unwrap();
++                let started = Instant::now();
++                while started.elapsed() < Duration::from_secs(20) {
++                    display.dispatch_clients(&mut state).unwrap();
++                    let _ = state.repaint(&mut Sink, started.elapsed().as_millis() as u32);
++                    display.flush_clients().unwrap();
++                    match rx.try_recv() {
++                        Ok((job, reply)) => {
++                            if reply.send(job(&mut state)).is_err() {
++                                break;
++                            }
++                        }
++                        Err(mpsc::TryRecvError::Disconnected) => break,
++                        Err(mpsc::TryRecvError::Empty) => {}
++                    }
++                    thread::sleep(Duration::from_millis(2));
++                }
++            });
++            (Self { jobs, thread: Some(thread) }, Connection::from_socket(client).unwrap())
++        }
++        fn run(&self, job: impl FnOnce(&mut crate::server::Server) -> String + Send + 'static) -> String {
++            let (tx, rx) = mpsc::channel();
++            self.jobs.send((Box::new(job), tx)).unwrap();
++            rx.recv_timeout(Duration::from_secs(10)).unwrap()
++        }
++    }
++    impl Drop for Harness {
++        fn drop(&mut self) {
++            let (tx, _rx) = mpsc::channel();
++            drop(std::mem::replace(&mut self.jobs, tx));
++            if let Some(thread) = self.thread.take() {
++                let _ = thread.join();
++            }
++        }
++    }
++    #[derive(Default)]
++    struct Client {
++        compositor: Option<wl_compositor::WlCompositor>,
++        shm: Option<wl_shm::WlShm>,
++        base: Option<xdg_wm_base::XdgWmBase>,
++        configured: bool,
++    }
++    impl Dispatch<wl_registry::WlRegistry, ()> for Client {
++        fn event(s: &mut Self, registry: &wl_registry::WlRegistry, event: wl_registry::Event, _: &(), _: &Connection, queue: &QueueHandle<Self>) {
++            if let wl_registry::Event::Global { name, interface, version } = event {
++                match interface.as_str() {
++                    "wl_compositor" => s.compositor = Some(registry.bind(name, version.min(6), queue, ())),
++                    "wl_shm" => s.shm = Some(registry.bind(name, 1, queue, ())),
++                    "xdg_wm_base" => s.base = Some(registry.bind(name, 1, queue, ())),
++                    _ => {}
++                }
++            }
++        }
++    }
++    impl Dispatch<xdg_wm_base::XdgWmBase, ()> for Client {
++        fn event(_: &mut Self, base: &xdg_wm_base::XdgWmBase, event: xdg_wm_base::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
++            if let xdg_wm_base::Event::Ping { serial } = event {
++                base.pong(serial);
++            }
++        }
++    }
++    impl Dispatch<xdg_surface::XdgSurface, ()> for Client {
++        fn event(s: &mut Self, surface: &xdg_surface::XdgSurface, event: xdg_surface::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
++            if let xdg_surface::Event::Configure { serial } = event {
++                surface.ack_configure(serial);
++                s.configured = true;
++            }
++        }
++    }
++    delegate_noop!(Client: ignore wl_compositor::WlCompositor);
++    delegate_noop!(Client: ignore wl_shm::WlShm);
++    delegate_noop!(Client: ignore wl_shm_pool::WlShmPool);
++    delegate_noop!(Client: ignore wl_buffer::WlBuffer);
++    delegate_noop!(Client: ignore xdg_toplevel::XdgToplevel);
++    delegate_noop!(Client: ignore wl_surface::WlSurface);
++
++    fn px(data: &[u8], width: u32, x: i32, y: i32) -> [u8; 4] {
++        let i = (y as usize * width as usize + x as usize) * 4;
++        data[i..i + 4].try_into().unwrap()
++    }
++
++    #[test]
++    fn cpu_composite_of_a_gpu_window_does_not_panic() {
++        let (harness, connection) = Harness::start();
++        let mut queue = connection.new_event_queue();
++        let qh = queue.handle();
++        let mut client = Client::default();
++        connection.display().get_registry(&qh, ());
++        queue.roundtrip(&mut client).unwrap();
++        let surface = client.compositor.as_ref().unwrap().create_surface(&qh, ());
++        let xdg = client.base.as_ref().unwrap().get_xdg_surface(&surface, &qh, ());
++        let _top = xdg.get_toplevel(&qh, ());
++        surface.commit();
++        let started = Instant::now();
++        while !client.configured {
++            queue.roundtrip(&mut client).unwrap();
++            assert!(started.elapsed() < Duration::from_secs(5), "no configure");
++        }
++        let mut file = tempfile::tempfile().unwrap();
++        let (bw, bh) = (80usize, 48usize);
++        std::io::Write::write_all(&mut file, &[240, 20, 10, 255].repeat(bw * bh)).unwrap();
++        let pool = client.shm.as_ref().unwrap().create_pool(file.as_fd(), (bw * bh * 4) as i32, &qh, ());
++        let buffer = pool.create_buffer(0, bw as i32, bh as i32, (bw * 4) as i32, wl_shm::Format::Argb8888, &qh, ());
++        surface.attach(Some(&buffer), 0, 0);
++        surface.commit();
++        for _ in 0..6 {
++            queue.roundtrip(&mut client).unwrap();
++            thread::sleep(Duration::from_millis(15));
++        }
++        let report = harness.run(|server| {
++            let backend = server.wm.backend_mut();
++            let id = backend.windows.iter().find(|(_, w)| w.mapped).map(|(id, _)| *id).expect("a mapped window");
++            let content = backend.windows[&id].content;
++            assert!(content.size.w >= 24 && content.size.h >= 24, "content {content:?}");
++            {
++                let frame = backend.frames.values_mut().find(|f| f.window == id).expect("a frame");
++                frame.geometry = Rect::new(content.pos, content.size);
++                frame.mapped = true;
++                frame.paint = Some(DecorationSurface {
++                    frame_size: content.size,
++                    parts: Vec::new(),
++                    solids: Vec::new(),
++                    shadow: None,
++                    shape: Some(DecorationShape {
++                        rect: Rect::new(Point::new(0, 0), content.size),
++                        radius: 12,
++                        border: 1,
++                        border_rgb: [200, 100, 50],
++                    }),
++                });
++            }
++            backend.effects = true;
++            backend.set_window_external(id, ExternalBuffer { id: 9, width: content.size.w, height: content.size.h }, &[]);
++            let external_patches = backend.display_list().iter().filter(|(sig, _)| matches!(sig.key, ItemKey::Corner(window, _) if window == id)).count();
++            let pix = backend.render().expect("CPU composite of a GPU window");
++            let width = pix.width();
++            let tip = px(pix.data(), width, content.pos.x, content.pos.y + content.size.h as i32 - 1);
++            let center = px(pix.data(), width, content.pos.x + content.size.w as i32 / 2, content.pos.y + content.size.h as i32 / 2);
++            let ring = px(pix.data(), width, content.pos.x + 3, content.pos.y + content.size.h as i32 - 4);
++            let short = content.size.w as usize * content.size.h as usize * 4 - 1;
++            backend.set_window_image(id, Some(DecorationBuffer { width: content.size.w, height: content.size.h, pixels: vec![7; short] }));
++            let short_patches = backend.display_list().iter().filter(|(sig, _)| matches!(sig.key, ItemKey::Corner(window, _) if window == id)).count();
++            backend.render().expect("CPU composite of a short buffer");
++            format!("ext_patches={external_patches} tip={tip:?} center={center:?} ring={ring:?} short_patches={short_patches}")
++        });
++        assert!(report.starts_with("ext_patches=0 "), "{report}");
++        assert!(report.contains("tip=[56, 72, 80, 255]"), "the corner tip stays the desk colour: {report}");
++        assert!(report.contains("center=[56, 72, 80, 255]"), "a GPU buffer's empty pixels are not drawn: {report}");
++        assert!(report.contains("short_patches=2"), "a short CPU buffer still gets both corner pictures: {report}");
++        let ring = report.split("ring=").nth(1).unwrap().split(' ').next().unwrap();
++        assert!(ring.starts_with('[') && !ring.contains("56, 72, 80, 255"), "the border ring is drawn without the window's pixels: {report}");
++    }
++}
++
+ /// DESK9 (FX-033): how far into a window's content its frame's corner grips reach (panel pixels).
+ pub(crate) const CORNER_GRIP: i32 = 8;
+ /// Is `point` (inside the content) within `CORNER_GRIP` of a content corner, on a corner resize hitbox of the
