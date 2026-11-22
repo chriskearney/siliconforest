@@ -1,0 +1,196 @@
+SFArmPCI: Use the firmware ECAM and bridge windows
+
+diff --git a/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp b/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
+index 83a289d..c2a0bb7 100644
+--- a/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
++++ b/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
+@@ -11,23 +11,48 @@ OSDefineMetaClassAndStructors(SFArmPCI, IOPCIBridge)
+ 
+ /* QEMU virt: 256-bus ECAM up high when the guest has >= 40-bit physical addresses,
+  * else the 16-bus low ECAM (HVF on M1 gives 36 bits) */
+-static IOPhysicalAddress sECAMBase = 0x4010000000ULL;
+-static IOPhysicalLength sECAMLength = 0x10000000ULL;
+-static UInt32 sECAMBuses = 256;
+ 
+-static void sf_pci_pick_ecam(void)
++static void sf_pci_pick_ecam(IOPhysicalAddress &base, IOPhysicalLength &length, UInt32 &mappedBuses)
+ {
+     uint64_t mmfr0 = __builtin_arm_rsr64("ID_AA64MMFR0_EL1");
+     static const UInt8 kPABits[] = { 32, 36, 40, 42, 44, 48, 52 };
+     UInt32 pa = (mmfr0 & 0xf) < sizeof(kPABits) ? kPABits[mmfr0 & 0xf] : 52;
+ 
+     if (pa < 40) {
+-        sECAMBase = 0x3f000000ULL;
+-        sECAMLength = 0x1000000ULL;
+-        sECAMBuses = 16;
++        base = 0x3f000000ULL;
++        length = 0x1000000ULL;
++        mappedBuses = 16;
+     }
+     IOLog("SiliconForest SFArmPCI: %u-bit PA, ECAM 0x%llx, %u buses\n", (unsigned)pa,
+-          (unsigned long long)sECAMBase, (unsigned)sECAMBuses);
++          (unsigned long long)base, (unsigned)mappedBuses);
++}
++
++static UInt64 sf_pci_cells(const UInt32 *cells)
++{
++    return (static_cast<UInt64>(cells[0]) << 32) | cells[1];
++}
++
++bool SFArmPCI::sf_read_ecam(IOService *provider, IOPhysicalAddress &base, IOPhysicalLength &length)
++{
++    const OSData *reg = OSDynamicCast(OSData, provider->getProperty("reg"));
++    const OSData *buses = OSDynamicCast(OSData, provider->getProperty("bus-range"));
++    if (!reg || reg->getLength() != 4 * sizeof(UInt32) ||
++        !buses || buses->getLength() != 2 * sizeof(UInt32))
++        return false;
++    const UInt32 *regCells = static_cast<const UInt32 *>(reg->getBytesNoCopy());
++    const UInt32 *busCells = static_cast<const UInt32 *>(buses->getBytesNoCopy());
++    base = sf_pci_cells(regCells);
++    length = sf_pci_cells(regCells + 2);
++    if (base == 0 || (base & 0xfffff) != 0 || base > UINT64_MAX - length ||
++        busCells[0] > busCells[1] || busCells[1] > 255 ||
++        length != (static_cast<UInt64>(busCells[1] - busCells[0] + 1) << 20))
++        return false;
++    busFirst = static_cast<UInt8>(busCells[0]);
++    busLast = static_cast<UInt8>(busCells[1]);
++    mappedBuses = busLast - busFirst + 1;
++    IOLog("SiliconForest SFArmPCI: firmware ECAM 0x%llx+0x%llx, buses %u-%u\n",
++          (unsigned long long)base, (unsigned long long)length, busFirst, busLast);
++    return true;
+ }
+ 
+ IOService *SFArmPCI::probe(IOService *provider, SInt32 *score)
+@@ -44,8 +69,21 @@ bool SFArmPCI::start(IOService *provider)
+ {
+     IOLog("SiliconForest SFArmPCI: start provider=%s\n",
+           provider ? provider->getName() : "(null)");
+-    sf_pci_pick_ecam();
+-    ecamMemory = IODeviceMemory::withRange(sECAMBase, sECAMLength);
++    IOPhysicalAddress base = 0x4010000000ULL;
++    IOPhysicalLength length = 0x10000000ULL;
++    busFirst = 0;
++    busLast = 255;
++    mappedBuses = 256;
++    firmwareECAM = provider->getProperty("reg") != NULL;
++    if (firmwareECAM) {
++        if (!sf_read_ecam(provider, base, length)) {
++            IOLog("SiliconForest SFArmPCI: invalid firmware ECAM\n");
++            return false;
++        }
++    } else {
++        sf_pci_pick_ecam(base, length, mappedBuses);
++    }
++    ecamMemory = IODeviceMemory::withRange(base, length);
+     if (!ecamMemory)
+         return false;
+ 
+@@ -62,6 +100,44 @@ bool SFArmPCI::start(IOService *provider)
+ bool SFArmPCI::configure(IOService *provider)
+ {
+     IOLog("SiliconForest SFArmPCI: configure\n");
++    if (firmwareECAM) {
++        const OSData *ranges = OSDynamicCast(OSData, provider->getProperty("ranges"));
++        constexpr UInt32 recordSize = 7 * sizeof(UInt32);
++        if (!ranges || ranges->getLength() == 0 || ranges->getLength() % recordSize != 0)
++            return false;
++        const UInt32 *cells = static_cast<const UInt32 *>(ranges->getBytesNoCopy());
++        bool hasMemory = false;
++        for (UInt32 bytes = 0; bytes < ranges->getLength(); bytes += recordSize, cells += 7) {
++            UInt64 pci = sf_pci_cells(cells + 1);
++            UInt64 cpu = sf_pci_cells(cells + 3);
++            UInt64 length = sf_pci_cells(cells + 5);
++            if (!length || pci > UINT64_MAX - length || cpu > UINT64_MAX - length)
++                return false;
++            UInt32 space = (cells[0] >> 24) & 3;
++            switch (space) {
++            case 1:
++                if (!addBridgeIORange(pci, length))
++                    return false;
++                break;
++            case 2:
++            case 3:
++                // IOPCIFamily uses the BAR address as the CPU address.
++                if (pci != cpu)
++                    return false;
++                if ((cells[0] & 0x40000000) != 0) {
++                    if (!addBridgePrefetchableMemoryRange(cpu, length))
++                        return false;
++                } else if (!addBridgeMemoryRange(cpu, length, true)) {
++                    return false;
++                }
++                hasMemory = true;
++                break;
++            default:
++                return false;
++            }
++        }
++        return hasMemory && super::configure(provider);
++    }
+     /* QEMU virt's low MMIO window is 0x10000000..0x3efeffff; PIO and the low ECAM follow it */
+     addBridgeMemoryRange(0x10000000ULL, 0x2eff0000ULL, true);
+     return super::configure(provider);
+@@ -82,22 +158,23 @@ void SFArmPCI::free(void)
+ 
+ IODeviceMemory *SFArmPCI::ioDeviceMemory(void)
+ {
+-    return ecamMemory;
++    return firmwareECAM ? NULL : ecamMemory;
+ }
+ 
+-UInt8 SFArmPCI::firstBusNum(void) { return 0; }
+-UInt8 SFArmPCI::lastBusNum(void) { return 255; }
++UInt8 SFArmPCI::firstBusNum(void) { return busFirst; }
++UInt8 SFArmPCI::lastBusNum(void) { return busLast; }
+ 
+ IOPCIAddressSpace SFArmPCI::getBridgeSpace(void)
+ {
+     IOPCIAddressSpace space;
+     space.bits = 0;
++    space.s.busNum = busFirst;
+     return space;
+ }
+ 
+ volatile UInt8 *SFArmPCI::configAddress(IOPCIAddressSpace space, UInt8 offset) const
+ {
+-    if (!ecamMap || space.s.busNum >= sECAMBuses || space.s.deviceNum > 31 ||
++    if (!ecamMap || space.s.busNum < busFirst || space.s.busNum - busFirst >= mappedBuses || space.s.deviceNum > 31 ||
+         space.s.functionNum > 7)
+         return 0;
+ 
+@@ -108,7 +185,7 @@ volatile UInt8 *SFArmPCI::configAddress(IOPCIAddressSpace space, UInt8 offset) c
+      * mask (offset & 0xfc) makes e.g. the header-type register at 0x0e read
+      * 0x0c instead, so every device is misparsed and rejected during probe.
+      */
+-    IOByteCount address = ((IOByteCount)space.s.busNum << 20) |
++    IOByteCount address = ((IOByteCount)(space.s.busNum - busFirst) << 20) |
+                           ((IOByteCount)space.s.deviceNum << 15) |
+                           ((IOByteCount)space.s.functionNum << 12) |
+                           (offset & 0xfff);
+@@ -310,7 +387,9 @@ void SFArmPCI::setINTx(IOPCIDevice *nub)
+ // them before the nub is registered and matched
+ bool SFArmPCI::publishNub(IOPCIDevice *nub, UInt32 index)
+ {
+-    if (nub && !nub->getProperty(gIOInterruptControllersKey))
++    if (nub && firmwareECAM)
++        nub->setProperty("sf,no-pci-intx", kOSBooleanTrue);
++    if (nub && !firmwareECAM && !nub->getProperty(gIOInterruptControllersKey))
+         setINTx(nub);
+     return super::publishNub(nub, index);
+ }
+diff --git a/src/Kernel/Extensions/SFArmPCI/SFArmPCI.h b/src/Kernel/Extensions/SFArmPCI/SFArmPCI.h
+index 5c49874..83c3c59 100644
+--- a/src/Kernel/Extensions/SFArmPCI/SFArmPCI.h
++++ b/src/Kernel/Extensions/SFArmPCI/SFArmPCI.h
+@@ -9,6 +9,11 @@ class SFArmPCI : public IOPCIBridge
+ 
+     IODeviceMemory *ecamMemory;
+     IOMemoryMap *ecamMap;
++    UInt8 busFirst, busLast;
++    UInt32 mappedBuses;
++    bool firmwareECAM;
++
++    bool sf_read_ecam(IOService *provider, IOPhysicalAddress &base, IOPhysicalLength &length);
+ 
+     volatile UInt8 *configAddress(IOPCIAddressSpace space, UInt8 offset) const;
+     bool routeINTx(UInt32 device, UInt32 pin, UInt32 *intid);

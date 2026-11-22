@@ -1,0 +1,48 @@
+arm64: Preserve firmware setup for the SBSA UART
+
+diff --git a/src/Kernel/xnu/pexpert/arm/pe_serial.c b/src/Kernel/xnu/pexpert/arm/pe_serial.c
+index 590c1c3..a08bcdd 100644
+--- a/src/Kernel/xnu/pexpert/arm/pe_serial.c
++++ b/src/Kernel/xnu/pexpert/arm/pe_serial.c
+@@ -645,6 +645,8 @@ static struct pe_serial_functions dockchannel_serial_functions =
+ 
+ #ifdef PL011_UART
+ 
++SECURITY_READ_ONLY_LATE(static bool) sf_pl011_firmware_configured;
++
+ static unsigned int
+ pl011_uart_transmit_ready(void)
+ {
+@@ -676,6 +678,10 @@ pl011_uart_receive_data(void)
+ static void
+ pl011_uart_init(void)
+ {
++	if (sf_pl011_firmware_configured) {
++		return;
++	}
++
+ 	// Before programming the control registers, we must first disable the UART.
+ 	// We can accomplish this by manually resetting the UARTCR register.
+ 	uartcr_t uartcr = { .raw = 0 };
+@@ -729,6 +735,13 @@ pl011_uart_setup(const DeviceTreeNode *const devicetree_node)
+ 	register_serial_functions(&pl011_uart_serial_functions);
+ }
+ 
++static void
++sf_sbsa_uart_setup(const DeviceTreeNode *const devicetree_node)
++{
++	sf_pl011_firmware_configured = true;
++	pl011_uart_setup(devicetree_node);
++}
++
+ #endif /* PL011_UART */
+ 
+ #ifdef DW_APB_UART
+@@ -1119,6 +1132,7 @@ static const struct {
+ #endif // DOCKCHANNEL_UART
+ #ifdef PL011_UART
+ 	{ .compatible = "arm,pl011", .setup = pl011_uart_setup },
++	{ .compatible = "arm,sbsa-uart", .setup = sf_sbsa_uart_setup },
+ #endif // PL011_UART
+ #ifdef DW_APB_UART
+ 	{ .compatible = "snps,dw-apb-uart", .setup = dw_apb_uart_setup },

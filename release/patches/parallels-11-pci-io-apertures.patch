@@ -1,0 +1,15 @@
+PCI: Map ARM PCI I/O BARs through host apertures
+
+diff --git a/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp b/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp
+index 37e7c4f..9055551 100644
+--- a/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp
++++ b/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp
+@@ -2722,7 +2722,7 @@ bool IOPCIBridge::constructRange( IOPCIAddressSpace * flags,
+ 	}
+ 	else
+ 	{
+-		if (kIOPCIIOSpace == flags->s.space)
++		if (kIOPCIIOSpace == flags->s.space && !getProperty("sf,firmware-pci-addressing"))
+ 		{
+ 			if (!(ioMemory = ioDeviceMemory()))
+ 				md = 0;

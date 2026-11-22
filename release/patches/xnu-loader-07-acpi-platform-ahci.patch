@@ -1,0 +1,486 @@
+Publish a platform AHCI node from static ACPI resources
+
+diff --git a/include/acpi_board.h b/include/acpi_board.h
+index 9f74cea..491a8a7 100644
+--- a/include/acpi_board.h
++++ b/include/acpi_board.h
+@@ -15,6 +15,14 @@ typedef enum {
+   SF_ACPI_PSCI_HVC,
+ } SfAcpiPsci;
+ 
++typedef struct {
++  uint32_t base, size, gsi;
++} SfAcpiAhci;
++
++/* A valid DSDT without a supported static AHCI device returns a zero range.
++ * A failure leaves the caller's output unchanged. */
++const char *sf_acpi_ahci(const uint8_t *bytes, size_t length, SfAcpiAhci *ahci);
++
+ typedef struct {
+   uint64_t uart_base;
+   uint32_t uart_gsi;
+@@ -38,6 +46,8 @@ typedef struct {
+   uint32_t timer_virt_flags;
+   uint16_t arm_boot_flags;
+   SfAcpiPsci psci;
++  SfAcpiAhci ahci;
++  const char *ahci_error;
+ } SfAcpiBoard;
+ 
+ /* A successful mapping covers the whole requested interval. */
+@@ -57,6 +67,7 @@ typedef struct {
+   size_t cpu_count;
+   uint32_t timer_ppi;
+   const char *psci_method;
++  SfAcpiAhci ahci;
+ } SfAcpiTree;
+ 
+ const char *sf_acpi_tree(const SfAcpiBoard *board, uint64_t running_mpidr, SfAcpiTree *tree);
+diff --git a/src/acpi_board.c b/src/acpi_board.c
+index 0fb0c43..0e91d63 100644
+--- a/src/acpi_board.c
++++ b/src/acpi_board.c
+@@ -30,6 +30,7 @@ const char *sf_acpi_tree(const SfAcpiBoard *board, uint64_t running_mpidr, SfAcp
+     .gic_reg = {board->gicd_base - lo, gicd_size, board->gicr_base - lo, board->gicr_size},
+     .cpu_count = board->cpu_count, .timer_ppi = board->timer_virt_gsi,
+     .psci_method = board->psci == SF_ACPI_PSCI_HVC ? "hvc" : "smc",
++    .ahci = board->ahci,
+   };
+   bool found = false;
+   size_t secondary = 1;
+@@ -379,6 +380,284 @@ const char *sf_acpi_pci_tree(const SfAcpiBoard *board, uint32_t segment,
+   return NULL;
+ }
+ 
++/* The static AHCI subset of the ACPI AML grammar. Package lengths include
++ * their own encoding. Keep each child bounded by its parent's end. */
++static bool sf_aml_package(const uint8_t **cursor, const uint8_t *end,
++                           const uint8_t **body)
++{
++  const uint8_t *p = *cursor;
++  if (p == end)
++    return false;
++  unsigned extra = p[0] >> 6;
++  if ((size_t)(end - p) <= extra || (extra && (p[0] & 0x30)))
++    return false;
++  uint32_t length = p[0] & (extra ? 0x0f : 0x3f);
++  for (unsigned i = 0; i < extra; i++)
++    length |= (uint32_t)p[i + 1] << (4 + i * 8);
++  if (length <= extra || length > (size_t)(end - p))
++    return false;
++  *body = p + extra + 1;
++  *cursor = p + length;
++  return true;
++}
++
++static bool sf_aml_name_char(uint8_t ch)
++{
++  return ch == '_' || (ch >= 'A' && ch <= 'Z');
++}
++
++static bool sf_aml_name(const uint8_t **cursor, const uint8_t *end,
++                        const uint8_t **local)
++{
++  const uint8_t *p = *cursor;
++  if (p != end && *p == 0x5c)
++    p++;
++  else
++    while (p != end && *p == 0x5e)
++      p++;
++  if (p == end)
++    return false;
++  unsigned count = 1;
++  if (*p == 0x2e) {
++    p++;
++    count = 2;
++  } else if (*p == 0x2f) {
++    if (end - p < 2 || p[1] == 0)
++      return false;
++    count = p[1];
++    p += 2;
++  } else if (*p == 0) {
++    p++;
++    count = 0;
++  }
++  if ((size_t)(end - p) < count * 4)
++    return false;
++  if (local)
++    *local = p == *cursor && count == 1 ? p : NULL;
++  for (unsigned i = 0; i < count; i++, p += 4) {
++    if (!sf_aml_name_char(p[0]))
++      return false;
++    for (unsigned j = 1; j < 4; j++)
++      if (!sf_aml_name_char(p[j]) && (p[j] < '0' || p[j] > '9'))
++        return false;
++  }
++  *cursor = p;
++  return true;
++}
++
++static bool sf_aml_integer(const uint8_t **cursor, const uint8_t *end, uint64_t *value)
++{
++  const uint8_t *p = *cursor;
++  if (p == end)
++    return false;
++  unsigned bytes;
++  switch (*p++) {
++  case 0x00: *value = 0; bytes = 0; break;
++  case 0x01: *value = 1; bytes = 0; break;
++  case 0xff: *value = UINT64_MAX; bytes = 0; break;
++  case 0x0a: bytes = 1; break;
++  case 0x0b: bytes = 2; break;
++  case 0x0c: bytes = 4; break;
++  case 0x0e: bytes = 8; break;
++  default: return false;
++  }
++  if ((size_t)(end - p) < bytes)
++    return false;
++  if (bytes != 0)
++    *value = sf_le(p, bytes);
++  *cursor = p + bytes;
++  return true;
++}
++
++static bool sf_aml_skip_data(const uint8_t **cursor, const uint8_t *end)
++{
++  uint64_t integer;
++  if (sf_aml_integer(cursor, end, &integer))
++    return true;
++  if (*cursor == end)
++    return false;
++  switch (**cursor) {
++  case 0x0d: /* String */
++    do {
++      (*cursor)++;
++    } while (*cursor != end && **cursor != 0);
++    if (*cursor == end)
++      return false;
++    (*cursor)++;
++    return true;
++  case 0x11: /* Buffer */
++  case 0x12: /* Package */
++  case 0x13: { /* VarPackage */
++    const uint8_t *body;
++    (*cursor)++;
++    return sf_aml_package(cursor, end, &body);
++  }
++  default:
++    return sf_aml_name(cursor, end, NULL);
++  }
++}
++
++static bool sf_aml_is_ahci(const uint8_t *p, const uint8_t *end)
++{
++  const uint8_t *body;
++  uint64_t base, subclass, interface;
++  return *p++ == 0x12 && sf_aml_package(&p, end, &body) && body != p &&
++      *body++ == 3 && sf_aml_integer(&body, p, &base) &&
++      sf_aml_integer(&body, p, &subclass) && sf_aml_integer(&body, p, &interface) &&
++      body == p && base == 1 && subclass == 6 && interface == 1;
++}
++
++static bool sf_aml_ahci_resources(const uint8_t *p, const uint8_t *end, SfAcpiAhci *ahci)
++{
++  const uint8_t *body;
++  uint64_t size;
++  if (*p++ != 0x11 || !sf_aml_package(&p, end, &body) ||
++      !sf_aml_integer(&body, p, &size) || size != (size_t)(p - body))
++    return false;
++
++  /* Support a fixed writable 32-bit ABAR and one level-high consumer SPI.
++   * More resources or other routing require a different translation. */
++  const uint8_t *begin = body;
++  while (body < p) {
++    uint8_t tag = *body++;
++    if (tag == 0x79)
++      return p - body == 1 && (*body == 0 || sf_checksum(begin, size)) &&
++          ahci->size != 0 && ahci->gsi != 0;
++    if (p - body < 2)
++      return false;
++    size_t length = (size_t)sf_le(body, 2);
++    body += 2;
++    if (length >= (size_t)(p - body))
++      return false;
++    if (tag == 0x86 && length == 9 && body[0] == 1 && ahci->size == 0) {
++      ahci->base = (uint32_t)sf_le(body + 1, 4);
++      ahci->size = (uint32_t)sf_le(body + 5, 4);
++      if (ahci->base == 0 || (ahci->base & 3) || ahci->size < 0x180 ||
++          (uint64_t)ahci->base + ahci->size > (UINT64_C(1) << 32))
++        return false;
++    } else if (tag == 0x89 && length == 6 && body[0] == 1 && body[1] == 1 && ahci->gsi == 0) {
++      ahci->gsi = (uint32_t)sf_le(body + 2, 4);
++      if (ahci->gsi < 32 || ahci->gsi >= 1020)
++        return false;
++    } else {
++      return false;
++    }
++    body += length;
++  }
++  return false;
++}
++
++static const char *sf_aml_walk(const uint8_t *p, const uint8_t *end, bool device,
++                               unsigned depth, SfAcpiAhci *found)
++{
++  const uint8_t *cls = NULL, *cls_end = NULL, *crs = NULL, *crs_end = NULL;
++  const char *malformed = "unsupported or malformed DSDT AML";
++  if (depth > 16)
++    return "DSDT AML nesting limit";
++
++  while (p != end) {
++    unsigned opcode = *p++;
++    if (opcode == 0x5b) {
++      if (p == end)
++        return malformed;
++      opcode = 0x5b00 | *p++;
++    }
++    switch (opcode) {
++    case 0x08: { /* Name */
++      const uint8_t *name;
++      if (!sf_aml_name(&p, end, &name))
++        return malformed;
++      const uint8_t *value = p;
++      if (!sf_aml_skip_data(&p, end))
++        return malformed;
++      if (device && name) {
++        if (sf_signature(name, "_CLS", 4)) {
++          if (cls)
++            return "DSDT duplicate _CLS";
++          cls = value;
++          cls_end = p;
++        } else if (sf_signature(name, "_CRS", 4)) {
++          if (crs)
++            return "DSDT duplicate _CRS";
++          crs = value;
++          crs_end = p;
++        }
++      }
++      break;
++    }
++    case 0x10: /* Scope */
++    case 0x5b82: { /* Device */
++      const uint8_t *body;
++      if (!sf_aml_package(&p, end, &body) || !sf_aml_name(&body, p, NULL))
++        return malformed;
++      const char *error = sf_aml_walk(body, p, opcode == 0x5b82, depth + 1, found);
++      if (error)
++        return error;
++      break;
++    }
++    case 0x14: /* Method: skip executable terms. */
++    case 0x5b81: { /* Field */
++      const uint8_t *body;
++      if (!sf_aml_package(&p, end, &body))
++        return malformed;
++      break;
++    }
++    case 0x5b80: /* OperationRegion: skip the name, space, offset and length. */
++      if (!sf_aml_name(&p, end, NULL) || p == end)
++        return malformed;
++      p++;
++      if (!sf_aml_skip_data(&p, end) || !sf_aml_skip_data(&p, end))
++        return malformed;
++      break;
++    default:
++      return malformed;
++    }
++  }
++
++  if (cls && crs && *crs == 0x11 && sf_aml_is_ahci(cls, cls_end)) {
++    SfAcpiAhci ahci = {0};
++    if (!sf_aml_ahci_resources(crs, crs_end, &ahci))
++      return "DSDT AHCI _CRS invalid or unsupported";
++    if (found->size != 0)
++      return "DSDT contains multiple static AHCI devices";
++    *found = ahci;
++  }
++  return NULL;
++}
++
++const char *sf_acpi_ahci(const uint8_t *bytes, size_t length, SfAcpiAhci *ahci)
++{
++  if (!bytes || length < SF_ACPI_SDT_HEADER || length > SF_ACPI_MAX_TABLE_BYTES ||
++      !sf_signature(bytes, "DSDT", 4) || sf_le(bytes + 4, 4) != length)
++    return "DSDT header or length";
++  if (!sf_checksum(bytes, length))
++    return "DSDT checksum";
++
++  SfAcpiAhci found = {0};
++  const char *error = sf_aml_walk(bytes + SF_ACPI_SDT_HEADER, bytes + length, false, 0, &found);
++  if (error == NULL)
++    *ahci = found;
++  return error;
++}
++
++static const char *sf_read_dsdt_ahci(SfAcpiMap map, void *context, SfAcpiTable fadt,
++                                    SfAcpiAhci *ahci)
++{
++  uint64_t address = fadt.length >= 148 ? sf_le(fadt.bytes + 140, 8) : 0;
++  if (address == 0)
++    address = sf_le(fadt.bytes + 40, 4);
++  if (address == 0)
++    return "FADT has no DSDT address";
++  const uint8_t *header = map(context, address, SF_ACPI_SDT_HEADER);
++  if (header == NULL)
++    return "DSDT header outside firmware memory";
++  size_t length = (size_t)sf_le(header + 4, 4);
++  if (length < SF_ACPI_SDT_HEADER || length > SF_ACPI_MAX_TABLE_BYTES)
++    return "DSDT length";
++  const uint8_t *table = map(context, address, length);
++  return table ? sf_acpi_ahci(table, length, ahci) : "DSDT outside firmware memory";
++}
++
+ const char *sf_acpi_read(SfAcpiMap map, void *context, uint64_t rsdp_address,
+                          SfAcpiBoard *board)
+ {
+@@ -409,6 +688,7 @@ const char *sf_acpi_read(SfAcpiMap map, void *context, uint64_t rsdp_address,
+   if (error != NULL)
+     return error;
+ 
++  found.ahci_error = sf_read_dsdt_ahci(map, context, tables[SF_FADT], &found.ahci);
+   *board = found;
+   return NULL;
+ }
+diff --git a/src/app.c b/src/app.c
+index d61c0bf..dea329c 100644
+--- a/src/app.c
++++ b/src/app.c
+@@ -194,6 +194,8 @@ static EFI_STATUS sf_start_acpi_console(AppContext *ctx, bool fdt_present)
+   log_info(L"GTDT virtual timer GSI %u flags 0x%x\r\n", board.timer_virt_gsi, board.timer_virt_flags);
+   log_info(L"FADT PSCI conduit %a ARM flags 0x%x\r\n",
+            board.psci == SF_ACPI_PSCI_HVC ? "HVC" : "SMC", (UINT32)board.arm_boot_flags);
++  if (board.ahci_error != NULL)
++    log_info(L"DSDT AHCI: %a\r\n", board.ahci_error);
+   log_info(L"Current EL %u\r\n", (UINT32)((current_el >> 2) & 3));
+   return sf_read_pci_root(ctx, &board);
+ }
+diff --git a/src/devtree.c b/src/devtree.c
+index 601c6f6..8a9a788 100644
+--- a/src/devtree.c
++++ b/src/devtree.c
+@@ -16,6 +16,7 @@
+  * kernel takes the first node that matches. */
+ #define XNU_LOADER_UART0_PHANDLE 0x7ff00001
+ #define SF_MSI_FRAME_PHANDLE (XNU_LOADER_UART0_PHANDLE + 1)
++#define SF_ACPI_GIC_PHANDLE (XNU_LOADER_UART0_PHANDLE + 3)
+ 
+ #ifndef EFI_RNG_PROTOCOL_GUID
+ #define EFI_RNG_PROTOCOL_GUID \
+@@ -1939,2 +1940,8 @@ EFI_STATUS dt_build(
+       dt_prop_u32(ctx, gic, "timer-ppi", timer_ppi);
++    if (sf_acpi_boot && sf_acpi_tree_data.ahci.size != 0) {
++      /* The GIC driver takes the full INTID in one native-endian cell. */
++      dt_prop(ctx, gic, "interrupt-controller", NULL, 0);
++      dt_prop_u32(ctx, gic, "#interrupt-cells", 1);
++      dt_prop_u32(ctx, gic, "AAPL,phandle", SF_ACPI_GIC_PHANDLE);
++    }
+ #if defined(XNU_LOADER_PLATFORM_SC8280XP)
+@@ -2060,9 +2067,23 @@ EFI_STATUS dt_build(
+   dt_add_child(ctx, root, cpus);
+   dt_add_child(ctx, root, armio);
+ #if defined(XNU_LOADER_PLATFORM_GENERIC)
+-  if (sf_acpi_boot && pci) {
++  if (sf_acpi_boot && (pci || sf_acpi_tree_data.ahci.size != 0)) {
+     dt_prop_u32(ctx, root, "#address-cells", 2);
+     dt_prop_u32(ctx, root, "#size-cells", 2);
++  }
++  if (sf_acpi_boot && sf_acpi_tree_data.ahci.size != 0) {
++    const SfAcpiAhci *ahci = &sf_acpi_tree_data.ahci;
++    DeviceTreeNode *node = dt_create_node(ctx);
++    UINT64 reg[] = {ahci->base, ahci->size};
++    dt_prop_str(ctx, node, "name", "ahci");
++    dt_prop_str(ctx, node, "compatible", "generic-ahci");
++    dt_prop(ctx, node, "reg", reg, sizeof(reg));
++    dt_prop_u32(ctx, node, "interrupt-parent", SF_ACPI_GIC_PHANDLE);
++    dt_prop_u32(ctx, node, "interrupts", ahci->gsi);
++    dt_add_child(ctx, root, node);
++    log_info(L"DT: AHCI 0x%x+0x%x, level-high GSI %u\r\n", ahci->base, ahci->size, ahci->gsi);
++  }
++  if (sf_acpi_boot && pci) {
+     const SfAcpiPciTree *host = &sf_acpi_pci_tree_data;
+     if (host->msi_reg[1] != 0) {
+       DeviceTreeNode *frame = dt_create_node(ctx);
+diff --git a/tests/acpi_ahci_test.c b/tests/acpi_ahci_test.c
+new file mode 100644
+index 0000000..263dbee
+--- /dev/null
++++ b/tests/acpi_ahci_test.c
+@@ -0,0 +1,78 @@
++/* SPDX-License-Identifier: MIT */
++/* Copyright (c) 2026 SiliconForest contributors */
++#include "acpi_board.h"
++
++#include <assert.h>
++#include <stdio.h>
++#include <string.h>
++
++enum { SDT_HEADER = 36, CAPACITY = 65536 };
++
++static void finish_table(uint8_t *table, size_t length)
++{
++  uint8_t sum = 0;
++  memcpy(table, "DSDT", 4);
++  for (unsigned i = 0; i < 4; i++)
++    table[4 + i] = (uint8_t)(length >> (i * 8));
++  table[9] = 0;
++  for (size_t i = 0; i < length; i++)
++    sum += table[i];
++  table[9] = (uint8_t)-sum;
++}
++
++static void expect_rejected(const uint8_t *table, size_t length)
++{
++  SfAcpiAhci ahci = {1, 2, 3};
++  assert(sf_acpi_ahci(table, length, &ahci) != NULL);
++  assert(ahci.base == 1 && ahci.size == 2 && ahci.gsi == 3);
++}
++
++int main(void)
++{
++  static uint8_t table[CAPACITY];
++  static const uint8_t device[] = {
++    0x5b, 0x82, 0x31, 'D', 'E', 'V', '0',
++    0x08, '_', 'C', 'L', 'S', 0x12, 6, 3, 1, 0x0a, 6, 1,
++    0x08, '_', 'C', 'R', 'S', 0x11, 26, 0x0a, 23,
++    0x86, 9, 0, 1, 0, 0, 0x28, 0, 0, 0x20, 0, 0,
++    0x89, 6, 0, 1, 1, 0x2d, 0, 0, 0, 0x79, 0,
++  };
++  uint8_t *aml = table + SDT_HEADER;
++  SfAcpiAhci ahci = {0};
++
++  memcpy(aml, device, sizeof(device));
++  size_t length = SDT_HEADER + sizeof(device);
++  finish_table(table, length);
++  assert(sf_acpi_ahci(table, length, &ahci) == NULL);
++  assert(ahci.base == 0x280000 && ahci.size == 0x2000 && ahci.gsi == 45);
++
++  expect_rejected(table, length - 1);
++  table[9] ^= 1;
++  expect_rejected(table, length);
++  table[9] ^= 1;
++
++  aml[2] += 1;
++  finish_table(table, length);
++  expect_rejected(table, length);
++  aml[2] -= 1;
++
++  aml[27] = 24; /* BufferSize exceeds the initialized resource bytes. */
++  finish_table(table, length);
++  expect_rejected(table, length);
++  memcpy(aml, device, sizeof(device));
++
++  aml[43] = 3; /* Edge rather than level. */
++  finish_table(table, length);
++  expect_rejected(table, length);
++  memcpy(aml, device, sizeof(device));
++
++  /* A device inside a Buffer is data, not a namespace declaration. */
++  const uint8_t header[] = {0x08, 'D', 'A', 'T', 'A', 0x11, sizeof(device) + 3, 0x0a, sizeof(device)};
++  memcpy(aml, header, sizeof(header));
++  memcpy(aml + sizeof(header), device, sizeof(device));
++  length = SDT_HEADER + sizeof(header) + sizeof(device);
++  finish_table(table, length);
++  assert(sf_acpi_ahci(table, length, &ahci) == NULL && ahci.size == 0);
++  puts("static AML bounds, resources, and buffer isolation: accepted");
++  return 0;
++}

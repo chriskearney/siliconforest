@@ -1,0 +1,31 @@
+Network: Allow BSD naming for static network boots
+
+diff --git a/src/Kernel/Extensions/IONetworkingFamily/IONetworkStack.cpp b/src/Kernel/Extensions/IONetworkingFamily/IONetworkStack.cpp
+index 824c266..4fe69ec 100644
+--- a/src/Kernel/Extensions/IONetworkingFamily/IONetworkStack.cpp
++++ b/src/Kernel/Extensions/IONetworkingFamily/IONetworkStack.cpp
+@@ -50,6 +50,7 @@ extern "C" {
+ #include <IOKit/pwr_mgt/RootDomain.h>	// registerPrioritySleepWakeInterest()
+ #include <IOKit/network/IONetworkInterface.h>
+ #include <IOKit/network/IOEthernetController.h>  // for setAggressiveness()
++#include <pexpert/pexpert.h>
+ #include "IONetworkStack.h"
+ #include "IONetworkDebug.h"
+ #include "IONetworkControllerPrivate.h"
+@@ -495,6 +496,16 @@ bool IONetworkStack::interfacePublished(
+ 
+     UNLOCK();
+ 
++    // Disk flavors without a userspace namer can opt into BSD registration.
++    unsigned int sfAutoname = 0;
++    if (isNew && ok && PE_parse_boot_argn("sf_net_autoname", &sfAutoname, sizeof(sfAutoname)) &&
++        sfAutoname != 0)
++    {
++        IOReturn result = registerNetworkInterface(netif, 0, false);
++        if (result != kIOReturnSuccess)
++            IOLog("IONetworkStack: automatic BSD registration failed: 0x%x\n", result);
++    }
++
+     if (isNew && !ok)
+     {
+         netif->setProperty(kDetachStateKey, NIF_VAR(netif), 32);

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 SiliconForest contributors
 # Keep the release's complete user space and adapt the session to the virt machine.
-{ pkgs, disk, proof ? false }:
+{ pkgs, disk, overlays ? [ ], proof ? false }:
 let
   guest = ../integrations/siliconforest/qemu-dev/guest;
   tokens = {
@@ -28,7 +28,7 @@ let
     base = disk;
     name = "siliconforest-qemu.img";
     scope = "Complete release root with a QEMU CPU-rendered session; M1 release root unchanged.";
-    overlays = [ ];
+    inherit overlays;
     remove = [ "/System/Library/LaunchDaemons/org.siliconforest.desktop.plist" ];
     bootArgs = null; # IMAGE's disk already carries the emulated-guest boot arguments.
     files = {

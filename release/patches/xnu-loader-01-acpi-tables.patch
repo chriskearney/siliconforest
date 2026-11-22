@@ -1,0 +1,532 @@
+arm64: Read and validate early ACPI tables
+
+diff --git a/include/acpi_board.h b/include/acpi_board.h
+new file mode 100644
+index 0000000..c435a44
+--- /dev/null
++++ b/include/acpi_board.h
+@@ -0,0 +1,49 @@
++/* SPDX-License-Identifier: MIT */
++/* Copyright (c) 2026 SiliconForest contributors */
++
++#ifndef XNU_LOADER_ACPI_BOARD_H
++#define XNU_LOADER_ACPI_BOARD_H
++
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++
++#define SF_ACPI_MAX_CPUS 32
++
++typedef enum {
++  SF_ACPI_PSCI_SMC,
++  SF_ACPI_PSCI_HVC,
++} SfAcpiPsci;
++
++typedef struct {
++  uint64_t uart_base;
++  uint32_t uart_gsi;
++  uint8_t uart_type;
++  uint8_t uart_width;
++  uint8_t uart_baud_code;
++  uint64_t gicd_base;
++  uint64_t gicr_base;
++  uint32_t gicr_size;
++  uint64_t msi_frame_base;
++  uint32_t msi_frame_id;
++  uint32_t msi_frame_flags;
++  uint16_t msi_spi_base;
++  uint16_t msi_spi_count;
++  uint64_t mpidr[SF_ACPI_MAX_CPUS];
++  size_t cpu_count;
++  uint32_t timer_virt_gsi;
++  uint32_t timer_virt_flags;
++  uint16_t arm_boot_flags;
++  SfAcpiPsci psci;
++} SfAcpiBoard;
++
++/* A successful mapping covers the whole requested interval. */
++typedef const uint8_t *(*SfAcpiMap)(void *context, uint64_t address, size_t length);
++
++/* Returns NULL on success. A failure leaves the caller's board unchanged. */
++const char *sf_acpi_read(SfAcpiMap map, void *context, uint64_t rsdp_address,
++                         SfAcpiBoard *board);
++
++extern bool sf_acpi_boot;
++
++#endif
+diff --git a/src/acpi_board.c b/src/acpi_board.c
+new file mode 100644
+index 0000000..a934ebc
+--- /dev/null
++++ b/src/acpi_board.c
+@@ -0,0 +1,259 @@
++/* SPDX-License-Identifier: MIT */
++/* Copyright (c) 2026 SiliconForest contributors */
++
++#include "acpi_board.h"
++
++enum {
++  SF_ACPI_SDT_HEADER = 36,
++  SF_ACPI_RSDP_LEGACY = 20,
++  SF_ACPI_RSDP_HEADER = 36,
++  SF_ACPI_MAX_TABLE_BYTES = 65536,
++};
++
++typedef struct {
++  const char *signature;
++  size_t minimum;
++  const char *length_error;
++  const char *mapping_error;
++  const char *checksum_error;
++  const char *missing_error;
++  const char *duplicate_error;
++} SfAcpiSpec;
++
++#define SF_ACPI_SPEC(sig, minimum) \
++  {sig, minimum, sig " length", sig " outside firmware memory", \
++   sig " checksum", sig " missing", sig " duplicate"}
++
++typedef struct {
++  const uint8_t *bytes;
++  size_t length;
++} SfAcpiTable;
++
++enum { SF_SPCR, SF_MADT, SF_GTDT, SF_FADT, SF_MCFG, SF_TABLE_COUNT };
++
++static const SfAcpiSpec sf_specs[] = {
++  [SF_SPCR] = SF_ACPI_SPEC("SPCR", 60),
++  [SF_MADT] = SF_ACPI_SPEC("APIC", 44),
++  [SF_GTDT] = SF_ACPI_SPEC("GTDT", 72),
++  [SF_FADT] = SF_ACPI_SPEC("FACP", 131),
++  [SF_MCFG] = SF_ACPI_SPEC("MCFG", 60),
++};
++
++static uint64_t sf_le(const uint8_t *p, unsigned length)
++{
++  uint64_t value = 0;
++  for (unsigned i = 0; i < length; i++)
++    value |= (uint64_t)p[i] << (i * 8);
++  return value;
++}
++
++static bool sf_signature(const uint8_t *bytes, const char *signature, size_t length)
++{
++  for (size_t i = 0; i < length; i++)
++    if (bytes[i] != (uint8_t)signature[i])
++      return false;
++  return true;
++}
++
++static bool sf_checksum(const uint8_t *bytes, size_t length)
++{
++  uint8_t sum = 0;
++  for (size_t i = 0; i < length; i++)
++    sum = (uint8_t)(sum + bytes[i]);
++  return sum == 0;
++}
++
++static const char *sf_read_sdt(SfAcpiMap map, void *context, uint64_t address,
++                               const uint8_t *header, const SfAcpiSpec *spec,
++                               SfAcpiTable *table)
++{
++  size_t length = (size_t)sf_le(header + 4, 4);
++  if (length < spec->minimum || length > SF_ACPI_MAX_TABLE_BYTES)
++    return spec->length_error;
++  const uint8_t *bytes = map(context, address, length);
++  if (bytes == NULL)
++    return spec->mapping_error;
++  if (!sf_checksum(bytes, length))
++    return spec->checksum_error;
++  *table = (SfAcpiTable){bytes, length};
++  return NULL;
++}
++
++static const char *sf_read_tables(SfAcpiMap map, void *context, uint64_t address,
++                                  SfAcpiTable tables[SF_TABLE_COUNT])
++{
++  const uint8_t *rsdp = map(context, address, SF_ACPI_RSDP_LEGACY);
++  if (rsdp == NULL)
++    return "RSDP outside firmware memory";
++  if (!sf_signature(rsdp, "RSD PTR ", 8))
++    return "RSDP signature";
++  if (!sf_checksum(rsdp, SF_ACPI_RSDP_LEGACY))
++    return "RSDP checksum";
++  if (rsdp[15] < 2)
++    return "RSDP requires ACPI 2.0 or newer";
++
++  rsdp = map(context, address, SF_ACPI_RSDP_HEADER);
++  if (rsdp == NULL)
++    return "RSDP outside firmware memory";
++  size_t rsdp_length = (size_t)sf_le(rsdp + 20, 4);
++  if (rsdp_length < SF_ACPI_RSDP_HEADER || rsdp_length > SF_ACPI_MAX_TABLE_BYTES)
++    return "RSDP length";
++  rsdp = map(context, address, rsdp_length);
++  if (rsdp == NULL)
++    return "RSDP outside firmware memory";
++  if (!sf_checksum(rsdp, rsdp_length))
++    return "RSDP extended checksum";
++
++  static const SfAcpiSpec xsdt_spec = SF_ACPI_SPEC("XSDT", SF_ACPI_SDT_HEADER);
++  uint64_t xsdt_address = sf_le(rsdp + 24, 8);
++  const uint8_t *header = map(context, xsdt_address, SF_ACPI_SDT_HEADER);
++  if (header == NULL)
++    return xsdt_spec.mapping_error;
++  if (!sf_signature(header, xsdt_spec.signature, 4))
++    return "XSDT signature";
++
++  SfAcpiTable xsdt;
++  const char *error = sf_read_sdt(map, context, xsdt_address, header, &xsdt_spec, &xsdt);
++  if (error != NULL)
++    return error;
++  if ((xsdt.length - SF_ACPI_SDT_HEADER) % 8 != 0)
++    return "XSDT entry alignment";
++
++  for (size_t offset = SF_ACPI_SDT_HEADER; offset < xsdt.length; offset += 8) {
++    uint64_t entry = sf_le(xsdt.bytes + offset, 8);
++    header = map(context, entry, SF_ACPI_SDT_HEADER);
++    if (header == NULL)
++      return "XSDT entry outside firmware memory";
++    for (unsigned i = 0; i < SF_TABLE_COUNT; i++) {
++      const SfAcpiSpec *spec = &sf_specs[i];
++      if (!sf_signature(header, spec->signature, 4))
++        continue;
++      if (tables[i].bytes != NULL)
++        return spec->duplicate_error;
++      error = sf_read_sdt(map, context, entry, header, spec, &tables[i]);
++      if (error != NULL)
++        return error;
++      break;
++    }
++  }
++  for (unsigned i = 0; i < SF_TABLE_COUNT; i++)
++    if (i != SF_MCFG && tables[i].bytes == NULL)
++      return sf_specs[i].missing_error;
++  return NULL;
++}
++
++static const char *sf_read_spcr(const uint8_t *spcr, SfAcpiBoard *board)
++{
++  uint8_t type = spcr[36];
++  uint8_t width = spcr[43];
++  uint64_t base = sf_le(spcr + 44, 8);
++  // PL011 and SBSA Generic UART share the polled data and flag registers.
++  if ((type != 0x03 && type != 0x0e) || spcr[40] != 0 ||
++      spcr[41] != 32 || spcr[42] != 0 || (width != 0 && width != 3) ||
++      base == 0 || (base & 3) != 0 || base > UINT64_MAX - 0x1b)
++    return "SPCR UART format";
++  board->uart_type = type;
++  board->uart_width = 4;
++  board->uart_base = base;
++  board->uart_gsi = (uint32_t)sf_le(spcr + 54, 4);
++  board->uart_baud_code = spcr[58];
++  return NULL;
++}
++
++static const char *sf_read_madt(SfAcpiTable madt, SfAcpiBoard *board)
++{
++  for (size_t offset = 44; offset < madt.length;) {
++    const uint8_t *record = madt.bytes + offset;
++    size_t remaining = madt.length - offset;
++    if (remaining < 2 || record[1] < 2 || record[1] > remaining)
++      return "APIC subtable length";
++    size_t length = record[1];
++    offset += length;
++    switch (record[0]) {
++    case 0x0b: { // GICC
++      if (length < 76)
++        return "APIC GICC length";
++      if ((sf_le(record + 12, 4) & 1) == 0)
++        break;
++      if (board->cpu_count == SF_ACPI_MAX_CPUS)
++        return "APIC too many enabled CPUs";
++      uint64_t mpidr = sf_le(record + 68, 8);
++      for (size_t i = 0; i < board->cpu_count; i++)
++        if (board->mpidr[i] == mpidr)
++          return "APIC duplicate MPIDR";
++      board->mpidr[board->cpu_count++] = mpidr;
++      break;
++    }
++    case 0x0c: // GICD
++      if (length < 24)
++        return "APIC GICD length";
++      if (board->gicd_base != 0 || record[20] != 3)
++        return "APIC unsupported distributor";
++      board->gicd_base = sf_le(record + 8, 8);
++      if (board->gicd_base == 0)
++        return "APIC invalid distributor address";
++      break;
++    case 0x0d: // GICv2m frame (optional)
++      if (length < 24)
++        return "APIC MSI frame length";
++      if (board->msi_frame_base != 0)
++        return "APIC multiple MSI frames unsupported";
++      board->msi_frame_id = (uint32_t)sf_le(record + 4, 4);
++      board->msi_frame_base = sf_le(record + 8, 8);
++      board->msi_frame_flags = (uint32_t)sf_le(record + 16, 4);
++      board->msi_spi_count = (uint16_t)sf_le(record + 20, 2);
++      board->msi_spi_base = (uint16_t)sf_le(record + 22, 2);
++      if (board->msi_frame_base == 0)
++        return "APIC invalid MSI frame address";
++      break;
++    case 0x0e: // GICR
++      if (length < 16)
++        return "APIC GICR length";
++      if (board->gicr_base != 0)
++        return "APIC multiple redistributor regions unsupported";
++      board->gicr_base = sf_le(record + 4, 8);
++      board->gicr_size = (uint32_t)sf_le(record + 12, 4);
++      if (board->gicr_base == 0 || board->gicr_size == 0 ||
++          board->gicr_base > UINT64_MAX - board->gicr_size)
++        return "APIC invalid redistributor range";
++      break;
++    }
++  }
++  if (board->cpu_count == 0)
++    return "APIC no enabled CPUs";
++  if (board->gicd_base == 0)
++    return "APIC GICD missing";
++  if (board->gicr_base == 0)
++    return "APIC GICR missing";
++  return NULL;
++}
++
++const char *sf_acpi_read(SfAcpiMap map, void *context, uint64_t rsdp_address,
++                         SfAcpiBoard *board)
++{
++  SfAcpiTable tables[SF_TABLE_COUNT] = {0};
++  SfAcpiBoard found = {0};
++  const char *error = sf_read_tables(map, context, rsdp_address, tables);
++  if (error != NULL)
++    return error;
++  error = sf_read_spcr(tables[SF_SPCR].bytes, &found);
++  if (error != NULL)
++    return error;
++  error = sf_read_madt(tables[SF_MADT], &found);
++  if (error != NULL)
++    return error;
++
++  const uint8_t *gtdt = tables[SF_GTDT].bytes;
++  found.timer_virt_gsi = (uint32_t)sf_le(gtdt + 64, 4);
++  found.timer_virt_flags = (uint32_t)sf_le(gtdt + 68, 4);
++  if (found.timer_virt_gsi == 0)
++    return "GTDT virtual timer GSI missing";
++
++  found.arm_boot_flags = (uint16_t)sf_le(tables[SF_FADT].bytes + 129, 2);
++  if ((found.arm_boot_flags & 1) == 0)
++    return "FACP PSCI unavailable";
++  found.psci = (found.arm_boot_flags & 2) != 0 ? SF_ACPI_PSCI_HVC : SF_ACPI_PSCI_SMC;
++
++  *board = found;
++  return NULL;
++}
+diff --git a/tests/acpi_board_test.c b/tests/acpi_board_test.c
+new file mode 100644
+index 0000000..21519bb
+--- /dev/null
++++ b/tests/acpi_board_test.c
+@@ -0,0 +1,204 @@
++/* SPDX-License-Identifier: MIT */
++/* Copyright (c) 2026 SiliconForest contributors */
++
++#include "acpi_board.h"
++
++#include <assert.h>
++#include <stdio.h>
++#include <string.h>
++
++enum { RSDP, XSDT, SPCR, MADT, GTDT, FADT, MCFG, REGION_COUNT };
++enum { TABLE_CAPACITY = 512, REGION_STRIDE = 4096 };
++
++typedef struct {
++  uint8_t bytes[REGION_COUNT][TABLE_CAPACITY];
++  size_t size[REGION_COUNT];
++} SfFixture;
++
++static uint64_t sf_address(unsigned index)
++{
++  return (index + 1) * REGION_STRIDE;
++}
++
++static const uint8_t *sf_fixture_map(void *context, uint64_t address, size_t length)
++{
++  const SfFixture *fixture = context;
++  for (unsigned i = 0; i < REGION_COUNT; i++) {
++    uint64_t start = sf_address(i);
++    if (address >= start && address - start <= fixture->size[i] &&
++        length <= fixture->size[i] - (address - start))
++      return fixture->bytes[i] + (address - start);
++  }
++  return NULL;
++}
++
++static void sf_put_le(uint8_t *p, uint64_t value, unsigned size)
++{
++  for (unsigned i = 0; i < size; i++)
++    p[i] = (uint8_t)(value >> (i * 8));
++}
++
++static void sf_checksum(uint8_t *p, size_t length, size_t offset)
++{
++  uint8_t sum = 0;
++  p[offset] = 0;
++  for (size_t i = 0; i < length; i++)
++    sum = (uint8_t)(sum + p[i]);
++  p[offset] = (uint8_t)(0 - sum);
++}
++
++static void sf_header(SfFixture *fixture, unsigned index, const char *sig, size_t length)
++{
++  uint8_t *p = fixture->bytes[index];
++  fixture->size[index] = length;
++  memcpy(p, sig, 4);
++  sf_put_le(p + 4, length, 4);
++}
++
++static SfFixture sf_synthetic(void)
++{
++  SfFixture f = {0};
++  f.size[RSDP] = 36;
++  memcpy(f.bytes[RSDP], "RSD PTR ", 8);
++  f.bytes[RSDP][15] = 2;
++  sf_put_le(f.bytes[RSDP] + 20, f.size[RSDP], 4);
++  sf_put_le(f.bytes[RSDP] + 24, sf_address(XSDT), 8);
++  sf_checksum(f.bytes[RSDP], 20, 8);
++  sf_checksum(f.bytes[RSDP], 36, 32);
++
++  sf_header(&f, XSDT, "XSDT", 36 + 5 * 8);
++  for (unsigned i = SPCR; i < REGION_COUNT; i++)
++    sf_put_le(f.bytes[XSDT] + 36 + (i - SPCR) * 8, sf_address(i), 8);
++
++  sf_header(&f, SPCR, "SPCR", 80);
++  f.bytes[SPCR][36] = 3;
++  f.bytes[SPCR][41] = 32;
++  f.bytes[SPCR][43] = 3;
++  sf_put_le(f.bytes[SPCR] + 44, 0x02110000, 8);
++  f.bytes[SPCR][52] = 8;
++  sf_put_le(f.bytes[SPCR] + 54, 32, 4);
++  f.bytes[SPCR][58] = 7;
++
++  sf_header(&f, MADT, "APIC", 44 + 24 + 16 + 24 + 2 * 80);
++  uint8_t *record = f.bytes[MADT] + 44;
++  record[0] = 0x0c;
++  record[1] = 24;
++  sf_put_le(record + 8, 0x02010000, 8);
++  record[20] = 3;
++  record += 24;
++  record[0] = 0x0e;
++  record[1] = 16;
++  sf_put_le(record + 4, 0x02500000, 8);
++  sf_put_le(record + 12, 0x40000, 4);
++  record += 16;
++  record[0] = 0x0d;
++  record[1] = 24;
++  sf_put_le(record + 8, 0x02250000, 8);
++  record += 24;
++  for (unsigned i = 0; i < 2; i++, record += 80) {
++    record[0] = 0x0b;
++    record[1] = 80;
++    record[12] = 1;
++    sf_put_le(record + 68, i, 8);
++  }
++
++  sf_header(&f, GTDT, "GTDT", 96);
++  sf_put_le(f.bytes[GTDT] + 64, 27, 4);
++  sf_put_le(f.bytes[GTDT] + 68, 2, 4);
++  sf_header(&f, FADT, "FACP", 276);
++  f.bytes[FADT][129] = 1;
++  sf_header(&f, MCFG, "MCFG", 60);
++  sf_put_le(f.bytes[MCFG] + 44, 0x02300000, 8);
++
++  for (unsigned i = XSDT; i < REGION_COUNT; i++)
++    sf_checksum(f.bytes[i], f.size[i], 9);
++  return f;
++}
++
++static void sf_check_capture(SfFixture *fixture)
++{
++  SfAcpiBoard board = {0};
++  const char *error = sf_acpi_read(sf_fixture_map, fixture, sf_address(RSDP), &board);
++  if (error != NULL)
++    fprintf(stderr, "valid tables refused: %s\n", error);
++  assert(error == NULL);
++  assert(board.uart_base == 0x02110000 && board.uart_gsi == 32);
++  assert(board.uart_type == 3 && board.uart_width == 4 && board.uart_baud_code == 7);
++  assert(board.gicd_base == 0x02010000);
++  assert(board.gicr_base == 0x02500000 && board.gicr_size == 0x40000);
++  assert(board.msi_frame_base == 0x02250000 && board.msi_frame_flags == 0);
++  assert(board.cpu_count == 2 && board.mpidr[0] == 0 && board.mpidr[1] == 1);
++  assert(board.timer_virt_gsi == 27 && board.timer_virt_flags == 2);
++  assert(board.psci == SF_ACPI_PSCI_SMC && board.arm_boot_flags == 1);
++}
++
++static void sf_expect_error(const char *test, SfFixture *fixture, const char *expected)
++{
++  SfAcpiBoard board = {.uart_base = 7};
++  const char *error = sf_acpi_read(sf_fixture_map, fixture, sf_address(RSDP), &board);
++  printf("%s: %s\n", test, error == NULL ? "accepted unexpectedly" : error);
++  assert(error != NULL && strcmp(error, expected) == 0);
++  assert(board.uart_base == 7 && board.cpu_count == 0);
++}
++
++static void sf_read_capture(SfFixture *fixture, char **paths)
++{
++  for (unsigned i = SPCR; i < REGION_COUNT; i++) {
++    FILE *file = fopen(paths[i - SPCR], "rb");
++    assert(file != NULL);
++    size_t size = fread(fixture->bytes[i], 1, TABLE_CAPACITY, file);
++    assert(!ferror(file) && feof(file));
++    assert(fclose(file) == 0);
++    fixture->size[i] = size;
++  }
++}
++
++int main(int argc, char **argv)
++{
++  assert(argc == 1 || argc == 6);
++  SfFixture valid = sf_synthetic();
++  sf_check_capture(&valid);
++  puts("synthetic tables: accepted");
++  if (argc == 6) {
++    SfFixture capture = valid;
++    sf_read_capture(&capture, argv + 1);
++    sf_check_capture(&capture);
++    puts("captured tables: accepted");
++  }
++
++  SfFixture bad = valid;
++  bad.size[SPCR]--;
++  sf_expect_error("truncated SPCR", &bad, "SPCR outside firmware memory");
++  bad = valid;
++  bad.bytes[MADT][9] ^= 1;
++  sf_expect_error("bad MADT checksum", &bad, "APIC checksum");
++  bad = valid;
++  sf_put_le(bad.bytes[GTDT] + 4, UINT32_MAX, 4);
++  sf_expect_error("oversized GTDT", &bad, "GTDT length");
++  bad = valid;
++  bad.bytes[RSDP][32] ^= 1;
++  sf_expect_error("bad extended RSDP checksum", &bad, "RSDP extended checksum");
++  bad = valid;
++  bad.bytes[XSDT][9] ^= 1;
++  sf_expect_error("bad XSDT checksum", &bad, "XSDT checksum");
++  bad = valid;
++  bad.bytes[MADT][45] = 1;
++  sf_checksum(bad.bytes[MADT], bad.size[MADT], 9);
++  sf_expect_error("bad MADT subtable length", &bad, "APIC subtable length");
++  bad = valid;
++  memcpy(bad.bytes[FADT], "NONE", 4);
++  sf_expect_error("missing FADT", &bad, "FACP missing");
++  bad = valid;
++  bad.bytes[SPCR][40] = 1;
++  sf_checksum(bad.bytes[SPCR], bad.size[SPCR], 9);
++  sf_expect_error("non-MMIO SPCR", &bad, "SPCR UART format");
++
++  SfFixture hvc = valid;
++  hvc.bytes[FADT][129] = 3;
++  sf_checksum(hvc.bytes[FADT], hvc.size[FADT], 9);
++  SfAcpiBoard board = {0};
++  assert(sf_acpi_read(sf_fixture_map, &hvc, sf_address(RSDP), &board) == NULL);
++  assert(board.psci == SF_ACPI_PSCI_HVC);
++  puts("FADT HVC selection: accepted");
++  return 0;
++}

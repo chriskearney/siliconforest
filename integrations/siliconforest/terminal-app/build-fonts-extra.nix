@@ -12,7 +12,7 @@
 #   nix-build --extra-experimental-features 'nix-command flakes' --no-out-link build-fonts-extra.nix
 let
   pd = (import ../rebase/pd.nix).pd;
-  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
+  pkgs = pd.buildPkgs;
   cjk = pkgs.noto-fonts-cjk-sans;
   emoji = pkgs.noto-fonts-monochrome-emoji;
 in pkgs.runCommand "siliconforest-fonts-extra" { } ''

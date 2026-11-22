@@ -1,0 +1,78 @@
+PCI: Resolve firmware BARs within bridge windows
+
+Decode assigned-address tuples in the native field order used by the PCI configurator and translate them through the firmware bridge windows.
+
+diff --git a/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp b/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp
+index 513dc07..37e7c4f 100644
+--- a/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp
++++ b/src/Kernel/Extensions/IOPCIFamily/IOPCIBridge.cpp
+@@ -2758,6 +2758,40 @@ bool IOPCIBridge::constructRange( IOPCIAddressSpace * flags,
+     return (ok);
+ }
+ 
++#if defined(__arm64__)
++static bool sf_resolve_firmware_bar(IORegistryEntry *host, const UInt32 *reg,
++                                    IOPhysicalAddress *phys, IOPhysicalLength *length)
++{
++    // The PCI configurator publishes these tuples in its native field order.
++    const auto *assigned = reinterpret_cast<const IOPCIPhysicalAddress *>(reg);
++    UInt32 space = assigned->physHi.s.space;
++    if (space == 0)
++        return false;
++    UInt64 bar = (static_cast<UInt64>(assigned->physMid) << 32) | assigned->physLo;
++    UInt64 size = (static_cast<UInt64>(assigned->lengthHi) << 32) | assigned->lengthLo;
++    const OSData *ranges = OSDynamicCast(OSData, host->getProperty("ranges"));
++    constexpr UInt32 recordSize = 7 * sizeof(UInt32);
++    if (!size || !ranges || ranges->getLength() % recordSize != 0)
++        return false;
++
++    const UInt32 *cells = static_cast<const UInt32 *>(ranges->getBytesNoCopy());
++    for (UInt32 bytes = 0; bytes < ranges->getLength(); bytes += recordSize, cells += 7) {
++        UInt32 windowSpace = (cells[0] >> 24) & 3;
++        if (!windowSpace || (windowSpace == 1) != (space == kIOPCIIOSpace))
++            continue;
++        UInt64 start = (static_cast<UInt64>(cells[1]) << 32) | cells[2];
++        UInt64 span = (static_cast<UInt64>(cells[5]) << 32) | cells[6];
++        if (bar >= start && size <= span && bar - start <= span - size) {
++            UInt64 cpu = (static_cast<UInt64>(cells[3]) << 32) | cells[4];
++            *phys = cpu + (bar - start);
++            *length = size;
++            return true;
++        }
++    }
++    return false;
++}
++#endif
++
+ IOReturn IOPCIBridge::getDTNubAddressing( IOPCIDevice * regEntry )
+ {
+     OSArray *           array;
+@@ -2804,7 +2838,14 @@ IOReturn IOPCIBridge::getDTNubAddressing( IOPCIDevice * regEntry )
+ 		len = ((IOPhysicalLength64) reg[3] << 32) | reg[4];
+ 		constructRange( (IOPCIAddressSpace *) reg, phys, len, array );
+ #else
+-		if (IODTResolveAddressCell(parentEntry, reg, &phys, &len))
++#if defined(__arm64__)
++        bool resolved = getProperty("sf,firmware-pci-addressing")
++            ? sf_resolve_firmware_bar(parentEntry, reg, &phys, &len)
++            : IODTResolveAddressCell(parentEntry, reg, &phys, &len);
++#else
++        bool resolved = IODTResolveAddressCell(parentEntry, reg, &phys, &len);
++#endif
++        if (resolved)
+ 			constructRange( (IOPCIAddressSpace *) reg, phys, len, array );
+ #endif
+         reg += cells;
+diff --git a/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp b/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
+index edf9563..a3512e3 100644
+--- a/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
++++ b/src/Kernel/Extensions/SFArmPCI/SFArmPCI.cpp
+@@ -157,6 +157,8 @@ bool SFArmPCI::configure(IOService *provider)
+             OSSafeReleaseNULL(resource);
+             OSSafeReleaseNULL(match);
+         }
++        if (hasMemory)
++            setProperty("sf,firmware-pci-addressing", kOSBooleanTrue);
+         return hasMemory && super::configure(provider);
+     }
+     /* QEMU virt's low MMIO window is 0x10000000..0x3efeffff; PIO and the low ECAM follow it */
