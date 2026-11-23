@@ -2,10 +2,15 @@
 
 Rendered offscreen from the app's own views (`SFInstaller --snapshot DIR --sizes 1280x800@2,1512x982@1`,
 see `installer/mac/README.md`), dry run on the simulated 13-inch M1 MacBook Pro (J293), the Grove
-frozen at one moment. No window was opened to make them. Our own UI and artwork only.
+frozen at one moment. No window was opened to make them. The layout, type, colours and Grove artwork are
+ours; the small symbols (checkmarks, chevrons, the lock and so on) are Apple SF Symbols, drawn by macOS at
+render time and not shipped in this repository.
 
 - `2560x1600/`: the 13-inch M1's panel (1280×800 pt @2x), key screens.
 - `1512x982/`: every state, dark and light.
+
+Large displays keep the same centred content column (at most 880 pt), so a 2560×1600-point screen shows the
+same composition with more forest on both sides; that size is checked when the layout changes but not committed.
 
 | File | Screen (docs/installer/UX-FLOW.md) |
 |---|---|
