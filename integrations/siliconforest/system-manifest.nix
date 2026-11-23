@@ -95,6 +95,7 @@ let
     install -m 0755 ${./desktop/system/sf-open-preview} $out/usr/bin/sf-open-preview
     install -m 0755 ${./desktop/system/sf-open-textedit} $out/usr/bin/sf-open-textedit
     install -m 0755 ${./desktop/system/sf-open-minecraft} $out/usr/bin/sf-open-minecraft
+    install -m 0755 ${./desktop/system/sf-open-quake} $out/usr/bin/sf-open-quake
     install -m 0755 ${./desktop/system/sf-screenrecord} $out/usr/bin/sf-screenrecord
   '';
   # Combined system root tree: macosAppsRoot plus the three out-of-root system libraries

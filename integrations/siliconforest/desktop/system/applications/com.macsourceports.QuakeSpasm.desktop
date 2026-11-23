@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Quake
+Comment=QuakeSpasm (the macOS app, unchanged) with the Quake shareware episode, staged under /private/var/db/sfquake
+TryExec=/private/var/db/sfquake/QuakeSpasm.app/Contents/MacOS/QuakeSpasm
+Exec=/usr/bin/sf-open-quake
+Icon=/private/var/db/sfquake/QuakeSpasm.app
+Categories=Game;ActionGame;
+StartupWMClass=com.macsourceports.QuakeSpasm
