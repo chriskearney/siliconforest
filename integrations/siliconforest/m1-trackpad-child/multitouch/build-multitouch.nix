@@ -3,6 +3,8 @@
 # collections: the keyboard, transport, enumeration, child-policy and trace sources are taken
 # unchanged from their directories; SFM1SPIHID.{cpp,h}, SFM1SPIHIDChild.inc, SFM1SPITrackpad.{cpp,h}
 # and CMakeLists.txt come from this directory (modified copies), plus the new decoder.
+# m1kbd_{board,pio,hid}.* are board-aware copies (J293, J313; m1kbd_boards.h): the originals in
+# ../../m1-keyboard stay as they are, because the frozen recipes pin their hashes.
 let
  pd = (import ../../rebase/pd.nix).pd;
  pkgs = import pd.inputs.nixpkgs { system = "x86_64-linux"; };
@@ -14,11 +16,12 @@ let
   cp ${../../m1-keyboard/SFM1KeyboardHW.h} "$out/SFM1KeyboardHW.h"
   cp ${./SFM1SPIHID.cpp} "$out/SFM1SPIHID.cpp"
   cp ${./SFM1SPIHID.h} "$out/SFM1SPIHID.h"
-  cp ${../../m1-keyboard/m1kbd_board.c} "$out/m1kbd_board.c"
+  cp ${./m1kbd_boards.h} "$out/m1kbd_boards.h"
+  cp ${./m1kbd_board.c} "$out/m1kbd_board.c"
   cp ${../../m1-keyboard/m1kbd_hw.h} "$out/m1kbd_hw.h"
-  cp ${../../m1-keyboard/m1kbd_pio.c} "$out/m1kbd_pio.c"
-  cp ${../../m1-keyboard/m1kbd_hid.c} "$out/m1kbd_hid.c"
-  cp ${../../m1-keyboard/m1kbd_hid.h} "$out/m1kbd_hid.h"
+  cp ${./m1kbd_pio.c} "$out/m1kbd_pio.c"
+  cp ${./m1kbd_hid.c} "$out/m1kbd_hid.c"
+  cp ${./m1kbd_hid.h} "$out/m1kbd_hid.h"
   cp ${../../m1-keyboard/native_protocol/dl_spi_hid.c} "$out/native_protocol/dl_spi_hid.c"
   cp ${../../m1-keyboard/native_protocol/dl_spi_hid.h} "$out/native_protocol/dl_spi_hid.h"
   cp ${../../m1-trackpad-enum/observation_layout.h} "$out/observation_layout.h"

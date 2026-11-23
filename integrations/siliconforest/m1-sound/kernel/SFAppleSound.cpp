@@ -90,6 +90,8 @@
 
 #define LOG(fmt, ...) IOLog("SFSound: " fmt "\n", ##__VA_ARGS__)
 
+#include "sf_board_gate.h"
+
 #define T8103_CHIP_ID       0x8103
 
 #define PIN_I2C2_SDA        162     /* /arm-io/gpio, function 1 */
@@ -1182,6 +1184,19 @@ public:
 
 OSDefineMetaClassAndStructors(SFAppleSound, IOService);
 
+/* Only on the board this driver's tables describe. */
+static bool
+sf_on_j293(void)
+{
+	IORegistryEntry *root = IORegistryEntry::fromPath("/", gIODTPlane);
+	OSData *compatible = root ? OSDynamicCast(OSData, root->getProperty("compatible")) : NULL;
+	bool yes = compatible != NULL &&
+	    sf_board_compatible_is(compatible->getBytesNoCopy(), compatible->getLength(), "J293AP");
+
+	OSSafeReleaseNULL(root);
+	return yes;
+}
+
 bool
 SFAppleSound::start(IOService *provider)
 {
@@ -1200,6 +1215,11 @@ SFAppleSound::start(IOService *provider)
 	OSSafeReleaseNULL(chosen);
 	if (chipID != T8103_CHIP_ID) {
 		LOG("chip 0x%x is not T8103; nothing is done", chipID);
+		return false;
+	}
+	/* J313 has its codec on i2c3, two amplifiers, and USB-C retimers on i2c2 */
+	if (!sf_on_j293()) {
+		LOG("not a J293: its audio buses and speaker model do not apply; nothing is done");
 		return false;
 	}
 

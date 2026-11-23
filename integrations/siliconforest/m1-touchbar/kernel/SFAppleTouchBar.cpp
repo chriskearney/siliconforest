@@ -71,6 +71,8 @@ vnode_t vfs_rootvnode(void);
 
 #define LOG(fmt, ...) IOLog("SFTouchBar: " fmt "\n", ##__VA_ARGS__)
 
+#include "sf_board_gate.h"
+
 #define T8103_CHIP_ID   0x8103
 #define SPI0_PHYS       0x235100000ULL
 #define SPI0_CLOCK_HZ   200000000u      /* clk_200m */
@@ -1093,6 +1095,19 @@ public:
 
 OSDefineMetaClassAndStructors(SFAppleTouchBar, IOService);
 
+/* Only on the board this driver's tables describe. */
+static bool
+sf_on_j293(void)
+{
+	IORegistryEntry *root = IORegistryEntry::fromPath("/", gIODTPlane);
+	OSData *compatible = root ? OSDynamicCast(OSData, root->getProperty("compatible")) : NULL;
+	bool yes = compatible != NULL &&
+	    sf_board_compatible_is(compatible->getBytesNoCopy(), compatible->getLength(), "J293AP");
+
+	OSSafeReleaseNULL(root);
+	return yes;
+}
+
 bool
 SFAppleTouchBar::start(IOService *provider)
 {
@@ -1116,6 +1131,10 @@ SFAppleTouchBar::start(IOService *provider)
 		return false;
 	}
 	OSSafeReleaseNULL(touch);
+	if (!sf_on_j293()) {
+		LOG("not a J293: no Touch Bar here; nothing is done");
+		return false;
+	}
 
 	PE_parse_boot_argn("sftouchbar", &gLevel, sizeof(gLevel));
 	if (PE_parse_boot_argn("sftouchbar_bright", &value, sizeof(value)) && value >= 1 && value <= 255)

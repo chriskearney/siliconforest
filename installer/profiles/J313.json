@@ -139,8 +139,8 @@
       "@SF_PART_BLOCKS@": "Length of the root partition in 4096-byte blocks."
     },
     "notes": [
-      "Starts from the J293 command line with sound and the Touch Bar off. The collection still needs the J313 keyboard and display changes in docs/installer/FIRST-INSTALL-J313.md.",
-      "sfsound=0 is a safety requirement: SFAppleSound checks only for T8103, and J313 has different audio buses and amplifiers.",
+      "Starts from the J293 command line with sound and the Touch Bar off. The keyboard, display, sound and Touch Bar drivers are board-aware since gate G0 of docs/installer/FIRST-INSTALL-J313.md. None of this has run on J313.",
+      "sfsound=0 stays a safety requirement: J313 has different audio buses and amplifiers. SFAppleSound and SFAppleTouchBar also refuse any board but J293 in their own start path.",
       "The list still contains development flags (-v, debug, keepsyms, serial). Review them before a public release."
     ]
   },
@@ -357,22 +357,22 @@
     {
       "id": "j313-sound-unsafe",
       "severity": "blocker-until-tested",
-      "summary": "J313's codec is on i2c3 and it has two amplifiers. Its i2c2 carries the USB-C retimers. SFAppleSound checks only for T8103 and would use J293's buses and speaker model.",
+      "summary": "J313's codec is on i2c3 and it has two amplifiers. Its i2c2 carries the USB-C retimers. SFAppleSound now refuses every board but J293, and has no J313 configuration.",
       "effect": "Every J313 boot carries sfsound=0 until J313 has its own audio configuration and speaker model.",
       "source": "docs/installer/FIRST-INSTALL-J313.md"
     },
     {
       "id": "j313-keyboard-identity-gate",
       "severity": "blocker-until-tested",
-      "summary": "The keyboard board guard refuses J313 by identity. With only its identity strings substituted, it accepts all other values in Apple's J313 device tree.",
-      "effect": "Needs a reviewed board-aware guard, then real input testing.",
+      "summary": "The keyboard guard accepts J313 by identity and passes on Apple's 13.5 J313 device tree. It expects HID product 0x0281, taken from Linux and not yet observed on this driver. The trackpad attaches only if its descriptor equals J293's; otherwise the driver runs keyboard-only.",
+      "effect": "Confirm the product ID and capture the trackpad descriptor in G2, then test real input in G3.",
       "source": "docs/installer/FIRST-INSTALL-J313.md"
     },
     {
       "id": "j313-panel",
       "severity": "blocker-until-tested",
-      "summary": "J313's panel maximum is 420, while the display device-tree builder hard-codes J293's 525.",
-      "effect": "Make the panel values per-board before the first J313 boot with the display driver.",
+      "summary": "J313's panel maximum is 420. The display device-tree builder now selects it by board and refuses unknown boards.",
+      "effect": "Observe the brightness range on the real panel in G3.",
       "source": "docs/installer/FIRST-INSTALL-J313.md"
     },
     {

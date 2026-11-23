@@ -17,9 +17,10 @@ CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -ffp-contract=off
 
 .PHONY: test clean check-inputs freestanding compare-disp
 
-test: build/harness build/fwnode_test build/dispdt_test freestanding
+test: build/harness build/fwnode_test build/dispdt_test build/dispdt_board_test freestanding
 	./build/harness selftest
 	./build/dispdt_test
+	./build/dispdt_board_test
 	./build/fwnode_test
 	python3 test/compare.py ./build/harness $(GT)
 	@echo; echo "predicted SFGpuDT kext log for core mask $(CORE_MASK):"
@@ -39,6 +40,11 @@ build/harness: src/gpudt.c src/gpudt_summary.c src/gpudt.h src/gpudt_fw_table.in
 # the display nodes (dispdt.c) from the same saved device tree
 build/dispdt_test: src/dispdt.c src/dispdt.h src/gpudt.h test/dispdt_test.c test/fixture.h build/adt_fixture.c
 	$(CC) $(CFLAGS) -Isrc -Itest -o $@ src/dispdt.c test/dispdt_test.c build/adt_fixture.c
+
+# the per-board panel values and refusal: a synthetic tree, no saved capture needed
+build/dispdt_board_test: src/dispdt.c src/dispdt.h src/gpudt.h test/dispdt_board_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc -o $@ src/dispdt.c test/dispdt_board_test.c
 
 # the display tree against the live Linux tree, when its dump is there (private/, never committed):
 #   make compare-disp DISP_ARGS="13 5 0 0xbd5d5c000 2560 1600 10240 0x1001e 0x0 0x300000 0x1318000 0x131c000 0x13dc000"

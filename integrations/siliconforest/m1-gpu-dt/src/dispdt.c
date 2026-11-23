@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 /*
- * dispdt: Linux-style device-tree nodes for the J293 display, from Apple's device tree.
+ * dispdt: Linux-style device-tree nodes for the J293 and J313 displays, from Apple's device tree.
  * See dispdt.h. Static values are those of arch/arm64/boot/dts/apple/t8103.dtsi,
- * t8103-jxxx.dtsi and t8103-j293.dts at omacom/linux-aurora 6a08a08e; the boot-time parts
+ * t8103-jxxx.dtsi, t8103-j293.dts and t8103-j313.dts at omacom/linux-aurora 6a08a08e; the boot-time parts
  * follow m1n1 src/kboot.c (dt_set_fb, dt_set_dcp_firmware, dt_carveout_reserved_regions,
  * dt_vram_reserved_region, dt_add_reserved_regions), MIT, Copyright The Asahi Linux
  * Contributors.
@@ -43,6 +43,29 @@ static const struct {
     {"region-id-95", "region95", "apple,asc-mem", true, false, true},
     {NULL, "framebuffer", "framebuffer", true, true, false},
 };
+
+/* The panel node of each board (&dcp in t8103-j293.dts:43-50 and t8103-j313.dts:38-45). */
+static const struct dispdt_panel {
+    const char *board, *compatible;
+    uint32_t width_mm, height_mm, max_brightness;
+} panels[] = {
+    {"J293AP", "apple,panel-j293", 286, 179, 525},
+    {"J313AP", "apple,panel-j313", 286, 179, 420},
+};
+
+/* By the first string of the root compatible, which must be terminated inside the property. */
+static const struct dispdt_panel *find_panel(const uint8_t *compatible, uint32_t len)
+{
+    if (!compatible)
+        return NULL;
+    for (size_t i = 0; i < sizeof(panels) / sizeof(panels[0]); i++) {
+        size_t n = strlen(panels[i].board) + 1;
+
+        if (len >= n && !memcmp(compatible, panels[i].board, n))
+            return &panels[i];
+    }
+    return NULL;
+}
 
 static uint32_t rd32le(const uint8_t *p)
 {
@@ -232,6 +255,7 @@ int dispdt_build_t8103(const struct gpudt_adt_ops *adt, const struct dispdt_conf
     uint64_t a, s;
     char name[48];
     int i;
+    const struct dispdt_panel *panel;
 
     if (!adt || !adt->getprop || !cfg || !t)
         return DISPDT_ERR_ARGS;
@@ -242,9 +266,11 @@ int dispdt_build_t8103(const struct gpudt_adt_ops *adt, const struct dispdt_conf
 
     if (!adt_reg(adt, "/arm-io/dcp", 0, &a, &s) || !adt_reg(adt, "/arm-io/disp0", 0, &a, &s))
         return DISPDT_ERR_NO_DCP;
+    len = 0;
     v = adt->getprop(adt->ctx, "/", "compatible", &len);
-    if (!v || len < 7 || memcmp(v, "J293AP", 7))
-        diag(t, DISPDT_D_NOT_J293, NULL, 0, 0);
+    panel = find_panel(v, len);
+    if (!panel)
+        return DISPDT_ERR_BOARD;
 
     /* iBoot's carve-outs: m1n1 reads them all before it changes anything, and gives up if one is missing */
     for (i = 0; i < 4; i++) {
@@ -447,11 +473,11 @@ int dispdt_build_t8103(const struct gpudt_adt_ops *adt, const struct dispdt_conf
 
     node_set(t, DISPDT_NODE_PANEL, "panel", DISPDT_NODE_DCP, ph + PH_PANEL);
     p = add(&b, DISPDT_NODE_PANEL, "compatible", GPUDT_T_STRINGS, GPUDT_O_STATIC, GPUDT_F_DRIVER_READS);
-    put_str(&b, p, "apple,panel-j293");
+    put_str(&b, p, panel->compatible);
     put_str(&b, p, "apple,panel");
-    prop_u32(&b, DISPDT_NODE_PANEL, "width-mm", GPUDT_O_STATIC, GPUDT_F_DRIVER_READS, 286);
-    prop_u32(&b, DISPDT_NODE_PANEL, "height-mm", GPUDT_O_STATIC, GPUDT_F_DRIVER_READS, 179);
-    prop_u32(&b, DISPDT_NODE_PANEL, "apple,max-brightness", GPUDT_O_STATIC, GPUDT_F_DRIVER_READS, 525);
+    prop_u32(&b, DISPDT_NODE_PANEL, "width-mm", GPUDT_O_STATIC, GPUDT_F_DRIVER_READS, panel->width_mm);
+    prop_u32(&b, DISPDT_NODE_PANEL, "height-mm", GPUDT_O_STATIC, GPUDT_F_DRIVER_READS, panel->height_mm);
+    prop_u32(&b, DISPDT_NODE_PANEL, "apple,max-brightness", GPUDT_O_STATIC, GPUDT_F_DRIVER_READS, panel->max_brightness);
     prop_u32(&b, DISPDT_NODE_PANEL, "phandle", GPUDT_O_SYNTH, GPUDT_F_PHANDLE, ph + PH_PANEL);
 
     /* ---- display-subsystem (t8103.dtsi:699-706). jxxx.dtsi:170 also lists dispext0's DART, which is not published ---- */
@@ -475,7 +501,7 @@ int dispdt_build_t8103(const struct gpudt_adt_ops *adt, const struct dispdt_conf
         }
     }
 
-    /* ---- boot framebuffer (jxxx.dtsi:48-54, j293.dts:52-55, m1n1 dt_set_fb). J293 has no notch ---- */
+    /* ---- boot framebuffer (jxxx.dtsi:48-54, j293.dts:52-55, m1n1 dt_set_fb). Neither board has a notch ---- */
     if (cfg->fb_base) {
         const char *format = (cfg->fb_depth & 0xff) == 32   ? "x8r8g8b8"
                              : (cfg->fb_depth & 0xff) == 30 ? "x2r10g10b10"

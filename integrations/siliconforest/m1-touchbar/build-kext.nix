@@ -9,6 +9,7 @@ let
     mkdir -p "$out"
     cp ${./kernel}/* "$out/"
     cp ${./spihid/sf_touchbar_kbd.h} "$out/sf_touchbar_kbd.h"
+    cp ${../m1-sound/kernel/sf_board_gate.h} "$out/sf_board_gate.h"
   '';
 in pd.packages.x86_64-linux.kexts-arm64.overrideAttrs (old: {
   pname = "siliconforest-touchbar";

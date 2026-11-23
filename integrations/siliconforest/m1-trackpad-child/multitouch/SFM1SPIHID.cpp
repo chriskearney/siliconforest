@@ -284,8 +284,8 @@ bool SFM1SPIHID::enumerate()
     setProperty("SFM1KeyboardPhase","boot-notification-verified");
     if (!waitResponse(1,0xd0,0,&message)) return false;
     /* Device metadata comes from the controller, not our selected descriptor.
-     * The J293 Linux observation identifies Apple 05ac:0341. */
-    int metadataError=m1kbd_device_info(message.payload,message.payload_length,&identity);
+     * The product must be the one of the board the guard accepted (m1kbd_boards.h). */
+    int metadataError=m1kbd_device_info(message.payload,message.payload_length,m1kbd_board_product(hardware.state()->board.qualified),&identity);
     recordDeviceMetadata(this,message.payload,message.payload_length,metadataError);
     if (metadataError) {
         fail(M1KBD_BOARD,"device-metadata"); return false;

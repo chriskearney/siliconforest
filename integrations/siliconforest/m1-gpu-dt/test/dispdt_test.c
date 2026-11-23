@@ -60,8 +60,7 @@ int main(void)
 
     /* static register windows agree with this machine's device tree: no mismatch diagnostics */
     for (uint32_t i = 0; i < t.ndiags; i++)
-        assert(t.diags[i].code != DISPDT_D_REG_ADT_MISMATCH && t.diags[i].code != DISPDT_D_REG_ADT_ABSENT &&
-               t.diags[i].code != DISPDT_D_NOT_J293);
+        assert(t.diags[i].code != DISPDT_D_REG_ADT_MISMATCH && t.diags[i].code != DISPDT_D_REG_ADT_ABSENT);
 
     /* dcp: what the pin's driver reads (dcp.c) */
     p = dispdt_find(&t, DISPDT_NODE_DCP, "compatible");

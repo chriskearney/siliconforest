@@ -92,8 +92,8 @@ struct dispdt_config {
 };
 
 enum dispdt_diag_code {
-    DISPDT_D_NOT_J293 = 1,       /* root compatible is not J293AP: panel values are this board's only */
-    DISPDT_D_REG_ADT_MISMATCH,   /* text = reg name; a = static, b = ADT */
+    /* 1 was "not J293": an unknown board is now refused (DISPDT_ERR_BOARD) */
+    DISPDT_D_REG_ADT_MISMATCH = 2,   /* text = reg name; a = static, b = ADT */
     DISPDT_D_REG_ADT_ABSENT,     /* text = reg name */
     DISPDT_D_NO_IOVA,            /* text = region; a = 0 dcp, 1 disp, 2 piodma */
     DISPDT_D_FIRMWARE_UNKNOWN,   /* no version tuple: apple,firmware-* are 0 0 0 and the driver will refuse */
@@ -118,6 +118,7 @@ struct dispdt_tree {
 #define DISPDT_ERR_CARVEOUT    (-4) /* a region-id-NN the display needs is missing or zero (m1n1 bails too) */
 #define DISPDT_ERR_NO_VRAM     (-5)
 #define DISPDT_ERR_OVERFLOW    (-6)
+#define DISPDT_ERR_BOARD       (-7) /* root compatible names no board with known panel values */
 
 /* Builds the tree. On a negative return it is incomplete and must not be published. */
 int dispdt_build_t8103(const struct gpudt_adt_ops *adt, const struct dispdt_config *cfg,
