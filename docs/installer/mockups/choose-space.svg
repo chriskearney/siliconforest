@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 Chris Kearney and the SiliconForest contributors -->
+<!-- Design mockup of the installer's Choose Your Space screen, in the Canopy palette, at the
+     13-inch display's 1280x800 points. Illustration only: the numbers are examples. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" width="1280" height="800" font-family="Inter, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+  <title>SiliconForest Installer: Choose your space (mockup)</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#07110e"/>
+      <stop offset="0.52" stop-color="#0f211c"/>
+      <stop offset="0.76" stop-color="#2a3029"/>
+      <stop offset="0.9" stop-color="#8a5a3a"/>
+      <stop offset="1" stop-color="#dd8f55"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#dd8f55" stop-opacity="0"/>
+      <stop offset="1" stop-color="#dd8f55" stop-opacity="0.3"/>
+    </linearGradient>
+    <linearGradient id="scrim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#07110e" stop-opacity="0.2"/>
+      <stop offset="0.72" stop-color="#07110e" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#07110e" stop-opacity="0.82"/>
+    </linearGradient>
+    <linearGradient id="sf" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e7a06a"/>
+      <stop offset="1" stop-color="#dd8f55"/>
+    </linearGradient>
+    <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="7" height="7" fill="#e2b65c"/>
+      <rect width="2.4" height="7" fill="#9c7a36"/>
+    </pattern>
+    <pattern id="traces" width="34" height="22" patternUnits="userSpaceOnUse">
+      <path d="M0 6 H13 L19 16 H34" fill="none" stroke="#1a120b" stroke-opacity="0.16" stroke-width="1.2"/>
+      <circle cx="13" cy="6" r="1.7" fill="#1a120b" fill-opacity="0.2"/>
+    </pattern>
+    <clipPath id="barclip"><rect x="200" y="402" width="880" height="72" rx="12"/></clipPath>
+    <symbol id="tree" viewBox="0 0 100 200">
+      <path d="M50 0 L72 50 H60 L84 102 H66 L96 164 H56 V200 H44 V164 H4 L34 102 H16 L40 50 H28 Z"/>
+    </symbol>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7"/></filter>
+  </defs>
+
+  <!-- the scene: Canopy just before dawn -->
+  <rect width="1280" height="800" fill="url(#sky)"/>
+  <g fill="#e6ede4">
+    <circle cx="228" cy="58" r="1.1" opacity=".7"/><circle cx="392" cy="120" r=".9" opacity=".5"/><circle cx="584" cy="42" r="1.2" opacity=".75"/>
+    <circle cx="742" cy="96" r=".9" opacity=".55"/><circle cx="908" cy="50" r="1.1" opacity=".7"/><circle cx="1062" cy="132" r="1" opacity=".5"/>
+    <circle cx="478" cy="182" r=".8" opacity=".4"/><circle cx="826" cy="196" r=".8" opacity=".4"/><circle cx="1012" cy="28" r=".8" opacity=".5"/>
+  </g>
+  <path d="M0 704 L120 668 L250 694 L390 650 L540 690 L700 654 L860 692 L1010 660 L1150 690 L1280 662 V800 H0 Z" fill="#17302a" opacity=".75"/>
+  <rect y="600" width="1280" height="200" fill="url(#glow)"/>
+  <g fill="#0a1512">
+    <use href="#tree" x="-34" y="220" width="210" height="580"/><use href="#tree" x="92" y="372" width="150" height="430"/><use href="#tree" x="-12" y="500" width="110" height="300"/>
+    <use href="#tree" x="1102" y="196" width="230" height="604"/><use href="#tree" x="1032" y="388" width="146" height="412"/><use href="#tree" x="1196" y="510" width="110" height="290"/>
+  </g>
+  <g fill="#0e1d19">
+    <use href="#tree" x="196" y="610" width="70" height="190"/><use href="#tree" x="306" y="640" width="56" height="160"/><use href="#tree" x="442" y="626" width="62" height="174"/>
+    <use href="#tree" x="618" y="644" width="54" height="156"/><use href="#tree" x="760" y="622" width="64" height="178"/><use href="#tree" x="908" y="640" width="56" height="160"/><use href="#tree" x="984" y="612" width="70" height="188"/>
+  </g>
+  <rect width="1280" height="800" fill="url(#scrim)"/>
+
+  <!-- top bar: mark, name, step vias -->
+  <g transform="translate(40 22) scale(.32)" fill="none" stroke="#a6f2c8" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M50 17 V80"/><path d="M33 36 L50 17 L67 36"/><path d="M25 55 L50 33 L75 55"/><path d="M17 74 L50 50 L83 74"/><path d="M30 84 H70"/>
+    <g fill="#a6f2c8" stroke="none"><circle cx="33" cy="36" r="4.5"/><circle cx="67" cy="36" r="4.5"/><circle cx="25" cy="55" r="4.5"/><circle cx="75" cy="55" r="4.5"/><circle cx="17" cy="74" r="4.5"/><circle cx="83" cy="74" r="4.5"/></g>
+  </g>
+  <text x="84" y="44" fill="#e6ede4" font-size="15" font-weight="600" letter-spacing="-.1">SiliconForest</text>
+  <g transform="translate(936 38)">
+    <path d="M0 0 H264" stroke="#2e3d35" stroke-width="1.5"/>
+    <path d="M0 0 H88" stroke="#dd8f55" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="5" fill="#dd8f55"/><circle cx="44" cy="0" r="5" fill="#dd8f55"/>
+    <circle cx="88" cy="0" r="10" fill="#dd8f55" opacity=".18"/><circle cx="88" cy="0" r="6" fill="#dd8f55"/><circle cx="88" cy="0" r="2.2" fill="#111a16"/>
+    <g fill="#111a16" stroke="#5d6e64" stroke-width="1.5"><circle cx="132" cy="0" r="5"/><circle cx="176" cy="0" r="5"/><circle cx="220" cy="0" r="5"/><circle cx="264" cy="0" r="5"/></g>
+  </g>
+
+  <!-- title -->
+  <text x="200" y="176" fill="#e6ede4" font-size="44" font-weight="600" letter-spacing="-.8">Choose your space</text>
+  <text x="200" y="218" fill="#c4cfc5" font-size="19">Drag to decide how much goes to SiliconForest.</text>
+  <text x="200" y="245" fill="#c4cfc5" font-size="19">You can remove it later and get the space back.</text>
+
+  <!-- side labels with traces up from the handle -->
+  <text x="200" y="326" fill="#9aa89d" font-size="13" font-weight="500">macOS</text>
+  <text x="200" y="364" fill="#e6ede4" font-size="30" font-weight="600" letter-spacing="-.4">394 GB</text>
+  <text x="1080" y="326" fill="#dd8f55" font-size="13" font-weight="500" text-anchor="end">SiliconForest</text>
+  <text x="1080" y="364" fill="#e6ede4" font-size="30" font-weight="600" letter-spacing="-.4" text-anchor="end">100 GB</text>
+  <g fill="none" stroke="#dd8f55" stroke-width="1.25" opacity=".85">
+    <path d="M902 402 V384 L914 372 H968"/>
+    <path d="M902 402 V384 L890 372 H320"/>
+  </g>
+  <circle cx="968" cy="372" r="2.6" fill="#dd8f55"/><circle cx="320" cy="372" r="2.6" fill="#dd8f55"/>
+
+  <!-- the disk bar -->
+  <g clip-path="url(#barclip)">
+    <rect x="200" y="402" width="880" height="72" fill="#1b2a24"/>
+    <rect x="200" y="402" width="264" height="72" fill="#9aa89d"/>
+    <rect x="464" y="402" width="11" height="72" fill="url(#hatch)"/>
+    <rect x="475" y="402" width="427" height="72" fill="#22332c"/>
+    <rect x="902" y="402" width="178" height="72" fill="url(#sf)"/>
+    <rect x="902" y="402" width="178" height="72" fill="url(#traces)"/>
+  </g>
+  <rect x="200.5" y="402.5" width="879" height="71" rx="12" fill="none" stroke="#e6ede4" stroke-opacity=".2"/>
+
+  <!-- handle: a plated via -->
+  <circle cx="902" cy="438" r="24" fill="#dd8f55" opacity=".35" filter="url(#soft)"/>
+  <circle cx="902" cy="438" r="15" fill="#111a16" stroke="#dd8f55" stroke-width="4.5"/>
+  <circle cx="902" cy="438" r="4.2" fill="#e6ede4"/>
+
+  <!-- legend -->
+  <g font-size="13" fill="#c4cfc5">
+    <rect x="200" y="494" width="12" height="12" rx="3" fill="#9aa89d"/><text x="219" y="505">Used 148 GB</text>
+    <rect x="322" y="494" width="12" height="12" rx="3" fill="url(#hatch)"/><text x="341" y="505">Snapshots 6 GB</text>
+    <rect x="466" y="494" width="12" height="12" rx="3" fill="#22332c" stroke="#5d6e64"/><text x="485" y="505">Stays free 240 GB</text>
+    <rect x="628" y="494" width="12" height="12" rx="3" fill="#dd8f55"/><text x="647" y="505">SiliconForest 100 GB</text>
+  </g>
+
+  <!-- exact size -->
+  <g transform="translate(910 488)">
+    <rect width="72" height="32" rx="8" fill="#111a16" stroke="#2e3d35"/>
+    <text x="36" y="21.5" fill="#e6ede4" font-size="15" font-weight="500" text-anchor="middle">100</text>
+    <text x="82" y="21.5" fill="#9aa89d" font-size="13">GB</text>
+    <g transform="translate(106 0)"><rect width="30" height="32" rx="8" fill="#17221d" stroke="#2e3d35"/><text x="15" y="21.5" fill="#e6ede4" font-size="16" text-anchor="middle">−</text></g>
+    <g transform="translate(140 0)"><rect width="30" height="32" rx="8" fill="#17221d" stroke="#2e3d35"/><text x="15" y="21.5" fill="#e6ede4" font-size="16" text-anchor="middle">+</text></g>
+  </g>
+
+  <!-- presets -->
+  <g font-size="13.5" font-weight="500">
+    <rect x="200" y="548" width="132" height="36" rx="18" fill="#dd8f55"/><text x="266" y="571" fill="#1a120b" text-anchor="middle">Recommended</text>
+    <rect x="344" y="548" width="76" height="36" rx="18" fill="#111a16" fill-opacity=".8" stroke="#2e3d35"/><text x="382" y="571" fill="#e6ede4" text-anchor="middle">Half</text>
+    <rect x="432" y="548" width="100" height="36" rx="18" fill="#111a16" fill-opacity=".8" stroke="#2e3d35"/><text x="482" y="571" fill="#e6ede4" text-anchor="middle">Minimum</text>
+    <rect x="544" y="548" width="104" height="36" rx="18" fill="#111a16" fill-opacity=".8" stroke="#2e3d35"/><text x="596" y="571" fill="#e6ede4" text-anchor="middle">Maximum</text>
+  </g>
+  <text x="1080" y="571" fill="#9aa89d" font-size="13.5" text-anchor="end">macOS keeps 240 GB free</text>
+
+  <!-- bottom bar -->
+  <text x="40" y="752" fill="#c4cfc5" font-size="14">Show partition details</text>
+  <text x="1038" y="752" fill="#e6ede4" font-size="15" text-anchor="end">Back</text>
+  <rect x="1072" y="722" width="168" height="46" rx="12" fill="#dd8f55"/>
+  <text x="1156" y="751" fill="#1a120b" font-size="15" font-weight="600" text-anchor="middle">Continue</text>
+</svg>
