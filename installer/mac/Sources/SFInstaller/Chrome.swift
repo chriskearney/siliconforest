@@ -20,6 +20,13 @@ struct Footer {
     var trailing: [BarAction] = []
 }
 
+/// Where the content column sits. Centred, at most 880 pt wide, with at least 72 pt on each side.
+enum RootLayout {
+    static let maxColumn: CGFloat = 880
+    static func column(width w: CGFloat) -> CGFloat { min(maxColumn, max(320, w - 144)) }
+    static func leading(width w: CGFloat) -> CGFloat { (w - column(width: w)) / 2 }
+}
+
 /// The frame every screen shares (UX-FLOW "Layout of every screen"): top bar 72 pt, bottom bar 88 pt,
 /// a fixed content column, the Grove behind. Bars never move between screens.
 struct RootView: View {
@@ -30,9 +37,10 @@ struct RootView: View {
 
     var body: some View {
         let w = screen.width, h = screen.height
-        let column = min(880, w - 144)
-        // Centred on the 13-inch display; on wide displays, offset to the optical left third.
-        let x = w > 1600 ? (w - column) * 0.36 : (w - column) / 2
+        // One centred content column with a maximum width, on every display: the 13-inch panel and a
+        // 2560-point external screen get the same balanced composition, the Grove filling both sides.
+        let column = RootLayout.column(width: w)
+        let x = RootLayout.leading(width: w)
         // Panels always use the token set matching the appearance (VISUAL §9). In dark mode the
         // Finish screen is the same morning seen from the night side (GrovePalette's sunrise).
         let ui = theme
@@ -68,7 +76,7 @@ struct RootView: View {
                 }
                 .frame(width: column, alignment: .topLeading)
                 .frame(maxHeight: .infinity, alignment: .topLeading)
-                .padding(.leading, x)
+                .frame(maxWidth: .infinity, alignment: .center)
                 BottomBar(footer: footer, s: s, column: column, x: x).frame(height: 88)
             }
             .environment(\.theme, ui)

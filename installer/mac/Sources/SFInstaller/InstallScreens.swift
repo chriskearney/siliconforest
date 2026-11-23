@@ -14,7 +14,7 @@ struct WelcomeScreen: View {
     @State private var drawn: Double = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .center, spacing: 0) {
             Spacer(minLength: 0)
             BrandMark.themed(theme, progress: isSnapshot ? 1 : drawn)
                 .frame(height: screen.height < 860 ? 96 : 118)
@@ -30,7 +30,7 @@ struct WelcomeScreen: View {
                 .padding(.top, 14)
             Text(Copy.Welcome.body)
                 .font(SFType.lead).foregroundStyle(theme.textSecondary).lineSpacing(6)
-                .frame(maxWidth: 600, alignment: .leading)
+                .frame(maxWidth: 600)
                 .padding(.top, 12)
             Text(footer)
                 .font(SFType.label).foregroundStyle(theme.textSecondary)
@@ -40,7 +40,8 @@ struct WelcomeScreen: View {
             Spacer(minLength: 0)
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .onAppear { withAnimation(.easeInOut(duration: 1.4)) { drawn = 1 } }
     }
 

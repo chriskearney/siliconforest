@@ -204,15 +204,21 @@ struct FinishScreen: View {
                 HStack(spacing: 12) { Spinner(size: 18, color: theme.accent); Text(Copy.Finish.verifying).font(SFType.lead).foregroundStyle(theme.textSecondary) }
                 Spacer()
             case .installed:
-                Spacer(minLength: 0)
-                LitMark().frame(height: 112).padding(.bottom, 30)
-                Text(Copy.Finish.title).font(SFType.title).tracking(SFType.titleTracking).foregroundStyle(theme.text).accessibilityAddTraits(.isHeader)
-                Text(Copy.Finish.lead).font(SFType.lead).foregroundStyle(theme.textSecondary).padding(.top, 12)
-                (Text(Copy.Finish.switchLabel + " ").font(SFType.bodyStrong).foregroundColor(theme.text) + Text(Copy.Finish.switchBody).font(SFType.body).foregroundColor(theme.textSecondary))
-                    .padding(.top, 22)
-                Text(Copy.Finish.removeAnyTime).font(SFType.label).foregroundStyle(theme.textSecondary).padding(.top, 26)
-                if s.isDryRun { Text(Copy.Common.dryRunComplete).font(SFType.label).foregroundStyle(theme.caution).padding(.top, 6) }
-                Spacer(minLength: 0); Spacer(minLength: 0)
+                // The hero screens (Welcome, Finish) are centred in the column; the working screens
+                // keep the left-aligned measure.
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    LitMark().frame(height: 112).padding(.bottom, 30)
+                    Text(Copy.Finish.title).font(SFType.title).tracking(SFType.titleTracking).foregroundStyle(theme.text).accessibilityAddTraits(.isHeader)
+                    Text(Copy.Finish.lead).font(SFType.lead).foregroundStyle(theme.textSecondary).padding(.top, 12)
+                    (Text(Copy.Finish.switchLabel + " ").font(SFType.bodyStrong).foregroundColor(theme.text) + Text(Copy.Finish.switchBody).font(SFType.body).foregroundColor(theme.textSecondary))
+                        .padding(.top, 22)
+                    Text(Copy.Finish.removeAnyTime).font(SFType.label).foregroundStyle(theme.textSecondary).padding(.top, 26)
+                    if s.isDryRun { Text(Copy.Common.dryRunComplete).font(SFType.label).foregroundStyle(theme.caution).padding(.top, 6) }
+                    Spacer(minLength: 0); Spacer(minLength: 0)
+                }
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
             case .partial:
                 ScreenHead(title: Copy.Finish.partialTitle, lead: Copy.Finish.partialLead("starting system services"))
             case .didNotStart:
