@@ -15,7 +15,7 @@ echo "▸ swift build (release)"
 swift build -c release --product SFInstaller
 swift build -c release --product sfinstallctl
 BIN="$(swift build -c release --show-bin-path)"
-[ -f build/fonts/Inter-Regular.ttf ] || scripts/fetch-fonts.sh
+[ -f build/fonts/Inter-Regular.ttf ] && [ -f build/fonts/SourceCodePro-OFL.txt ] || scripts/fetch-fonts.sh
 
 APP="$ROOT/build/SiliconForest Installer.app"
 rm -rf "$APP"
@@ -28,8 +28,8 @@ cp "$ROOT"/../profiles/*.json "$APP/Contents/Resources/Profiles/"
 # Dry-run disks (the simulator's fake Macs; DESIGN says SFSimulator never ships in release builds,
 # so drop these when the app stops being dry-run-only).
 cp -R "$ROOT/Fixtures/disks" "$APP/Contents/Resources/Fixtures/disks"
-# Inter and Source Code Pro (OFL), with their licence.
-cp build/fonts/*.ttf build/fonts/Inter-OFL.txt build/fonts/SOURCES.md "$APP/Contents/Resources/Fonts/"
+# Inter and Source Code Pro (OFL), each with its licence.
+cp build/fonts/*.ttf build/fonts/Inter-OFL.txt build/fonts/SourceCodePro-OFL.txt build/fonts/SOURCES.md "$APP/Contents/Resources/Fonts/"
 
 echo "▸ icon (rendered from our vector mark)"
 ICONSET="$ROOT/build/AppIcon.iconset"
