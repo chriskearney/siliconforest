@@ -31,7 +31,7 @@ public struct ImageGuard: Sendable {
     static func resolve(_ path: String) -> String {
         var buf = [CChar](repeating: 0, count: Int(PATH_MAX))
         guard realpath(path, &buf) != nil else { return (path as NSString).standardizingPath }
-        return String(cString: buf)
+        return String(decoding: buf.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
     /// "disk5", "/dev/rdisk5s3" → ("disk5s3" form, whole "disk5"). Anything else is refused.

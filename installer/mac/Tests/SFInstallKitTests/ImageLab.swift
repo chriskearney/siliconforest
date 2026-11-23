@@ -17,6 +17,10 @@ enum ImageLab {
     static var enabled: Bool { ProcessInfo.processInfo.environment["SF_IMAGE_TESTS"] != "0" }
     /// The every-record kill sweep runs in full with SF_FULL_SWEEP=1; otherwise a fixed sample.
     static var fullSweep: Bool { ProcessInfo.processInfo.environment["SF_FULL_SWEEP"] == "1" }
+    /// SF_SWEEP_RECORDS=9,13 forks only at those records (debugging).
+    static var sweepRecords: Set<UInt64>? {
+        ProcessInfo.processInfo.environment["SF_SWEEP_RECORDS"].map { Set($0.split(separator: ",").compactMap { UInt64($0) }) }
+    }
 
     static func template(_ layout: ImageFixtures.Layout) throws -> URL {
         lock.lock(); defer { lock.unlock() }
@@ -67,9 +71,17 @@ enum ImageLab {
         return Case(dir: dir, image: img, backend: b)
     }
 
-    /// Detaches a case's image, clones its file and journal into a second case, reattaches both.
+    /// Detaches a case's image, clones its file and journal into a second case, and attaches only the
+    /// copy. A clone carries the same partition and APFS UUIDs, so the two are never attached at the
+    /// same time: the caller reattaches the original (`c.backend.attach()`) when it needs it again.
     static func fork(_ c: Case, journal: ChainJournal) throws -> (Case, ChainJournal) {
-        try c.backend.detach(force: false)
+        // A helper never detaches under a live resize: let any we started finish first.
+        let deadline = Date().addingTimeInterval(180)
+        while Date() < deadline, journal.records.contains(where: { r in
+            guard let pid = r.args?["resize_pid"]?.int else { return false }
+            return SpawnLauncher().reattach(pid: Int32(pid))?.isRunning() == true
+        }) { Thread.sleep(forTimeInterval: 0.1) }
+        if c.backend.isAttached(), (try? c.backend.detach(force: false)) == nil { try c.backend.detach(force: true) }
         let dir = runs.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let img = try ImageFixtures.clone(c.image, to: dir.appendingPathComponent(c.image.lastPathComponent))
@@ -79,7 +91,6 @@ enum ImageLab {
         if FileManager.default.fileExists(atPath: c.workDir.path) {
             try FileManager.default.copyItem(at: c.workDir, to: dir.appendingPathComponent("work"))
         }
-        try c.backend.attach()
         let b = DiskImageBackend(imagePath: img)
         try b.attach()
         let copy = Case(dir: dir, image: img, backend: b)

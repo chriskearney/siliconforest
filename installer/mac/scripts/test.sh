@@ -7,7 +7,8 @@ cd "$(dirname "$0")/.."
 swift build --build-tests
 if [ -d /Library/Developer/CommandLineTools/Library/Developer/Frameworks/Testing.framework ] && ! xcode-select -p | grep -q Xcode.app; then
   swift build --product sfinstallkit-selftest
-  exec "$(swift build --show-bin-path)/sfinstallkit-selftest" "$@"
+  # Serially: the disk-image suites each attach images and run real diskutil.
+  exec "$(swift build --show-bin-path)/sfinstallkit-selftest" --no-parallel "$@"
 else
-  exec swift test "$@"
+  exec swift test --no-parallel "$@"
 fi

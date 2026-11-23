@@ -53,11 +53,14 @@ extension InstallEngine {
                          reason: "needs root and a real macOS volume group; on the Mac it runs only when the admin list is stale")
 
         case .S25:
-            try gate.admit(.resize(store: plan.macOS.store, to: plan.macOS.to), now: try backend.topology())
             try journal.append(.intent, step: c, args: ["store": .s(plan.macOS.store), "from": .i(plan.macOS.from), "to": .i(plan.macOS.to)])
-            let out = try resize(plan: plan, to: plan.macOS.to, code: code)
+            // A resize that survived a helper restart is reattached, not started again (ENGINE §8.7).
+            if try backend.freshTopology().partition(uuid: plan.macOS.store)?.size != plan.macOS.to || resizeStillRunning(code) {
+                if !resizeStillRunning(code) { try gate.admit(.resize(store: plan.macOS.store, to: plan.macOS.to), now: try backend.topology()) }
+                let out = try resize(plan: plan, to: plan.macOS.to, code: code)
+                guard out == .completed else { throw Self.resizeError(out) }
+            }
             try afterCommand(code)
-            guard out == .completed else { throw Self.resizeError(out) }
             try gate.verifyAfter(try backend.freshTopology())
             try journal.append(.evidence, step: c, result: ["size": .i(plan.macOS.to)])
 
@@ -201,8 +204,8 @@ extension InstallEngine {
         case .U30:
             let now = try backend.topology()
             try journal.append(.intent, step: c, args: ["store": .s(plan.macOS.store), "to": .i(plan.macOS.to)])
-            if now.partition(uuid: plan.macOS.store)?.size != plan.macOS.to {
-                try gate.admit(.grow(store: plan.macOS.store), now: now)
+            if now.partition(uuid: plan.macOS.store)?.size != plan.macOS.to || resizeStillRunning(code) {
+                if !resizeStillRunning(code) { try gate.admit(.grow(store: plan.macOS.store), now: now) }
                 let out = try resize(plan: plan, to: 0, code: code, expect: plan.macOS.to)
                 try afterCommand(code)
                 guard out == .completed else { throw Self.resizeError(out) }
@@ -237,11 +240,9 @@ extension InstallEngine {
             guard let mac = t.partition(uuid: plan.macOS.store) else { return .cannotTell("the macOS container is missing") }
             let c = mac.apfs?.capacityCeiling ?? mac.size
             if mac.size == plan.macOS.to && c <= plan.macOS.to { return .done(["size": .i(mac.size)]) }
-            if mac.size == plan.macOS.from && c == plan.macOS.from {
-                // Unchanged: but a resize may still be running (the helper died mid-resize).
-                if let pid = lastResizePID(code), launcher.reattach(pid: pid)?.isRunning() == true { return .cannotTell("resize still running (pid \(pid))") }
-                return .notDone
-            }
+            // A resize still running (the helper died mid-resize) is not done: S25 reattaches to it.
+            if resizeStillRunning(code) { return .notDone }
+            if mac.size == plan.macOS.from && c == plan.macOS.from { return .notDone }
             return .cannotTell("macOS is \(mac.size) B (container \(c) B), neither \(plan.macOS.from) nor \(plan.macOS.to)")
         case .S30, .S40, .S45:
             let role = code == .S30 ? "stub" : code == .S40 ? "boot" : "root"
@@ -314,8 +315,7 @@ extension InstallEngine {
             return gone ? .done(["deleted": .i(Int64(plan.owned?.all.count ?? 0))]) : .notDone
         case .U30:
             guard let mac = t.partition(uuid: plan.macOS.store) else { return .cannotTell("macOS container missing") }
-            if mac.size == plan.macOS.to { return .done(["size": .i(mac.size)]) }
-            if let pid = lastResizePID(code), launcher.reattach(pid: pid)?.isRunning() == true { return .cannotTell("resize still running (pid \(pid))") }
+            if mac.size == plan.macOS.to && !resizeStillRunning(code) { return .done(["size": .i(mac.size)]) }
             return .notDone
         case .U40:
             return .notDone
@@ -333,6 +333,11 @@ extension InstallEngine {
 
     // MARK: resize through the supervisor
 
+    func resizeStillRunning(_ code: StepCode) -> Bool {
+        guard let pid = lastResizePID(code) else { return false }
+        return launcher.reattach(pid: pid)?.isRunning() == true
+    }
+
     func lastResizePID(_ code: StepCode) -> Int32? {
         journal.records.last { $0.kind == .note && $0.step == code.rawValue && $0.args?["resize_pid"] != nil }?.args?["resize_pid"]?.int.map(Int32.init)
     }
@@ -344,9 +349,10 @@ extension InstallEngine {
         sup.dieAfter = faults.resizeDieAfter
         let from = try backend.topology().partition(uuid: plan.macOS.store)?.size ?? plan.macOS.from
         let target = expect ?? bytes
-        if let pid = lastResizePID(code), let out = try sup.reattach(pid: pid, store: plan.macOS.store, from: from, to: target, log: resizeLog) {
+        if resizeStillRunning(code), let pid = lastResizePID(code),
+           let out = try sup.reattach(pid: pid, store: plan.macOS.store, from: from, to: target, log: resizeLog) {
             try journal.append(.note, step: code.rawValue, result: ["reattached": .i(Int64(pid))], note: "reattached to a surviving resize")
-            if out == .completed || target == bytes { return out }
+            return out
         }
         let (started, proc) = try sup.start(store: plan.macOS.store, to: bytes, log: resizeLog)
         try journal.append(.note, step: code.rawValue, args: ["resize_pid": .i(Int64(started.pid)), "log": .s(started.log.path)])

@@ -1,0 +1,1 @@
+../SFInstallKitTests/FaultInjectionTests.swift
