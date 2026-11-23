@@ -1,0 +1,1 @@
+../SFInstallKitTests/HelperXPCTests.swift

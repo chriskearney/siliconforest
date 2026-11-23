@@ -8,7 +8,8 @@ import Foundation
 //   SFDesign      tokens, The Grove background, disk bar, components
 //   SFFlow        the screen state machine (one observable session)
 //   SFInstaller   the app: AppKit shell, screens, snapshot renderer
-//   SFHelper      privileged helper: placeholder (no disk access in this phase)
+//   SFEngine      the acting half: chokepoint, gate, journal, step machine, resize supervisor, image backend
+//   SFHelperKit   the helper's verb-only XPC protocol and service; SFHelper is its launchd executable
 //   SFRecovery    recoveryOS app: placeholder
 //
 // Safety: real-disk writes are compiled out. `SF_REAL_DISK_WRITES` is never defined here, and even
@@ -34,7 +35,9 @@ let package = Package(
         .executable(name: "sfinstallctl", targets: ["sfinstallctl"]),
     ],
     targets: [
-        .target(name: "SFInstallKit"),
+        // The one place the Developer ID team and the frozen identifiers live (app, helper, recovery).
+        .target(name: "SFIdentity"),
+        .target(name: "SFInstallKit", dependencies: ["SFIdentity"]),
         // The acting half (DESIGN §4): typed verbs, gate, hash-chained journal, step machine, resize
         // supervisor, and the DiskImageBackend whose every write passes the image-only chokepoint.
         .target(name: "SFEngine", dependencies: ["SFInstallKit"]),
@@ -42,13 +45,17 @@ let package = Package(
         .target(name: "SFDesign", dependencies: ["SFInstallKit", "SFCopy"], swiftSettings: ui),
         .target(name: "SFFlow", dependencies: ["SFInstallKit", "SFCopy", "SFDesign"], swiftSettings: ui),
         .executableTarget(name: "SFInstaller", dependencies: ["SFInstallKit", "SFCopy", "SFDesign", "SFFlow"], swiftSettings: ui),
-        .executableTarget(name: "SFHelper", dependencies: ["SFInstallKit"]),
+        // The helper's verb-only NSXPC protocol, service, trust checks, lifecycle and bundle layout.
+        .target(name: "SFHelperKit", dependencies: ["SFIdentity", "SFInstallKit", "SFEngine"]),
+        .executableTarget(name: "SFHelper", dependencies: ["SFHelperKit", "SFEngine", "SFInstallKit", "SFIdentity"],
+                          linkerSettings: [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
+                                                         "-Xlinker", "Support/SFHelper-Info.plist"])]),
         .executableTarget(name: "SFRecovery"),   // AppKit only (DESIGN §7.3)
         .executableTarget(name: "sfinstallctl", dependencies: ["SFInstallKit", "SFCopy"]),
         // Same tests as an executable, for Command Line Tools-only Macs (see scripts/test.sh).
-        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine"], path: "Tests/CLTRunner",
+        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit"], path: "Tests/CLTRunner",
                           swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
-        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine"],
+        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit"],
                     swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
     ]
 )
