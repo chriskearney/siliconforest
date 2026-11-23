@@ -38,23 +38,26 @@
     "host_macos": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["minimum", "maximum_tested_major", "blocked_majors"],
+      "required": ["minimum", "maximum_allowed_major", "gated_majors"],
       "properties": {
         "minimum": { "$ref": "#/$defs/version" },
-        "maximum_tested_major": { "type": "integer", "minimum": 13 },
+        "maximum_allowed_major": { "type": "integer", "minimum": 13, "description": "Newer majors are refused. A major at or below this may still be closed by gated_majors." },
         "tested_on_hardware": {
           "type": "array",
           "items": { "$ref": "#/$defs/version" },
           "description": "macOS versions on which the installer itself has completed the acceptance checklist on this board."
         },
-        "blocked_majors": {
+        "gated_majors": {
           "type": "array",
+          "description": "Majors the product must support but release builds refuse until the named spike has passed on real hardware.",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["major", "reason"],
+            "required": ["major", "gate", "passed", "reason"],
             "properties": {
               "major": { "type": "integer", "minimum": 13 },
+              "gate": { "type": "string", "pattern": "^S[0-9]+$" },
+              "passed": { "type": "boolean" },
               "reason": { "type": "string", "minLength": 1 },
               "source": { "type": "string", "format": "uri" }
             }

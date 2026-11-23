@@ -16,12 +16,14 @@
   },
   "host_macos": {
     "minimum": "13.5",
-    "maximum_tested_major": 26,
+    "maximum_allowed_major": 27,
     "tested_on_hardware": [],
-    "blocked_majors": [
+    "gated_majors": [
       {
         "major": 27,
-        "reason": "An APFS container resize failure (-69606) was reported on macOS 27 and the reporter's fix was rolling back to 26. Blocked until one real install passes.",
+        "gate": "S11",
+        "passed": false,
+        "reason": "macOS 27 is a required target. An APFS container resize failure (-69606) was reported on an M1 Pro running 27.0.1, so release builds refuse it until a real shrink passes on T8103.",
         "source": "https://github.com/AsahiLinux/asahi-installer/issues/448"
       }
     ]
@@ -227,7 +229,7 @@
       "id": "omacom-218-boot-loop",
       "severity": "blocker-until-tested",
       "summary": "An Omarchy install on J293 with macOS 26.6.1 and the 13.5 stub reportedly boot-loops after the recovery step. Cause unknown.",
-      "effect": "Check on real hardware that SiliconForest's stage 1 starts on current system firmware. The one-shot first boot limits the damage.",
+      "effect": "Our hand-made install has started on this board with system firmware from the 20457 family, while the report is on 18000.161.9, so check each firmware family. The one-shot first boot limits the damage.",
       "source": "https://github.com/omacom/omarchy-mac-installer/issues/218"
     },
     {
