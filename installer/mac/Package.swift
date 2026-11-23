@@ -35,6 +35,9 @@ let package = Package(
     ],
     targets: [
         .target(name: "SFInstallKit"),
+        // The acting half (DESIGN §4): typed verbs, gate, hash-chained journal, step machine, resize
+        // supervisor, and the DiskImageBackend whose every write passes the image-only chokepoint.
+        .target(name: "SFEngine", dependencies: ["SFInstallKit"]),
         .target(name: "SFCopy", dependencies: ["SFInstallKit"], swiftSettings: ui),
         .target(name: "SFDesign", dependencies: ["SFInstallKit", "SFCopy"], swiftSettings: ui),
         .target(name: "SFFlow", dependencies: ["SFInstallKit", "SFCopy", "SFDesign"], swiftSettings: ui),
@@ -43,9 +46,9 @@ let package = Package(
         .executableTarget(name: "SFRecovery"),   // AppKit only (DESIGN §7.3)
         .executableTarget(name: "sfinstallctl", dependencies: ["SFInstallKit", "SFCopy"]),
         // Same tests as an executable, for Command Line Tools-only Macs (see scripts/test.sh).
-        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit"], path: "Tests/CLTRunner",
+        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine"], path: "Tests/CLTRunner",
                           swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
-        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit"],
+        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine"],
                     swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
     ]
 )

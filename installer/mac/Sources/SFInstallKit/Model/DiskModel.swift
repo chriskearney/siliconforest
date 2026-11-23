@@ -57,6 +57,10 @@ public struct APFSContainer: Codable, Sendable, Hashable {
     public var capacityFree: Int64
     public var volumes: [APFSVolume]
 
+    public init(reference: String, capacityCeiling: Int64, capacityFree: Int64, volumes: [APFSVolume]) {
+        self.reference = reference; self.capacityCeiling = capacityCeiling; self.capacityFree = capacityFree; self.volumes = volumes
+    }
+
     public var capacityUsed: Int64 { capacityCeiling - capacityFree }
     public var hasMacOSSystem: Bool { volumes.contains { $0.roles.contains("System") } }
     public var fileVaultOn: Bool { volumes.contains { $0.fileVault } }

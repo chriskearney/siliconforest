@@ -14,6 +14,11 @@ public struct ReleaseInfo: Sendable, Hashable {
     public var rootMinBytes: Int64
     public var rootSizing: RootSizing
 
+    public init(version: String, downloadBytes: Int64, rootImageBytes: Int64, rootMinBytes: Int64, rootSizing: RootSizing) {
+        self.version = version; self.downloadBytes = downloadBytes; self.rootImageBytes = rootImageBytes
+        self.rootMinBytes = rootMinBytes; self.rootSizing = rootSizing
+    }
+
     public static let placeholder = ReleaseInfo(version: "0.3", downloadBytes: 3_400_000_000, rootImageBytes: 7_300_000_000,
                                                 rootMinBytes: 8_500_000_000, rootSizing: .growable)
 }

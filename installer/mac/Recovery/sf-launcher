@@ -1,0 +1,13 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SiliconForest Setup's main executable in recoveryOS (DESIGN §7.1). Deliberately trivial: start the
+# AppKit app; if it finishes (0) or the person chose Shut Down (75), stop. Anything else (a crash, a
+# dyld failure, a missing binary) falls back to Terminal running sf-step2.sh, the path Asahi ships,
+# so a recovery UI failure cannot strand anyone.
+here="${0%/*}"
+"$here/SFRecovery"; status=$?
+[ "$status" -eq 0 ] && exit 0                     # finished and restarting
+[ "$status" -eq 75 ] && exit 0                    # the person chose to shut down
+echo "SiliconForest Setup stopped (status $status); continuing in Terminal." >&2
+exec "${SF_TERMINAL:-/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal}" \
+     "$here/../Resources/sf-step2.sh"
