@@ -151,8 +151,8 @@ Its window opens only for chip `0x8103` with board `J313`. On any other board it
 | Check | Result |
 |---|---|
 | J313 window policy, under ASan and UBSan | Pass |
-| ESP tool on a loopback FAT image of the backed-up ESP | **50 of 50**, including every refusal, `fsck`, and a final byte-identical ESP. The backup was unchanged |
-| Sequence with a fake Air and M5 | **18 of 18**, including every failure path and "never a second reset" |
+| ESP tool on a loopback FAT image of the backed-up ESP | **50 of 50**, including every refusal, `fsck`, and a final byte-identical ESP. The backup's `boot.bin` was unchanged |
+| Sequence with a fake Air and M5 | **19 of 19**, including every failure path and "never a second reset" |
 | Launcher input verification against the real packet | Pass, no device contact |
 | `g2.py plan` | 16 of 16 input checks |
 
@@ -162,6 +162,9 @@ Its window opens only for chip `0x8103` with board `J313`. On any other board it
 - Whether this Thunderbolt cable and the Left-back port enumerate as USB CDC, and at the USB location the launcher accepts. If not, the
   M5 sees no proxy and the Air continues to Linux after 10 seconds.
 - Everything listed under "Only a real boot can confirm" in [`FIRST-INSTALL-J313.md`](FIRST-INSTALL-J313.md).
+
+The Air rewrites `limine.conf` by itself (it changed at 23:00 and 00:00 on 22 and 23 November), so `go` compares the **default boot
+entry**, not the whole file. Nothing in `go` writes that file.
 
 ### M5 tooling
 
@@ -206,7 +209,7 @@ git worktree remove /tmp/chl27-g2-go
 6. Starts the M5 cycle, then reboots the Air.
 7. The M5 claims the window, starts the RAM boot, captures the console, and issues at most one reset.
 8. Waits for a new Linux boot on the window build, restores the original, and reboots once.
-9. Verifies `f5a82fdb-dirty`, deletes the kept copy, confirms the boot menu is unchanged, and clears the M5 latch.
+9. Verifies `f5a82fdb-dirty`, deletes the kept copy, confirms the default boot entry is unchanged, and clears the M5 latch.
 
 The final status is `BOOT_OBSERVED_LINUX_RESTORED` or `NO_SHELL_LINUX_RESTORED`. The serial capture is private, in
 `j313-g2-cycles` on the M5. A log of every command is in `~/chl27-g2/runs`.

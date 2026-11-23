@@ -206,7 +206,7 @@ LINUX_PROBE = ("import json,os,pathlib as P;d=P.Path('/sys/firmware/devicetree/b
                "stage2=r('chosen/asahi,m1n1-stage2-version'),"
                "root_rw='rw' in next(l.split()[3].split(',') for l in open('/proc/mounts') if l.split()[1]=='/'),"
                "oneshot=[n for n in os.listdir('/sys/firmware/efi/efivars') if n.startswith('LoaderEntryOneShot')],"
-               "limine=__import__('hashlib').sha256(open('/boot/efi/limine.conf','rb').read()).hexdigest())))")
+               "default_entry=[l.strip() for l in open('/boot/efi/limine.conf',errors='replace') if l.startswith('default_entry:')])))")
 
 
 def probe(remote):
@@ -428,8 +428,10 @@ def go(config, remote, say=print):
             raise Stop(RESET_RECOVERY)
         say('8/9 the Air is back in Linux')
         final_linux = restore_and_verify(remote, back['boot_id'], result)
-        if final_linux['limine'] != baseline['limine']:
-            raise Stop('the boot menu changed during the run')
+        # The Air rewrites its menu's snapshot entries by itself, so only the default is compared.
+        if final_linux['default_entry'] != baseline['default_entry'] or len(baseline['default_entry']) != 1:
+            result['default_entry_changed'] = True
+            raise Stop('the default boot entry changed during the run; stage 2 is restored, review the menu')
         clear_latch(remote, config)
         result['swapped'] = False
         say('9/9 original stage 2 restored and verified after a reboot')
@@ -502,7 +504,7 @@ def print_plan(config_path, config, checks):
         'M5: wait for the proxy. Air: systemctl reboot.',
         f'M5: claim the 10 s window, chainload the proxy, load the RAM boot, capture up to {RUNTIME} s, one reset at most.',
         'Air: new Linux boot on the window build. ESP: restore the original, reboot, verify f5a82fdb-dirty.',
-        'Air: delete boot.bin.pre-g2. M5: clear the latch. Compare the boot menu hash with the start.'), 1):
+        'Air: delete boot.bin.pre-g2. Confirm the default boot entry is unchanged. M5: clear the latch.'), 1):
         say(f'  {number}. {step}')
     say('\nThis needs Chris to approve, in these words:\n  ' + APPROVAL)
     say('\nThen, holding the shared bench of the main checkout:')

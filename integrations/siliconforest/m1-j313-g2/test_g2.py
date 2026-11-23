@@ -35,18 +35,20 @@ class FakeProcess:
 class FakeRemote:
     """The Air as a small state machine: which stage 2 is on the ESP and which boot is running."""
     def __init__(self, result=OK, ready=True, returns=True, restore_ok=True, install_ok=True, m5_ok=True,
-                 second_return=True):
+                 second_return=True, change_default=False):
         self.boot, self.running = 1, g2.ORIGINAL_STAGE2
         self.target, self.kept = 'original', 'absent'
         self.up = True
         self.log, self.m5_log = [], []
         self.result, self.ready, self.returns = result, ready, returns
         self.restore_ok, self.install_ok, self.m5_ok, self.second_return = restore_ok, install_ok, m5_ok, second_return
+        self.change_default = change_default
         self.reboots = 0
+        self.default = 'default_entry: Omarchy/linux-aurora'
 
     def linux(self):
         return dict(boot_id=f'boot-{self.boot}', kernel='7.2.11-6-1-ARCH', compatible=['apple,j313', 'apple,t8103'],
-                    stage2=self.running, root_rw=True, oneshot=[], limine='menu')
+                    stage2=self.running, root_rw=True, oneshot=[], default_entry=[self.default])
 
     def reboot(self):
         self.reboots += 1
@@ -56,6 +58,8 @@ class FakeRemote:
             return
         self.boot += 1
         self.running = target
+        if self.reboots == 2 and self.change_default:
+            self.default = 'default_entry: something else'
 
     def esp(self, command):
         words = command.split()
@@ -213,6 +217,13 @@ class Sequence(unittest.TestCase):
         remote = FakeRemote(second_return=False)
         _, error = self.run_go(remote)
         self.assertIn('Do not reset the Air again', error)
+
+    def test_a_changed_default_entry_stops_with_stage2_restored(self):
+        remote = FakeRemote(change_default=True)
+        _, error = self.run_go(remote)
+        self.assertIn('default boot entry changed', error)
+        self.assertEqual(remote.target, 'original')
+        self.assertFalse(any(' clear ' in command for command in remote.m5_log))
 
     def test_refuses_an_air_that_is_not_in_the_expected_state(self):
         remote = FakeRemote()
