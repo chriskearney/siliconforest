@@ -3,14 +3,13 @@
 
 # G2 runbook: first RAM boot on the M1 MacBook Air (J313)
 
-Written 22 November 2026 for CHL-27, gate G2 of [`FIRST-INSTALL-J313.md`](FIRST-INSTALL-J313.md).
+Written 22 November 2026 and updated 23 November for CHL-27, gate G2 of [`FIRST-INSTALL-J313.md`](FIRST-INSTALL-J313.md).
 
-> **Status: stopped at the approval below. Nothing in this runbook has run.** The research was read-only. The Air was not rebooted
-> or written to. SiliconForest has still never booted on J313.
+> **Status: all offline preparation is done, and G2 is waiting for Chris's approval (section 3).** Nothing in this runbook has run on
+> the Air. It has not been rebooted or written to. SiliconForest has still never booted on J313.
 >
-> **The Air cannot reach an m1n1 USB proxy under the approved G2 constraints.** Every route either needs a write to its boot chain
-> or NVRAM, or does not work. The smallest route is one temporary, reversible replacement of `m1n1/boot.bin` on the Air's ESP.
-> That is a boot-chain change, so it needs Chris's explicit go (section 3).
+> **The Air cannot reach an m1n1 USB proxy without a boot-chain write.** Every other route needs NVRAM or does not work. The smallest
+> route is one temporary, reversible replacement of `m1n1/boot.bin` on the Air's ESP. With approval, it is one command (section 6).
 
 ## 1. What is on the Air
 
@@ -68,148 +67,217 @@ These belong to **SiliconForest Linux, a separate project with the same name**, 
 
 ## 3. Decision needed from Chris
 
-**Approve or decline one temporary change:** replace `m1n1/boot.bin` on the Air's ESP with a J313 build that waits 10 seconds for a
-USB proxy request, then boots the same device trees and U-Boot as today. Afterwards the original file is restored and verified.
+**Nothing below may run until Chris gives this exact approval:**
 
-- Unchanged: stage 1, the stub, NVRAM, boot policy, the Linux root, partitions, and Linux as the default.
-- Without a host request the Air boots Linux about 10 seconds later than normal.
-- **The risk is a failed Linux boot.** The window build uses m1n1 `121fcbf`, not the `f5a82fdb` the Air runs today. The Pro has run
-  that source with this same payload, but J313 has not. The new file is also larger, and stage 1 can refuse an image that does not fit
-  its heap, as happened on the Pro's first install.
-- **If it fails, a person may have to restore the file from recoveryOS** (section 7).
+> Chris approves the temporary J313 G2 ESP swap and RAM boot
 
-If declined, G2 stays stopped. No other route in section 2 works within the constraints.
+`g2.py` refuses `go` and `rollback` without those exact words. The approval covers only this:
 
-## 4. What must exist before the first boot
+- **One temporary ESP change.** `m1n1/boot.bin` becomes the J313 window build, the original is kept beside it as
+  `m1n1/boot.bin.pre-g2`, and afterwards the original is restored, verified and the copy deleted.
+- **Up to three Air restarts:** one orderly reboot into the window, one M5 reset out of the RAM boot, and one orderly reboot to verify
+  the restored stage 2.
+- **One RAM boot** of the G1 collection, console only, for at most 420 seconds of capture.
 
-None of these touch the Air.
+It does not cover stage 1, the stub, NVRAM, boot policy, partitions, the Linux root, DFU, firmware flashing, or a change of default.
 
-1. **G0 and G1 are done on the host, unbooted.** Use the **G2 RAM boot** collection recorded in
-   [`FIRST-INSTALL-J313.md`](FIRST-INSTALL-J313.md) section 5. The other collection there contains the write-capable NVMe driver.
-2. **A J313 window build.** Candidate004 enters its window only for `J293`, so on the Air it would act as a plain loader. Build a
-   distinct J313-only variant with its own version tag, keeping the 10-second limit and the complete-NOP claim rule. Append the Air's
-   exact bytes from offset `0x400000`.
-3. **A J313 install and restore script, reviewed before use.** `tools/m1_boot_install.py` is J293-only and keeps state under
-   `/var/lib`. The Air's root has about 1.3 MB free and must not be written, so the new script may touch only the ESP.
-4. **J313 launcher support.** `host_progress.py`, `bootstrap.py` and the bring-up controller require `J293` and `MacBookPro17,1`.
-   Add an explicit J313 path. Do not remove the board checks.
-5. **A J313 RAM-boot argument list**, derived from `installer/profiles/J313.json` with these rules:
-   - **Remove** `rd=uuid`, `boot-uuid=` and every `sfnvme*` argument. The profile's list includes `sfnvme=3` and `sfnvme_write=1`,
-     which are for an installed system and must never reach this boot.
-   - **Keep** `sfsound=0` and `sftouchbar=0`. `sfsound=0` is a safety requirement on J313.
-   - **Add** `sfm1tpmt=0`. Multitouch mode is on by default, and this boot must not enable it.
-   - Use a RAM root and the **default** collection, which has no NVMe driver. Never use the `storage` collection.
-   - Start the guest script with `rebase/guest/rb-prologue.sh`, which ends the session if anything attaches to the NVMe controller.
+**What could go wrong:**
 
-With no NVMe driver in the collection, the running system has no path to write to the disk. That is stronger than the driver's write
-fence, which only matters if a later, separately approved boot loads the driver.
+- **Linux might not boot through the window build.** It uses m1n1 `121fcbf`, not the `f5a82fdb` the Air runs today. The same code with
+  J293's identity booted Linux on the Pro, but under the Pro's stage 1 v1.6.1. The Air's stage 1 is v1.5.2, and this pairing is
+  untested. If it fails, **a person must restore the file from recoveryOS** (section 8).
+- **The launcher path is new.** No renamed collection has been booted through the hypervisor launcher before. A failure here should
+  end in the one M5 reset and a normal return to Linux.
+- **Power loss during the rename** could leave the FAT directory needing repair. The kept copy stays on the ESP until the end.
+
+## 4. What is ready (all offline)
+
+Nothing here contacted the Air, the Pro, `macvdmtool` or the M3. Binaries, firmware and the packet are outside Git, in the builder's
+private directory `~/chl27-g2`. Sources are in [`integrations/siliconforest/m1-j313-g2`](../../integrations/siliconforest/m1-j313-g2).
+
+| Artifact | Bytes | SHA-256 |
+|---|---|---|
+| Window stage 2, code only | 4,325,376 | `a5bbd1430acc0fa0c44f9ff1ebed79f3ca5af12c0af7fee117d79f5df8b7c5e9` |
+| **Window `boot.bin`** (code + the Air's payloads) | 10,238,674 | `c688793a85af45b1a71254798da10f56c4f861584b1dc1e606b559f964f5664c` |
+| Original `boot.bin` (restored afterwards) | 10,107,602 | `54fa07e4f5cbeecd90e67e335657c40b33c25aede7015a84afb1427333b4f923` |
+| G1 RAM-boot collection | 34,637,870 | `ef49aa0a376ed1b25054247e708467c020d5c8c95855186a166a5c8f616018c8` |
+| RAM root (holds the Air's Wi-Fi firmware) | 402,653,184 | `41abdbdf18a411a6fd9e905d9e6171e1790347e2ffaecbe4487a8fb020a1f762` |
+| Packet manifest | | `1804a1c447bd305bdef52a61fbdfd36147021ccaae648dc9dea7398a058eff21` |
+| Generated launcher tree | 26 files | `c8fb1bea55748bca6418871d405979b416997d190db9dabdfb5a852f4bd8fcbf` |
+
+[`g2-pins.json`](../../integrations/siliconforest/m1-j313-g2/g2-pins.json) holds these pins. The RAM root is not byte-reproducible, so
+its pin binds this copy. If the packet is rebuilt, the pins must be reviewed again.
+
+### The window build and how it differs
+
+The build first rebuilds the Pro's J293 window as a control, which **reproduces it byte for byte** (`ba5bf4b3…`). It then applies
+[`j313-window.patch`](../../integrations/siliconforest/m1-j313-g2/window/j313-window.patch). The receipt is
+[`window-build-001.json`](../../integrations/siliconforest/m1-j313-g2/receipts/window-build-001.json).
+
+| Compared with | Result |
+|---|---|
+| **The Air's current payloads** | **Byte-identical:** all 5,913,298 bytes (115 device trees and U-Boot) |
+| **The Pro's J293 window** | Same layout and function addresses. The only logic change is two board-identity compares (J293 to J313). The version tag and one log line also change, which moves strings. The checker followed all 3,561 changed code references and 1,078 relocations to the same strings. Five deliberately altered images were all refused |
+| **The Air's current stage 2 code** | **Not comparable.** The `f5a82fdb` source is not in this lab. It differs in size (4,194,304 and 4,325,376 bytes) and in 85 and 131 unique strings. This is the main reason a Linux boot through it is unproven on J313 |
+
+Its window opens only for chip `0x8103` with board `J313`. On any other board it behaves as a plain loader. With no valid request in
+10 seconds it continues to the same payloads.
+
+### Install and restore
+
+[`esp/j313_esp.py`](../../integrations/siliconforest/m1-j313-g2/esp/j313_esp.py) is a dry run by default and writes only `boot.bin`,
+`boot.bin.pre-g2` and one temporary name in `m1n1/`.
+
+- It refuses unless the machine is J313, the path is the FAT ESP this machine booted from, the current `boot.bin` is the original
+  hash, and the candidate is the reviewed hash.
+- Each write goes to a temporary file, is flushed and re-read from disk, then renamed over the target and verified again.
+- `restore` verifies the kept copy first. `finalize` deletes the copy only after a reboot has really run on the original.
+
+### The RAM boot
+
+- The launcher is generated from the frozen J293 tree by exact replacements, which stop if the base changes. The base is not modified.
+  The board checks remain and now require J313.
+- **Boot arguments:**
+  `-v -s debug=0x14e keepsyms=1 serial=3 serial-device-name=uart0 disable-uart-irq=1 cpus=1 rd=md0 serial_video_mirror=1 sftextboot=1
+  sfm1kbd=1 sfm1trackpadenum=1 sfm1trackpadchild=1 sfsound=0 sftouchbar=0 sfm1tpmt=0 sfapciebridge=1`
+- **Storage stays read-only because no driver can reach it.** The collection has no Apple NVMe driver. Its one NVMe family matches PCI
+  storage only, which the Air's internal disk is not. `sfnvme*` arguments are refused, and the guest ends the session if anything
+  attaches to the NVMe controller.
+- **The first boot is console only:** one CPU, no GPU, display driver, compositor, sound or Touch Bar. The compositor that
+  `tools/staged.sh` selects predates the rename and cannot use the renamed kernel's input path, so a desktop needs a separate packet.
+
+### Offline results
+
+| Check | Result |
+|---|---|
+| J313 window policy, under ASan and UBSan | Pass |
+| ESP tool on a loopback FAT image of the backed-up ESP | **50 of 50**, including every refusal, `fsck`, and a final byte-identical ESP. The backup was unchanged |
+| Sequence with a fake Air and M5 | **18 of 18**, including every failure path and "never a second reset" |
+| Launcher input verification against the real packet | Pass, no device contact |
+| `g2.py plan` | 16 of 16 input checks |
+
+### Only a real boot can show
+
+- Whether Linux boots through the window build under stage 1 v1.5.2.
+- Whether this Thunderbolt cable and the Left-back port enumerate as USB CDC, and at the USB location the launcher accepts. If not, the
+  M5 sees no proxy and the Air continues to Linux after 10 seconds.
+- Everything listed under "Only a real boot can confirm" in [`FIRST-INSTALL-J313.md`](FIRST-INSTALL-J313.md).
 
 ### M5 tooling
 
-No installs are needed. Read-only checks on the M5 found:
-
-- `macvdmtool` **is present** in the lab's `native-control-src` directory, with the pinned SHA-256 (`db6da3ff…`). It is not on `PATH`.
-- The lab virtual environment has `pyserial` 3.5 and `construct` 2.10.70, and `sudo -n` works.
-- The Air is on **M5 receptacle 1** as a 40 Gb/s Thunderbolt peer. No `/dev/cu.usbmodem*` exists yet, which is expected.
-
-**Port on the Air:** the cable is in **USB-C Left-back** (`typec0`, `usb-pd@38`), the first port m1n1 brings up. Leave it there.
-This cable and port have not yet been seen enumerating as CDC, so the first window is also that test.
+No installs are needed. On 22 November the M5 had `macvdmtool` with the pinned hash, `pyserial` 3.5, `construct` 2.10.70 and working
+`sudo -n`. `g2.py` checks these again before it changes anything. The Air's cable stays in **USB-C Left-back** and M5 receptacle 1.
 
 ## 5. Bench hazard while the Air is connected
 
-`macvdmtool` always uses the HPM with `RID=0`, and on this M5 that is **receptacle 1, now the Air**. Any Pro bench tool that issues
-its recovery reset, including `tools/pcie_iterate.sh` and `tools/m1_return_linux.sh`, **would reset the Air instead of the Pro**.
+`macvdmtool` always uses the HPM with `RID=0`, and on this M5 that is **receptacle 1, now the Air**. Any Pro bench tool that issues its
+recovery reset, including `tools/pcie_iterate.sh` and `tools/m1_return_linux.sh`, **would reset the Air instead of the Pro**.
 
-Do not run Pro bench cycles while the Air is on receptacle 1. Take `tools/bench.sh` for the whole G2 session.
+Do not run Pro bench cycles while the Air is on receptacle 1. The go command holds `tools/bench.sh` for the whole session.
 
-## 6. Runbook
+## 6. The go sequence
 
-Run only after section 3 is approved and section 4 is complete.
+Run only after the approval in section 3, on the builder:
 
-### P0. Preflight (read-only)
+```sh
+cd /home/chrisk/src/darwin-lab
+git fetch origin main
+G2_COMMIT=$(git log -1 --format=%H origin/main -- integrations/siliconforest/m1-j313-g2)
+git worktree add --detach /tmp/chl27-g2-go "$G2_COMMIT"
 
-1. Hold the bench with `tools/bench.sh`. Confirm no other actor is running.
-2. On the Air, confirm: J313, stage 2 hash `54fa07e4…`, Linux as the running default, ESP free space, and no pending one-shot entry.
-3. Confirm the i9 backup of the ESP has finished, and its `m1n1/boot.bin` has the same hash.
-4. On the M5, confirm receptacle 1 is the Air and `macvdmtool` has the pinned hash.
-5. Confirm someone can reach the Air if recovery is needed.
+# Offline. Read the plan; every check must pass.
+python3 /tmp/chl27-g2-go/integrations/siliconforest/m1-j313-g2/g2.py plan
 
-### P1. Install the window build (the only boot-chain write)
+# The one command. Someone must be at the Air for G3 (section 7).
+BENCH_WHO=CHL-27-G2 tools/bench.sh run python3 \
+  /tmp/chl27-g2-go/integrations/siliconforest/m1-j313-g2/g2.py go \
+  --approval "Chris approves the temporary J313 G2 ESP swap and RAM boot"
 
-1. Copy the original to `m1n1/boot.bin.pre-g2` on the ESP and verify its hash. Do not reuse `boot.bin.old` or
-   `boot.bin.pre-omacom-50fb`, which are different builds.
-2. Write the candidate to a temporary name on the ESP, `fsync`, and verify its hash.
-3. Rename it over `m1n1/boot.bin`, sync, and verify again.
+git worktree remove /tmp/chl27-g2-go
+```
 
-### P2. Enter the proxy
+`go` performs these steps, and stops at the first failure:
 
-1. Stop Linux services cleanly and run `systemctl reboot` on the Air.
-2. On the M5, open the new `/dev/cu.usbmodem*` and send one complete proxy NOP inside the 10-second window.
-3. Require the J313 window tag, board `J313`, chip `0x8103`, and the expected USB interfaces. On any mismatch, go to P5.
+1. Verifies every local hash.
+2. Checks the Air read-only: J313, original stage 2, no one-shot boot pending.
+3. Checks the M5 read-only: receptacle 1 is the Air, the `macvdmtool` pin, no latch, handoff or existing proxy.
+4. Delivers the launcher and packet to the M5 and verifies them there. **Nothing on the Air has changed up to this point.**
+5. Puts the window build in the Air's `/dev/shm` and installs it on the ESP, keeping the original.
+6. Starts the M5 cycle, then reboots the Air.
+7. The M5 claims the window, starts the RAM boot, captures the console, and issues at most one reset.
+8. Waits for a new Linux boot on the window build, restores the original, and reboots once.
+9. Verifies `f5a82fdb-dirty`, deletes the kept copy, confirms the boot menu is unchanged, and clears the M5 latch.
 
-### P3. Load SiliconForest into RAM
+The final status is `BOOT_OBSERVED_LINUX_RESTORED` or `NO_SHELL_LINUX_RESTORED`. The serial capture is private, in
+`j313-g2-cycles` on the M5. A log of every command is in `~/chl27-g2/runs`.
 
-1. Build the packet on the i9 and deliver it to a new private directory on the M5.
-2. Use the J313 launcher to load the collection and RAM root over USB, under the m1n1 hypervisor, with the section 4 arguments.
-3. Save the serial log privately. Hold the first session to **180 seconds**.
-4. Require the `RB_NVME_OK` line. If it is missing, end the session.
+## 7. What a person at the Air does (G3)
 
-### P4. Observe (G3)
+Sit at the Air before starting `go`, with the lid open and on power. Do not touch it during the first minutes. A host log cannot prove
+the screen or physical input, so record what you see.
 
-A person must watch the Air. Host logs cannot prove the screen or physical input.
-
-| Item | Pass needs | Notes |
+| When | What you see or do | Pass |
 |---|---|---|
-| Screen | The desktop or console is visibly correct on the panel | Check brightness behaviour. J313's panel maximum is 420 |
-| Keyboard | A person types and sees the characters | Host-injected input does not count |
-| Trackpad | A person moves the pointer | Do not enable multitouch mode |
-| Wi-Fi | `en0` appears, scans, and joins | Board `apple,shikoku`. Keep credentials and firmware out of the repository |
-| Heat | No sustained hot chassis | J313 has **no fan** and the limits were set on a machine with one. Keep the first session idle |
+| After the first reboot | The screen may stay dark or show m1n1 for about 10 seconds, then scrolling kernel text | Text is readable and correctly placed on the **built-in panel** |
+| `>>> TRACKPAD` appears | **Move a finger on the trackpad for 30 seconds.** No pointer appears in this console boot | The log line `G2_TRACKPAD bytes=` is above zero |
+| `>>> KEYBOARD` appears | **Type `uname -a` and press Return** on the built-in keyboard | Your characters appear and it prints `Darwin … arm64` |
+| Throughout | **Feel the keyboard deck and underside.** The Air has no fan | Warm is fine. If uncomfortably hot, hold the power button |
+| Automatic | Wi-Fi scan, reported as a count only. It never joins | `G2_WIFI interface=en0` with `scan_lines` above 1 |
+| About 7 minutes in | The Air restarts into Linux, and restarts once more | The normal Linux login returns |
 
-Record what was seen as a separate human witness, not as a boot result.
+This boot cannot judge brightness, the GPU, multitouch or sound. Those need later packets. Do not unplug the cable or power until `go`
+has finished.
 
-### P5. Return to Linux
+## 8. Abort and rollback
 
-1. From the M5, run the pinned `macvdmtool reboot` **once**, after confirming receptacle 1 is still the Air.
-2. The Air restarts through stage 1 and the window build. With no host request it continues to U-Boot, Limine and the default Linux.
-3. Require a new boot ID, the same Linux kernel, the root mounted read-write, and no failed boot entry.
-
-### P6. Restore the original stage 2
-
-1. From Linux, copy `m1n1/boot.bin.pre-g2` to a temporary name on the ESP, `fsync`, and verify `54fa07e4…`.
-2. Rename it over `m1n1/boot.bin`, sync, and verify again.
-3. Reboot once and confirm `asahi,m1n1-stage2-version` is `f5a82fdb-dirty`.
-4. Only then delete `boot.bin.pre-g2`, and confirm the default boot entry is unchanged.
-
-**Keep the window build installed between sessions only if Chris approves that separately.**
-
-## 7. Abort conditions and recovery
-
-Stop the session, and do not retry, on any of these:
-
-| Condition | Action |
+| Situation | Action |
 |---|---|
-| Any preflight check differs | Stop. Nothing has been written |
-| The M5 sees no USB device during the window, and Linux returns | Run P6. Record it. Do not retry until the cause is understood |
-| The wrong board or tag answers | Do not load anything. Go to P5, then P6 |
-| A launcher or hash check refuses | Go to P5, then P6 |
-| Any NVMe driver appears, `RB_NVME_OK` is missing, or a kernel panic occurs | End the session. Go to P5, then P6 |
-| The chassis gets hot | End the session at once. Go to P5, then P6 |
-| Linux does not return after the one reset | **Do not reset again.** Use the recovery below |
+| `go` stops before step 5 | Nothing on the Air changed. Fix the cause |
+| `go` stops after step 5 and Linux is up | `go` restores the original itself. If it reports that it did not, run the rollback below |
+| The Air is uncomfortably hot, or a person must stop the test | Hold the power button until it is off, press it to start Linux, then run the rollback |
+| `go` says a worker may still own the proxy | **Do not reset the Air.** Review the cycle on the M5 |
+| `go` prints `STOP. Linux did not come back` | **Do not reset again.** Use the recovery below |
+
+**Rollback from Linux:**
+
+```sh
+python3 /tmp/chl27-g2-go/integrations/siliconforest/m1-j313-g2/g2.py rollback \
+  --approval "Chris approves the temporary J313 G2 ESP swap and RAM boot"
+```
+
+It restores and verifies the original, reboots once, confirms `f5a82fdb-dirty`, and deletes the kept copy.
 
 **Recovery if Linux does not boot (needs a person at the Air):**
 
 1. Hold the power button until the Air is off.
 2. Hold it again until "Loading startup options" appears. Choose **Options**, then **Utilities > Terminal**.
 3. Run `diskutil list` and identify the Linux ESP (about 500 MB, FAT). **Do not assume its partition number.**
-4. Mount it, copy `m1n1/boot.bin.pre-g2` over `m1n1/boot.bin`, and check it with `shasum -a 256`.
+4. Mount it, copy `m1n1/boot.bin.pre-g2` over `m1n1/boot.bin`, and run `shasum -a 256` on it. It must begin `54fa07e4f5cbeecd`.
 5. Restart. Do not run `bputil`, `csrutil` or any other policy command.
 
-## 8. What a person must do
+Then run the rollback above so the kept copy is verified and removed. An M5 latch may remain after a failed run: review that cycle
+before any other bench work.
+
+## 9. What a person must do
 
 | When | Action |
 |---|---|
-| Before anything | **Chris approves or declines section 3** |
-| P0 to P3 | Nothing physical if all goes well. Someone should be able to reach the Air |
-| P4 (G3) | **Be at the Air** to watch the screen, type, use the trackpad and feel for heat |
-| Failure only | Force power-off and the recoveryOS restore in section 7 |
+| Before anything | **Chris gives the exact approval in section 3** |
+| During `go` | **Be at the Air** for G3 (section 7) |
+| Failure only | Force power-off and the recoveryOS restore in section 8 |
+
+### Rebuilding the inputs
+
+Only needed if a source changes. Each command refuses to overwrite its output, and any rebuilt hash needs a new review of `g2-pins.json`.
+
+```sh
+D=integrations/siliconforest/m1-j313-g2
+python3 $D/window/build_window.py --source sources/m1n1-boot-window \
+  --original <backup>/boot-efi/m1n1/boot.bin --out ~/chl27-g2/window-NNN
+python3 $D/launcher/make_packet.py --kernel artifacts/j313-g1/kc-default-ram/kernel \
+  --base-image artifacts/rebase/ramdisk-tip.img --base-packet artifacts/m1-desktop-010/apcie-port-candidate-003 \
+  --firmware-tar <backup>/boot-efi/vendorfw/firmware.tar --ioreg <ioreg store path> \
+  --stager integrations/siliconforest/m1-boot-speed/tools/stage_ramdisk_slim.py --out ~/chl27-g2/packet-NNN
+python3 $D/launcher/make_lab.py --base runs/m1-desktop-010/pcie-m2-host-001/lab --out ~/chl27-g2/lab-NNN \
+  --extra-bootargs "sfsound=0 sftouchbar=0 sfm1tpmt=0"
+```
