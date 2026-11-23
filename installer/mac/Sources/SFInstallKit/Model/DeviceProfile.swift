@@ -36,6 +36,22 @@ public struct DeviceProfile: Codable, Sendable, Identifiable, Hashable {
         /// Firmware versions the stub may carry; SiliconForest's boot chain is tested against these.
         public var stubFirmware: [String]
         public var preferredStubFirmware: String?
+        /// Newest macOS major the profile has been tested on; newer ones get a warning.
+        public var maximumTestedMajor: Int? = nil
+        /// macOS majors the installer refuses, with the reason shown to the user.
+        public var blockedMajors: [BlockedMajor] = []
+        /// macOS build of the stub (e.g. "22G74").
+        public var stubBuild: String? = nil
+        public var stubRestoreImageURL: String? = nil
+        /// What the installer actually fetches from the restore image (partial reads).
+        public var stubDownloadBytes: Int64? = nil
+        /// Oldest system firmware (iBoot) the stub needs, e.g. "iBoot-8422.141.2".
+        public var minimumIBoot: String? = nil
+
+        public struct BlockedMajor: Codable, Sendable, Hashable {
+            public var major: Int
+            public var reason: String
+        }
     }
 
     public struct Partitioning: Codable, Sendable, Hashable {
@@ -50,6 +66,16 @@ public struct DeviceProfile: Codable, Sendable, Identifiable, Hashable {
         /// Partition boundaries are aligned to this.
         public var alignmentBytes: Int64
         public var rootFilesystem: String
+        /// Disks smaller than this keep only `smallDiskReserveBytes` free in macOS (with a warning).
+        public var smallDiskThresholdBytes: Int64? = nil
+        public var smallDiskReserveBytes: Int64? = nil
+        /// Safety margin for macOS writing while we work: min(max, fraction × resizable span).
+        public var driftFraction: Double? = nil
+        public var driftMaximumBytes: Int64? = nil
+        /// Default root = max(rootRecommendedBytes, fraction × disk).
+        public var rootDefaultDiskFraction: Double? = nil
+        /// Below this, the editor notes that SiliconForest will be short of room.
+        public var rootLowSpaceNoteBytes: Int64? = nil
 
         public struct BootPartition: Codable, Sendable, Hashable {
             public var name: String
@@ -77,7 +103,14 @@ public struct DeviceProfile: Codable, Sendable, Identifiable, Hashable {
     public struct Quirk: Codable, Sendable, Hashable, Identifiable {
         public var id: String
         public var summary: String
+        public var severity: String? = nil
+        public var effect: String? = nil
     }
+
+    /// Copy for the power-button step of the recoveryOS handoff (model-specific).
+    public var powerButtonCopy: String? = nil
+    /// Where the profile came from (canonical installer/profiles file or a fixture).
+    public var sourceFormat: String = "fixture"
 
     /// Smallest total SiliconForest footprint: stub + boot + minimum root.
     public var minimumFootprint: Int64 {
@@ -144,13 +177,18 @@ public enum ProfileStore {
 enum ProfileDecoder {
     static func decode(_ data: Data) throws -> DeviceProfile {
         let d = JSONDecoder()
+        // The canonical format (installer/profiles/*.json, device-profile.schema.json) is snake_case
+        // with an `identity` block; the fixture format is the model below.
+        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], obj["identity"] != nil {
+            return try d.decode(CanonicalProfile.self, from: data).deviceProfile
+        }
         return try d.decode(DeviceProfile.self, from: data)
     }
 }
 
 extension DeviceProfile {
     enum CodingKeys: String, CodingKey {
-        case schemaVersion, id, marketingName, modelIdentifiers, board, soc, support, partitioning, firmware, kernel, quirks
+        case schemaVersion, id, marketingName, modelIdentifiers, board, soc, support, partitioning, firmware, kernel, quirks, powerButtonCopy
     }
 
     public init(from decoder: Decoder) throws {
@@ -168,6 +206,14 @@ extension DeviceProfile {
         kernel = try c.decodeIfPresent(Kernel.self, forKey: .kernel)
             ?? Kernel(stage1: "m1n1.bin", stage2: "sf/boot.bin", collection: "sf/kernel.bin", kexts: [], bootArgs: [])
         quirks = try c.decodeIfPresent([Quirk].self, forKey: .quirks) ?? []
+        powerButtonCopy = try c.decodeIfPresent(String.self, forKey: .powerButtonCopy)
+    }
+
+    public init(schemaVersion: Int, id: String, marketingName: String, modelIdentifiers: [String], board: String, soc: SoC,
+                support: Support, partitioning: Partitioning, firmware: [FirmwareItem], kernel: Kernel, quirks: [Quirk]) {
+        self.schemaVersion = schemaVersion; self.id = id; self.marketingName = marketingName
+        self.modelIdentifiers = modelIdentifiers; self.board = board; self.soc = soc; self.support = support
+        self.partitioning = partitioning; self.firmware = firmware; self.kernel = kernel; self.quirks = quirks
     }
 }
 

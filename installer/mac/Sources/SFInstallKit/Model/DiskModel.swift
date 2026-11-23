@@ -155,7 +155,7 @@ public struct PhysicalDisk: Codable, Sendable, Hashable, Identifiable {
     /// The APFS container that holds the macOS this installer is running from (or, in a fixture,
     /// the largest container with a System volume).
     public var macOSPartition: Partition? {
-        partitions.filter { $0.content == .appleAPFS && ($0.container?.hasMacOSSystem ?? false) && !$0.isSiliconForestStub }
+        partitions.filter { $0.content == .appleAPFS && ($0.container?.hasMacOSSystem ?? false) && !$0.looksLikeSiliconForest }
             .max { $0.size < $1.size }
     }
 
@@ -198,58 +198,119 @@ public struct DiskSnapshot: Codable, Sendable, Hashable {
     }
 }
 
-// MARK: - SiliconForest detection
+// MARK: - Classification (docs/installer/ENGINE.md §3)
+
+/// Every partition gets exactly one class, and the class decides what the installer may do to it.
+public enum PartitionClass: String, Codable, Sendable, Hashable {
+    case appleISC = "apple.isc", appleRecovery = "apple.recovery"   // None, ever
+    case macOSPrimary = "macos.primary"                               // Resize only
+    case macOSOther = "macos.other"                                   // None
+    case osForeign = "os.foreign"                                     // None
+    case sfOwned = "sf.owned"                                         // Update, Repair, Remove
+    case sfPartial = "sf.partial"                                     // Resume, Roll back
+    case sfUnproven = "sf.unproven"                                   // None: explain and stop
+    case unknown = "unknown"                                          // None
+}
 
 extension Partition {
-    /// The stub APFS container an install creates: its volume carries the SiliconForest name, or the
-    /// installer's metadata stamp.
-    public var isSiliconForestStub: Bool {
-        guard content == .appleAPFS else { return false }
-        if let role = metadata["sf.role"] { return role == "stub" }
-        guard let c = container else { return false }
-        let named = c.volumes.contains { $0.name.localizedCaseInsensitiveContains("SiliconForest") }
-        return named && c.capacityCeiling <= 16 * Bytes.gb   // a stub is a few GB; never a real macOS
-    }
+    /// The installer's marker: written on everything it creates, with the install ID that also
+    /// appears in its journal. Name alone never proves ownership.
+    public var sfRole: String? { metadata["sf.role"] }
+    public var sfInstallID: String? { metadata["sf.installID"] }
+    var hasSFMarker: Bool { sfRole != nil && sfInstallID != nil }
 
-    public var isSiliconForestBoot: Bool {
-        (content == .efi || content == .microsoftBasicData) && ((name ?? "").uppercased().hasPrefix("SFBOOT") || metadata["sf.role"] == "boot")
-    }
-
-    public var isSiliconForestRoot: Bool {
-        content == .linuxFilesystem && (metadata["sf.role"] == "root" || (name ?? "").localizedCaseInsensitiveContains("SiliconForest") || name == nil)
+    /// Looks like SiliconForest (by name or type), whether or not we can prove it.
+    var looksLikeSiliconForest: Bool {
+        if sfRole != nil { return true }
+        let n = (name ?? "").lowercased()
+        if n.hasPrefix("sfboot") { return true }
+        if n.contains("siliconforest") { return true }
+        if content == .appleAPFS, let c = container, c.capacityCeiling <= 16 * Bytes.gb,
+           c.volumes.contains(where: { $0.name.localizedCaseInsensitiveContains("SiliconForest") }) { return true }
+        return false
     }
 }
 
-/// One SiliconForest install found on a disk: the stub container, and the boot and root
-/// partitions that follow it.
+extension PhysicalDisk {
+    /// Classifies every partition. Pure; golden-tested against the fixtures.
+    public func classify() -> [String: PartitionClass] {
+        var out: [String: PartitionClass] = [:]
+        let installs = SiliconForestInstall.detect(on: self)
+        for i in installs { for p in i.partitions { out[p.identifier] = i.partitionClass } }
+        let primary = macOSPartition?.identifier
+        for p in partitions where out[p.identifier] == nil {
+            switch p.content {
+            case .appleAPFSISC: out[p.identifier] = .appleISC
+            case .appleAPFSRecovery: out[p.identifier] = .appleRecovery
+            case .appleAPFS:
+                if p.identifier == primary { out[p.identifier] = .macOSPrimary }
+                else if p.container?.hasMacOSSystem == true { out[p.identifier] = .macOSOther }
+                else { out[p.identifier] = .unknown }
+            case .efi, .linuxFilesystem, .microsoftBasicData: out[p.identifier] = .osForeign
+            case .unknown: out[p.identifier] = .unknown
+            }
+        }
+        return out
+    }
+
+    /// The standard Apple layout (ISC first, Recovery container present) the installer requires.
+    public var hasStandardAppleLayout: Bool {
+        partitions.first?.content == .appleAPFSISC && partitions.contains { $0.content == .appleAPFSRecovery }
+    }
+}
+
+/// One SiliconForest install found on a disk.
 public struct SiliconForestInstall: Sendable, Hashable, Identifiable {
     public var name: String
     public var version: String?
     public var installedAt: String?
-    public var stub: Partition
+    public var installID: String?
+    public var stub: Partition?
     public var boot: Partition?
     public var root: Partition?
+    /// `sf.owned` when markers and layout prove it ours, `sf.unproven` otherwise.
+    public var partitionClass: PartitionClass
+    /// Why it isn't proven (shown under "Learn More").
+    public var unprovenReason: String?
 
-    public var id: String { stub.identifier }
-    public var partitions: [Partition] { [stub] + [boot, root].compactMap { $0 } }
+    public var id: String { (stub ?? root ?? boot)?.identifier ?? name }
+    public var partitions: [Partition] { [stub, boot, root].compactMap { $0 }.sorted { $0.offset < $1.offset } }
     public var totalBytes: Int64 { partitions.reduce(0) { $0 + $1.size } }
-    public var isComplete: Bool { boot != nil && root != nil }
+    public var isComplete: Bool { stub != nil && boot != nil && root != nil }
+    public var isOwned: Bool { partitionClass == .sfOwned }
+
+    /// Space macOS gets back: from the first partition to the next one after the last, gaps included.
+    public func reclaimableBytes(on disk: PhysicalDisk) -> Int64 {
+        guard let first = partitions.first, let last = partitions.last else { return 0 }
+        return last.end + disk.freeAfter(last.identifier) - first.offset
+    }
 
     static func detect(on disk: PhysicalDisk) -> [SiliconForestInstall] {
-        var out: [SiliconForestInstall] = []
         let parts = disk.partitions
-        for (i, p) in parts.enumerated() where p.isSiliconForestStub {
-            var boot: Partition?
-            var root: Partition?
-            // Boot and root follow the stub directly, in that order (that is how the installer lays them out).
-            var j = i + 1
-            if j < parts.count, parts[j].isSiliconForestBoot { boot = parts[j]; j += 1 }
-            if j < parts.count, parts[j].isSiliconForestRoot { root = parts[j] }
-            let name = p.metadata["sf.installName"]
-                ?? p.container?.volumes.first { $0.name.localizedCaseInsensitiveContains("SiliconForest") }?.name
-                ?? "SiliconForest"
-            out.append(SiliconForestInstall(name: name, version: p.metadata["sf.version"], installedAt: p.metadata["sf.installedAt"],
-                                            stub: p, boot: boot, root: root))
+        let candidates = parts.filter { $0.looksLikeSiliconForest }
+        guard !candidates.isEmpty else { return [] }
+        // Group by install ID when marked; unmarked SiliconForest-looking partitions form one group.
+        var groups: [String: [Partition]] = [:]
+        for p in candidates { groups[p.sfInstallID ?? "unmarked", default: []].append(p) }
+        var out: [SiliconForestInstall] = []
+        for (key, group) in groups.sorted(by: { $0.key < $1.key }) {
+            let stub = group.first { $0.content == .appleAPFS }
+            let boot = group.first { $0.content == .efi || $0.content == .microsoftBasicData }
+            let root = group.first { $0.content == .linuxFilesystem }
+            var reasons: [String] = []
+            if key == "unmarked" || !group.allSatisfy(\.hasSFMarker) { reasons.append("it has no installer marker") }
+            // Expected layout: stub, SFBOOT, root, contiguous, in that order.
+            let ordered = [stub, boot, root].compactMap { $0 }
+            let idx = ordered.compactMap { p in parts.firstIndex { $0.identifier == p.identifier } }
+            if idx != idx.sorted() { reasons.append("its partitions are not in the installer's order (stub, SFBOOT, root)") }
+            else if let lo = idx.first, let hi = idx.last, hi - lo + 1 != idx.count { reasons.append("its partitions are not next to each other") }
+            let name = stub?.metadata["sf.installName"] ?? stub?.container?.volumes.first { $0.name.localizedCaseInsensitiveContains("SiliconForest") }?.name
+                ?? stub?.name ?? "SiliconForest"
+            let meta = (stub ?? root ?? boot)?.metadata ?? [:]
+            out.append(SiliconForestInstall(name: name, version: meta["sf.version"], installedAt: meta["sf.installedAt"],
+                                            installID: key == "unmarked" ? nil : key, stub: stub, boot: boot, root: root,
+                                            partitionClass: reasons.isEmpty ? .sfOwned : .sfUnproven,
+                                            unprovenReason: reasons.isEmpty ? nil : reasons.joined(separator: "; ")))
         }
         return out
     }

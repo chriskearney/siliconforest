@@ -1,4 +1,5 @@
 import Foundation
+import IOKit
 
 /// Runs a fixed set of read-only system queries. Anything not on the allow-list is refused before
 /// a process is created, so a bug elsewhere cannot turn this into a way to change the disk.
@@ -102,6 +103,10 @@ public actor RealDiskBackend: DiskBackend {
         f.power = Self.parsePower(ReadOnlyCommand.text(["/usr/bin/pmset", "-g", "batt"]) ?? "")
         f.bootPolicy = nil // `bputil -d` needs root; read in recoveryOS instead.
         f.userName = NSUserName()
+        f.userFullName = NSFullUserName().split(separator: " ").first.map(String.init)
+        f.isAdmin = Self.isAdmin()
+        f.systemFirmware = Self.systemFirmwareVersion()
+        f.internet = nil   // checked just before downloading
         return f
     }
 
@@ -132,6 +137,27 @@ public actor RealDiskBackend: DiskBackend {
         projected = model
         await progress(1, "Planned (not executed)")
         return OperationResult(createdIdentifier: created, commands: commands, executed: false)
+    }
+
+    // MARK: in-process reads (no processes, no privileges)
+
+    /// IODeviceTree:/chosen `system-firmware-version`.
+    static func systemFirmwareVersion() -> String? {
+        let entry = IORegistryEntryFromPath(kIOMainPortDefault, "IODeviceTree:/chosen")
+        guard entry != 0 else { return nil }
+        defer { IOObjectRelease(entry) }
+        guard let data = IORegistryEntryCreateCFProperty(entry, "system-firmware-version" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? Data else { return nil }
+        return String(decoding: data.prefix { $0 != 0 }, as: UTF8.self)
+    }
+
+    /// Member of the local admin group.
+    static func isAdmin() -> Bool? {
+        guard let pw = getpwuid(getuid()), let admin = getgrnam("admin") else { return nil }
+        var groups = [Int32](repeating: 0, count: 128)
+        var n = Int32(groups.count)
+        guard getgrouplist(pw.pointee.pw_name, Int32(bitPattern: pw.pointee.pw_gid), &groups, &n) != -1 else { return nil }
+        return groups.prefix(Int(n)).contains(Int32(bitPattern: admin.pointee.gr_gid))
     }
 
     // MARK: parsing

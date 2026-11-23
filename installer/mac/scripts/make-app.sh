@@ -15,22 +15,21 @@ echo "▸ swift build (release)"
 swift build -c release --product SFInstaller
 swift build -c release --product sfinstallctl
 BIN="$(swift build -c release --show-bin-path)"
+[ -f build/fonts/Inter-Regular.ttf ] || scripts/fetch-fonts.sh
 
 APP="$ROOT/build/SiliconForest Installer.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Profiles" "$APP/Contents/Resources/Fixtures"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Profiles" "$APP/Contents/Resources/Fixtures" "$APP/Contents/Resources/Fonts"
 cp "$BIN/SFInstaller" "$APP/Contents/MacOS/SiliconForest Installer"
 cp "$BIN/sfinstallctl" "$APP/Contents/MacOS/sfinstallctl"
 
-# Device profiles: the canonical installer/profiles/*.json when present, else the test fixture.
-if compgen -G "$ROOT/../profiles/*.json" > /dev/null; then
-  cp "$ROOT"/../profiles/*.json "$APP/Contents/Resources/Profiles/"
-  echo "▸ profiles from installer/profiles"
-else
-  cp "$ROOT"/Fixtures/profiles/*.json "$APP/Contents/Resources/Profiles/"
-  echo "▸ profiles from Fixtures/profiles (installer/profiles not present yet)"
-fi
+# Device profiles: the canonical installer/profiles (with their schema).
+cp "$ROOT"/../profiles/*.json "$APP/Contents/Resources/Profiles/"
+# Dry-run disks (the simulator's fake Macs; DESIGN says SFSimulator never ships in release builds,
+# so drop these when the app stops being dry-run-only).
 cp -R "$ROOT/Fixtures/disks" "$APP/Contents/Resources/Fixtures/disks"
+# Inter and Source Code Pro (OFL), with their licence.
+cp build/fonts/*.ttf build/fonts/Inter-OFL.txt build/fonts/SOURCES.md "$APP/Contents/Resources/Fonts/"
 
 echo "▸ icon (rendered from our vector mark)"
 ICONSET="$ROOT/build/AppIcon.iconset"
@@ -53,7 +52,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>
-  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>LSMinimumSystemVersion</key><string>13.5</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
@@ -71,5 +70,5 @@ codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --strict --verbose=2 "$APP"
 
 echo "✓ $APP"
-echo "  open \"$APP\"                     # fullscreen dry run"
+echo "  open \"$APP\"                     # full-screen dry run"
 echo "  open \"$APP\" --args --windowed   # in a window"

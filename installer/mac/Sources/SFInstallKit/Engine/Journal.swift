@@ -15,14 +15,16 @@ public struct JournalEntry: Codable, Sendable, Hashable {
     public var message: String
     public var command: [String]?
     public var executed: Bool?
+    /// True for commands that change the disk; "No changes were made" is derived from their absence.
+    public var mutating: Bool?
     public var checkpoint: Checkpoint?
     public var plan: InstallPlan?
     public var snapshot: DiskSnapshot?
 
     public init(time: Date = Date(), event: Event, step: StepID? = nil, message: String, command: [String]? = nil,
-                executed: Bool? = nil, checkpoint: Checkpoint? = nil, plan: InstallPlan? = nil, snapshot: DiskSnapshot? = nil) {
+                executed: Bool? = nil, mutating: Bool? = nil, checkpoint: Checkpoint? = nil, plan: InstallPlan? = nil, snapshot: DiskSnapshot? = nil) {
         self.time = time; self.event = event; self.step = step; self.message = message; self.command = command
-        self.executed = executed; self.checkpoint = checkpoint; self.plan = plan; self.snapshot = snapshot
+        self.executed = executed; self.mutating = mutating; self.checkpoint = checkpoint; self.plan = plan; self.snapshot = snapshot
     }
 }
 
@@ -94,6 +96,9 @@ public struct JournalState: Sendable {
     public var rolledBack: Bool
     public var failedStep: StepID?
 
+    /// Proved by the journal: no disk-changing command ran (UX-FLOW: "No changes were made" only when proved).
+    public var noChangesMade: Bool
+
     /// True when an install started and neither finished nor rolled back (the app quit or crashed).
     public var isInterrupted: Bool { plan != nil && !finished && !rolledBack }
 
@@ -103,6 +108,7 @@ public struct JournalState: Sendable {
         finished = entries.contains { $0.event == .finished }
         rolledBack = entries.contains { $0.event == .rollbackCompleted }
         failedStep = entries.last { $0.event == .stepFailed }?.step
+        noChangesMade = !entries.contains { $0.event == .command && $0.mutating == true && $0.executed == true }
     }
 
     /// Index of the first step that still has to run.

@@ -5,8 +5,8 @@
     "hwModel": "MacBookPro17,1",
     "board": "J293AP",
     "chipName": "Apple M1",
-    "macOSVersion": "15.6.1",
-    "macOSBuild": "24G90",
+    "macOSVersion": "15.5",
+    "macOSBuild": "24F74",
     "fileVault": "on",
     "sip": "enabled",
     "power": {
@@ -14,7 +14,11 @@
       "batteryPercent": 64,
       "charging": false
     },
-    "userName": "chris"
+    "userName": "chris",
+    "userFullName": "Chris",
+    "isAdmin": true,
+    "systemFirmware": "iBoot-11881.140.96",
+    "internet": true
   },
   "disks": [
     {

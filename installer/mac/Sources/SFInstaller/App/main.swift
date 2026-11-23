@@ -1,11 +1,14 @@
 import SwiftUI
 import AppKit
 import SFInstallKit
+import SFCopy
+import SFDesign
+import SFFlow
 
 // SiliconForest Installer
 //
-//   SFInstaller                       fullscreen, dry run on the simulated J293 disk
-//   SFInstaller --windowed            a normal window (development)
+//   SFInstaller                       native full screen, dry run on the simulated J293 disk
+//   SFInstaller --windowed            stay in a window (tests, development)
 //   SFInstaller --real                read-only analysis of this Mac (never writes)
 //   SFInstaller --fixture NAME        another simulated disk (see Fixtures/disks)
 //   SFInstaller --speed X             dry-run pace (1 = default)
@@ -31,102 +34,115 @@ struct LaunchOptions {
 }
 
 @MainActor
-func makeModel(_ o: LaunchOptions) -> InstallerModel {
+func makeSession(_ o: LaunchOptions) -> Session {
     if o.has("real") {
-        return InstallerModel(mode: .readOnly, backend: RealDiskBackend(), fixtureName: "this Mac")
+        return Session(mode: .readOnly, backend: RealDiskBackend())
     }
     let name = o["fixture"] ?? "j293-512"
     let fixture = (try? DiskFixture.named(name)) ?? (try! DiskFixture.named("j293-512"))
     var failures: [FailureInjection] = []
-    if let s = o["fail-step"], let step = StepID(rawValue: s) { failures.append(FailureInjection(step: step, atFraction: 0.45)) }
-    let backend = SimulatedDiskBackend(fixture: fixture, timeScale: Double(o["speed"] ?? "1") ?? 1, failures: failures)
-    return InstallerModel(mode: .dryRun, backend: backend, fixtureName: name)
+    if let st = o["fail-step"], let step = StepID(rawValue: st) { failures.append(FailureInjection(step: step, atFraction: 0.45)) }
+    let speed = Double(o["speed"] ?? "1") ?? 1
+    let s = Session(mode: .dryRun, backend: SimulatedDiskBackend(fixture: fixture, timeScale: speed, failures: failures))
+    s.stepPace = speed
+    return s
 }
 
 /// Supplies theme and screen size from the live environment.
 struct AppRoot: View {
-    var model: InstallerModel
+    @ObservedObject var session: Session
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         GeometryReader { geo in
-            RootView(model: model)
+            RootView(s: session)
                 .environment(\.theme, Theme(isDark: scheme == .dark))
                 .environment(\.screenSize, geo.size)
         }
         .ignoresSafeArea()
-        .task { await model.load() }
+        .task { await session.load() }
     }
 }
 
-final class FullscreenWindow: NSWindow {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-}
-
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let options: LaunchOptions
-    var model: InstallerModel!
+    var session: Session!
     var window: NSWindow!
+    var keyMonitor: Any?
 
     init(options: LaunchOptions) { self.options = options }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        model = makeModel(options)
+        SFType.registerFonts()
+        session = makeSession(options)
         NSApp.applicationIconImage = renderIcon(side: 512)
         buildMenu()
-        let host = NSHostingView(rootView: AppRoot(model: model))
-
-        if options.has("windowed") {
-            window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 900),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
-            window.center()
-        } else {
-            // Like the macOS installer: one borderless window covering the whole display, Dock and
-            // menu bar hidden.
-            let screen = NSScreen.main ?? NSScreen.screens[0]
-            window = FullscreenWindow(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false, screen: screen)
-            window.setFrame(screen.frame, display: true)
-            window.collectionBehavior = [.fullScreenNone, .canJoinAllSpaces]
-            window.isMovable = false
-            NSApp.presentationOptions = [.hideDock, .hideMenuBar, .disableHideApplication]
-        }
-        window.contentView = host
-        window.title = "SiliconForest Installer"
+        let screen = NSScreen.main ?? NSScreen.screens[0]
+        let size = NSSize(width: min(1440, screen.visibleFrame.width), height: min(900, screen.visibleFrame.height))
+        window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = false
+        window.minSize = NSSize(width: 1024, height: 700)   // VISUAL §8
+        window.collectionBehavior = [.fullScreenPrimary]
+        window.contentView = NSHostingView(rootView: AppRoot(session: session))
+        window.title = Copy.installer
         window.backgroundColor = .black
+        window.delegate = self
+        window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        // Native full screen in its own Space (D9); menu bar, Dock reveal, Mission Control and
+        // force quit all keep working. `--windowed` stays in a window (tests, development).
+        if !options.has("windowed") { window.toggleFullScreen(nil) }
+        // Esc leaves full screen (VISUAL §8); outside full screen it asks to quit.
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            guard let self, e.keyCode == 53 else { return e }
+            if self.session.showQuitConfirm || self.session.showDetails || self.session.showCommands || self.session.showWhatIs {
+                self.session.showQuitConfirm = false; self.session.showDetails = false; self.session.showCommands = false; self.session.showWhatIs = false
+                return nil
+            }
+            if self.window.styleMask.contains(.fullScreen) { self.window.toggleFullScreen(nil) } else { self.session.requestQuit() }
+            return nil
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if model.quitConfirmed { return .terminateNow }
-        model.requestQuit()
+        if session.quitConfirmed { return .terminateNow }
+        session.requestQuit()
         return .terminateCancel
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        session.requestQuit()
+        return false
+    }
 
     private func buildMenu() {
         let main = NSMenu()
-        let appItem = NSMenuItem()
-        main.addItem(appItem)
-        let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "Quit SiliconForest Installer", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        appItem.submenu = appMenu
-        // Edit menu so ⌘C/⌘V/⌘A work in the name field.
-        let editItem = NSMenuItem()
-        main.addItem(editItem)
-        let edit = NSMenu(title: "Edit")
-        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        editItem.submenu = edit
+        func menu(_ title: String, _ items: [NSMenuItem]) {
+            let item = NSMenuItem(); let m = NSMenu(title: title)
+            items.forEach(m.addItem); item.submenu = m; main.addItem(item)
+        }
+        menu("Installer", [NSMenuItem(title: "Quit \(Copy.installer)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")])
+        menu("Edit", [NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"),
+                      NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"),
+                      NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"),
+                      NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")])
+        let details = NSMenuItem(title: "Show Details", action: #selector(toggleDetails), keyEquivalent: "l"); details.target = self
+        menu("View", [details, NSMenuItem(title: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")])
+        menu("Window", [NSMenuItem(title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")])
+        let logs = NSMenuItem(title: "Open Log Folder", action: #selector(openLogs), keyEquivalent: ""); logs.target = self
+        let diag = NSMenuItem(title: "Export Diagnostics…", action: #selector(exportDiagnostics), keyEquivalent: ""); diag.target = self
+        menu("Help", [logs, diag])
         NSApp.mainMenu = main
     }
+
+    @objc func toggleDetails() { withAnimation(SFMotion.screen) { session.showDetails.toggle() } }
+    @objc func openLogs() { NSWorkspace.shared.open(Journal.defaultDirectory()) }
+    @objc func exportDiagnostics() { session.showDiagnostics = true }
 }
 
 @MainActor
@@ -164,6 +180,7 @@ if let dir = options["snapshot"] {
     let sizes = options["sizes"] ?? "1280x800@2,1512x982@2"
     let only = options["only"]
     let appearance = options["appearance"] ?? "all"
+    MainActor.assumeIsolated { SFType.registerFonts() }
     Task { @MainActor in
         await Snapshotter(outDir: URL(fileURLWithPath: dir), sizes: sizes, only: only, appearance: appearance).run()
         exit(0)
@@ -171,11 +188,11 @@ if let dir = options["snapshot"] {
     app.setActivationPolicy(.prohibited)
     app.run()
 } else {
-    // Dark first (Canopy); `--appearance light` for Clearing, `--appearance system` to follow macOS.
-    switch options["appearance"] ?? "dark" {
+    // Follows the system appearance (VISUAL §9); `--appearance dark|light` forces one.
+    switch options["appearance"] ?? "system" {
     case "light": app.appearance = NSAppearance(named: .aqua)
-    case "system": break
-    default: app.appearance = NSAppearance(named: .darkAqua)
+    case "dark": app.appearance = NSAppearance(named: .darkAqua)
+    default: break
     }
     let delegate = MainActor.assumeIsolated { AppDelegate(options: options) }
     app.delegate = delegate

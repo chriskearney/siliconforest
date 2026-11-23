@@ -116,7 +116,7 @@ public enum DiskModelMutator {
             guard let i = disk.partitions.firstIndex(where: { $0.identifier == id }) else {
                 throw BackendError.invalidOperation("No partition \(id)")
             }
-            if disk.partitions[i].container?.hasMacOSSystem == true && !disk.partitions[i].isSiliconForestStub {
+            if disk.partitions[i].container?.hasMacOSSystem == true && disk.partitions[i].sfRole == nil {
                 throw BackendError.invalidOperation("Refusing to delete \(id): it holds macOS")
             }
             if case .deleteAPFSContainer = op, disk.partitions[i].content != .appleAPFS {
@@ -137,9 +137,12 @@ public enum DiskModelMutator {
                 disk.partitions[i].container = c
             }
 
-        case .verify(let ref, _, _):
+        case .verify(let ref, _, _), .bless(let ref, _, _):
             let id = resolve(ref)
-            guard disk.partition(id) != nil else { throw BackendError.invalidOperation("No partition \(id) to verify") }
+            guard disk.partition(id) != nil else { throw BackendError.invalidOperation("No partition \(id)") }
+
+        case .checkFiles:
+            break
 
         case .download:
             break

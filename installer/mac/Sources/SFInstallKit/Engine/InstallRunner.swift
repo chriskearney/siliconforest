@@ -22,6 +22,8 @@ public enum InstallEvent: Sendable {
     case rollbackFinished(clean: Bool)
     case finished(DiskSnapshot)
     case cancelled
+    /// Stopped after a failure without undoing anything (autoRollback off); undo with `rollback`.
+    case stopped(Checkpoint, failedIndex: Int)
 }
 
 /// Runs a plan step by step against a backend, journaling every command and checkpointing after
@@ -42,14 +44,28 @@ public actor InstallRunner {
 
     /// Starts (or resumes, from `resume`) a plan. Events arrive in order; the stream ends after
     /// `.finished`, `.rollbackFinished` or `.cancelled`.
-    public nonisolated func run(_ plan: InstallPlan, resume: Checkpoint? = nil) -> AsyncStream<InstallEvent> {
+    public nonisolated func run(_ plan: InstallPlan, resume: Checkpoint? = nil, autoRollback: Bool = true) -> AsyncStream<InstallEvent> {
         AsyncStream { continuation in
-            let task = Task { await self.execute(plan, resume: resume, emit: { continuation.yield($0) }); continuation.finish() }
+            let task = Task { await self.execute(plan, resume: resume, autoRollback: autoRollback, emit: { continuation.yield($0) }); continuation.finish() }
             continuation.onTermination = { _ in task.cancel() }
         }
     }
 
-    private func execute(_ plan: InstallPlan, resume: Checkpoint?, emit: @Sendable (InstallEvent) -> Void) async {
+    /// Undoes what a stopped run left behind ("Undo Changes", UX-FLOW E2 → E3).
+    public nonisolated func rollback(_ plan: InstallPlan, from checkpoint: Checkpoint, failedIndex: Int?) -> AsyncStream<InstallEvent> {
+        AsyncStream { continuation in
+            let task = Task {
+                await self.setCheckpoint(checkpoint)
+                await self.rollback(plan, failedIndex: failedIndex, emit: { continuation.yield($0) })
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func setCheckpoint(_ c: Checkpoint) { checkpoint = c }
+
+    private func execute(_ plan: InstallPlan, resume: Checkpoint?, autoRollback: Bool, emit: @Sendable (InstallEvent) -> Void) async {
         checkpoint = resume ?? Checkpoint()
         let dry = backend.kind == .simulated
         if resume == nil {
@@ -68,7 +84,7 @@ public actor InstallRunner {
                 return
             }
             emit(.stepStarted(index: index))
-            emit(.log(LogLine(level: .info, text: step.activeTitle)))
+            emit(.log(LogLine(level: .info, text: "\(step.code) \(step.title)")))
             await journal.append(.init(event: .stepStarted, step: step.id, message: step.title))
             do {
                 let ops = step.operations
@@ -87,7 +103,8 @@ public actor InstallRunner {
                         emit(.progress(index: index, fraction: base + f * span, detail: detail))
                     }
                     for argv in result.commands {
-                        await journal.append(.init(event: .command, step: step.id, message: op.summary, command: argv, executed: result.executed))
+                        await journal.append(.init(event: .command, step: step.id, message: op.summary, command: argv,
+                                                   executed: result.executed, mutating: op.isMutating))
                     }
                     if !result.executed {
                         emit(.log(LogLine(level: .planned, text: "Planned, not executed (read-only mode)")))
@@ -113,6 +130,10 @@ public actor InstallRunner {
                     emit(.log(LogLine(level: .error, text: "✗ \(step.title): \(message)")))
                     emit(.failed(index: index, message: message))
                 }
+                if !autoRollback && !cancelled {
+                    emit(.stopped(checkpoint, failedIndex: index))
+                    return
+                }
                 await rollback(plan, failedIndex: index, emit: emit)
                 if cancelled { emit(.cancelled) }
                 return
@@ -127,13 +148,11 @@ public actor InstallRunner {
     private func idle(_ step: InstallStep, index: Int, emit: @Sendable (InstallEvent) -> Void) async throws {
         if backend.kind == .simulated {
             let snap = try await backend.snapshot()
-            if step.id == .savePartitionTable {
-                await journal.append(.init(event: .partitionTable, step: step.id, message: "Partition table saved", snapshot: snap))
-            }
+            _ = snap
         }
         for t in 1...5 {
             if cancelRequested { throw BackendError.cancelled }
-            emit(.progress(index: index, fraction: Double(t) / 5, detail: step.activeTitle))
+            emit(.progress(index: index, fraction: Double(t) / 5, detail: step.title))
             if backend.kind == .simulated, await (backend as? SimulatedDiskBackend)?.timeScale ?? 0 > 0 {
                 try await Task.sleep(nanoseconds: 180_000_000)
             }

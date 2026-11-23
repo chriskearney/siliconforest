@@ -1,5 +1,6 @@
 import Foundation
 import SFInstallKit
+import SFCopy
 
 // sfinstallctl: the installer engine without the UI. Dry runs against fixtures, read-only analysis
 // of this Mac, and plan rehearsals that print every command without running any.
@@ -13,7 +14,7 @@ USAGE
   sfinstallctl facts      [--real | --fixture NAME]
   sfinstallctl disk       [--real | --fixture NAME]
   sfinstallctl check      [--real | --fixture NAME] [--profile ID]
-  sfinstallctl plan       [--real | --fixture NAME] [--size 80G] [--name NAME] [--default macos|siliconforest]
+  sfinstallctl plan       [--real | --fixture NAME] [--size 80G] [--name NAME] [--default macos|siliconforest]   (siliconforest = default after a successful start)
   sfinstallctl install    [--fixture NAME] [--size 80G] [--speed X] [--fail-step STEP | --fail-op KIND] [--journal PATH]
   sfinstallctl uninstall  [--fixture NAME] [--speed X] [--journal PATH]
   sfinstallctl rehearse   --real [--size 80G]     plan against this Mac and record every command; nothing runs
@@ -70,6 +71,7 @@ func profile(_ args: Args, facts: SystemFacts) -> DeviceProfile? {
 }
 
 func printLayout(_ disk: PhysicalDisk) {
+    let classes = disk.classify()
     print("\(disk.identifier)  \(disk.mediaName)  \(Bytes.format(disk.size))")
     for seg in disk.layout {
         switch seg {
@@ -77,9 +79,7 @@ func printLayout(_ disk: PhysicalDisk) {
             var line = "  \(p.identifier.padding(toLength: 10, withPad: " ", startingAt: 0)) \(p.content.rawValue.padding(toLength: 20, withPad: " ", startingAt: 0)) \(Bytes.format(p.size).padding(toLength: 10, withPad: " ", startingAt: 0))"
             if let c = p.container { line += " \(c.reference): \(Bytes.format(c.capacityUsed)) used, \(Bytes.format(c.capacityFree)) free" }
             if let n = p.name { line += "  “\(n)”" }
-            if p.isSiliconForestStub { line += "  [SiliconForest stub]" }
-            if p.isSiliconForestBoot { line += "  [SiliconForest boot]" }
-            if p.isSiliconForestRoot { line += "  [SiliconForest root]" }
+            if let cls = classes[p.identifier] { line += "  [\(cls.rawValue)]" }
             print(line)
         case .free(_, let size):
             print("  (free)     \("".padding(toLength: 20, withPad: " ", startingAt: 0)) \(Bytes.format(size))")
@@ -92,11 +92,12 @@ func printPlan(_ plan: InstallPlan) {
     print("  macOS container \(plan.macOSPartition): \(Bytes.format(plan.macOSSizeBefore)) → \(Bytes.format(plan.macOSSizeAfter))")
     if plan.kind == .install {
         print("  SiliconForest “\(plan.options.installName)”: \(Bytes.format(plan.siliconForestSize)) = stub \(Bytes.format(plan.stubSize)) + boot \(Bytes.format(plan.bootSize)) + root \(Bytes.format(plan.rootSize))")
-        print("  Default startup disk: \(plan.options.defaultBoot == .macOS ? "macOS" : "SiliconForest")")
+        print("  After setup: \(plan.options.afterSetup == .startOnceKeepMacOS ? Copy.Options.startOnce : Copy.Options.makeDefault)")
+        print("  Downloads: \(Copy.Review.downloadValue(release: plan.downloadReleaseBytes, apple: plan.downloadAppleBytes))")
     }
     print("  Estimated time: \(Int(plan.estimatedSeconds / 60)) min")
     for (i, s) in plan.steps.enumerated() {
-        print(String(format: "  %2d. %@", i + 1, s.title))
+        print(String(format: "  %2d. %@  %@  [%@]", i + 1, s.code, s.title, Copy.Installing.phase(s.phase)))
         for op in s.operations { for argv in op.commands() { print("        $ \(CommandRender.render(argv))") } }
         for op in s.undo { for argv in op.commands() { print("        ↺ \(CommandRender.render(argv))") } }
     }
@@ -110,7 +111,7 @@ func run(_ plan: InstallPlan, on backend: any DiskBackend, journalPath: String?)
     var lastPct = -1
     for await event in runner.run(plan) {
         switch event {
-        case .stepStarted(let i): print("▸ [\(i + 1)/\(plan.steps.count)] \(plan.steps[i].activeTitle)")
+        case .stepStarted(let i): print("▸ [\(i + 1)/\(plan.steps.count)] \(plan.steps[i].code) \(plan.steps[i].title)")
         case .progress(_, let f, _):
             let pct = Int(f * 100)
             if pct / 25 != lastPct / 25 { lastPct = pct }
@@ -118,7 +119,7 @@ func run(_ plan: InstallPlan, on backend: any DiskBackend, journalPath: String?)
             switch line.level {
             case .command: print("    $ \(line.text)")
             case .planned: print("      (\(line.text))")
-            case .error: print("    ✗ \(line.text)")
+            case .error: print("    \(line.text)")
             case .warning: print("    ! \(line.text)")
             default: break
             }
@@ -131,6 +132,7 @@ func run(_ plan: InstallPlan, on backend: any DiskBackend, journalPath: String?)
             print("✓ \(plan.kind.rawValue) finished")
             if let d = snap.internalDisk { printLayout(d) }
         case .cancelled: print("cancelled"); status = 3
+        case .stopped: print("stopped"); status = 2
         }
     }
     print("journal: \(url.path)")
@@ -170,10 +172,13 @@ func main() async {
             let checks = CompatibilityChecker.run(facts: facts, snapshot: snap, profile: p)
             for c in checks {
                 let mark = ["pass": "✓", "warning": "!", "fail": "✗", "info": "i"][c.status.rawValue]!
-                print("\(mark) \(c.title.padding(toLength: 34, withPad: " ", startingAt: 0)) \(c.value)\n    \(c.detail)")
+                print("\(mark) \(Copy.Check.label(c.kind).padding(toLength: 18, withPad: " ", startingAt: 0)) \(Copy.Check.text(c.finding))")
             }
+            if let b = CompatibilityChecker.blocker(checks).flatMap({ Copy.Check.blocked($0) }) { print("\n\(b.title)\n  \(b.body)") }
+            let entry = CompatibilityChecker.entryState(snapshot: snap, journal: nil)
+            if let e = Copy.Check.entry(entry) { print("\n\(e.title)\n  \(e.body)") }
             if let p, let d = snap.internalDisk, let sc = SizingConstraints(profile: p, disk: d) {
-                print("SiliconForest size: \(Bytes.format(sc.minimum)) – \(Bytes.format(sc.maximum)), recommended \(Bytes.format(sc.recommended))")
+                print("SiliconForest size: \(Bytes.format(sc.minimum)) – \(Bytes.format(sc.maximum)), recommended \(Bytes.format(sc.recommended)); macOS floor \(Bytes.format(sc.macOSFloor)) = used \(Bytes.format(sc.macOSUsed)) + reserve \(Bytes.format(sc.reserve)) + downloads \(Bytes.format(sc.downloads)) + drift \(Bytes.format(sc.drift))")
             }
             print(CompatibilityChecker.canProceed(checks) ? "Ready to install." : "Not ready to install.")
         case "plan", "install", "rehearse":
@@ -184,7 +189,7 @@ func main() async {
             guard let d = snap.internalDisk, let sc = SizingConstraints(profile: p, disk: d) else { fail("no macOS container found") }
             let size = args.flags["size"].flatMap(Bytes.parse) ?? sc.recommended
             let opts = InstallOptions(siliconForestSize: sc.snap(size), installName: args.flags["name"] ?? "SiliconForest",
-                                      defaultBoot: args.flags["default"]?.lowercased() == "siliconforest" ? .siliconForest : .macOS)
+                                      afterSetup: args.flags["default"]?.lowercased() == "siliconforest" ? .makeDefaultAfterSuccess : .startOnceKeepMacOS)
             let plan = try Planner.installPlan(profile: p, snapshot: snap, options: opts)
             printPlan(plan)
             if args.command != "plan" {
@@ -195,6 +200,7 @@ func main() async {
             let b = try backend(args, defaultFixture: "j293-512-installed")
             let snap = try await b.snapshot()
             guard let install = snap.siliconForestInstalls.first else { fail("no SiliconForest install found") }
+            guard install.isOwned else { fail("\(Copy.Remove.notOursTitle). \(Copy.Remove.notOursBody) (\(install.unprovenReason ?? ""))") }
             let plan = try Planner.uninstallPlan(install: install, snapshot: snap)
             printPlan(plan)
             if args.real { print("\n(read-only: --real uninstall only prints the plan)"); return }

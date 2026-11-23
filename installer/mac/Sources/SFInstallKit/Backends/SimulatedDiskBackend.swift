@@ -121,6 +121,8 @@ public actor SimulatedDiskBackend: DiskBackend {
         case .writeFiles(_, _, _, let bytes): return 1.2 + Double(bytes) / Double(Bytes.gb) * 3
         case .writeImage(_, _, let bytes): return 4 + Double(bytes) / Double(Bytes.gb) * 2.4
         case .verify(_, _, let bytes): return 1 + Double(bytes) / Double(Bytes.gb) * 0.9
+        case .checkFiles(_, let bytes): return 1 + Double(bytes) / Double(Bytes.gb) * 0.6
+        case .bless: return 2.0
         }
     }
 
@@ -134,7 +136,9 @@ public actor SimulatedDiskBackend: DiskBackend {
             return "\(Bytes.format(Int64(Double(bytes) * fraction))) of \(Bytes.format(bytes)) · \(item)"
         case .writeFiles(_, let label, _, _): return "Copying \(label)…"
         case .writeImage(_, _, let bytes): return "\(Bytes.format(Int64(Double(bytes) * fraction))) of \(Bytes.format(bytes)) written"
-        case .verify(_, let label, _): return "Checking \(label)…"
+        case .verify(_, let label, _): return "Reading back \(label)… \(Int(fraction * 100))%"
+        case .checkFiles(let label, _): return "Checking \(label)…"
+        case .bless(_, let label, _): return "Setting the startup disk to \(label)…"
         }
     }
 }

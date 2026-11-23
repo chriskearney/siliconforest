@@ -5,8 +5,8 @@
     "hwModel": "MacBookPro17,1",
     "board": "J293AP",
     "chipName": "Apple M1",
-    "macOSVersion": "15.6.1",
-    "macOSBuild": "24G90",
+    "macOSVersion": "15.5",
+    "macOSBuild": "24F74",
     "fileVault": "on",
     "sip": "enabled",
     "power": {
@@ -14,7 +14,11 @@
       "batteryPercent": 86,
       "charging": true
     },
-    "userName": "chris"
+    "userName": "chris",
+    "userFullName": "Chris",
+    "isAdmin": true,
+    "systemFirmware": "iBoot-11881.140.96",
+    "internet": true
   },
   "disks": [
     {
@@ -126,7 +130,7 @@
         {
           "identifier": "disk0s4",
           "offset": 414909106176,
-          "size": 2500000000,
+          "size": 2499805184,
           "content": "Apple_APFS",
           "name": "SiliconForest",
           "metadata": {
@@ -134,7 +138,8 @@
             "sf.version": "0.9 \u201cCanopy\u201d",
             "sf.installedAt": "2026-11-02",
             "sf.profile": "J293",
-            "sf.role": "stub"
+            "sf.role": "stub",
+            "sf.installID": "5F0E57A1-20261102"
           },
           "container": {
             "reference": "disk4",
@@ -179,7 +184,8 @@
             "sf.version": "0.9 \u201cCanopy\u201d",
             "sf.installedAt": "2026-11-02",
             "sf.profile": "J293",
-            "sf.role": "boot"
+            "sf.role": "boot",
+            "sf.installID": "5F0E57A1-20261102"
           }
         },
         {
@@ -193,7 +199,8 @@
             "sf.version": "0.9 \u201cCanopy\u201d",
             "sf.installedAt": "2026-11-02",
             "sf.profile": "J293",
-            "sf.role": "root"
+            "sf.role": "root",
+            "sf.installID": "5F0E57A1-20261102"
           }
         },
         {

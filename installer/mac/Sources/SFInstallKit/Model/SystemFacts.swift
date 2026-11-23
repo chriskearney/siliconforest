@@ -17,6 +17,13 @@ public struct SystemFacts: Codable, Sendable, Hashable {
     public var bootPolicy: String?
     public var power: PowerState
     public var userName: String?
+    public var userFullName: String?
+    public var isAdmin: Bool?
+    /// IODeviceTree `system-firmware-version`, e.g. "iBoot-11881.140.96".
+    public var systemFirmware: String?
+    public var fileVaultPercent: Int?
+    /// nil = not checked (read-only mode checks it just before downloading).
+    public var internet: Bool?
 
     public init(hwModel: String? = nil, board: String? = nil, chipName: String? = nil, macOSVersion: String? = nil,
                 macOSBuild: String? = nil, fileVault: FileVaultState = .unknown, sip: SIPState = .unknown,
@@ -26,7 +33,7 @@ public struct SystemFacts: Codable, Sendable, Hashable {
         self.power = power; self.userName = userName
     }
 
-    enum CodingKeys: String, CodingKey { case hwModel, board, chipName, macOSVersion, macOSBuild, fileVault, sip, bootPolicy, power, userName }
+    enum CodingKeys: String, CodingKey { case hwModel, board, chipName, macOSVersion, macOSBuild, fileVault, sip, bootPolicy, power, userName, userFullName, isAdmin, systemFirmware, fileVaultPercent, internet }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         hwModel = try c.decodeIfPresent(String.self, forKey: .hwModel)
@@ -39,6 +46,11 @@ public struct SystemFacts: Codable, Sendable, Hashable {
         bootPolicy = try c.decodeIfPresent(String.self, forKey: .bootPolicy)
         power = try c.decodeIfPresent(PowerState.self, forKey: .power) ?? PowerState()
         userName = try c.decodeIfPresent(String.self, forKey: .userName)
+        userFullName = try c.decodeIfPresent(String.self, forKey: .userFullName)
+        isAdmin = try c.decodeIfPresent(Bool.self, forKey: .isAdmin)
+        systemFirmware = try c.decodeIfPresent(String.self, forKey: .systemFirmware)
+        fileVaultPercent = try c.decodeIfPresent(Int.self, forKey: .fileVaultPercent)
+        internet = try c.decodeIfPresent(Bool.self, forKey: .internet)
     }
 }
 

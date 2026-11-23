@@ -29,9 +29,13 @@ public enum DiskOperation: Codable, Sendable, Hashable {
     /// Writes a filesystem image to a partition's raw device.
     case writeImage(target: PartRef, image: String, bytes: Int64)
     case verify(target: PartRef, label: String, bytes: Int64)
+    /// Hashes downloaded files in the work directory (no disk object involved).
+    case checkFiles(label: String, bytes: Int64)
+    /// Sets the startup volume (`nextOnly`: just the next start, D5's one-shot first boot).
+    case bless(target: PartRef, label: String, nextOnly: Bool)
 
     public enum Kind: String, Codable, Sendable, CaseIterable {
-        case resizeContainer, addPartition, deletePartition, deleteAPFSContainer, download, writeFiles, writeImage, verify
+        case resizeContainer, addPartition, deletePartition, deleteAPFSContainer, download, writeFiles, writeImage, verify, checkFiles, bless
     }
 
     public var kind: Kind {
@@ -44,13 +48,15 @@ public enum DiskOperation: Codable, Sendable, Hashable {
         case .writeFiles: return .writeFiles
         case .writeImage: return .writeImage
         case .verify: return .verify
+        case .checkFiles: return .checkFiles
+        case .bless: return .bless
         }
     }
 
     /// True for everything that changes the disk or boot state.
     public var isMutating: Bool {
         switch self {
-        case .download, .verify: return false
+        case .download, .verify, .checkFiles: return false
         default: return true
         }
     }
@@ -67,6 +73,8 @@ public enum DiskOperation: Codable, Sendable, Hashable {
         case .writeFiles(_, let label, let items, _): return "Copy \(label) (\(items.count) item\(items.count == 1 ? "" : "s"))"
         case .writeImage(_, let image, let bytes): return "Write \(image) (\(Bytes.format(bytes)))"
         case .verify(_, let label, _): return "Verify \(label)"
+        case .checkFiles(let label, _): return "Check \(label)"
+        case .bless(_, let label, let next): return next ? "Start \(label) next time only" : "Make \(label) the startup disk"
         }
     }
 
@@ -94,9 +102,13 @@ public enum DiskOperation: Codable, Sendable, Hashable {
         case .writeFiles(let target, _, let items, _):
             return items.map { ["/usr/bin/ditto", "<payload>/\($0)", "<mount:\(resolve(target))>/\($0)"] }
         case .writeImage(let target, let image, _):
-            return [["/bin/dd", "if=<payload>/\(image)", "of=/dev/r\(resolve(target))", "bs=8m"]]
+            return [["/usr/bin/xz", "-dc", "<cache>/\(image).xz", "|", "<helper: stream to /dev/r\(resolve(target))>"]]
         case .verify(let target, let label, _):
-            return [["/usr/bin/shasum", "-a", "256", "-c", "<payload>/\(label).sha256", "--", resolve(target)]]
+            return [["/usr/bin/shasum", "-a", "256", "-c", "<payload>/\(label).sha256", "--", "/dev/r\(resolve(target))"]]
+        case .checkFiles(let label, _):
+            return [["/usr/bin/shasum", "-a", "256", "-c", "<cache>/SHA256SUMS", "# \(label)"]]
+        case .bless(let target, _, let next):
+            return [["/usr/sbin/bless", "--mount", "<mount:\(resolve(target))>", "--setBoot"] + (next ? ["--nextonly"] : [])]
         }
     }
 }

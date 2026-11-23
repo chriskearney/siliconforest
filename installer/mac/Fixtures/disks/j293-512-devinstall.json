@@ -1,0 +1,206 @@
+{
+  "name": "j293-512-devinstall",
+  "summary": "Hand-made development install: root before stub, no installer marker (sf.unproven).",
+  "facts": {
+    "hwModel": "MacBookPro17,1",
+    "board": "J293AP",
+    "chipName": "Apple M1",
+    "macOSVersion": "15.5",
+    "macOSBuild": "24F74",
+    "fileVault": "on",
+    "sip": "enabled",
+    "power": {
+      "onACPower": true,
+      "batteryPercent": 86,
+      "charging": true
+    },
+    "userName": "chris",
+    "userFullName": "Chris",
+    "isAdmin": true,
+    "systemFirmware": "iBoot-11881.140.96",
+    "internet": true
+  },
+  "disks": [
+    {
+      "identifier": "disk0",
+      "mediaName": "APPLE SSD AP0512Q",
+      "size": 500277790720,
+      "blockSize": 4096,
+      "isInternal": true,
+      "partitions": [
+        {
+          "identifier": "disk0s1",
+          "offset": 24576,
+          "size": 524288000,
+          "content": "Apple_APFS_ISC",
+          "container": {
+            "reference": "disk1",
+            "capacityCeiling": 524288000,
+            "capacityFree": 507288000,
+            "volumes": [
+              {
+                "identifier": "disk1s1",
+                "name": "iSCPreboot",
+                "roles": [
+                  "Preboot"
+                ],
+                "capacityInUse": 6152192
+              },
+              {
+                "identifier": "disk1s2",
+                "name": "xART",
+                "roles": [
+                  "xART"
+                ],
+                "capacityInUse": 6311936
+              },
+              {
+                "identifier": "disk1s3",
+                "name": "Hardware",
+                "roles": [
+                  "Hardware"
+                ],
+                "capacityInUse": 4579328
+              }
+            ]
+          }
+        },
+        {
+          "identifier": "disk0s2",
+          "offset": 524312576,
+          "size": 414384793600,
+          "content": "Apple_APFS",
+          "container": {
+            "reference": "disk3",
+            "capacityCeiling": 414384793600,
+            "capacityFree": 216264793600,
+            "volumes": [
+              {
+                "identifier": "disk3s1",
+                "name": "Macintosh HD",
+                "roles": [
+                  "System"
+                ],
+                "capacityInUse": 11240000000
+              },
+              {
+                "identifier": "disk3s5",
+                "name": "Macintosh HD - Data",
+                "roles": [
+                  "Data"
+                ],
+                "capacityInUse": 176340000000,
+                "fileVault": true
+              },
+              {
+                "identifier": "disk3s2",
+                "name": "Preboot",
+                "roles": [
+                  "Preboot"
+                ],
+                "capacityInUse": 6120000000
+              },
+              {
+                "identifier": "disk3s3",
+                "name": "Recovery",
+                "roles": [
+                  "Recovery"
+                ],
+                "capacityInUse": 1080000000
+              },
+              {
+                "identifier": "disk3s4",
+                "name": "Update",
+                "roles": [
+                  "Update"
+                ],
+                "capacityInUse": 1190000000
+              },
+              {
+                "identifier": "disk3s6",
+                "name": "VM",
+                "roles": [
+                  "VM"
+                ],
+                "capacityInUse": 2150000000
+              }
+            ]
+          }
+        },
+        {
+          "identifier": "disk0s4",
+          "offset": 414909106176,
+          "size": 76975712000,
+          "content": "Linux Filesystem",
+          "name": null
+        },
+        {
+          "identifier": "disk0s5",
+          "offset": 491884818176,
+          "size": 2499805184,
+          "content": "Apple_APFS",
+          "name": "SiliconForest",
+          "container": {
+            "reference": "disk4",
+            "capacityCeiling": 2500000000,
+            "capacityFree": 1320000000,
+            "volumes": [
+              {
+                "identifier": "disk4s1",
+                "name": "SiliconForest",
+                "roles": [
+                  "System"
+                ],
+                "capacityInUse": 620000000
+              },
+              {
+                "identifier": "disk4s2",
+                "name": "Preboot",
+                "roles": [
+                  "Preboot"
+                ],
+                "capacityInUse": 540000000
+              },
+              {
+                "identifier": "disk4s3",
+                "name": "Data",
+                "roles": [
+                  "Data"
+                ],
+                "capacityInUse": 20000000
+              }
+            ]
+          }
+        },
+        {
+          "identifier": "disk0s6",
+          "offset": 494384623360,
+          "size": 524288000,
+          "content": "EFI",
+          "name": "SFBOOT"
+        },
+        {
+          "identifier": "disk0s3",
+          "offset": 494909106176,
+          "size": 5368664064,
+          "content": "Apple_APFS_Recovery",
+          "container": {
+            "reference": "disk2",
+            "capacityCeiling": 5368664064,
+            "capacityFree": 2668664064,
+            "volumes": [
+              {
+                "identifier": "disk2s1",
+                "name": "Recovery",
+                "roles": [
+                  "Recovery"
+                ],
+                "capacityInUse": 2650000000
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
