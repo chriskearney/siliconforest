@@ -500,6 +500,19 @@ Ported files keep the Asahi MIT notice and name their source path and revision.
 | **M5 First real install** | J313 bring-up, then full install, boot receipt and uninstall on the M1 Air ([plan](FIRST-INSTALL-J313.md)) | **Yes, with Chris's go** |
 | **M6 Release** | Signing, notarization, the rest of the macOS matrix, public dmg | Yes |
 
+**Status, 23 November 2026** (detail in [`installer/mac/README.md`](../../installer/mac/README.md)):
+
+| Milestone | Real now | Still stubbed or open |
+|---|---|---|
+| M1 Skeleton | Every screen in the simulator, dark and light, centred on every display | |
+| M2 Read-only | Probe, disk bar, plan and dry run against this Mac's real topology | The app is not yet wired to the M3 engine |
+| M3 Engine on images | Image-only chokepoint, gate, hash-chained journal, plan binding (layout digest and live resize minimum), S00–S70 and U10–U40 with resume and rollback, resize supervisor, `DiskImageBackend` on J293- and J313-like images. Fault injection forks at every journal record (forward and back), plus power loss, failing `diskutil`, resize hang, death and reattach, and #391. `SFHelper` verb-only XPC, tested in-process | **SFStub** and its differential test against Asahi v0.9.2 (§6.4 decides the fallback if it slips), downloads, firmware extraction. S20 `updatePreboot` and S65 `bless` are simulated on images (they need root). There is no `LiveDiskBackend` |
+| M4 Recovery | `SFRecovery` (AppKit), `sf-launcher` and `sf-step2.sh`, with the PTY driver tested against fake `bputil` and `kmutil` | Never run in recoveryOS (S3, S5, S6) |
+| M6 Release | Requirement strings for team `Z642ZK8JK4`, the bundle layout, the SMAppService registration path | Developer ID signing is pending Chris's go. Notarization. Registration never exercised (S1, S2, S7) |
+
+New on images: `diskutil addPartition` carves a 128 MiB `Apple_Boot` booter out of Linux-type partitions of about
+1.5 GB or more. ENGINE's numbering has room for the new **S46**, which erases it. Confirm on the Air at G5.
+
 ## 19. Decisions and open questions
 
 Decided by Chris on 22 November 2026:
