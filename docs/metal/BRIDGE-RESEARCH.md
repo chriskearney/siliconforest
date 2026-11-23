@@ -111,7 +111,8 @@ projects (UniXNU, hakios).
 
 - `integrations/siliconforest/m1-metal2vulkan/`: pin (`eb69a32`), our patch (the conformance
   suite's replay leg on Darwin without Apple's Metal: `--cfg sf_replay_only`), `tools/build.sh`
-  (box-only cross-build: rustup nightly-2026-11-03, zig 0.15.2 + cargo-zigbuild, no Apple SDK),
+  (box-only cross-build: rustup nightly-2026-11-03, LLVM's `ld64.lld` against text stubs, no
+  Apple SDK; zig's Mach-O linker was dropped because its Rust binaries crash at start on SF),
   `tools/sfm2v.sh` (stage at `/private/var/db/sfm2v`, nothing system-wide), and `smoke/`
   (`sf-metal-smoke`, ours: floor check, a 1 Mi-element compute dispatch checked bit-exact, a
   256x256 triangle checked pixel by pixel against a CPU rasteriser; `sf-llvm-as-cache`, which
@@ -124,11 +125,17 @@ projects (UniXNU, hakios).
   announced (equal within a declared notice), 130 divergent, 805 refused, 5 lacks-feature, 3
   never-returned (lavapipe lacks ASTC, multisample counts and more; these numbers are the CPU
   baseline to compare the M1 against, not a claim about the M1).
-- **Not yet run on the M1**: the M1 (10.1.1.211) did not answer from 23:44 PST on 22 November
-  through this writing (ARP incomplete on the i9's LAN, not on the tailnet). Nothing was copied
-  to it and nothing on it changed.
+- **M1 (23 November, 00:38-00:45 PST):** SiliconForest 26.5 (Darwin 25.5.0), Vulkan through
+  Borealis (Mesa 26.3.0-devel, derived from Honeykrisp; API 1.4.363, conformance 1.4.6.2) on
+  "Apple M1 (G13G B1)". The first stage (zig-linked) died at start with SIGSEGV before any Vulkan
+  call. A Rust hello linked by `ld64.lld` ran, so every binary was relinked that way. The M1 went
+  offline again at about 00:45 before the relinked stage could be pushed. GPU results are pending.
+- **OpenH1 test case:** [OPENH1.md](OPENH1.md). All 2,071 functions of its shipped
+  `shaders.metallib` translate under the lavapipe profile.
 
 ## Demo plan (notable Metal app)
+
+The chosen test case is OpenH1 (Halo, AGPL): [OPENH1.md](OPENH1.md) has its staged plan and API gaps.
 
 In order; each step has a check that fails loudly:
 1. M1: `sfm2v.sh push`, `smoke` (floor verdict, compute, triangle frame), `harness`, `replay`.

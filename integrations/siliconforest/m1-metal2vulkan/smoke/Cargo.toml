@@ -9,6 +9,7 @@ description = "SiliconForest's Metal-on-Vulkan smoke test: floor check, a comput
 [dependencies]
 metal2vulkan-runtime = { path = "../metal2vulkan/crates/metal2vulkan-runtime" }
 sha2 = "0.11"
+metal2vulkan = { path = "../metal2vulkan/crates/metal2vulkan" }
 
 [profile.release]
 debug = false

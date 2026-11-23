@@ -11,8 +11,8 @@ copied into this repository.
     The staged binaries carry the licence texts in share/.
     Fixtures and conformance recordings are staged on the M1 for testing, never committed here.
 
-  Build-host tools (not shipped): Rust (MIT OR Apache-2.0), zig (MIT), cargo-zigbuild (MIT),
-  LLVM llvm-as (Apache-2.0 WITH LLVM-exception).
+  Build-host tools (not shipped): Rust (MIT OR Apache-2.0), zig's libSystem.tbd stub (MIT),
+  LLVM llvm-as and ld64.lld (Apache-2.0 WITH LLVM-exception).
 
 Our own files here (README, pin.env, tools/, smoke/) are MIT.
 

@@ -190,6 +190,7 @@ dependencies = [
 name = "sf-metal-smoke"
 version = "0.1.0"
 dependencies = [
+ "metal2vulkan",
  "metal2vulkan-runtime",
  "sha2",
 ]

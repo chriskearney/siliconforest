@@ -21,12 +21,15 @@ Nothing from Darling or PureDarwin is used (NOTICE).
 integrations/siliconforest/m1-metal2vulkan/tools/build.sh /workspace/sfm2v-build
 ```
 
-Rust `nightly-2026-11-03` (metal2vulkan's pin) with the `aarch64-apple-darwin` std, zig 0.15.2
-through cargo-zigbuild as the Mach-O linker (it signs ad hoc), `llvm-as` 23.1.6 on the host. With a
+Rust `nightly-2026-11-03` (metal2vulkan's pin) with the `aarch64-apple-darwin` std, LLVM 23.1.6's
+`ld64.lld` as the Mach-O linker (it signs ad hoc) against text stubs (zig 0.15.2's `libSystem.tbd`
+and a `libiconv.tbd` the script writes), and `llvm-as` 23.1.6 on the host. Do not link with zig's
+own Mach-O linker (cargo-zigbuild): its Rust binaries die with SIGSEGV at start on SiliconForest
+(thread-local variables), while the same code linked by `ld64.lld` runs. With a
 CPU Vulkan driver (lavapipe) on the host it also runs the smoke test, the harness and the
 conformance replay there first (the CPU baseline, `runs/`), recording every text handed to
 `llvm-as` into `asmcache/` so the M1 needs no LLVM. Output: `$WORK/stage` + `SHA256SUMS`. Rust's warning that `xcrun` cannot find a MacOSX.sdk is expected:
-zig links against its own `libSystem` stubs, and the binaries link `libSystem` and `libiconv` only.
+the link uses the text stubs, and the binaries link `libSystem` and `libiconv` only.
 
 ## Run on the M1 (installed SiliconForest, over SSH; nothing installed system-wide)
 
@@ -50,3 +53,9 @@ Off-screen runs take no `gui.lock`; anything windowed takes it first, as the oth
 | box, lavapipe | `harness --runtime new` | exit 0: 26 authored pipelines, 0 refused, every workload matched its CPU reference |
 | box, lavapipe | `conformance replay --cpu` | 139 exact, 243 announced, 130 divergent, 805 refused, 5 lacks-feature, 3 never-returned (CPU baseline only) |
 | M1 | all of the above | **not run yet**: the M1 was unreachable (no ARP answer on 10.1.1.211) from 22 Nov 23:44 PST |
+
+## Census of a shipped metallib
+
+`sf-metallib-census <lib.metallib> <profile.json> [--quiet]` translates every function of a
+`.metallib` alone (`Device::compile_function`) for one Khronos device profile and tallies what
+compiles and what is refused, with the reason. It is used for OpenH1 (`docs/metal/OPENH1.md`).
