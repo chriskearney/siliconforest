@@ -170,6 +170,10 @@ EXCEPT_FILES = {
     'tools/sf_rename_scan.sh': 'the scan of an installed system: its pattern is the list of old lookups',
     'tools/sf_rename_switch.sh': "asks the running kernel by the old sysctl name which halt program fits it",
     OLD_ROOT + 'rebase/swift-darwin-module.nix': "names the pattern (`pd_`) that upstream's module-map script kept and the header it missed",
+    OLD_ROOT + 'm1-j313-g2/launcher/make_lab.py': 'generates the J313 launcher from the frozen tree: it names the old strings it replaces',
+    OLD_ROOT + 'm1-j313-g2/launcher/make_packet.py': "writes the launcher's manifest, whose pin key names upstream",
+    OLD_ROOT + 'm1-j313-g2/g2.py': "names the launcher tree's frozen path and refuses the old NVMe boot argument",
+    OLD_ROOT + 'm1-j313-g2/test_g2.py': 'tests that the old NVMe boot argument is refused',
     'NOTICE': 'attribution',
     'integrations/puredarwin': 'a symbolic link to siliconforest: the frozen controllers, tests and records name files by the old path',
 }

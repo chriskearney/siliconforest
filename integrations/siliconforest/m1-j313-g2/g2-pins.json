@@ -1,0 +1,27 @@
+{
+  "window_tag": "121fcbf35d4501814b58ca5347926a4173b6a512-darwin-lab-j313-window-v1",
+  "window_raw": {
+    "path": "window-001/j313-window-raw.bin",
+    "bytes": 4325376,
+    "sha256": "a5bbd1430acc0fa0c44f9ff1ebed79f3ca5af12c0af7fee117d79f5df8b7c5e9"
+  },
+  "window_boot": {
+    "path": "window-001/j313-window-boot.bin",
+    "bytes": 10238674,
+    "sha256": "c688793a85af45b1a71254798da10f56c4f861584b1dc1e606b559f964f5664c"
+  },
+  "packet_dir": "packet-001",
+  "lab_dir": "lab-001",
+  "manifest_sha256": "1804a1c447bd305bdef52a61fbdfd36147021ccaae648dc9dea7398a058eff21",
+  "kernel_sha256": "ef49aa0a376ed1b25054247e708467c020d5c8c95855186a166a5c8f616018c8",
+  "ramdisk_sha256": "41abdbdf18a411a6fd9e905d9e6171e1790347e2ffaecbe4487a8fb020a1f762",
+  "lab_tree_sha256": "c8fb1bea55748bca6418871d405979b416997d190db9dabdfb5a852f4bd8fcbf",
+  "launcher_sha256": "43d22329488611eeda4c14a3d47d40c05533b6678289d45c91b64106e612296d",
+  "inspector_sha256": "9cf556bb91cf2200adb3520fbe099462d1c6faa260739571c8ec475ea5649ced",
+  "extra_bootargs": "sfsound=0 sftouchbar=0 sfm1tpmt=0",
+  "guest_bootargs": "-v -s debug=0x14e keepsyms=1 serial=3 serial-device-name=uart0 disable-uart-irq=1 cpus=1 rd=md0 serial_video_mirror=1 sftextboot=1 sfm1kbd=1 sfm1trackpadenum=1 sfm1trackpadchild=1 sfsound=0 sftouchbar=0 sfm1tpmt=0 sfapciebridge=1",
+  "runtime_seconds": 420,
+  "recovery_confirmation": "J313_RECOVERY_READY",
+  "macvdmtool_sha256": "db6da3ff2f86d9663f748d975ce1ce988c82047014912018775b61f207b6ff4a",
+  "esp_tool_sha256": "be9a50d77945f0cddc491e1dc290365030163f862d4057bffc9e67d6ae988a9e"
+}

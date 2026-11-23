@@ -1,0 +1,88 @@
+{
+  "status": "BUILT_OFFLINE_NOT_INSTALLED_NOT_BOOTED",
+  "source_commit": "121fcbf35d4501814b58ca5347926a4173b6a512",
+  "build_tag": "121fcbf35d4501814b58ca5347926a4173b6a512-darwin-lab-j313-window-v1",
+  "build_command": [
+    "make",
+    "-j8",
+    "USE_CLANG=1",
+    "CHAINLOADING=1",
+    "ESP_STAGE2=1",
+    "M1_BOOT_WINDOW=1",
+    "CARGO_FLAGS=--locked --offline --features chainload",
+    "V=1"
+  ],
+  "patch_sha256": "04b4c9150d064e7c68a6f1cf52c22015b5ee1038a463d7ca4693ed90e4e5f09c",
+  "tool_versions": {
+    "clang": "clang version 22.1.8",
+    "ld.lld": "LLD 22.1.8 (compatible with GNU linkers)",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "make": "GNU Make 4.4.1"
+  },
+  "control": {
+    "build_tag": "121fcbf35d4501814b58ca5347926a4173b6a512-darwin-lab-j293-window-v1",
+    "raw_sha256": "ba5bf4b396168ac540df852e3507c4342dd289eef7bf2c1fc29c50f11f0822bf",
+    "reproduces_pro_window": true
+  },
+  "raw": {
+    "bytes": 4325376,
+    "sha256": "a5bbd1430acc0fa0c44f9ff1ebed79f3ca5af12c0af7fee117d79f5df8b7c5e9"
+  },
+  "boot_bin": {
+    "bytes": 10238674,
+    "sha256": "c688793a85af45b1a71254798da10f56c4f861584b1dc1e606b559f964f5664c"
+  },
+  "original": {
+    "bytes": 10107602,
+    "sha256": "54fa07e4f5cbeecd90e67e335657c40b33c25aede7015a84afb1427333b4f923",
+    "payload_offset": 4194304
+  },
+  "payload": {
+    "bytes": 5913298,
+    "sha256": "4013e6ad437923b9d8ffdb1b6e72fa6fea03decd413fb7a288785c25e6451684",
+    "device_trees": 115,
+    "j313_device_tree": {
+      "offset": 4231128,
+      "bytes": 77337,
+      "sha256": "46f2c3b98ef407df664eec7db1cb8f820c58001fdd4308e5a36c1dc8f2198f13"
+    },
+    "uboot_gzip_offset": 5607297,
+    "uboot_gzip_bytes": 306001,
+    "uboot_uncompressed_sha256": "11c09b0de3cdb03406de09e1782aa5a30b097f1e228de7b558ca88626c87f8c5",
+    "byte_identical_to_original": true
+  },
+  "difference_from_pro_window": {
+    "section_bytes_differing": {
+      ".init": 0,
+      ".text": 6909,
+      ".rodata": 78288,
+      ".rela.dyn": 1392,
+      ".data": 0,
+      ".stack_el3": 0,
+      ".stack": 0
+    },
+    "function_table_identical": true,
+    "board_identity_instructions_changed": [
+      "0x4aa14",
+      "0x4aa20"
+    ],
+    "adrp_page_changes": 46,
+    "add_references_resolved_to_same_string": 3561,
+    "pointer_relocations_resolved_to_same_string": 1078,
+    "strings_changed": [
+      "##m1n1_ver##121fcbf35d4501814b58ca5347926a4173b6a512-darwin-lab-j293-window-v1",
+      "J293 CDC window expired; checking original payloads",
+      "chosen.asahi,m1n1-stage1-version=121fcbf35d4501814b58ca5347926a4173b6a512-darwin-lab-j293-window-v1"
+    ]
+  },
+  "difference_from_air_stage2": {
+    "comparable": false,
+    "reason": "The Air runs f5a82fdb, whose source is not in this lab. Only the payloads can be compared exactly.",
+    "code_bytes_air": 4194304,
+    "code_bytes_candidate": 4325376,
+    "printable_strings_only_in_air": 85,
+    "printable_strings_only_in_candidate": 131
+  },
+  "hardware_tested": false
+}

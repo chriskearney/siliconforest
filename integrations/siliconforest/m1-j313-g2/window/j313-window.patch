@@ -1,0 +1,30 @@
+--- a/src/m1_boot_window.c
++++ b/src/m1_boot_window.c
+@@ -3,7 +3,7 @@
+ bool m1_boot_window_allowed(uint32_t chip, const char *target, size_t length, bool debug)
+ {
+     return !debug && chip == 0x8103 && target && length == 5 &&
+-           (target[0] == 'J' || target[0] == 'j') && target[1] == '2' && target[2] == '9' &&
++           (target[0] == 'J' || target[0] == 'j') && target[1] == '3' && target[2] == '1' &&
+            target[3] == '3' && target[4] == '\0';
+ }
+ 
+--- a/src/m1_boot_window.h
++++ b/src/m1_boot_window.h
+@@ -1,4 +1,4 @@
+-/* Bounded J293 bootstrap acquisition policy. No hardware access. */
++/* Bounded J313 bootstrap acquisition policy. No hardware access. */
+ #ifndef M1_BOOT_WINDOW_H
+ #define M1_BOOT_WINDOW_H
+ 
+--- a/src/main.c
++++ b/src/main.c
+@@ -104,7 +104,7 @@
+             return;
+         }
+         window_timed_out = true;
+-        printf("J293 CDC window expired; checking original payloads\n");
++        printf("J313 CDC window expired; checking original payloads\n");
+     }
+ #endif
+ 
