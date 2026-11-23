@@ -1,0 +1,9 @@
+# Bindings the declared-library rule would move, kept as kernels 48, 50 and 51 have them
+# (kc-tools-bind.patch; ../m1-exit-waits/kc-tools-duplicate-names.md). Format: kext symbol provider.
+#
+# SFBwfm declares IO80211Family, which defines m_gethdr (a wrapper of mbuf_gethdr), so the rule binds
+# IO80211Family's. Kernels 48 to 51 bind the kernel's m_gethdr, which the kernel exports only in
+# com.apple.kpi.private (Private.exports), not declared by SFBwfm. The two allocate the same mbuf
+# header (same wait and type values); this pin keeps the installed binding until it is changed on
+# purpose. SFBwfm's m_adj, m_copydata and m_freem already bind IO80211Family's and need no pin.
+org.siliconforest.driver.SFBwfm _m_gethdr kernel
