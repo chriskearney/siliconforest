@@ -84,8 +84,8 @@ If declined, G2 stays stopped. No other route in section 2 works within the cons
 
 None of these touch the Air.
 
-1. **G0 and G1 are not done.** On `main`, `m1kbd_board.c` refuses J313, `dispdt.c` hard-codes J293's panel, and no J313 kernel
-   collection has been built.
+1. **G0 and G1 are done on the host, unbooted.** Use the **G2 RAM boot** collection recorded in
+   [`FIRST-INSTALL-J313.md`](FIRST-INSTALL-J313.md) section 5. The other collection there contains the write-capable NVMe driver.
 2. **A J313 window build.** Candidate004 enters its window only for `J293`, so on the Air it would act as a plain loader. Build a
    distinct J313-only variant with its own version tag, keeping the 10-second limit and the complete-NOP claim rule. Append the Air's
    exact bytes from offset `0x400000`.
@@ -97,6 +97,7 @@ None of these touch the Air.
    - **Remove** `rd=uuid`, `boot-uuid=` and every `sfnvme*` argument. The profile's list includes `sfnvme=3` and `sfnvme_write=1`,
      which are for an installed system and must never reach this boot.
    - **Keep** `sfsound=0` and `sftouchbar=0`. `sfsound=0` is a safety requirement on J313.
+   - **Add** `sfm1tpmt=0`. Multitouch mode is on by default, and this boot must not enable it.
    - Use a RAM root and the **default** collection, which has no NVMe driver. Never use the `storage` collection.
    - Start the guest script with `rebase/guest/rb-prologue.sh`, which ends the session if anything attaches to the NVMe controller.
 
