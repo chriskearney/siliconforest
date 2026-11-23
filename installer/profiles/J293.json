@@ -1,0 +1,284 @@
+{
+  "$schema": "./device-profile.schema.json",
+  "schema_version": 1,
+  "id": "J293",
+  "status": "development",
+  "status_reason": "SiliconForest runs on one J293 from a hand-made install. This installer does not exist yet and has not run on any Mac, so the acceptance gates below are all not-run.",
+  "identity": {
+    "target_type": "J293",
+    "hw_model": "MacBookPro17,1",
+    "device_class": "j293ap",
+    "soc": "t8103",
+    "chip_id": "0x8103",
+    "board_id": "0x24",
+    "compatible": ["apple,j293", "apple,t8103"],
+    "marketing_name": "MacBook Pro (13-inch, M1, 2020)"
+  },
+  "host_macos": {
+    "minimum": "13.5",
+    "maximum_tested_major": 26,
+    "tested_on_hardware": [],
+    "blocked_majors": [
+      {
+        "major": 27,
+        "reason": "An APFS container resize failure (-69606) was reported on macOS 27 and the reporter's fix was rolling back to 26. Blocked until one real install passes.",
+        "source": "https://github.com/AsahiLinux/asahi-installer/issues/448"
+      }
+    ]
+  },
+  "stub": {
+    "version": "13.5",
+    "build": "22G74",
+    "restore_image": {
+      "url": "https://updates.cdn-apple.com/2023SummerFCS/fullrestores/032-69606/D3E05CDF-E105-434C-A4A1-4E3DC7668DD0/UniversalMac_13.5_22G74_Restore.ipsw",
+      "bytes": 12893195726,
+      "approximate_download_bytes": 720000000
+    },
+    "identity": {
+      "ap_board_id": "0x24",
+      "ap_chip_id": "0x8103",
+      "device_class": "j293ap",
+      "restore_behavior": "Erase",
+      "variant": "macOS Customer"
+    },
+    "minimum_iboot": "iBoot-8422.141.2",
+    "minimum_sfr": "22.7.74.0.0,0",
+    "partition_bytes": 2499805184,
+    "skip_manifest_keys": [
+      "BaseSystem",
+      "OS",
+      "Ap,SystemVolumeCanonicalMetadata",
+      "RestoreRamDisk",
+      "RestoreTrustCache",
+      "Cryptex*"
+    ]
+  },
+  "boot": {
+    "stage1": {
+      "artifact": "sf-stage1.bin",
+      "source": "https://github.com/omacom/m1n1",
+      "source_revision": "121fcbf35d4501814b58ca5347926a4173b6a512",
+      "max_stage2_span_bytes": 4325376,
+      "stage2_margin_bytes": 32768,
+      "variables": [
+        "chosen.asahi,efi-system-partition=@SF_BOOT_PARTUUID@",
+        "chainload=@SF_BOOT_PARTUUID@;sf/boot.bin"
+      ]
+    },
+    "stage2": {
+      "path": "sf/boot.bin",
+      "kernel_path": "sf/kernel.bin"
+    },
+    "kmutil": {
+      "raw": true,
+      "entry_point": 2048,
+      "lowest_virtual_address": 0
+    },
+    "bputil_args": ["-nc"],
+    "pack": {
+      "display": 1,
+      "usb-nodes": "remove0",
+      "sprr": 1,
+      "amx": 1,
+      "xnu-base": "0x850000000"
+    }
+  },
+  "kernel": {
+    "collection_recipe": "integrations/siliconforest/m1-storage/build-kc-native-rw-halt.nix",
+    "config": "DEVELOPMENT",
+    "arguments": [
+      "-v", "debug=0x14e", "keepsyms=1", "serial=0x13", "serial-device-name=uart0", "disable-uart-irq=1",
+      "serial_video_mirror=0", "sftextboot=0", "-noprogress",
+      "sfm1kbd=1", "sfm1trackpadenum=1", "sfm1trackpadchild=1", "cpus=8",
+      "sfgpudt=2", "sfgpudt_stringprops=1", "sfagx=1", "sfdispdt=2", "sfdcp=2",
+      "rd=uuid", "boot-uuid=@SF_FSUUID@", "wdt=-1",
+      "sfnvme=3", "sfnvme_ttl=0", "sfnvme_part=@SF_PARTUUID@", "sfnvme_part_lba=@SF_PART_LBA@", "sfnvme_part_blocks=@SF_PART_BLOCKS@",
+      "sfnvme_write=1", "sfnvme_readfence=1",
+      "sf_quiet_wait=0", "sf_rtc_wait=0", "sfthermal_delay=4", "sfcpuheld=1", "sfapciebridge=1", "sfavd=1", "if_attach_nx=46"
+    ],
+    "personalized_fields": {
+      "@SF_FSUUID@": "The release's root filesystem UUID. A per-release constant, never changed at install.",
+      "@SF_PARTUUID@": "This Mac's root partition UUID, lower case.",
+      "@SF_PART_LBA@": "First 4096-byte block of the root partition.",
+      "@SF_PART_BLOCKS@": "Length of the root partition in 4096-byte blocks."
+    },
+    "notes": [
+      "Taken from integrations/siliconforest/m1-native-boot/install/build.sh (ARGS), the command line of the installed M1. A release's bootargs.template is authoritative and must equal this list.",
+      "The list still contains development flags (-v, debug, keepsyms, serial). Review them before a public release."
+    ]
+  },
+  "layout": {
+    "alignment_bytes": 1048576,
+    "macos_free_reserve_bytes": 38000000000,
+    "small_disk_threshold_bytes": 161061273600,
+    "small_disk_reserve_bytes": 1000000000,
+    "drift_margin": {
+      "fraction": 0.05,
+      "maximum_bytes": 8589934592
+    },
+    "partitions": [
+      { "role": "stub", "type": "apfs", "format": "apfs", "bytes": 2499805184 },
+      { "role": "boot", "type": "EFI", "format": "fat32", "label": "SFBOOT", "bytes": 524288000 },
+      { "role": "root", "type": "Linux", "format": "ext4-image" }
+    ],
+    "root": {
+      "default_bytes": 51539607552,
+      "default_disk_fraction": 0.25,
+      "low_space_note_bytes": 40000000000
+    }
+  },
+  "hardware": {
+    "display": {
+      "width_px": 2560,
+      "height_px": 1600,
+      "diagonal_inches": 13.3,
+      "notch": false,
+      "promotion": false
+    },
+    "input": {
+      "keyboard": "Apple SPI HID",
+      "trackpad": "Apple SPI HID",
+      "touch_bar": true
+    },
+    "wifi_board": "apple,honshu",
+    "power_button": {
+      "location": "touch-id-key",
+      "hold_copy": "Press and hold the Touch ID button, at the top right of the keyboard, until you see \"Loading startup options\"."
+    },
+    "kernel_extensions": [
+      { "name": "SFArmPlatformExpert", "purpose": "Platform expert (native-boot build, cores held by the loader)" },
+      { "name": "IOGOPFramebuffer", "purpose": "Console framebuffer and return to text console" },
+      { "name": "IOHIDFamily", "purpose": "HID family with the native input changes" },
+      { "name": "SFAppleNVMeRW", "purpose": "Internal NVMe, with the write fence on the root partition", "boot_argument": "sfnvme=3" },
+      { "name": "ext4", "purpose": "Root filesystem" },
+      { "name": "SFM1SPIHID", "purpose": "Keyboard and trackpad over SPI", "boot_argument": "sfm1kbd=1" },
+      { "name": "SFApcieT8103Bridge", "purpose": "PCIe host bridge", "boot_argument": "sfapciebridge=1" },
+      { "name": "IO80211Family", "purpose": "Wi-Fi family" },
+      { "name": "SFBwfm", "purpose": "BCM4378 Wi-Fi" },
+      { "name": "SFGpuDT", "purpose": "GPU device-tree preparation", "boot_argument": "sfgpudt=2" },
+      { "name": "SFDRMDri", "purpose": "DRM support" },
+      { "name": "SFAgx", "purpose": "AGX GPU", "boot_argument": "sfagx=1" },
+      { "name": "SFDcp", "purpose": "Display coprocessor", "boot_argument": "sfdcp=2" },
+      { "name": "SFCpuPower", "purpose": "CPU power, SMC restart and power-off, hardware clock" },
+      { "name": "SFAppleSound", "purpose": "Sound" },
+      { "name": "SFAppleTouchBar", "purpose": "Touch Bar" },
+      { "name": "SFAppleAVD", "purpose": "Video decoder", "boot_argument": "sfavd=1" }
+    ]
+  },
+  "firmware": {
+    "policy": "extract-on-this-mac-never-redistribute",
+    "slot": {
+      "path_in_root": "/private/var/db/sf-firmware-slot",
+      "bytes": 33554432,
+      "header_magic": "SFFWSLOT1"
+    },
+    "items": [
+      {
+        "id": "wifi-bcm4378-honshu",
+        "class": "wifi",
+        "required": true,
+        "source": {
+          "kind": "stub-basesystem",
+          "path": "usr/share/firmware/wifi/C-4378__s-B1/P-honshu*",
+          "extractor": "asahi_firmware/wifi.py (v0.9.2), to be ported"
+        },
+        "install_as": "/Library/Firmware/brcm/brcmfmac4378b1-pcie.apple,honshu*",
+        "consumer": "integrations/siliconforest/m1-bwfm",
+        "status": "Output names are expected from the extractor's rules. Not yet produced by the installer."
+      },
+      {
+        "id": "touchbar-digitizer",
+        "class": "touch-bar",
+        "required": true,
+        "source": {
+          "kind": "restore-image-fud",
+          "path": "Firmware/J293_Multitouch.im4p",
+          "extractor": "asahi_firmware/multitouch.py (v0.9.2), to be ported"
+        },
+        "install_as": "/Library/Firmware/apple/dfrmtfw-j293.bin",
+        "consumer": "integrations/siliconforest/m1-touchbar/kernel/SFAppleTouchBar.cpp",
+        "status": "Output name is the one the driver loads. Extraction from this image is not yet verified."
+      }
+    ],
+    "not_installed": [
+      {
+        "class": "bluetooth",
+        "reason": "No SiliconForest driver consumes it yet (SF-J). Add brcm/brcmbt4378b1-apple,honshu-* when one does."
+      },
+      {
+        "class": "trackpad",
+        "reason": "No driver in this tree loads a tpmtfw file on J293."
+      },
+      {
+        "class": "boot-firmware",
+        "reason": "GPU, display, sound and other coprocessor firmware is loaded by iBoot from the stub, so it comes from the 13.5 restore image and is not copied into the root."
+      }
+    ]
+  },
+  "quirks": [
+    {
+      "id": "stub-firmware-13-5",
+      "severity": "info",
+      "summary": "The stub is macOS 13.5. The GPU driver's pinned reference profile is V13_5/G13; the ABI of the firmware actually loaded under Darwin has not been independently proved.",
+      "effect": "Never change stub.version without re-proving the GPU, display and other firmware-dependent drivers.",
+      "source": "reports/sprint-010/gpu-t8103-firmware-abi-evidence-001.json"
+    },
+    {
+      "id": "omacom-218-boot-loop",
+      "severity": "blocker-until-tested",
+      "summary": "An Omarchy install on J293 with macOS 26.6.1 and the 13.5 stub reportedly boot-loops after the recovery step. Cause unknown.",
+      "effect": "Check on real hardware that SiliconForest's stage 1 starts on current system firmware. The one-shot first boot limits the damage.",
+      "source": "https://github.com/omacom/omarchy-mac-installer/issues/218"
+    },
+    {
+      "id": "bless-code-112",
+      "severity": "caution",
+      "summary": "bless can fail with Code 112 on M1 and M2 Macs running macOS 26.x. Cause not established.",
+      "effect": "Show this specific failure with its known options. Do not call it a wrong password.",
+      "source": "https://github.com/AsahiLinux/asahi-installer/issues/404"
+    },
+    {
+      "id": "stage2-size-budget",
+      "severity": "caution",
+      "summary": "Stage 1 refuses a stage 2 whose span overlaps its live heap. Only its own image size, 4,325,376 bytes, is certain.",
+      "effect": "Fail the install before writing if the stage 2 span plus margin exceeds the budget.",
+      "source": "integrations/siliconforest/m1-native-boot/install/INSTALL.md"
+    },
+    {
+      "id": "no-nvram-driver",
+      "severity": "info",
+      "summary": "SiliconForest cannot change the default boot volume.",
+      "effect": "Boot selection must be set from macOS or recoveryOS. A failed start must be able to land in macOS.",
+      "source": "integrations/siliconforest/m1-native-boot/install/INSTALL.md"
+    },
+    {
+      "id": "root-write-fence",
+      "severity": "info",
+      "summary": "The kernel writes only inside the root partition named on its command line.",
+      "effect": "sf/kernel.bin must be personalised after the root partition exists, and the boot receipt must live inside the root partition.",
+      "source": "integrations/siliconforest/m1-storage/kernel/sf_nvme_wgate.h"
+    },
+    {
+      "id": "hand-made-development-install",
+      "severity": "caution",
+      "summary": "The development M1's layout was made by hand, with its root before the stub.",
+      "effect": "Classified as sf.unproven. The installer refuses to modify or remove it.",
+      "source": "integrations/siliconforest/m1-native-boot/install/INSTALL.md"
+    }
+  ],
+  "support": {
+    "installer_tested_on_hardware": false,
+    "evidence": [
+      "integrations/siliconforest/m1-native-boot/install/INSTALL.md"
+    ],
+    "acceptance": {
+      "install": "not-run",
+      "recovery": "not-run",
+      "first_boot_receipt": "not-run",
+      "update": "not-run",
+      "interrupted_install": "not-run",
+      "failed_boot_returns": "not-run",
+      "uninstall": "not-run"
+    }
+  }
+}

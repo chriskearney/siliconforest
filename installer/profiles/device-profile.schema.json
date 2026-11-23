@@ -1,0 +1,406 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/chriskearney/siliconforest/installer/profiles/device-profile.schema.json",
+  "title": "SiliconForest Installer device profile",
+  "description": "Everything the installer needs to know about one Mac model. Profiles name firmware and never contain it. They must not contain serial numbers, ECIDs, MAC addresses, user names or other per-machine identifiers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "status", "status_reason", "identity", "host_macos", "stub", "boot", "kernel", "layout", "hardware", "firmware", "quirks", "support"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": { "const": 1 },
+    "id": { "$ref": "#/$defs/boardName", "description": "Board name; must equal identity.target_type and the file name." },
+    "status": {
+      "enum": ["refused", "development", "preview", "supported"],
+      "description": "See docs/installer/ADDING-A-MAC.md. A release may narrow this, never widen it."
+    },
+    "status_reason": { "type": "string", "minLength": 1 },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_type", "hw_model", "device_class", "soc", "chip_id", "board_id", "compatible", "marketing_name"],
+      "properties": {
+        "target_type": { "$ref": "#/$defs/boardName", "description": "sysctl hw.targettype" },
+        "hw_model": { "type": "string", "pattern": "^(Mac|MacBookAir|MacBookPro|Macmini|iMac|iMacPro|MacPro)[0-9]+,[0-9]+$" },
+        "device_class": { "type": "string", "pattern": "^[a-z][0-9]+[a-z]*ap$" },
+        "soc": { "type": "string", "pattern": "^t[0-9]{4}$" },
+        "chip_id": { "$ref": "#/$defs/hex" },
+        "board_id": { "$ref": "#/$defs/hex" },
+        "compatible": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^apple,[a-z0-9]+$" }
+        },
+        "marketing_name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "host_macos": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum_tested_major", "blocked_majors"],
+      "properties": {
+        "minimum": { "$ref": "#/$defs/version" },
+        "maximum_tested_major": { "type": "integer", "minimum": 13 },
+        "tested_on_hardware": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/version" },
+          "description": "macOS versions on which the installer itself has completed the acceptance checklist on this board."
+        },
+        "blocked_majors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["major", "reason"],
+            "properties": {
+              "major": { "type": "integer", "minimum": 13 },
+              "reason": { "type": "string", "minLength": 1 },
+              "source": { "type": "string", "format": "uri" }
+            }
+          }
+        }
+      }
+    },
+    "stub": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "build", "restore_image", "identity", "minimum_iboot", "minimum_sfr", "partition_bytes", "skip_manifest_keys"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "build": { "type": "string", "pattern": "^[0-9]{2}[A-Z][0-9]+[a-z]?$" },
+        "restore_image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "bytes"],
+          "properties": {
+            "url": { "type": "string", "pattern": "^https://updates\\.cdn-apple\\.com/" },
+            "bytes": { "type": "integer", "minimum": 1 },
+            "approximate_download_bytes": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ap_board_id", "ap_chip_id", "device_class", "restore_behavior", "variant"],
+          "properties": {
+            "ap_board_id": { "$ref": "#/$defs/hex" },
+            "ap_chip_id": { "$ref": "#/$defs/hex" },
+            "device_class": { "type": "string" },
+            "restore_behavior": { "enum": ["Erase", "Update"] },
+            "variant": { "type": "string", "minLength": 1 }
+          }
+        },
+        "minimum_iboot": { "type": "string", "pattern": "^iBoot-[0-9.]+$" },
+        "minimum_sfr": { "type": "string", "minLength": 1 },
+        "partition_bytes": { "$ref": "#/$defs/bytes" },
+        "skip_manifest_keys": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "boot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage1", "stage2", "kmutil", "bputil_args", "pack"],
+      "properties": {
+        "stage1": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["artifact", "source", "source_revision", "max_stage2_span_bytes", "variables"],
+          "properties": {
+            "artifact": { "type": "string" },
+            "source": { "type": "string", "format": "uri" },
+            "source_revision": { "$ref": "#/$defs/gitRevision" },
+            "max_stage2_span_bytes": { "$ref": "#/$defs/bytes" },
+            "stage2_margin_bytes": { "type": "integer", "minimum": 0 },
+            "variables": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          }
+        },
+        "stage2": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "kernel_path"],
+          "properties": {
+            "path": { "type": "string" },
+            "kernel_path": { "type": "string" }
+          }
+        },
+        "kmutil": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["raw", "entry_point", "lowest_virtual_address"],
+          "properties": {
+            "raw": { "type": "boolean" },
+            "entry_point": { "type": "integer", "minimum": 0 },
+            "lowest_virtual_address": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "bputil_args": { "type": "array", "items": { "type": "string", "pattern": "^-[a-z]+$" }, "minItems": 1 },
+        "pack": { "type": "object", "additionalProperties": { "type": ["string", "integer"] } }
+      }
+    },
+    "kernel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collection_recipe", "config", "arguments", "personalized_fields"],
+      "properties": {
+        "collection_recipe": { "type": "string" },
+        "config": { "enum": ["DEVELOPMENT", "DEBUG", "RELEASE"] },
+        "arguments": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+        "personalized_fields": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Placeholder in arguments -> what the installer substitutes."
+        },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alignment_bytes", "macos_free_reserve_bytes", "small_disk_threshold_bytes", "small_disk_reserve_bytes", "drift_margin", "partitions", "root"],
+      "properties": {
+        "alignment_bytes": { "$ref": "#/$defs/bytes" },
+        "macos_free_reserve_bytes": { "$ref": "#/$defs/bytes" },
+        "small_disk_threshold_bytes": { "$ref": "#/$defs/bytes" },
+        "small_disk_reserve_bytes": { "$ref": "#/$defs/bytes" },
+        "drift_margin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fraction", "maximum_bytes"],
+          "properties": {
+            "fraction": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+            "maximum_bytes": { "$ref": "#/$defs/bytes" }
+          }
+        },
+        "partitions": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "type", "format"],
+            "properties": {
+              "role": { "enum": ["stub", "boot", "root"] },
+              "type": { "enum": ["apfs", "EFI", "Linux"] },
+              "format": { "enum": ["apfs", "fat32", "ext4-image"] },
+              "label": { "type": "string", "maxLength": 11 },
+              "bytes": { "$ref": "#/$defs/bytes" }
+            }
+          }
+        },
+        "root": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["default_bytes", "default_disk_fraction", "low_space_note_bytes"],
+          "properties": {
+            "default_bytes": { "$ref": "#/$defs/bytes" },
+            "default_disk_fraction": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+            "low_space_note_bytes": { "$ref": "#/$defs/bytes" }
+          }
+        }
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["display", "input", "wifi_board", "power_button", "kernel_extensions"],
+      "properties": {
+        "display": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width_px", "height_px", "diagonal_inches", "notch"],
+          "properties": {
+            "width_px": { "type": "integer", "minimum": 1 },
+            "height_px": { "type": "integer", "minimum": 1 },
+            "diagonal_inches": { "type": "number", "exclusiveMinimum": 0 },
+            "notch": { "type": "boolean" },
+            "promotion": { "type": "boolean" }
+          }
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["keyboard", "trackpad"],
+          "properties": {
+            "keyboard": { "type": "string" },
+            "trackpad": { "type": "string" },
+            "touch_bar": { "type": "boolean" }
+          }
+        },
+        "wifi_board": { "type": "string" },
+        "power_button": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["location", "hold_copy"],
+          "properties": {
+            "location": { "enum": ["touch-id-key", "power-key", "rear-button"] },
+            "hold_copy": { "type": "string", "minLength": 1 }
+          }
+        },
+        "kernel_extensions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "purpose"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[A-Za-z0-9_]+$" },
+              "purpose": { "type": "string", "minLength": 1 },
+              "boot_argument": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "firmware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "slot", "items"],
+      "properties": {
+        "policy": { "const": "extract-on-this-mac-never-redistribute" },
+        "slot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path_in_root", "bytes", "header_magic"],
+          "properties": {
+            "path_in_root": { "type": "string", "pattern": "^/" },
+            "bytes": { "$ref": "#/$defs/bytes" },
+            "header_magic": { "type": "string" }
+          }
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "class", "required", "source", "install_as", "consumer"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+              "class": { "enum": ["wifi", "bluetooth", "touch-bar", "trackpad", "camera", "other"] },
+              "required": { "type": "boolean" },
+              "source": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "path"],
+                "properties": {
+                  "kind": { "enum": ["stub-basesystem", "restore-image-fud", "live-machine"] },
+                  "path": { "type": "string" },
+                  "extractor": { "type": "string" }
+                }
+              },
+              "install_as": { "type": "string", "pattern": "^/" },
+              "consumer": { "type": "string" },
+              "status": { "type": "string" }
+            }
+          }
+        },
+        "not_installed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["class", "reason"],
+            "properties": {
+              "class": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "quirks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "summary", "effect"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "severity": { "enum": ["info", "caution", "blocker-until-tested"] },
+          "summary": { "type": "string", "minLength": 1 },
+          "effect": { "type": "string", "minLength": 1 },
+          "source": { "type": "string" }
+        }
+      }
+    },
+    "support": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["installer_tested_on_hardware", "evidence", "acceptance"],
+      "properties": {
+        "installer_tested_on_hardware": { "type": "boolean" },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "acceptance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["install", "recovery", "first_boot_receipt", "update", "interrupted_install", "failed_boot_returns", "uninstall"],
+          "properties": {
+            "install": { "$ref": "#/$defs/gate" },
+            "recovery": { "$ref": "#/$defs/gate" },
+            "first_boot_receipt": { "$ref": "#/$defs/gate" },
+            "update": { "$ref": "#/$defs/gate" },
+            "interrupted_install": { "$ref": "#/$defs/gate" },
+            "failed_boot_returns": { "$ref": "#/$defs/gate" },
+            "uninstall": { "$ref": "#/$defs/gate" }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "supported" } } },
+      "then": {
+        "properties": {
+          "support": {
+            "properties": {
+              "installer_tested_on_hardware": { "const": true },
+              "acceptance": {
+                "properties": {
+                  "install": { "const": "passed" },
+                  "recovery": { "const": "passed" },
+                  "first_boot_receipt": { "const": "passed" },
+                  "update": { "const": "passed" },
+                  "interrupted_install": { "const": "passed" },
+                  "failed_boot_returns": { "const": "passed" },
+                  "uninstall": { "const": "passed" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "preview" } } },
+      "then": {
+        "properties": {
+          "support": {
+            "properties": {
+              "installer_tested_on_hardware": { "const": true },
+              "acceptance": {
+                "properties": {
+                  "install": { "const": "passed" },
+                  "recovery": { "const": "passed" },
+                  "first_boot_receipt": { "const": "passed" },
+                  "uninstall": { "const": "passed" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "boardName": { "type": "string", "pattern": "^[JM][0-9]+[A-Za-z]*$" },
+    "hex": { "type": "string", "pattern": "^0x[0-9a-f]+$" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$" },
+    "bytes": { "type": "integer", "minimum": 1 },
+    "gitRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "gate": { "enum": ["not-run", "failed", "passed"] }
+  }
+}
