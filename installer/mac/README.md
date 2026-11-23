@@ -65,6 +65,15 @@ swift run SFInstaller                # native full screen in its own Space; Esc 
 scripts/make-app.sh                  # build/SiliconForest Installer.app (release, ad hoc signed)
 ```
 
+Results on 23 November 2026, on the M5:
+- All 66 tests in 15 suites passed, 0 failed: 57 non-image tests and 9 disk-image tests.
+- `SF_FULL_SWEEP=1` forked at all 67 records of an install. 66 forked resumes reached the handoff, and
+  65 forked rollbacks restored the original partition table (the end record has no rollback).
+- The sweep also forked at all 40 records of a rollback. All 40 resumed rollbacks finished, restoring
+  the table with the Linux partitions untouched.
+
+`SF_KEEP=1` keeps the per-test images and journals. `SF_REBUILD_TEMPLATES=1` rebuilds the template images.
+
 App options:
 
 | Option | Effect |
