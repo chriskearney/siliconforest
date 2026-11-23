@@ -1,0 +1,1016 @@
+VirtIO GPU: Follow the host size of scanout 0 with the primary framebuffer
+
+On a display event whose scanout 0 size is new and between 640x480 and 3840x2160, replace the framebuffer through the mode change path. Display events, client mode sets, client scanout resources and presenter flips change scanout 0 one at a time. A size outside the mode list is mode 0x100, so the listed mode ids stay, and the framebuffer connection counts and copies the mode ids in one step. A refused step keeps the old mode and sets its scanout again. A SET_SCANOUT without a reply keeps both framebuffers and the old mode, and the old scanout is set again before any later change. Framebuffer connections read a generation that advances with each new framebuffer. Add the replacement steps and the mode ids as a header with a host test.
+
+diff --git a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
+index b90e58a..d2ca5b1 100644
+--- a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
++++ b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.cpp
+@@ -668,6 +668,13 @@ IOVirtIOGPU::gpuAttachBacking(uint32_t resourceId, uint64_t phys, uint32_t size)
+ 
+ bool
+ IOVirtIOGPU::gpuSetScanout(uint32_t scanoutId, uint32_t resourceId, uint32_t width, uint32_t height)
++{
++    return gpuSetScanoutReply(scanoutId, resourceId, width, height) == sf_vgpu_ok;
++}
++
++// without a reply the host may still carry the command out, so either resource may be on the scanout
++sf_vgpu_reply
++IOVirtIOGPU::gpuSetScanoutReply(uint32_t scanoutId, uint32_t resourceId, uint32_t width, uint32_t height)
+ {
+     VGpuSetScanout req; bzero(&req, sizeof(req));
+     req.hdr.type = VIRTIO_GPU_CMD_SET_SCANOUT;
+@@ -677,8 +684,9 @@ IOVirtIOGPU::gpuSetScanout(uint32_t scanoutId, uint32_t resourceId, uint32_t wid
+     req.resource_id = resourceId;
+ 
+     VGpuCtrlHdr resp; bzero(&resp, sizeof(resp));
+-    return sendCommand(&req, sizeof(req), &resp, sizeof(resp)) &&
+-           resp.type == VIRTIO_GPU_RESP_OK_NODATA;
++    if (!sendCommand(&req, sizeof(req), &resp, sizeof(resp)))
++        return sf_vgpu_no_reply;
++    return resp.type == VIRTIO_GPU_RESP_OK_NODATA ? sf_vgpu_ok : sf_vgpu_refused;
+ }
+ 
+ bool
+@@ -730,6 +738,10 @@ bool
+ IOVirtIOGPU::gpuSetScanoutResource(uint32_t resourceId, uint32_t width,
+                                    uint32_t height)
+ {
++    if (!fModeLock)
++        return false;
++    // scanout 0 changes one at a time, framebuffer replacements included
++    IOLockLock(fModeLock);
+     if (resourceId == 0) {
+         // a presenter's last flip is what the display was showing before
+         uint32_t presented = presentedResource(0);
+@@ -738,18 +750,22 @@ IOVirtIOGPU::gpuSetScanoutResource(uint32_t resourceId, uint32_t width,
+         width = fWidth;
+         height = fHeight;
+     }
+-    if (width == 0 || height == 0 || width > fWidth || height > fHeight)
+-        return false;
+-
+-    if (!gpuSetScanout(0, resourceId, width, height))
++    if (width == 0 || height == 0 || width > fWidth || height > fHeight ||
++        !gpuSetScanout(0, resourceId, width, height)) {
++        IOLockUnlock(fModeLock);
+         return false;
++    }
+ 
++    IOLockLock(fCtrlLock);
+     fScanoutResourceId = resourceId;
+     fScanoutWidth = width;
+     fScanoutHeight = height;
++    IOLockUnlock(fCtrlLock);
+     // Whatever the resource already holds on the host is what appears, a
+     // guest-backed surface has to be pushed with gpuFlushSurface() first.
+-    return gpuResourceFlush(resourceId, 0, 0, width, height);
++    bool flushed = gpuResourceFlush(resourceId, 0, 0, width, height);
++    IOLockUnlock(fModeLock);
++    return flushed;
+ }
+ 
+ bool
+@@ -798,13 +814,22 @@ IOVirtIOGPU::presenterShow(uint32_t scanout, uint32_t resourceId, uint32_t width
+ {
+     uint32_t w = 0, h = 0;
+ 
+-    if (scanout >= kMaxDisplays || !fPresenting[scanout] || !scanoutSize(scanout, &w, &h) ||
+-        w != width || h != height)
++    if (scanout >= kMaxDisplays || (scanout == 0 && !fModeLock))
+         return false;
+-    if (!gpuTransferToHost2D(resourceId, 0, 0, width, height) ||
++    // scanout 0 changes one at a time, framebuffer replacements included: the size checked here is
++    // still the framebuffer's when the flip reaches the scanout
++    IOLock *modeLock = scanout == 0 ? fModeLock : NULL;
++
++    if (modeLock)
++        IOLockLock(modeLock);
++    if (!fPresenting[scanout] || !scanoutSize(scanout, &w, &h) || w != width || h != height ||
++        !gpuTransferToHost2D(resourceId, 0, 0, width, height) ||
+         !gpuSetScanout(scanout, resourceId, width, height) ||
+-        !gpuResourceFlush(resourceId, 0, 0, width, height))
++        !gpuResourceFlush(resourceId, 0, 0, width, height)) {
++        if (modeLock)
++            IOLockUnlock(modeLock);
+         return false;
++    }
+ 
+     IOLockLock(fCtrlLock);
+     fPresentedRes[scanout] = resourceId;
+@@ -814,6 +839,8 @@ IOVirtIOGPU::presenterShow(uint32_t scanout, uint32_t resourceId, uint32_t width
+         fScanoutHeight = height;
+     }
+     IOLockUnlock(fCtrlLock);
++    if (modeLock)
++        IOLockUnlock(modeLock);
+     return true;
+ }
+ 
+@@ -842,8 +869,12 @@ IOVirtIOGPU::presentedResource(uint32_t scanout)
+ void
+ IOVirtIOGPU::presenterEnd(uint32_t scanout)
+ {
+-    if (scanout >= kMaxDisplays)
++    if (scanout >= kMaxDisplays || (scanout == 0 && !fModeLock))
+         return;
++    // scanout 0 changes one at a time, framebuffer replacements included: the framebuffer set back is
++    // the one published, not one a replacement is about to release
++    if (scanout == 0)
++        IOLockLock(fModeLock);
+     IOLockLock(fCtrlLock);
+     uint32_t presented = fPresentedRes[scanout];
+     bool showing = presented != 0 && (scanout != 0 || fScanoutResourceId == presented);
+@@ -865,6 +896,8 @@ IOVirtIOGPU::presenterEnd(uint32_t scanout)
+         gpuTransferToHost2D(fResourceId, 0, 0, fWidth, fHeight);
+         gpuResourceFlush(fResourceId, 0, 0, fWidth, fHeight);
+     }
++    IOLockUnlock(fModeLock);
++    // outside the mode lock: it reaches into the console machinery
+     releasePresentOwnership();
+ }
+ 
+@@ -1048,20 +1081,27 @@ IOVirtIOGPU::releasePresentOwnership()
+ bool
+ IOVirtIOGPU::gpuPresent(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
+ {
+-    if (!fFbBase || x >= fWidth || y >= fHeight)
++    if (!fFbBase)
++        return false;
++    // the framebuffer's size is read with the lock a mode change publishes it under
++    IOLockLock(fCtrlLock);
++    if (x >= fWidth || y >= fHeight) {
++        IOLockUnlock(fCtrlLock);
+         return false;
++    }
+     if (width > fWidth - x)
+         width = fWidth - x;
+     if (height > fHeight - y)
+         height = fHeight - y;
+-    if (!width || !height)
++    if (!width || !height) {
++        IOLockUnlock(fCtrlLock);
+         return true;
++    }
+ 
+     /* Queue the region for the periodic control-queue worker.  The old path
+      * synchronously waited for two VirtIO responses on every mouse motion,
+      * which made XWayland clients block input while native Wayland appeared
+      * responsive. */
+-    IOLockLock(fCtrlLock);
+     bool tookOver = !fNativePresent;
+     fNativePresent = true;
+     if (!fPresentPending) {
+@@ -1898,6 +1938,161 @@ IOVirtIOGPU::allocFenceId()
+     return id;
+ }
+ 
++// the steps of a framebuffer replacement (SFVirtIOGPUMode.h) on this driver, run with fModeLock held
++struct IOVirtIOGPU::ModeSteps {
++    IOVirtIOGPU *gpu;
++    IOReturn     error;
++
++    bool prepare(uint32_t width, uint32_t height)
++    {
++        size_t bytes = round_page((size_t)width * 4 * height);
++        IOBufferMemoryDescriptor *mem = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
++            kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous, bytes, 0xFFFFFFFFULL);
++
++        if (!mem) {
++            error = kIOReturnNoMemory;
++            return false;
++        }
++        bzero(mem->getBytesNoCopy(), bytes);
++
++        uint32_t resourceId = gpu->allocResourceId();
++
++        if (!gpu->gpuCreateResource2D(resourceId, width, height) ||
++            !gpu->gpuAttachBacking(resourceId, mem->getPhysicalAddress(), (uint32_t)bytes)) {
++            gpu->gpuResourceUnref(resourceId);
++            mem->release();
++            error = kIOReturnNoResources;
++            return false;
++        }
++        gpu->fSpareMem = mem;
++        gpu->fSpareResource = resourceId;
++        return true;
++    }
++
++    sf_vgpu_reply show_prepared(uint32_t width, uint32_t height)
++    {
++        gpu->setModeChanging(true);
++        sf_vgpu_reply reply = gpu->gpuSetScanoutReply(0, gpu->fSpareResource, width, height);
++
++        if (reply != sf_vgpu_ok) {
++            gpu->setModeChanging(false);
++            error = reply == sf_vgpu_refused ? kIOReturnError : kIOReturnTimeout;
++        }
++        return reply;
++    }
++
++    // what the scanout showed before, which may be a client's resource
++    sf_vgpu_reply show_published()
++    {
++        IOLockLock(gpu->fCtrlLock);
++        uint32_t resourceId = gpu->fScanoutResourceId;
++        uint32_t width = gpu->fScanoutWidth, height = gpu->fScanoutHeight;
++        IOLockUnlock(gpu->fCtrlLock);
++
++        sf_vgpu_reply reply = gpu->gpuSetScanoutReply(0, resourceId, width, height);
++
++        if (reply == sf_vgpu_ok)
++            gpu->gpuResourceFlush(resourceId, 0, 0, width, height);
++        return reply;
++    }
++
++    void discard_prepared()
++    {
++        gpu->gpuResourceUnref(gpu->fSpareResource);
++        gpu->fSpareMem->release();
++        gpu->fSpareMem = NULL;
++        gpu->fSpareResource = 0;
++    }
++
++    // the new framebuffer becomes the mode, the old one goes once nothing shows it
++    void publish(uint32_t width, uint32_t height)
++    {
++        IODisplayModeID mode = gpu->modeForSize(width, height);
++
++        IOLockLock(gpu->fCtrlLock);
++        IOBufferMemoryDescriptor *oldMem = gpu->fFbMem;
++        uint32_t oldResource = gpu->fResourceId;
++
++        gpu->fFbMem = gpu->fSpareMem;
++        gpu->fFbBase = gpu->fFbMem->getBytesNoCopy();
++        gpu->fFbPhys = gpu->fFbMem->getPhysicalAddress();
++        gpu->fWidth = width;
++        gpu->fHeight = height;
++        gpu->fPitch = width * 4;
++        gpu->fResourceId = gpu->fSpareResource;
++        gpu->fScanoutResourceId = gpu->fSpareResource;
++        gpu->fScanoutWidth = width;
++        gpu->fScanoutHeight = height;
++        if (mode == sf_vgpu_host_mode) {
++            gpu->fHostModeWidth = width;
++            gpu->fHostModeHeight = height;
++        }
++        gpu->fModeID = mode;
++        gpu->fModeGeneration++;
++        // a region queued for the old framebuffer is no region of this one
++        gpu->fPresentPending = false;
++        gpu->fSpareMem = NULL;
++        gpu->fSpareResource = 0;
++        IOLockUnlock(gpu->fCtrlLock);
++
++        // the flip pair is the old size, the presenter's next flip is refused
++        gpu->presenterLost(0);
++        gpu->gpuTransferToHost2D(gpu->fResourceId, 0, 0, width, height);
++        gpu->gpuResourceFlush(gpu->fResourceId, 0, 0, width, height);
++
++        // the kernel console draws into the framebuffer too, it follows to the new one
++#if !defined(__arm64__) && !defined(__aarch64__)
++        IOPlatformExpert *pe = gpu->getPlatform();
++
++        if (pe) {
++            PE_Video consoleInfo;
++
++            bzero(&consoleInfo, sizeof(consoleInfo));
++            consoleInfo.v_baseAddr = (unsigned long)gpu->fFbBase;
++            consoleInfo.v_width = width;
++            consoleInfo.v_height = height;
++            consoleInfo.v_depth = 32;
++            consoleInfo.v_rowBytes = gpu->fPitch;
++            consoleInfo.v_display = kPEGraphicsMode;
++            consoleInfo.v_scale = kPEScaleFactor1x;
++            pe->setConsoleInfo(&consoleInfo, kPEGraphicsMode);
++        }
++#endif
++
++        gpu->setModeChanging(false);
++
++        // a client that mapped the old framebuffer keeps it alive through its mapping until it remaps
++        gpu->gpuResourceUnref(oldResource);
++        if (oldMem)
++            oldMem->release();
++        IOLog("IOVirtIOGPU: display mode %d, %ux%u\n", (int)mode, width, height);
++    }
++};
++
++sf_vgpu_mode_state
++IOVirtIOGPU::modeState() const
++{
++    sf_vgpu_mode_state state = { fWidth, fHeight, fPendingWidth, fPendingHeight };
++    return state;
++}
++
++void
++IOVirtIOGPU::setModeChanging(bool changing)
++{
++    IOLockLock(fCtrlLock);
++    fModeChanging = changing;
++    IOLockUnlock(fCtrlLock);
++}
++
++uint32_t
++IOVirtIOGPU::modeGeneration()
++{
++    IOLockLock(fCtrlLock);
++    uint32_t generation = fModeGeneration;
++    IOLockUnlock(fCtrlLock);
++    return generation;
++}
++
+ void
+ IOVirtIOGPU::checkDisplayEvents()
+ {
+@@ -1916,21 +2111,45 @@ IOVirtIOGPU::checkDisplayEvents()
+     // the other scanouts first, scanout 0 may be the one that went away
+     updateDisplays();
+ 
++    uint32_t widths[kMaxDisplays], heights[kMaxDisplays];
++    if (!gpuGetScanouts(widths, heights))
++        return;
++
++    // a new size for scanout 0 is a new framebuffer of that size, else the scanout is pointed again
++    IOLockLock(fModeLock);
++    ModeSteps steps = { this, kIOReturnSuccess };
++    sf_vgpu_mode_state state = modeState();
++    bool followed = sf_vgpu_follow(steps, state, widths[0], heights[0]);
++    fPendingWidth = state.pending_width;
++    fPendingHeight = state.pending_height;
++    if (followed) {
++        IOLockUnlock(fModeLock);
++        return;
++    }
++
+     uint32_t width = 0, height = 0;
+-    if (!gpuGetDisplayInfo(&width, &height)) {
++    for (unsigned i = 0; i < kMaxDisplays && !width; i++) {
++        width = widths[i];
++        height = heights[i];
++    }
++    if (!width) {
++        IOLockUnlock(fModeLock);
+         DEBUG("display event, but no scanout is enabled yet\n");
+         return;
+     }
+ 
+     if (width > fScanoutWidth)   width = fScanoutWidth;
+     if (height > fScanoutHeight) height = fScanoutHeight;
+-    if (!width || !height)
++    if (!width || !height) {
++        IOLockUnlock(fModeLock);
+         return;
++    }
+ 
+     DEBUG("display event: re-pointing scanout 0 at resource %u (%ux%u)\n",
+           fScanoutResourceId, width, height);
+ 
+     if (!gpuSetScanout(0, fScanoutResourceId, width, height)) {
++        IOLockUnlock(fModeLock);
+         DEBUG("display event: SET_SCANOUT failed\n");
+         return;
+     }
+@@ -1938,6 +2157,7 @@ IOVirtIOGPU::checkDisplayEvents()
+     if (fScanoutResourceId == fResourceId && fFbBase && !fNativePresent)
+         gpuTransferToHost2D(fResourceId, 0, 0, width, height);
+     gpuResourceFlush(fScanoutResourceId, 0, 0, width, height);
++    IOLockUnlock(fModeLock);
+ }
+ 
+ void
+@@ -1959,6 +2179,9 @@ IOVirtIOGPU::scheduleFlush()
+ 
+     bool nativePresent = fNativePresent;
+     bool changing = fModeChanging;
++    // the framebuffer as a mode change last published it
++    uint32_t resourceId = fResourceId, scanoutResourceId = fScanoutResourceId;
++    uint32_t width = fWidth, height = fHeight, presented = fPresentedRes[0];
+     IOLockUnlock(fCtrlLock);
+ 
+     if (changing) {
+@@ -1971,15 +2194,15 @@ IOVirtIOGPU::scheduleFlush()
+     // Only the driver's own framebuffer needs its pixels pushed to the host;
+     // a client resource the scanout has been pointed at already lives there.
+     // a presenter flushes every flip itself
+-    if (fScanoutResourceId != fResourceId) {
+-        if (fScanoutResourceId != presentedResource(0))
+-            gpuResourceFlush(fScanoutResourceId, 0, 0, fWidth, fHeight);
++    if (scanoutResourceId != resourceId) {
++        if (scanoutResourceId != presented)
++            gpuResourceFlush(scanoutResourceId, 0, 0, width, height);
+     } else if (fFbBase && pending) {
+-        gpuTransferToHost2D(fResourceId, x1, y1, x2 - x1, y2 - y1);
+-        gpuResourceFlush(fResourceId, x1, y1, x2 - x1, y2 - y1);
++        gpuTransferToHost2D(resourceId, x1, y1, x2 - x1, y2 - y1);
++        gpuResourceFlush(resourceId, x1, y1, x2 - x1, y2 - y1);
+     } else if (fFbBase && !nativePresent) {
+-        gpuTransferToHost2D(fResourceId, 0, 0, fWidth, fHeight);
+-        gpuResourceFlush(fResourceId, 0, 0, fWidth, fHeight);
++        gpuTransferToHost2D(resourceId, 0, 0, width, height);
++        gpuResourceFlush(resourceId, 0, 0, width, height);
+     }
+ 
+     AbsoluteTime deadline;
+@@ -2017,8 +2240,10 @@ IOVirtIOGPU::start(IOService *provider)
+     // and before any user client allocates ids.
+     fCtrlLock = IOLockAlloc();
+     fQueueLock = IOLockAlloc();
+-    if (!fCtrlLock || !fQueueLock)
++    fModeLock = IOLockAlloc();
++    if (!fCtrlLock || !fQueueLock || !fModeLock)
+         return false;
++    fModeGeneration = 1;
+     fNextCtxId   = 1;
+     fNextResId   = 0x100;  // above the 2D scanout resource (id 1)
+     fNextFenceId = 1;
+@@ -2221,6 +2446,7 @@ IOVirtIOGPU::stop(IOService *provider)
+     OSSafeReleaseNULL(fIrqLoop);
+     fUseIrq = false;
+     if (fFbMem) { fFbMem->release(); fFbMem = NULL; }
++    if (fSpareMem) { fSpareMem->release(); fSpareMem = NULL; }
+     for (unsigned i = 0; i < fSlotCount; i++) {
+         if (fSlots[i].payload) { fSlots[i].payload->release(); fSlots[i].payload = NULL; }
+         if (fSlots[i].mem) { fSlots[i].mem->release(); fSlots[i].mem = NULL; }
+@@ -2252,6 +2478,7 @@ IOVirtIOGPU::stop(IOService *provider)
+     }
+     if (fCtrlLock) { IOLockFree(fCtrlLock); fCtrlLock = NULL; }
+     if (fQueueLock) { IOLockFree(fQueueLock); fQueueLock = NULL; }
++    if (fModeLock) { IOLockFree(fModeLock); fModeLock = NULL; }
+     if (fCursorLock) { IOLockFree(fCursorLock); fCursorLock = NULL; }
+ 
+     super::stop(provider);
+@@ -2399,6 +2626,19 @@ IOVirtIOGPU::buildModeList()
+ bool
+ IOVirtIOGPU::modeSize(IODisplayModeID mode, uint32_t *width, uint32_t *height)
+ {
++    if (mode == sf_vgpu_host_mode) {
++        if (!fCtrlLock)
++            return false;
++        // a new host size is published under this lock, its width and height are read together
++        IOLockLock(fCtrlLock);
++        uint32_t hostWidth = fHostModeWidth, hostHeight = fHostModeHeight;
++        IOLockUnlock(fCtrlLock);
++        if (!hostWidth)
++            return false;
++        *width = hostWidth;
++        *height = hostHeight;
++        return true;
++    }
+     if (mode < 1 || (uint32_t)mode > fModeCount)
+         return false;
+     *width = fModes[mode - 1].width;
+@@ -2406,6 +2646,17 @@ IOVirtIOGPU::modeSize(IODisplayModeID mode, uint32_t *width, uint32_t *height)
+     return true;
+ }
+ 
++// the listed mode of that size, else the host mode, so the listed ids never move
++IODisplayModeID
++IOVirtIOGPU::modeForSize(uint32_t width, uint32_t height)
++{
++    for (uint32_t i = 0; i < fModeCount; i++) {
++        if (fModes[i].width == width && fModes[i].height == height)
++            return i + 1;
++    }
++    return sf_vgpu_host_mode;
++}
++
+ IOReturn
+ IOVirtIOGPU::getCurrentDisplayMode(IODisplayModeID *displayMode, IOIndex *depth)
+ {
+@@ -2420,92 +2671,39 @@ IOVirtIOGPU::setDisplayMode(IODisplayModeID mode, IOIndex depth)
+ {
+     uint32_t width, height;
+ 
+-    if (depth != kDepth || !modeSize(mode, &width, &height))
++    if (!fModeLock)
++        return kIOReturnNotReady;
++    IOLockLock(fModeLock);
++    if (depth != kDepth || !modeSize(mode, &width, &height)) {
++        IOLockUnlock(fModeLock);
+         return kIOReturnUnsupportedMode;
++    }
+     if (width == fWidth && height == fHeight) {
+         fModeID = mode;
++        IOLockUnlock(fModeLock);
+         return kIOReturnSuccess;
+     }
+ 
+-    uint32_t pitch = width * 4;
+-    size_t bytes = round_page((size_t)pitch * height);
+-    IOBufferMemoryDescriptor *mem = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
+-        kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous, bytes, 0xFFFFFFFFULL);
+-
+-    if (!mem)
+-        return kIOReturnNoMemory;
+-    bzero(mem->getBytesNoCopy(), bytes);
+-
+-    uint32_t resourceId = allocResourceId();
+-
+-    if (!gpuCreateResource2D(resourceId, width, height) ||
+-        !gpuAttachBacking(resourceId, mem->getPhysicalAddress(), (uint32_t)bytes)) {
+-        gpuResourceUnref(resourceId);
+-        mem->release();
+-        return kIOReturnNoResources;
+-    }
+-
+-    IOLockLock(fCtrlLock);
+-    fModeChanging = true;
+-    IOLockUnlock(fCtrlLock);
+-
+-    if (!gpuSetScanout(0, resourceId, width, height)) {
+-        gpuResourceUnref(resourceId);
+-        mem->release();
+-        IOLockLock(fCtrlLock);
+-        fModeChanging = false;
+-        IOLockUnlock(fCtrlLock);
+-        return kIOReturnError;
+-    }
+-
+-    IOBufferMemoryDescriptor *oldMem = fFbMem;
+-    uint32_t oldResource = fResourceId;
+-
+-    fFbMem = mem;
+-    fFbBase = mem->getBytesNoCopy();
+-    fFbPhys = mem->getPhysicalAddress();
+-    fWidth = width;
+-    fHeight = height;
+-    fPitch = pitch;
+-    fResourceId = resourceId;
+-    fScanoutResourceId = resourceId;
+-    fScanoutWidth = width;
+-    fScanoutHeight = height;
+-    fModeID = mode;
+-    // the flip pair is the old size, the presenter's next flip is refused
+-    presenterLost(0);
+-    gpuTransferToHost2D(fResourceId, 0, 0, fWidth, fHeight);
+-    gpuResourceFlush(fResourceId, 0, 0, fWidth, fHeight);
+-
+-    // the kernel console draws into the framebuffer too, it follows to the new one
+-#if !defined(__arm64__) && !defined(__aarch64__)
+-    IOPlatformExpert *pe = getPlatform();
+-
+-    if (pe) {
+-        PE_Video consoleInfo;
++    ModeSteps steps = { this, kIOReturnSuccess };
++    sf_vgpu_mode_state state = modeState();
++    IOReturn result = steps.error;
+ 
+-        bzero(&consoleInfo, sizeof(consoleInfo));
+-        consoleInfo.v_baseAddr = (unsigned long)fFbBase;
+-        consoleInfo.v_width = fWidth;
+-        consoleInfo.v_height = fHeight;
+-        consoleInfo.v_depth = 32;
+-        consoleInfo.v_rowBytes = fPitch;
+-        consoleInfo.v_display = kPEGraphicsMode;
+-        consoleInfo.v_scale = kPEScaleFactor1x;
+-        pe->setConsoleInfo(&consoleInfo, kPEGraphicsMode);
++    switch (sf_vgpu_replace(steps, state, width, height)) {
++    case sf_vgpu_published:
++        result = kIOReturnSuccess;
++        break;
++    case sf_vgpu_unsettled:
++        result = kIOReturnBusy;
++        break;
++    case sf_vgpu_rolled_back:
++    case sf_vgpu_pending:
++        result = steps.error;
++        break;
+     }
+-#endif
+-
+-    IOLockLock(fCtrlLock);
+-    fModeChanging = false;
+-    IOLockUnlock(fCtrlLock);
+-
+-    // a client that mapped the old framebuffer keeps it alive through its mapping until it remaps
+-    gpuResourceUnref(oldResource);
+-    if (oldMem)
+-        oldMem->release();
+-    IOLog("IOVirtIOGPU: display mode %d, %ux%u\n", (int)mode, fWidth, fHeight);
+-    return kIOReturnSuccess;
++    fPendingWidth = state.pending_width;
++    fPendingHeight = state.pending_height;
++    IOLockUnlock(fModeLock);
++    return result;
+ }
+ 
+ IODeviceMemory *
+@@ -2523,10 +2721,15 @@ IOVirtIOGPU::getVRAMRange(void)
+ IOBufferMemoryDescriptor *
+ IOVirtIOGPU::copyFramebufferMemory()
+ {
+-    if (!fFbMem)
++    if (!fCtrlLock)
+         return NULL;
+-    fFbMem->retain();
+-    return fFbMem;
++    // retained under the lock a mode change swaps it under, before that change can release it
++    IOLockLock(fCtrlLock);
++    IOBufferMemoryDescriptor *mem = fFbMem;
++    if (mem)
++        mem->retain();
++    IOLockUnlock(fCtrlLock);
++    return mem;
+ }
+ 
+ IOReturn
+@@ -2553,7 +2756,7 @@ IOVirtIOGPU::getPixelFormatsForDisplayMode(IODisplayModeID, IOIndex)
+ IOItemCount
+ IOVirtIOGPU::getDisplayModeCount(void)
+ {
+-    return fModeCount;
++    return fModeCount + (fHostModeWidth ? 1 : 0);
+ }
+ 
+ IOReturn
+@@ -2561,9 +2764,23 @@ IOVirtIOGPU::getDisplayModes(IODisplayModeID *allDisplayModes)
+ {
+     for (uint32_t i = 0; i < fModeCount; i++)
+         allDisplayModes[i] = i + 1;
++    if (fHostModeWidth)
++        allDisplayModes[fModeCount] = sf_vgpu_host_mode;
+     return kIOReturnSuccess;
+ }
+ 
++// under the lock a host size is published under, so the list cannot grow between its count and its copy
++IOReturn
++IOVirtIOGPU::copyDisplayModes(IODisplayModeID *modes, uint32_t capacity, uint32_t *count)
++{
++    if (!fCtrlLock)
++        return kIOReturnNotReady;
++    IOLockLock(fCtrlLock);
++    bool fit = sf_vgpu_mode_ids(fModeCount, fHostModeWidth != 0, modes, capacity, count);
++    IOLockUnlock(fCtrlLock);
++    return fit ? kIOReturnSuccess : kIOReturnNoSpace;
++}
++
+ IOReturn
+ IOVirtIOGPU::getPixelInformation(IODisplayModeID displayMode, IOIndex depth,
+                                  IOPixelAperture aperture, IOPixelInformation *info)
+diff --git a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.h b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.h
+index 7435074..d4bc27d 100644
+--- a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.h
++++ b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU.h
+@@ -15,6 +15,7 @@
+ #include <IOKit/graphics/IOFramebuffer.h>
+ #include <IOKit/pci/IOPCIDevice.h>
+ #include "IOVirtIOTransport.h"
++#include "SFVirtIOGPUMode.h"
+ 
+ class IOVirtIOGPUDisplay;
+ 
+@@ -97,6 +98,20 @@ private:
+     bool         fModeChanging;
+     void         buildModeList();
+     bool         modeSize(IODisplayModeID mode, uint32_t *width, uint32_t *height);
++    // a host size that is not in the list is mode sf_vgpu_host_mode
++    uint32_t     fHostModeWidth, fHostModeHeight;
++    // mode changes one at a time, from display events and clients alike
++    IOLock      *fModeLock;
++    // advances each time a new framebuffer is published
++    uint32_t     fModeGeneration;
++    // a framebuffer being put on the scanout, or one whose SET_SCANOUT got no reply (of pending size)
++    IOBufferMemoryDescriptor *fSpareMem;
++    uint32_t     fSpareResource;
++    uint32_t     fPendingWidth, fPendingHeight;
++    struct ModeSteps;
++    IODisplayModeID modeForSize(uint32_t width, uint32_t height);
++    sf_vgpu_mode_state modeState() const;
++    void         setModeChanging(bool changing);
+     uint32_t     fPresentX1, fPresentY1, fPresentX2, fPresentY2;
+ 
+     // virgl/3D state. fVirglOK is set when the device offered
+@@ -178,6 +193,7 @@ private:
+     void     updateDisplays();
+     bool     gpuCreateResource2D(uint32_t resourceId, uint32_t width, uint32_t height);
+     bool     gpuSetScanout(uint32_t scanoutId, uint32_t resourceId, uint32_t width, uint32_t height);
++    sf_vgpu_reply gpuSetScanoutReply(uint32_t scanoutId, uint32_t resourceId, uint32_t width, uint32_t height);
+     bool     gpuTransferToHost2D(uint32_t resourceId, uint32_t x, uint32_t y,
+                                  uint32_t width, uint32_t height);
+     bool     gpuResourceFlush(uint32_t resourceId, uint32_t x, uint32_t y,
+@@ -292,6 +308,9 @@ public:
+     bool     gpuMoveCursor(uint32_t x, uint32_t y);
+     bool     cursorAvailable() const { return fCursorQOK; }
+     IOBufferMemoryDescriptor *copyFramebufferMemory();
++    uint32_t modeGeneration();
++    // the mode ids counted and copied in one step, kIOReturnNoSpace when they need more than capacity
++    IOReturn copyDisplayModes(IODisplayModeID *modes, uint32_t capacity, uint32_t *count);
+ 
+     bool     virglAvailable() const { return fVirglOK; }
+     const uint8_t *virglCaps(uint32_t *outLen) const { if (outLen) *outLen = fVirglCapsLen; return fVirglCaps; }
+diff --git a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU3DShared.h b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU3DShared.h
+index 0d433d0..2608db1 100644
+--- a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU3DShared.h
++++ b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPU3DShared.h
+@@ -36,6 +36,8 @@ enum {
+     kSFGPU_MoveCursor,          /* scalarIn[0]=x, scalarIn[1]=y                 */
+     kSFGPU_SetScanoutResource,  /* scalarIn[0]=resId (0 restores the driver's
+                                  *   framebuffer), [1]=width, [2]=height       */
++    kSFGPU_ModeGeneration,      /* framebuffer connection: scalarOut[0] changes
++                                 *   whenever a new framebuffer is published   */
+     kSFVirgl_MethodCount
+ };
+ 
+diff --git a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPUUserClient.cpp b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPUUserClient.cpp
+index 0d175d7..8000de4 100644
+--- a/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPUUserClient.cpp
++++ b/src/Kernel/Extensions/IOVirtIOGPU/IOVirtIOGPUUserClient.cpp
+@@ -391,12 +391,17 @@ IOVirtIOGPUUserClient::externalMethod(uint32_t selector, IOExternalMethodArgumen
+             args->scalarOutput[0] = fOwner->getDisplayModeCount();
+             return kIOReturnSuccess;
+         case 7: {
+-            IOItemCount count = fOwner->getDisplayModeCount();
++            uint32_t count = 0;
+ 
+-            if (!args->structureOutput || args->structureOutputSize < count * sizeof(IODisplayModeID))
++            if (!args->structureOutput)
+                 return kIOReturnBadArgument;
+-            args->structureOutputSize = count * sizeof(IODisplayModeID);
+-            return fOwner->getDisplayModes((IODisplayModeID *)args->structureOutput);
++            // counted and copied in one step: a host size published meanwhile cannot overrun the buffer
++            IOReturn ret = fOwner->copyDisplayModes((IODisplayModeID *)args->structureOutput,
++                                                    (uint32_t)(args->structureOutputSize / sizeof(IODisplayModeID)),
++                                                    &count);
++            if (ret == kIOReturnSuccess)
++                args->structureOutputSize = count * sizeof(IODisplayModeID);
++            return ret;
+         }
+         case kSFGPU_Present:
+             if (!args->structureInput ||
+@@ -411,6 +416,11 @@ IOVirtIOGPUUserClient::externalMethod(uint32_t selector, IOExternalMethodArgumen
+             return mSetCursor(args);
+         case kSFGPU_MoveCursor:
+             return mMoveCursor(args);
++        case kSFGPU_ModeGeneration:
++            if (args->scalarOutputCount < 1)
++                return kIOReturnBadArgument;
++            args->scalarOutput[0] = fOwner->modeGeneration();
++            return kIOReturnSuccess;
+         default:
+             return kIOReturnUnsupported;
+         }
+diff --git a/src/Kernel/Extensions/IOVirtIOGPU/SFVirtIOGPUMode.h b/src/Kernel/Extensions/IOVirtIOGPU/SFVirtIOGPUMode.h
+new file mode 100644
+index 0000000..2f49152
+--- /dev/null
++++ b/src/Kernel/Extensions/IOVirtIOGPU/SFVirtIOGPUMode.h
+@@ -0,0 +1,111 @@
++// SPDX-License-Identifier: MIT
++// Copyright (c) 2026 SiliconForest contributors
++#pragma once
++
++#include <stdint.h>
++
++// The primary framebuffer follows the size the host asks scanout 0 to have, within these bounds.
++enum : uint32_t {
++    sf_vgpu_min_width = 640,
++    sf_vgpu_min_height = 480,
++    sf_vgpu_max_width = 3840,
++    sf_vgpu_max_height = 2160,
++    // the mode id of a host size that is not in the mode list
++    sf_vgpu_host_mode = 0x100,
++};
++
++// How the host answered a SET_SCANOUT. Without a reply the host may show either resource.
++enum sf_vgpu_reply { sf_vgpu_ok, sf_vgpu_refused, sf_vgpu_no_reply };
++
++// What a framebuffer replacement left behind.
++enum sf_vgpu_outcome {
++    sf_vgpu_published,   // the new framebuffer is the mode, the old one is released
++    sf_vgpu_rolled_back, // the new one is released, the old mode stays and its scanout is set again
++    sf_vgpu_pending,     // SET_SCANOUT got no reply: both are kept and the old mode stays published
++    sf_vgpu_unsettled,   // an earlier pending replacement is still unsettled, nothing was tried
++};
++
++// The published mode, and the size of a replacement whose SET_SCANOUT has no known outcome.
++struct sf_vgpu_mode_state {
++    uint32_t width, height;
++    uint32_t pending_width, pending_height;
++};
++
++inline bool sf_vgpu_size_allowed(uint32_t width, uint32_t height)
++{
++    return width >= sf_vgpu_min_width && height >= sf_vgpu_min_height &&
++           width <= sf_vgpu_max_width && height <= sf_vgpu_max_height;
++}
++
++// The mode ids on offer, into room for capacity ids: the listed modes 1 to listed, then the host mode
++// once a host size was published. *count is how many there are; when they do not all fit, false and
++// nothing is written.
++template <class Id>
++bool sf_vgpu_mode_ids(uint32_t listed, bool host_mode, Id *ids, uint32_t capacity, uint32_t *count)
++{
++    *count = listed + (host_mode ? 1 : 0);
++    if (*count > capacity)
++        return false;
++    for (uint32_t i = 0; i < listed; i++)
++        ids[i] = (Id)(i + 1);
++    if (host_mode)
++        ids[listed] = (Id)sf_vgpu_host_mode;
++    return true;
++}
++
++// A pending replacement is settled by setting the published framebuffer on the scanout again: once
++// the host has answered that, the other resource is shown nowhere and may go.
++template <class Steps>
++bool sf_vgpu_settle(Steps &steps, sf_vgpu_mode_state &state)
++{
++    if (state.pending_width == 0)
++        return true;
++    if (steps.show_published() != sf_vgpu_ok)
++        return false;
++    steps.discard_prepared();
++    state.pending_width = state.pending_height = 0;
++    return true;
++}
++
++// Replace the framebuffer with one of width x height. Steps: prepare (allocate, create and attach,
++// undoing its own work when it fails), show_prepared (SET_SCANOUT of the new resource), publish (make
++// it the mode and release the old one), discard_prepared and show_published.
++template <class Steps>
++sf_vgpu_outcome sf_vgpu_replace(Steps &steps, sf_vgpu_mode_state &state, uint32_t width, uint32_t height)
++{
++    if (!sf_vgpu_settle(steps, state))
++        return sf_vgpu_unsettled;
++    if (!steps.prepare(width, height)) {
++        steps.show_published();
++        return sf_vgpu_rolled_back;
++    }
++    switch (steps.show_prepared(width, height)) {
++    case sf_vgpu_ok:
++        steps.publish(width, height);
++        state.width = width;
++        state.height = height;
++        return sf_vgpu_published;
++    case sf_vgpu_refused:
++        steps.discard_prepared();
++        steps.show_published();
++        return sf_vgpu_rolled_back;
++    case sf_vgpu_no_reply:
++        break;
++    }
++    state.pending_width = width;
++    state.pending_height = height;
++    return sf_vgpu_pending;
++}
++
++// A display event: follow a new host size on scanout 0 (0 x 0 when the host has it off). False when
++// nothing was changed or sent, and the caller points the scanout at the current framebuffer as before.
++template <class Steps>
++bool sf_vgpu_follow(Steps &steps, sf_vgpu_mode_state &state, uint32_t width, uint32_t height)
++{
++    if (!sf_vgpu_settle(steps, state))
++        return true;
++    if (!sf_vgpu_size_allowed(width, height) || (width == state.width && height == state.height))
++        return false;
++    sf_vgpu_replace(steps, state, width, height);
++    return true;
++}
+diff --git a/src/Kernel/Extensions/IOVirtIOGPU/tests/mode_test.cpp b/src/Kernel/Extensions/IOVirtIOGPU/tests/mode_test.cpp
+new file mode 100644
+index 0000000..eeba82f
+--- /dev/null
++++ b/src/Kernel/Extensions/IOVirtIOGPU/tests/mode_test.cpp
+@@ -0,0 +1,141 @@
++// SPDX-License-Identifier: MIT
++// Copyright (c) 2026 SiliconForest contributors
++#include "../SFVirtIOGPUMode.h"
++
++#include <assert.h>
++#include <stdio.h>
++
++namespace {
++
++// The driver's resources as the steps see them: the published framebuffer, a prepared one, and what
++// the host shows on scanout 0. Each step can be made to fail once.
++struct Device {
++    sf_vgpu_mode_state state = {1024, 768, 0, 0};
++    unsigned published = 1, prepared = 0, shown = 1, next = 2;
++    unsigned backings = 1, sent = 0, reasserted = 0;
++    bool refuse_create = false;
++    sf_vgpu_reply scanout_reply = sf_vgpu_ok, reassert_reply = sf_vgpu_ok;
++
++    bool prepare(uint32_t, uint32_t)
++    {
++        sent++;
++        if (refuse_create) {
++            refuse_create = false;
++            return false;
++        }
++        prepared = next++;
++        backings++;
++        return true;
++    }
++    sf_vgpu_reply show_prepared(uint32_t, uint32_t)
++    {
++        sent++;
++        sf_vgpu_reply reply = scanout_reply;
++        scanout_reply = sf_vgpu_ok;
++        if (reply != sf_vgpu_refused)
++            shown = prepared;
++        return reply;
++    }
++    sf_vgpu_reply show_published()
++    {
++        sent++;
++        reasserted++;
++        sf_vgpu_reply reply = reassert_reply;
++        reassert_reply = sf_vgpu_ok;
++        if (reply != sf_vgpu_refused)
++            shown = published;
++        return reply;
++    }
++    void publish(uint32_t, uint32_t)
++    {
++        published = prepared;
++        prepared = 0;
++        backings--;
++    }
++    void discard_prepared()
++    {
++        assert(prepared != 0 && shown != prepared);
++        prepared = 0;
++        backings--;
++    }
++    bool follow(uint32_t width, uint32_t height) { return sf_vgpu_follow(*this, state, width, height); }
++    bool at(uint32_t width, uint32_t height) const
++    {
++        return state.width == width && state.height == height && shown == published && prepared == 0 &&
++               backings == 1 && state.pending_width == 0;
++    }
++};
++
++}
++
++int main()
++{
++    Device d;
++
++    // larger, smaller and back: each is a new framebuffer, the old one released
++    assert(d.follow(1187, 885) && d.at(1187, 885) && d.published == 2);
++    assert(d.follow(1024, 851) && d.at(1024, 851) && d.published == 3);
++    assert(d.follow(1024, 768) && d.at(1024, 768) && d.published == 4);
++
++    // the same size again, the scanout off, and sizes outside the bounds change nothing and send nothing
++    d.sent = 0;
++    assert(!d.follow(1024, 768) && !d.follow(0, 0) && !d.follow(5000, 900) && !d.follow(1024, 300));
++    assert(d.sent == 0 && d.at(1024, 768) && d.published == 4);
++    assert(sf_vgpu_size_allowed(640, 480) && sf_vgpu_size_allowed(3840, 2160));
++    assert(!sf_vgpu_size_allowed(639, 480) && !sf_vgpu_size_allowed(3840, 2161));
++
++    // a refused create keeps the mode and sets its framebuffer on the scanout again
++    d.refuse_create = true;
++    d.reasserted = 0;
++    assert(d.follow(1280, 900) && d.at(1024, 768) && d.published == 4 && d.reasserted == 1);
++
++    // a refused SET_SCANOUT releases the new framebuffer and shows the old one again
++    d.scanout_reply = sf_vgpu_refused;
++    d.reasserted = 0;
++    assert(d.follow(1280, 900) && d.at(1024, 768) && d.published == 4 && d.reasserted == 1);
++
++    // no reply: both framebuffers stay and the old mode stays published
++    d.scanout_reply = sf_vgpu_no_reply;
++    assert(d.follow(1280, 900));
++    assert(d.state.width == 1024 && d.state.height == 768 && d.state.pending_width == 1280);
++    assert(d.published == 4 && d.prepared != 0 && d.backings == 2);
++
++    // while the old framebuffer cannot be shown again, the next size is not tried
++    d.reassert_reply = sf_vgpu_no_reply;
++    d.sent = 0;
++    assert(d.follow(1400, 1000));
++    assert(d.sent == 1 && d.state.width == 1024 && d.state.pending_width == 1280 && d.backings == 2);
++    d.reassert_reply = sf_vgpu_refused;
++    assert(d.follow(1400, 1000) && d.state.pending_width == 1280 && d.backings == 2);
++
++    // settled: the pending framebuffer goes, then the new size is followed
++    assert(d.follow(1400, 1000) && d.at(1400, 1000));
++
++    // settled by an event for the published size itself: nothing else to do
++    d.scanout_reply = sf_vgpu_no_reply;
++    assert(d.follow(1500, 1000) && d.state.pending_width == 1500);
++    assert(!d.follow(1400, 1000) && d.at(1400, 1000));
++
++    // a mode set by a client runs the same replacement and settles first too
++    d.scanout_reply = sf_vgpu_no_reply;
++    assert(sf_vgpu_replace(d, d.state, 1600, 900) == sf_vgpu_pending);
++    d.reassert_reply = sf_vgpu_no_reply;
++    assert(sf_vgpu_replace(d, d.state, 1920, 1080) == sf_vgpu_unsettled && d.state.pending_width == 1600);
++    assert(sf_vgpu_replace(d, d.state, 1920, 1080) == sf_vgpu_published && d.at(1920, 1080));
++
++    // the mode ids: the listed ones from 1, then the host mode once a host size was published
++    int32_t ids[5] = {-1, -1, -1, -1, -1};
++    uint32_t count = 0;
++    assert(sf_vgpu_mode_ids(3, false, ids, 3, &count) && count == 3);
++    assert(ids[0] == 1 && ids[1] == 2 && ids[2] == 3 && ids[3] == -1);
++    // room for the 3 counted before a host size was published: the 4 are refused and nothing is written
++    for (int32_t &id : ids)
++        id = -1;
++    assert(!sf_vgpu_mode_ids(3, true, ids, 3, &count) && count == 4);
++    for (int32_t id : ids)
++        assert(id == -1);
++    assert(sf_vgpu_mode_ids(3, true, ids, 4, &count) && count == 4);
++    assert(ids[0] == 1 && ids[2] == 3 && ids[3] == (int32_t)sf_vgpu_host_mode && ids[4] == -1);
++
++    puts("scanout 0 mode follow, rollback, pending settle and mode ids passed");
++}

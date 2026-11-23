@@ -6,7 +6,7 @@ let
   pkgs = pd.buildPkgs;
 in pd.packages.${pd.buildSystem}.libsystem-arm64.overrideAttrs (old: {
   pname = "siliconforest-chonkstep-sfgop-static";
-  src = pkgs.applyPatches {
+  src = pkgs.applyPatches ({
     name = "siliconforest-chonkstep-sfgop-source";
     src = old.src;
     # At the tip upstream's SFGOP.c has only the CoreFoundation form of the IOKit calls; the
@@ -15,7 +15,12 @@ in pd.packages.${pd.buildSystem}.libsystem-arm64.overrideAttrs (old: {
       pin = [ ../m1-wayland/sfgop-fail-closed.patch ];
       tip = [ ../m1-wayland/sfgop-string-iokit-tip.patch ../m1-wayland/sfgop-fail-closed.patch ];
     };
-  };
+  } // pkgs.lib.optionalAttrs (pkgs.stdenv.buildPlatform.system == "aarch64-linux" && (source.parallelsGuest or false)) {
+    # On the condition release/desktop.nix applies the Chonkstep patch that calls SFGOPRefresh.
+    postPatch = ''
+      patch -p1 --batch --fuzz=0 < ${../../../release/patches/parallels-24-sfgop-refresh.patch}
+    '';
+  });
   postPatch = (old.postPatch or "") + ''
     # These archives are linked later against the already-built libSystem.
     # Do not rebuild syscall assembly just to create a static IOKit archive.

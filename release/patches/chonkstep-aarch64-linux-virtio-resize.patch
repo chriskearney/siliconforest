@@ -1,0 +1,262 @@
+Chonkstep: Follow VirtIO framebuffer mode changes
+
+Before each frame, ask SFGOP whether the VirtIO framebuffer changed and lay frames out for the new one. The panel output takes the new size at that frame boundary: the scene, then the wl_output preferred and current mode, which replaces the old one in the mode list, the shell chrome and work areas, layer surfaces and pointer bounds, with one full repaint. A size the scene refuses ends the frame with an error. Clients and windows stay.
+
+diff --git a/crates/wm-darwin/src/desktop_entry.rs b/crates/wm-darwin/src/desktop_entry.rs
+index d1018a0..2d9e453 100644
+--- a/crates/wm-darwin/src/desktop_entry.rs
++++ b/crates/wm-darwin/src/desktop_entry.rs
+@@ -294,6 +294,10 @@ impl SessionIo for NativeIo<'_> {
+         self.server.foreign_sync();
+         self.server.layers_follow_fullscreen();
+         lap(5, &mut parts);
++        // the host resized the display: the desk takes the framebuffer's size before this frame
++        if let Some(size) = self.presenter.follow_mode()? {
++            self.server.resize_panel(size)?;
++        }
+         self.server.repaint(self.presenter, ms)?;
+         lap(6, &mut parts);
+         self.server.capture_after_repaint();
+diff --git a/crates/wm-darwin/src/displays.rs b/crates/wm-darwin/src/displays.rs
+index 67b51cc..64c4b7e 100644
+--- a/crates/wm-darwin/src/displays.rs
++++ b/crates/wm-darwin/src/displays.rs
+@@ -19,7 +19,7 @@ use crate::server::Server;
+ use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
+ use smithay::reexports::wayland_server::backend::GlobalId;
+ use smithay::utils::Transform;
+-use wm_core::{Backend, MonitorInfo, Point, Rect};
++use wm_core::{Backend, MonitorInfo, Point, Rect, Size};
+ 
+ /// The outputs besides the panel's (which is `Server::output`): name, wl_output, its global.
+ #[derive(Default)]
+@@ -178,6 +178,42 @@ impl Server {
+             }
+         }
+     }
++    /// The panel's framebuffer took another size between frames (the host resized its display,
++    /// output.rs `Output::follow_mode`): the scene and the panel's `wl_output` mode, the desk's
++    /// chrome and work areas, the layer surfaces and the pointer follow, and the next frame is
++    /// drawn whole. Clients and their windows stay. When the scene cannot take the size, nothing
++    /// is advertised and the error ends the frame.
++    pub fn resize_panel(&mut self, size: Size) -> Result<(), String> {
++        let mut outputs = self.scene_outputs();
++        for o in outputs.iter_mut().filter(|o| o.kind == OutputKind::Internal) {
++            let (pos, primary) = (o.rect.pos, o.primary);
++            *o = SceneOutput { primary, ..SceneOutput::panel(size, self.scale()) };
++            o.rect.pos = pos;
++        }
++        self.set_scene_outputs(&outputs)
++            .map_err(|error| format!("WMOUTPUT panel {}x{} not applied to the scene: {error}", size.w, size.h))?;
++        let mode = Mode { size: (size.w as i32, size.h as i32).into(), refresh: 0 };
++        self.output.set_preferred(mode);
++        self.output.change_current_state(Some(mode), None, None, None);
++        // smithay keeps every mode it was given for clients that bind later: the panel has only this one
++        for old in self.output.modes().into_iter().filter(|&m| m != mode) {
++            self.output.delete_mode(old);
++        }
++        let screen = self.wm.backend().screen_size();
++        #[cfg(feature = "desktop-shell")]
++        if let Some(desktop) = self.desktop.as_mut() {
++            desktop.shell.on_screen_resize(&mut self.wm, screen);
++        }
++        // the dock's exclusive zone on the new edges is the work area, as at start
++        self.layers_relayout();
++        if let Some(pointer) = &self.pointer_shared {
++            pointer.set_screen(screen.w, screen.h);
++        }
++        self.renderer.invalidate();
++        self.wm.backend_mut().dirty = true;
++        eprintln!("WMOUTPUT panel resized to {}x{} screen={}x{}", size.w, size.h, screen.w, screen.h);
++        Ok(())
++    }
+     /// Host runs only (tests/headless_outputs.rs): a `wl_subcompositor` global for a client that
+     /// will not start without one (foot). Subsurfaces are not composited by this desk (only the
+     /// window's own surface is drawn); the installed desk never calls this.
+diff --git a/crates/wm-darwin/src/output.rs b/crates/wm-darwin/src/output.rs
+index de7ee39..b041ff0 100644
+--- a/crates/wm-darwin/src/output.rs
++++ b/crates/wm-darwin/src/output.rs
+@@ -24,6 +24,14 @@ impl Output {
+             Output::Gpu => "gpu",
+         }
+     }
++    /// Before a frame: the boot framebuffer's new size when its display mode changed
++    /// (presenter.rs `Pdgop::follow_mode`).
++    pub fn follow_mode(&mut self) -> Result<Option<Size>, String> {
++        match self {
++            Output::Boot(p) => Ok(p.follow_mode()?.then(|| p.size())),
++            Output::Memory(_) | Output::Gpu => Ok(None),
++        }
++    }
+ }
+ impl Presenter for Output {
+     fn present(&mut self, frame: &tiny_skia::Pixmap) -> Result<(), String> {
+diff --git a/crates/wm-darwin/src/presenter.rs b/crates/wm-darwin/src/presenter.rs
+index b05ccec..8de5f5a 100644
+--- a/crates/wm-darwin/src/presenter.rs
++++ b/crates/wm-darwin/src/presenter.rs
+@@ -255,6 +255,7 @@ mod native {
+     unsafe extern "C" {
+         fn SFGOPOpen(fb: *mut RawFramebuffer) -> i32;
+         fn SFGOPClose(fb: *mut RawFramebuffer);
++        fn SFGOPRefresh(fb: *mut RawFramebuffer, changed: *mut i32) -> i32;
+         fn SFGOPGetServiceKind(fb: *const RawFramebuffer) -> u32;
+         fn SFGOPPresent(fb: *mut RawFramebuffer, x: u32, y: u32, width: u32, height: u32) -> i32;
+     }
+@@ -270,34 +271,45 @@ mod native {
+         scanout: Scanout,
+         stats: Option<PresentStats>,
+         virtio_transfer: bool,
++        /// A refresh lost the mapping: `scanout` points at nothing and is never written again.
++        closed: bool,
+         _single_thread: PhantomData<Rc<()>>,
+     }
++    fn layout_of(raw: &RawFramebuffer) -> FramebufferLayout {
++        FramebufferLayout {
++            width: raw.width,
++            height: raw.height,
++            stride: raw.stride,
++            size: raw.size,
++            bpp: raw.bpp,
++            pixel_type: raw.pixel_type,
++            masks: raw.component_masks,
++        }
++    }
++    /// What SFGOP opened: a connection and a mapping that covers the layout.
++    fn check_mapping(raw: &RawFramebuffer, kr: i32) -> Result<FramebufferLayout, String> {
++        if kr != 0 {
++            return Err(format!("SFGOPOpen failed: {kr:#x}"));
++        }
++        if raw.address == 0
++            || raw.address % 4 != 0
++            || raw.connect == 0
++            || raw.service == 0
++            || raw.address.checked_add(raw.size).is_none()
++        {
++            return Err("SFGOP returned invalid mapping/connection".into());
++        }
++        let layout = layout_of(raw);
++        layout.validate()?;
++        Ok(layout)
++    }
+     impl Pdgop {
+         pub fn open() -> Result<Self, String> {
+             let mut raw = RawFramebuffer::default();
+             let kr = unsafe { SFGOPOpen(&mut raw) };
+-            let layout = FramebufferLayout {
+-                width: raw.width,
+-                height: raw.height,
+-                stride: raw.stride,
+-                size: raw.size,
+-                bpp: raw.bpp,
+-                pixel_type: raw.pixel_type,
+-                masks: raw.component_masks,
+-            };
++            let layout = layout_of(&raw);
+             let checked = (|| {
+-                if kr != 0 {
+-                    return Err(format!("SFGOPOpen failed: {kr:#x}"));
+-                }
+-                if raw.address == 0
+-                    || raw.address % 4 != 0
+-                    || raw.connect == 0
+-                    || raw.service == 0
+-                    || raw.address.checked_add(raw.size).is_none()
+-                {
+-                    return Err("SFGOP returned invalid mapping/connection".into());
+-                }
+-                layout.validate()?;
++                check_mapping(&raw, kr)?;
+                 let mut conforms = 0i32; // mach/arm/boolean.h: boolean_t is int
+                 let kr = unsafe {
+                     IOObjectConformsTo(raw.service, c"IOGOPFramebuffer".as_ptr(), &mut conforms)
+@@ -333,23 +345,63 @@ mod native {
+                 scanout,
+                 stats: None,
+                 virtio_transfer,
++                closed: false,
+                 _single_thread: PhantomData,
+             })
+         }
++        /// Between frames: when the VirtIO driver published a framebuffer of another mode (the
++        /// host resized the display), map that one and lay frames out for it. True when it did.
++        /// The old mapping is gone once a change is seen, so a failure leaves nothing to draw on.
++        pub fn follow_mode(&mut self) -> Result<bool, String> {
++            if !self.virtio_transfer || self.closed {
++                return Ok(false);
++            }
++            let mut changed = 0i32;
++            let kr = unsafe { SFGOPRefresh(&mut self.raw, &mut changed) };
++            if changed == 0 {
++                return if kr == 0 { Ok(false) } else { Err(format!("SFGOPRefresh failed: {kr:#x}")) };
++            }
++            let mapped = check_mapping(&self.raw, kr).and_then(|layout| {
++                let scanout = unsafe { Scanout::new(self.raw.address as usize as *mut u8, layout) }?;
++                Ok((layout, scanout))
++            });
++            match mapped {
++                Ok((layout, scanout)) => {
++                    self.layout = layout;
++                    self.scanout = scanout;
++                    Ok(true)
++                }
++                Err(error) => {
++                    self.closed = true;
++                    unsafe { SFGOPClose(&mut self.raw) };
++                    Err(error)
++                }
++            }
++        }
+         pub fn layout(&self) -> FramebufferLayout {
+             self.layout
+         }
+         /// Visible pixels currently in the mapping (native words, no padding).
+         pub fn snapshot(&self) -> Vec<u8> {
++            if self.closed {
++                return Vec::new();
++            }
+             self.scanout.snapshot()
+         }
+         pub fn restore(&mut self, snapshot: &[u8]) -> Result<(), String> {
++            self.ensure_mapped()?;
+             self.scanout.restore(snapshot)?;
+             self.finish_present()
+         }
+         pub fn size(&self) -> Size {
+             Size::new(self.layout.width, self.layout.height)
+         }
++        fn ensure_mapped(&self) -> Result<(), String> {
++            if self.closed {
++                return Err("SFGOP framebuffer was lost in a mode change".into());
++            }
++            Ok(())
++        }
+ 
+         fn finish_present(&mut self) -> Result<(), String> {
+             unsafe { std::arch::asm!("dsb oshst", options(nostack, preserves_flags)) };
+@@ -366,12 +418,14 @@ mod native {
+     }
+     impl Presenter for Pdgop {
+         fn present(&mut self, frame: &tiny_skia::Pixmap) -> Result<(), String> {
++            self.ensure_mapped()?;
+             let stats = self.scanout.write_full_per_pixel(frame)?;
+             self.finish_present()?;
+             self.stats = Some(stats);
+             Ok(())
+         }
+         fn present_damage(&mut self, frame: &tiny_skia::Pixmap, damage: &[DRect]) -> Result<(), String> {
++            self.ensure_mapped()?;
+             let stats = self.scanout.write_damage(frame, damage)?;
+             if stats.bytes_written != 0 {
+                 self.finish_present()?;
+@@ -401,6 +455,9 @@ impl Pdgop {
+     pub fn size(&self) -> Size {
+         unreachable!("Pdgop::open cannot succeed on this platform")
+     }
++    pub fn follow_mode(&mut self) -> Result<bool, String> {
++        unreachable!("Pdgop::open cannot succeed on this platform")
++    }
+     pub fn layout(&self) -> FramebufferLayout {
+         unreachable!("Pdgop::open cannot succeed on this platform")
+     }

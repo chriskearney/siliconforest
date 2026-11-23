@@ -19,6 +19,7 @@ let
     '') series}
   '' + lib.optionalString (pkgs.stdenv.buildPlatform.system == "aarch64-linux" && (base.parallelsGuest or false)) ''
     patch -d "$out" -p1 --batch --fuzz=0 < ${./patches/chonkstep-aarch64-linux-virtio-present.patch}
+    patch -d "$out" -p1 --batch --fuzz=0 < ${./patches/chonkstep-aarch64-linux-virtio-resize.patch}
   '');
   terminalSource = pkgs.runCommand "siliconforest-terminal-source" {
     nativeBuildInputs = [ pkgs.patch ];
