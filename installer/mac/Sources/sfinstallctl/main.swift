@@ -23,7 +23,7 @@ USAGE
   sfinstallctl image-rehearse [--layout j293|j313] [--size 20G] [--kill-after S47] [--then resume|rollback] [--remove] [--keep]
                           the real engine with real diskutil, on a disk image it creates under .build-images
   sfinstallctl image-journal PATH      a hash-chained engine journal, verified
-  sfinstallctl image-clean             detach and delete every image under .build-images
+  sfinstallctl image-clean [--runs]    detach and delete every image under .build-images (--runs: per-test images only)
 
 Default fixture: j293-512 (j293-512-installed for uninstall). --speed 0 is instant, 1 is the UI's pace.
 Only image-rehearse writes, and only to disk images under installer/mac/.build-images: every change passes
@@ -224,8 +224,10 @@ func main() async {
             print("chain verified: \(recs.count) records\(torn ? " (torn tail dropped)" : ""); end: \(st.end?.rawValue ?? "unfinished"); no changes made: \(st.noChangesMade)")
             for a in st.approvals { print("needs Chris's approval: \(a.step) \(a.command.joined(separator: " ")) (\(a.reason))") }
         case "image-clean":
-            ImageFixtures.cleanUp(ImageGuard.defaultRoot)
-            print("✓ detached and deleted everything under \(ImageGuard.defaultRoot.path)")
+            // --runs: only the per-test images (keeps the reusable templates).
+            let dir = args.flags["runs"] == "true" ? ImageGuard.defaultRoot.appendingPathComponent("runs", isDirectory: true) : ImageGuard.defaultRoot
+            ImageFixtures.cleanUp(dir)
+            print("✓ detached and deleted everything under \(dir.path)")
         case "journal":
             guard let path = args.positional.first else { fail("journal PATH") }
             let entries = try Journal.read(URL(fileURLWithPath: path))

@@ -48,7 +48,10 @@ public struct ProcessToolRunner: ToolRunner {
         p.standardError = err
         let inPipe = stdin.map { _ in Pipe() }
         p.standardInput = inPipe ?? FileHandle.nullDevice
-        try p.run()
+        do { try p.run() } catch {
+            let ns = error as NSError
+            throw EngineError(.internalError, "couldn't start \(argv.prefix(3).joined(separator: " "))", detail: "\(ns.domain) \(ns.code): \(ns.localizedDescription)")
+        }
         if let inPipe, let stdin {
             inPipe.fileHandleForWriting.write(stdin)
             try? inPipe.fileHandleForWriting.close()
@@ -60,6 +63,10 @@ public struct ProcessToolRunner: ToolRunner {
         let outData = out.fileHandleForReading.readDataToEndOfFile()
         group.wait()
         p.waitUntilExit()
+        // Close every end explicitly: relying on Pipe deallocation leaked ~10 descriptors a second
+        // until posix_spawn failed with EBADF (found by the fault-injection sweep).
+        for h in [out.fileHandleForReading, out.fileHandleForWriting, err.fileHandleForReading, err.fileHandleForWriting] { try? h.close() }
+        if let inPipe { try? inPipe.fileHandleForReading.close(); try? inPipe.fileHandleForWriting.close() }
         return ToolResult(status: p.terminationStatus, stdout: outData, stderr: errData)
     }
 }

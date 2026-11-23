@@ -159,6 +159,8 @@ public final class InstallEngine: @unchecked Sendable {
     public var recoveryBinary: URL?
     /// For removal: the install's proof.
     public var proof: InstallProof?
+    /// The operation in progress, for error reports.
+    var breadcrumb: String?
 
     public init(backend: DiskImageBackend, journal: ChainJournal, profile: DeviceProfile, release: ReleaseManifest?, releaseSource: URL?,
                 workDir: URL, faults: FaultPlan = FaultPlan(), launcher: ResizeLauncher = SpawnLauncher(),
@@ -233,7 +235,10 @@ public final class InstallEngine: @unchecked Sendable {
                 _ = try? journal.append(.failed, step: code.rawValue, note: e.reason)
                 throw e
             } catch {
-                let ee = (error as? EngineError) ?? EngineError(.internalError, error.localizedDescription)
+                let ns = error as NSError
+                let where_ = breadcrumb.map { " during \($0)" } ?? ""
+                let ee = (error as? EngineError) ?? EngineError(.internalError, error.localizedDescription + where_,
+                                                                detail: "\(ns.domain) \(ns.code) \(ns.userInfo[NSFilePathErrorKey] ?? "")")
                 _ = try? journal.append(.failed, step: code.rawValue, result: ["class": .s(ee.errorClass.rawValue)], note: ee.errorDescription)
                 throw ee
             }

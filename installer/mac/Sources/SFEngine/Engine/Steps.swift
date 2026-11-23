@@ -168,7 +168,9 @@ extension InstallEngine {
             guard let stub = gate.created["stub"] else { throw EngineError(.inconsistent, "no stub") }
             try gate.admit(.writeFiles(partition: stub, volumeRole: "System", files: []), now: try backend.topology())
             try journal.append(.intent, step: c)
+            breadcrumb = "mounting the stub's System volume"
             let vol = try backend.volumeURL(store: stub, role: "System")
+            breadcrumb = nil
             switch code {
             case .S55: try atomicWrite(try bootObject(gate: gate), to: vol.appendingPathComponent(".sf/boot.bin"))
             case .S60: try stageRecovery(vol: vol, plan: plan, gate: gate)
@@ -386,6 +388,8 @@ extension InstallEngine {
     }
 
     func atomicWrite(_ data: Data, to url: URL) throws {
+        breadcrumb = "writing \(url.lastPathComponent)"
+        defer { breadcrumb = nil }
         try FileManager.default.ensureDirectory(url.deletingLastPathComponent())
         let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).sf-tmp")
         try data.write(to: tmp)
@@ -460,6 +464,7 @@ extension InstallEngine {
     }
 
     func hide(vol: URL) throws {
+        breadcrumb = "hiding SystemVersion.plist on \(vol.path)"
         let core = vol.appendingPathComponent("System/Library/CoreServices")
         let plist = core.appendingPathComponent("SystemVersion.plist"), hidden = core.appendingPathComponent("SystemVersion.plist.sf-hidden")
         if FileManager.default.fileExists(atPath: plist.path) {

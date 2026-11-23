@@ -41,10 +41,11 @@ public enum ReadOnlyCommand {
         p.arguments = Array(argv.dropFirst())
         let out = Pipe()
         p.standardOutput = out
-        p.standardError = Pipe()
+        p.standardError = FileHandle.nullDevice
         try p.run()
         let data = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
+        try? out.fileHandleForReading.close(); try? out.fileHandleForWriting.close()
         // csrutil/fdesetup print status and can exit non-zero on some states; the text is what matters.
         if p.terminationStatus != 0 && argv[0].hasSuffix("diskutil") {
             throw BackendError.commandFailed(argv.joined(separator: " "), p.terminationStatus)

@@ -7,8 +7,12 @@ cd "$(dirname "$0")/.."
 swift build --build-tests
 if [ -d /Library/Developer/CommandLineTools/Library/Developer/Frameworks/Testing.framework ] && ! xcode-select -p | grep -q Xcode.app; then
   swift build --product sfinstallkit-selftest
+  swift build --product sfinstallctl
+  BIN="$(swift build --show-bin-path)"
+  # Afterwards, detach and delete every per-test disk image (SF_KEEP=1 keeps them for inspection).
+  [ "${SF_KEEP:-0}" = 1 ] || trap '"$BIN/sfinstallctl" image-clean --runs > /dev/null' EXIT
   # Serially: the disk-image suites each attach images and run real diskutil.
-  exec "$(swift build --show-bin-path)/sfinstallkit-selftest" --no-parallel "$@"
+  "$BIN/sfinstallkit-selftest" --no-parallel "$@"
 else
   exec swift test --no-parallel "$@"
 fi

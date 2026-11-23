@@ -56,6 +56,7 @@ public final class RecoverySetup {
         try p.run()
         let d = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
+        try? out.fileHandleForReading.close(); try? out.fileHandleForWriting.close()
         let text = String(decoding: d, as: UTF8.self)
         log.append("$ \(argv.joined(separator: " "))\n\(text)")
         return (p.terminationStatus, text)
