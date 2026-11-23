@@ -25,7 +25,7 @@ Module names follow [`docs/installer/DESIGN.md`](../../docs/installer/DESIGN.md)
 | `SFHelper` | Placeholder for the privileged helper (DESIGN §6). Exits; no disk access. |
 | `SFRecovery` | Placeholder for the recoveryOS app (DESIGN §7), AppKit only. Exits; changes nothing. |
 | `sfinstallctl` | The engine from the command line. |
-| `SFInstallKitTests` / `sfinstallkit-selftest` | 26 Swift Testing tests, as a `swift test` bundle and as an executable for Command Line Tools-only Macs. |
+| `SFInstallKitTests` / `sfinstallkit-selftest` | 27 Swift Testing tests, as a `swift test` bundle and as an executable for Command Line Tools-only Macs. |
 
 ```
 Sources/SFInstallKit/Model      DeviceProfile + CanonicalProfile (schema decoder), DiskModel (+ classification), SystemFacts, Bytes
@@ -144,5 +144,5 @@ This Mac has no signing identity; `make-app.sh` signs ad hoc. To ship:
 
 `swift run SFInstaller --snapshot /tmp/sf-shots --sizes 1280x800@2,1512x982@1` renders every screen
 from the real views with the Grove frozen at a fixed time. Committed in `docs/installer/screenshots/`:
-2560×1600 (1280×800 pt @2x, the 13-inch M1's panel) for the key screens, 1512×982 for all 34 states. Controls that AppKit draws (the name field, the log's scroll view) are
+2560×1600 (1280×800 pt @2x, the 13-inch M1's panel) for the key screens, 1512×982 for all 36 states. Controls that AppKit draws (the name field, the log's scroll view) are
 swapped for SwiftUI equivalents that look the same in snapshots only.
