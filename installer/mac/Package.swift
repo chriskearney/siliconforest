@@ -54,7 +54,7 @@ let package = Package(
         // scripts/check-recovery-links.sh fails the build if SFRecovery links anything §7.3 forbids.
         .target(name: "SFRecoveryKit", swiftSettings: ui),
         .executableTarget(name: "SFRecovery", dependencies: ["SFRecoveryKit"], swiftSettings: ui),
-        .executableTarget(name: "sfinstallctl", dependencies: ["SFInstallKit", "SFCopy"]),
+        .executableTarget(name: "sfinstallctl", dependencies: ["SFInstallKit", "SFCopy", "SFEngine"]),
         // Same tests as an executable, for Command Line Tools-only Macs (see scripts/test.sh).
         .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit", "SFRecoveryKit"], path: "Tests/CLTRunner",
                           swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),

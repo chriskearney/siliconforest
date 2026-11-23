@@ -1,6 +1,7 @@
 import Foundation
 import SFInstallKit
 import SFCopy
+import SFEngine
 
 // sfinstallctl: the installer engine without the UI. Dry runs against fixtures, read-only analysis
 // of this Mac, and plan rehearsals that print every command without running any.
@@ -19,9 +20,14 @@ USAGE
   sfinstallctl uninstall  [--fixture NAME] [--speed X] [--journal PATH]
   sfinstallctl rehearse   --real [--size 80G]     plan against this Mac and record every command; nothing runs
   sfinstallctl journal    PATH
+  sfinstallctl image-rehearse [--layout j293|j313] [--size 20G] [--kill-after S47] [--then resume|rollback] [--remove] [--keep]
+                          the real engine with real diskutil, on a disk image it creates under .build-images
+  sfinstallctl image-journal PATH      a hash-chained engine journal, verified
+  sfinstallctl image-clean             detach and delete every image under .build-images
 
 Default fixture: j293-512 (j293-512-installed for uninstall). --speed 0 is instant, 1 is the UI's pace.
-Nothing in this tool writes to a disk. --real only reads (diskutil list/info, fdesetup/csrutil status, sysctl).
+Only image-rehearse writes, and only to disk images under installer/mac/.build-images: every change passes
+the image-only chokepoint, which refuses any other device. --real only reads.
 """
 
 struct Args {
@@ -206,6 +212,20 @@ func main() async {
             if args.real { print("\n(read-only: --real uninstall only prints the plan)"); return }
             print("")
             exit(await run(plan, on: b, journalPath: args.flags["journal"]))
+        case "image-rehearse":
+            try imageRehearse(args)
+        case "image-journal":
+            guard let path = args.positional.first else { fail("image-journal PATH") }
+            let (recs, torn) = try ChainJournal.load(URL(fileURLWithPath: path))
+            for r in recs {
+                print("\(String(r.seq).padding(toLength: 4, withPad: " ", startingAt: 0)) \(r.t)  \(r.kind.rawValue.padding(toLength: 17, withPad: " ", startingAt: 0)) \(r.step ?? "   ")  \(r.note ?? "")")
+            }
+            let st = JobState(recs)
+            print("chain verified: \(recs.count) records\(torn ? " (torn tail dropped)" : ""); end: \(st.end?.rawValue ?? "unfinished"); no changes made: \(st.noChangesMade)")
+            for a in st.approvals { print("needs Chris's approval: \(a.step) \(a.command.joined(separator: " ")) (\(a.reason))") }
+        case "image-clean":
+            ImageFixtures.cleanUp(ImageGuard.defaultRoot)
+            print("✓ detached and deleted everything under \(ImageGuard.defaultRoot.path)")
         case "journal":
             guard let path = args.positional.first else { fail("journal PATH") }
             let entries = try Journal.read(URL(fileURLWithPath: path))
@@ -223,6 +243,52 @@ func main() async {
     } catch {
         fail((error as? LocalizedError)?.errorDescription ?? "\(error)")
     }
+}
+
+func imageRehearse(_ args: Args) throws {
+    let layout = ImageFixtures.Layout(rawValue: args.flags["layout"] ?? "j293") ?? .j293
+    let profile = ProfileStore.profile(id: layout == .j293 ? "J293" : "J313")!
+    let dir = ImageGuard.defaultRoot.appendingPathComponent("rehearse-\(Int(Date().timeIntervalSince1970))", isDirectory: true)
+    print("▸ creating a \(layout.rawValue)-like image in \(dir.path)")
+    let image = try ImageFixtures.create(layout, in: dir, name: layout.rawValue)
+    let backend = DiskImageBackend(imagePath: image)
+    try backend.attach()
+    defer { if args.flags["keep"] != "true" { ImageFixtures.cleanUp(dir) } else { try? backend.detach(force: false); print("kept \(dir.path)") } }
+    let release = try RehearsalRelease.make(in: dir.appendingPathComponent("release"))
+    let original = try backend.topology()
+    let mac = original.macOS!
+    let size = Bytes.parse(args.flags["size"] ?? "20G") ?? 20 * Bytes.gb
+    let plan = try EnginePlanner.installPlan(topology: original, limits: try backend.limits(store: mac.uuid), profile: profile, release: release,
+                                             request: InstallRequest(siliconForestBytes: size, installID: String(UUID().uuidString.prefix(8)).lowercased()))
+    print("▸ plan \(plan.digest.prefix(16))…: macOS \(Bytes.format(plan.macOS.from)) → \(Bytes.format(plan.macOS.to)); " +
+          plan.partitions.map { "\($0.role) \(Bytes.format($0.bytes))" }.joined(separator: ", "))
+    let journal = try ChainJournal(directory: dir.appendingPathComponent("journal"))
+    let kill = args.flags["kill-after"].flatMap(StepCode.init(rawValue:))
+    func engine(_ f: FaultPlan = FaultPlan()) -> InstallEngine {
+        let e = InstallEngine(backend: backend, journal: (try? ChainJournal(directory: journal.url.deletingLastPathComponent(), jobID: journal.jobID)) ?? journal,
+                              profile: profile, release: release, releaseSource: dir.appendingPathComponent("release"), workDir: dir.appendingPathComponent("work"), faults: f)
+        e.onEvent = { ev in if case .step(let c, let t) = ev { print("  \(c.rawValue)  \(t)") } }
+        return e
+    }
+    try engine().begin(plan)
+    do { print("▸ \(try engine(FaultPlan(killAfterCommand: kill)).run().rawValue)") }
+    catch let k as SimulatedKill {
+        print("✗ \(k.at)")
+        if args.flags["then"] == "rollback" { print("▸ rollback: \(try engine().rollback().rawValue)") }
+        else { print("▸ resumed: \(try engine().run().rawValue)") }
+    }
+    let st = JobState(try ChainJournal.load(journal.url).0)
+    for a in st.approvals { print("  simulated, needs Chris's approval: \(a.step) \(a.command.joined(separator: " "))") }
+    if st.end == .rolledBack { print("✓ partition table identical to the original: \(try backend.topology().digestForm == original.digestForm)") }
+    if args.flags["remove"] == "true", st.end == .handedOff {
+        let proof = try InstallProofReader.proof(from: try ChainJournal(directory: journal.url.deletingLastPathComponent(), jobID: journal.jobID))
+        let rj = try ChainJournal(directory: journal.url.deletingLastPathComponent())
+        let re = InstallEngine(backend: backend, journal: rj, profile: profile, release: nil, releaseSource: nil, workDir: dir.appendingPathComponent("work"))
+        re.proof = proof
+        try re.begin(try EnginePlanner.removalPlan(topology: try backend.topology(), profile: profile, proof: proof))
+        print("▸ removal: \(try re.run().rawValue); table identical to the original: \(try backend.topology().digestForm == original.digestForm)")
+    }
+    print("journal: \(journal.url.path)")
 }
 
 await main()
