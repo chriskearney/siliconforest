@@ -24,6 +24,8 @@ public struct SystemFacts: Codable, Sendable, Hashable {
     public var fileVaultPercent: Int?
     /// nil = not checked (read-only mode checks it just before downloading).
     public var internet: Bool?
+    /// The system the Mac starts today (recorded so the install restores it, whichever OS it is).
+    public var startupSystem: String?
 
     public init(hwModel: String? = nil, board: String? = nil, chipName: String? = nil, macOSVersion: String? = nil,
                 macOSBuild: String? = nil, fileVault: FileVaultState = .unknown, sip: SIPState = .unknown,
@@ -33,7 +35,7 @@ public struct SystemFacts: Codable, Sendable, Hashable {
         self.power = power; self.userName = userName
     }
 
-    enum CodingKeys: String, CodingKey { case hwModel, board, chipName, macOSVersion, macOSBuild, fileVault, sip, bootPolicy, power, userName, userFullName, isAdmin, systemFirmware, fileVaultPercent, internet }
+    enum CodingKeys: String, CodingKey { case hwModel, board, chipName, macOSVersion, macOSBuild, fileVault, sip, bootPolicy, power, userName, userFullName, isAdmin, systemFirmware, fileVaultPercent, internet, startupSystem }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         hwModel = try c.decodeIfPresent(String.self, forKey: .hwModel)
@@ -51,6 +53,7 @@ public struct SystemFacts: Codable, Sendable, Hashable {
         systemFirmware = try c.decodeIfPresent(String.self, forKey: .systemFirmware)
         fileVaultPercent = try c.decodeIfPresent(Int.self, forKey: .fileVaultPercent)
         internet = try c.decodeIfPresent(Bool.self, forKey: .internet)
+        startupSystem = try c.decodeIfPresent(String.self, forKey: .startupSystem)
     }
 }
 

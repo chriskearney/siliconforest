@@ -183,7 +183,7 @@ struct InRecoveryScreen: View {
                 }
                 .frame(maxWidth: 560)
             case .ready:
-                ScreenHead(title: Copy.InRecovery.readyTitle, lead: Copy.InRecovery.readyBody)
+                ScreenHead(title: Copy.InRecovery.readyTitle, lead: Copy.InRecovery.readyBody(s.facts?.startupSystem ?? "macOS"))
                 Text(Copy.InRecovery.countdown(s.recoveryCountdown)).font(SFType.number(15, .medium)).foregroundStyle(theme.textSecondary)
             }
         }
@@ -216,7 +216,7 @@ struct FinishScreen: View {
             case .partial:
                 ScreenHead(title: Copy.Finish.partialTitle, lead: Copy.Finish.partialLead("starting system services"))
             case .didNotStart:
-                ScreenHead(title: Copy.Finish.failedTitle, lead: Copy.Finish.failedLead)
+                ScreenHead(title: Copy.Finish.failedTitle, lead: Copy.Finish.failedLead(s.facts?.startupSystem ?? "macOS"))
             }
         }
         .frame(maxHeight: .infinity, alignment: .topLeading)

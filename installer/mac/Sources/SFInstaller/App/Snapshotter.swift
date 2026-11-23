@@ -143,6 +143,8 @@ struct Snapshotter {
         add("02b-check-running") { let s = await base(); s.screen = .check; s.checksRevealed = 4; s.checksRunning = true; return s }
         add("02c-check-no-space") { let s = await base("j293-256-full"); s.screen = .check; return s }
         add("02d-check-hand-made") { let s = await base("j293-512-devinstall"); s.screen = .check; return s }
+        add("02e-check-macbook-air") { let s = await base("j313-256"); s.screen = .check; return s }
+        add("04c-space-macbook-air") { let s = await base("j313-256"); s.setSize(s.constraints!.recommended); s.screen = .space; return s }
         add("03-before-you-begin") { let s = await base(); s.screen = .prepare; s.showSecurity = true; return s }
         add("04b-space-limit") {
             let s = await base(); s.screen = .space; s.setSize(Int64.max / 4); s.showPartitionDetails = true; return s

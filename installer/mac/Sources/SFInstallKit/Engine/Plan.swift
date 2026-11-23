@@ -188,7 +188,8 @@ public enum Planner {
             step(.finalPreparations, "S55–S68", .finalPreparations, "Stage the Recovery step and set the next startup",
                  ops: [.writeFiles(target: "@stub", label: "stage 1 and SiliconForest Setup", items: [profile.kernel.stage1, "SiliconForest Setup.app", "SFInstall/plan.json"], bytes: 40 * Bytes.mb),
                        .bless(target: "@stub", label: name, nextOnly: true)],
-                 undo: [.bless(target: mac.identifier, label: "macOS", nextOnly: false)], weight: 4, seconds: 25, interruptible: false),
+                 // Undo restores the previous default, whichever OS it was (ENGINE §7, S65).
+                 undo: [.bless(target: mac.identifier, label: "the previous startup system", nextOnly: false)], weight: 4, seconds: 25, interruptible: false),
         ]
 
         return InstallPlan(kind: .install, profileID: profile.id, releaseVersion: release.version, options: options, disk: disk.identifier,

@@ -75,6 +75,7 @@ public enum Copy {
             case .macOSTooOld(let have, let need): return "macOS \(have). Needs \(need) or later"
             case .macOSBlocked(let major, _): return "macOS \(major) isn't tested yet"
             case .macOSUntested(let have, _): return "macOS \(have) isn't tested yet"
+            case .macOSGated(let major, let gate, _): return "macOS \(major): allowed in this dry run; release builds wait for test \(gate)"
             case .macOSUnknown: return "Couldn't read the macOS version"
             case .firmwareCurrent: return "Up to date"
             case .firmwareOld: return "Needs a macOS update"
@@ -217,8 +218,8 @@ public enum Copy {
         public static let nameLabel = "Name at startup"
         public static let nameHelp = "The name in the startup picker"
         public static let afterSetup = "After setup"
-        public static let startOnce = "Start SiliconForest once, keep macOS as the default"
-        public static let startOnceHelp = "If the first start has any trouble, your Mac comes back to macOS"
+        public static let startOnce = "Start SiliconForest once, keep your current startup system"
+        public static let startOnceHelp = "If the first start has any trouble, your Mac goes back to the system it starts today"
         public static let makeDefault = "Make SiliconForest the default after it starts successfully"
         public static let advanced = "Advanced"
         public static let channel = "Release channel"
@@ -345,7 +346,9 @@ public enum Copy {
         public static let workingTitle = "Setting up SiliconForest"
         public static let working = ["Checking this recovery system", "Allowing SiliconForest to start", "Installing the startup software", "Finishing up"]
         public static let readyTitle = "All set"
-        public static let readyBody = "Your Mac will now start SiliconForest for the first time. If anything goes wrong, turn it off and on and you'll be back in macOS."
+        public static func readyBody(_ current: String) -> String {
+            "Your Mac will now start SiliconForest for the first time. If anything goes wrong, turn it off and on and you'll be back in \(current)."
+        }
         public static let restart = "Restart"
         public static func countdown(_ s: Int) -> String { "Restarting in \(s) seconds" }
         public static let wait = "Wait"
@@ -366,7 +369,7 @@ public enum Copy {
         public static let partialTitle = "SiliconForest started, but didn't finish"
         public static func partialLead(_ stage: String) -> String { "It got as far as \(stage). Your Mac and macOS are fine." }
         public static let failedTitle = "SiliconForest didn't start"
-        public static let failedLead = "Your Mac came back to macOS safely. Nothing in macOS was changed."
+        public static func failedLead(_ current: String) -> String { "Your Mac went back to \(current) safely. Nothing in macOS was changed." }
     }
 
     // MARK: Part 4. Remove

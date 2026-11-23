@@ -9,6 +9,13 @@ private func j293() throws -> DeviceProfile {
 
 @Suite("Profiles")
 struct ProfileTests {
+    @Test func everyCanonicalProfileLoads() throws {
+        let all = ProfileStore.loadAll()
+        #expect(all.contains { $0.id == "J293" } && all.contains { $0.id == "J313" })
+        let air = try #require(ProfileStore.profile(id: "J313"))
+        #expect(air.matches(hwModel: "MacBookAir10,1", board: nil) && air.soc.id == "t8103")
+    }
+
     @Test func loadsCanonicalJ293() throws {
         let p = try j293()
         #expect(p.sourceFormat == "canonical")   // installer/profiles/J293.json, not a fixture
@@ -16,7 +23,8 @@ struct ProfileTests {
         #expect(p.modelIdentifiers.contains("MacBookPro17,1"))
         #expect(p.board == "J293AP")
         #expect(p.support.minMacOS == "13.5")
-        #expect(p.support.blockedMajors.contains { $0.major == 27 })
+        #expect(p.support.gatedMajors.contains { $0.major == 27 && $0.gate == "S11" && !$0.passed })
+        #expect(p.support.maximumTestedMajor == 27)
         #expect(p.partitioning.stubContainerBytes == 2_499_805_184)
         #expect(p.partitioning.bootPartition.name == "SFBOOT" && p.partitioning.bootPartition.bytes == 524_288_000)
         #expect(p.partitioning.alignmentBytes == 1_048_576)
@@ -141,7 +149,12 @@ struct CompatibilityTests {
         #expect(checks.first { $0.kind == .macOS }?.status == .fail)
         facts.macOSVersion = "27.0"
         let blocked = CompatibilityChecker.run(facts: facts, snapshot: try fixture("j293-512").snapshot, profile: try j293())
-        if case .macOSBlocked(let major, _)? = blocked.first(where: { $0.kind == .macOS })?.finding { #expect(major == 27) } else { Issue.record("27 not blocked") }
+        if case .macOSBlocked(let major, _)? = blocked.first(where: { $0.kind == .macOS })?.finding { #expect(major == 27) } else { Issue.record("27 not blocked in a release build") }
+        let dev = CompatibilityChecker.run(facts: facts, snapshot: try fixture("j293-512").snapshot, profile: try j293(), allowGatedMajors: true)
+        #expect(dev.first { $0.kind == .macOS }?.status == .warning)
+        facts.macOSVersion = "28.0"
+        let tooNew = CompatibilityChecker.run(facts: facts, snapshot: try fixture("j293-512").snapshot, profile: try j293(), allowGatedMajors: true)
+        #expect(tooNew.first { $0.kind == .macOS }?.status == .fail)
         #expect(OSVersion("12.3") > OSVersion("12.2.1"))
         #expect(OSVersion("26.5.2") > OSVersion("15.6"))
     }

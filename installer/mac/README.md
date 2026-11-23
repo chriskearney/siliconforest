@@ -32,10 +32,11 @@ Sources/SFInstallKit/Model      DeviceProfile + CanonicalProfile (schema decoder
 Sources/SFInstallKit/Engine     Compatibility, Sizing, Plan, DiskOperation, Journal, InstallRunner
 Sources/SFInstallKit/Backends   DiskBackend, SimulatedDiskBackend, RealDiskBackend (read-only)
 Sources/SFInstallKit/Helper     SFHelperProtocol (verbs, DESIGN §6.3)
-Fixtures/disks/*.json           fake Macs: j293-512, j293-512-installed, j293-512-devinstall (hand-made, sf.unproven), j293-256-full
+Fixtures/disks/*.json           fake Macs: j293-512, j293-512-installed, j293-512-devinstall (hand-made, sf.unproven), j293-256-full, j313-256 (the Air)
 ```
 
-The device profile is the canonical `installer/profiles/J293.json`; there is no fixture profile any more.
+Device profiles are the canonical `installer/profiles/*.json` (J293 and J313 today); there is no
+fixture profile. J313 loaded without engine changes, which is the point of the profile layer.
 
 ## Build, run, test
 

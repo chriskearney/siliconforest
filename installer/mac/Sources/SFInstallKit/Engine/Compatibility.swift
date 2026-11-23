@@ -20,6 +20,8 @@ public enum Finding: Sendable, Hashable {
     case macOSTooOld(have: String, need: String)
     case macOSBlocked(major: Int, reason: String)
     case macOSUntested(have: String, newestTested: Int)
+    /// A required target still behind its gate: refused in release builds, allowed in dry runs.
+    case macOSGated(major: Int, gate: String, reason: String)
     case macOSUnknown
     case firmwareCurrent
     case firmwareOld(have: String, need: String)
@@ -53,8 +55,9 @@ public enum EntryState: Sendable, Hashable {
 
 public enum CompatibilityChecker {
     /// The checks, in the order the UI reveals them.
+    /// `allowGatedMajors`: dev builds and dry runs may pass a gated major (D11); release builds refuse it.
     public static func run(facts: SystemFacts, snapshot: DiskSnapshot, profile: DeviceProfile?,
-                           release: ReleaseInfo = .placeholder) -> [CompatibilityCheck] {
+                           release: ReleaseInfo = .placeholder, allowGatedMajors: Bool = false) -> [CompatibilityCheck] {
         var out: [CompatibilityCheck] = []
         func add(_ k: CompatibilityCheck.Kind, _ s: CompatibilityCheck.Status, _ f: Finding) { out.append(.init(kind: k, status: s, finding: f)) }
 
@@ -74,6 +77,9 @@ public enum CompatibilityChecker {
                 add(.macOS, .fail, .macOSTooOld(have: v, need: minimum))
             } else if let b = profile?.support.blockedMajors.first(where: { $0.major == major }) {
                 add(.macOS, .fail, .macOSBlocked(major: b.major, reason: b.reason))
+            } else if let g = profile?.support.gatedMajors.first(where: { $0.major == major && !$0.passed }) {
+                add(.macOS, allowGatedMajors ? .warning : .fail,
+                    allowGatedMajors ? .macOSGated(major: g.major, gate: g.gate, reason: g.reason) : .macOSBlocked(major: g.major, reason: g.reason))
             } else if let max = profile?.support.maximumTestedMajor, major > max {
                 add(.macOS, .fail, .macOSBlocked(major: major, reason: "Not tested yet."))
             } else {

@@ -1,0 +1,155 @@
+{
+  "name": "j313-256",
+  "summary": "MacBook Air (M1), 256 GB, macOS Sonoma 14.6: the first planned real install (FIRST-INSTALL-J313.md), simulated.",
+  "facts": {
+    "hwModel": "MacBookAir10,1",
+    "board": "J313AP",
+    "chipName": "Apple M1",
+    "macOSVersion": "14.6.1",
+    "macOSBuild": "23G93",
+    "fileVault": "off",
+    "sip": "enabled",
+    "power": {
+      "onACPower": true,
+      "batteryPercent": 92,
+      "charging": true
+    },
+    "userName": "chris",
+    "userFullName": "Chris",
+    "isAdmin": true,
+    "systemFirmware": "iBoot-11881.140.96",
+    "internet": true,
+    "startupSystem": "macOS"
+  },
+  "disks": [
+    {
+      "identifier": "disk0",
+      "mediaName": "APPLE SSD AP0256Q",
+      "size": 251000193024,
+      "blockSize": 4096,
+      "isInternal": true,
+      "partitions": [
+        {
+          "identifier": "disk0s1",
+          "offset": 24576,
+          "size": 524288000,
+          "content": "Apple_APFS_ISC",
+          "container": {
+            "reference": "disk1",
+            "capacityCeiling": 524288000,
+            "capacityFree": 507288000,
+            "volumes": [
+              {
+                "identifier": "disk1s1",
+                "name": "iSCPreboot",
+                "roles": [
+                  "Preboot"
+                ],
+                "capacityInUse": 6152192
+              },
+              {
+                "identifier": "disk1s2",
+                "name": "xART",
+                "roles": [
+                  "xART"
+                ],
+                "capacityInUse": 6311936
+              },
+              {
+                "identifier": "disk1s3",
+                "name": "Hardware",
+                "roles": [
+                  "Hardware"
+                ],
+                "capacityInUse": 4579328
+              }
+            ]
+          }
+        },
+        {
+          "identifier": "disk0s2",
+          "offset": 524312576,
+          "size": 245107195904,
+          "content": "Apple_APFS",
+          "container": {
+            "reference": "disk3",
+            "capacityCeiling": 245107195904,
+            "capacityFree": 127327195904,
+            "volumes": [
+              {
+                "identifier": "disk3s1",
+                "name": "Macintosh HD",
+                "roles": [
+                  "System"
+                ],
+                "capacityInUse": 11240000000
+              },
+              {
+                "identifier": "disk3s5",
+                "name": "Macintosh HD - Data",
+                "roles": [
+                  "Data"
+                ],
+                "capacityInUse": 96000000000,
+                "fileVault": false
+              },
+              {
+                "identifier": "disk3s2",
+                "name": "Preboot",
+                "roles": [
+                  "Preboot"
+                ],
+                "capacityInUse": 6120000000
+              },
+              {
+                "identifier": "disk3s3",
+                "name": "Recovery",
+                "roles": [
+                  "Recovery"
+                ],
+                "capacityInUse": 1080000000
+              },
+              {
+                "identifier": "disk3s4",
+                "name": "Update",
+                "roles": [
+                  "Update"
+                ],
+                "capacityInUse": 1190000000
+              },
+              {
+                "identifier": "disk3s6",
+                "name": "VM",
+                "roles": [
+                  "VM"
+                ],
+                "capacityInUse": 2150000000
+              }
+            ]
+          }
+        },
+        {
+          "identifier": "disk0s3",
+          "offset": 245631508480,
+          "size": 5368664064,
+          "content": "Apple_APFS_Recovery",
+          "container": {
+            "reference": "disk2",
+            "capacityCeiling": 5368664064,
+            "capacityFree": 2668664064,
+            "volumes": [
+              {
+                "identifier": "disk2s1",
+                "name": "Recovery",
+                "roles": [
+                  "Recovery"
+                ],
+                "capacityInUse": 2650000000
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

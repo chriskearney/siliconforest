@@ -40,6 +40,8 @@ public struct DeviceProfile: Codable, Sendable, Identifiable, Hashable {
         public var maximumTestedMajor: Int? = nil
         /// macOS majors the installer refuses, with the reason shown to the user.
         public var blockedMajors: [BlockedMajor] = []
+        /// Majors that are targets but stay refused by release builds until a named gate passes (D11).
+        public var gatedMajors: [GatedMajor] = []
         /// macOS build of the stub (e.g. "22G74").
         public var stubBuild: String? = nil
         public var stubRestoreImageURL: String? = nil
@@ -50,6 +52,12 @@ public struct DeviceProfile: Codable, Sendable, Identifiable, Hashable {
 
         public struct BlockedMajor: Codable, Sendable, Hashable {
             public var major: Int
+            public var reason: String
+        }
+        public struct GatedMajor: Codable, Sendable, Hashable {
+            public var major: Int
+            public var gate: String
+            public var passed: Bool
             public var reason: String
         }
     }

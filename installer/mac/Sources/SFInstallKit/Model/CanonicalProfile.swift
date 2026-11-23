@@ -29,8 +29,11 @@ struct CanonicalProfile: Decodable {
     struct HostMacOS: Decodable {
         var minimum: String?
         var maximum_tested_major: Int?
+        var maximum_allowed_major: Int?
         var blocked_majors: [Blocked]?
+        var gated_majors: [Gated]?
         struct Blocked: Decodable { var major: Int; var reason: String }
+        struct Gated: Decodable { var major: Int; var gate: String?; var passed: Bool?; var reason: String }
     }
     struct Stub: Decodable {
         var version: String?
@@ -90,7 +93,8 @@ struct CanonicalProfile: Decodable {
 
         var support = DeviceProfile.Support(status: status ?? "development", minMacOS: host_macos?.minimum ?? "13.5",
                                             stubFirmware: stub?.version.map { [$0] } ?? [], preferredStubFirmware: stub?.version)
-        support.maximumTestedMajor = host_macos?.maximum_tested_major
+        support.maximumTestedMajor = host_macos?.maximum_allowed_major ?? host_macos?.maximum_tested_major
+        support.gatedMajors = (host_macos?.gated_majors ?? []).map { .init(major: $0.major, gate: $0.gate ?? "?", passed: $0.passed ?? false, reason: $0.reason) }
         support.blockedMajors = (host_macos?.blocked_majors ?? []).map { .init(major: $0.major, reason: $0.reason) }
         support.stubBuild = stub?.build
         support.stubRestoreImageURL = stub?.restore_image?.url

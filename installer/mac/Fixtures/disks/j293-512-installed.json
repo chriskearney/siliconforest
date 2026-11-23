@@ -18,7 +18,8 @@
     "userFullName": "Chris",
     "isAdmin": true,
     "systemFirmware": "iBoot-11881.140.96",
-    "internet": true
+    "internet": true,
+    "startupSystem": "macOS"
   },
   "disks": [
     {

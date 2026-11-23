@@ -274,7 +274,7 @@ public final class Session: ObservableObject {
         snapshot = s
         let matched = ProfileStore.profile(matching: f)
         profile = matched ?? ProfileStore.profile(id: "J293")
-        checks = CompatibilityChecker.run(facts: f, snapshot: s, profile: matched, release: release)
+        checks = CompatibilityChecker.run(facts: f, snapshot: s, profile: matched, release: release, allowGatedMajors: isDryRun)
         entry = CompatibilityChecker.entryState(snapshot: s, journal: nil)
         selectedInstall = ownedInstall
         if let c = constraints, siliconForestSize == 0 || siliconForestSize > c.maximum { setSize(c.recommended) }
