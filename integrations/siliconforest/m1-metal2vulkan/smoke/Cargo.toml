@@ -1,0 +1,14 @@
+[package]
+name = "sf-metal-smoke"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "SiliconForest's Metal-on-Vulkan smoke test: floor check, a compute dispatch and a triangle through metal2vulkan-runtime"
+
+[dependencies]
+metal2vulkan-runtime = { path = "../metal2vulkan/crates/metal2vulkan-runtime" }
+sha2 = "0.11"
+
+[profile.release]
+debug = false

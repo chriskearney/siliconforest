@@ -1,0 +1,239 @@
+diff --git a/crates/metal2vulkan-conformance/Cargo.toml b/crates/metal2vulkan-conformance/Cargo.toml
+index 0dc9f42..40551f5 100644
+--- a/crates/metal2vulkan-conformance/Cargo.toml
++++ b/crates/metal2vulkan-conformance/Cargo.toml
+@@ -41,7 +41,7 @@ windows-sys = { workspace = true, features = [
+     "Win32_System_Threading",
+ ] }
+ 
+-[target.'cfg(target_os = "macos")'.dependencies]
++[target.'cfg(all(target_os = "macos", not(sf_replay_only)))'.dependencies]
+ # The command-buffer handler blocks the event cases add: `addScheduledHandler:` and
+ # `addCompletedHandler:` take Objective-C blocks, which is how a probe bounds a wait Metal has no
+ # bounded form of. Already objc2-metal's own dependency; named here so the suite can build one.
+diff --git a/crates/metal2vulkan-conformance/src/bin/conformance.rs b/crates/metal2vulkan-conformance/src/bin/conformance.rs
+index d2fb372..5f3c182 100644
+--- a/crates/metal2vulkan-conformance/src/bin/conformance.rs
++++ b/crates/metal2vulkan-conformance/src/bin/conformance.rs
+@@ -212,7 +212,7 @@ fn command() -> Result<bool, String> {
+ }
+ 
+ /// Take the selection's Metal answers, printing where each recording went.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ fn record(cases: &[Box<dyn metal2vulkan_conformance::case::Case>]) -> Result<bool, String> {
+     let mut all = true;
+     for (case, written) in run::record_all(cases) {
+@@ -228,14 +228,14 @@ fn record(cases: &[Box<dyn metal2vulkan_conformance::case::Case>]) -> Result<boo
+ }
+ 
+ /// There is no Metal to record from off macOS.
+-#[cfg(not(target_os = "macos"))]
++#[cfg(any(not(target_os = "macos"), sf_replay_only))]
+ fn record(_cases: &[Box<dyn metal2vulkan_conformance::case::Case>]) -> Result<bool, String> {
+     Err("record mode runs on macOS, where Metal is".to_owned())
+ }
+ 
+ /// Take one case's validated leg: the body of the child process record mode spawns with Metal's
+ /// API validation layer on. It is not part of the command's documented surface.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ fn validated_leg(cases: &[Box<dyn metal2vulkan_conformance::case::Case>]) -> Result<bool, String> {
+     let [case] = cases else {
+         return Err(format!(
+@@ -248,14 +248,14 @@ fn validated_leg(cases: &[Box<dyn metal2vulkan_conformance::case::Case>]) -> Res
+ }
+ 
+ /// There is no Metal to validate against off macOS.
+-#[cfg(not(target_os = "macos"))]
++#[cfg(any(not(target_os = "macos"), sf_replay_only))]
+ fn validated_leg(_cases: &[Box<dyn metal2vulkan_conformance::case::Case>]) -> Result<bool, String> {
+     Err("Metal's API validation layer is on macOS, where Metal is".to_owned())
+ }
+ 
+ /// Measure what the selection costs in **time** on native Metal and print the table, writing the
+ /// figures into the cases' own recordings with `--write`.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ fn times(
+     cases: &[Box<dyn metal2vulkan_conformance::case::Case>],
+     runs: u32,
+@@ -301,7 +301,7 @@ fn times(
+ }
+ 
+ /// There is no Metal to time off macOS.
+-#[cfg(not(target_os = "macos"))]
++#[cfg(any(not(target_os = "macos"), sf_replay_only))]
+ fn times(
+     _cases: &[Box<dyn metal2vulkan_conformance::case::Case>],
+     _runs: u32,
+diff --git a/crates/metal2vulkan-conformance/src/lib.rs b/crates/metal2vulkan-conformance/src/lib.rs
+index 04042da..521617e 100644
+--- a/crates/metal2vulkan-conformance/src/lib.rs
++++ b/crates/metal2vulkan-conformance/src/lib.rs
+@@ -110,11 +110,11 @@ pub mod visible_tables;
+ pub mod watch;
+ pub mod work;
+ 
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ pub mod metal_side;
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ mod metal_surface;
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ pub mod metal_work;
+ 
+ #[cfg(test)]
+diff --git a/crates/metal2vulkan-conformance/src/record.rs b/crates/metal2vulkan-conformance/src/record.rs
+index 2d2a83f..64c021a 100644
+--- a/crates/metal2vulkan-conformance/src/record.rs
++++ b/crates/metal2vulkan-conformance/src/record.rs
+@@ -214,7 +214,7 @@ fn add(outcomes: &mut Vec<Outcome>, transcript: Transcript) {
+ }
+ 
+ /// Refuse to record on a host that is not the oracle the suite names.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ fn check_host() -> Result<(), RecordError> {
+     let read = |flag: &str| {
+         std::process::Command::new("/usr/bin/sw_vers")
+@@ -238,7 +238,7 @@ fn check_host() -> Result<(), RecordError> {
+ }
+ 
+ /// There is no Metal to record from off macOS.
+-#[cfg(not(target_os = "macos"))]
++#[cfg(any(not(target_os = "macos"), sf_replay_only))]
+ fn check_host() -> Result<(), RecordError> {
+     Err(RecordError::NoMetal)
+ }
+diff --git a/crates/metal2vulkan-conformance/src/run.rs b/crates/metal2vulkan-conformance/src/run.rs
+index d76c1d6..ee6562f 100644
+--- a/crates/metal2vulkan-conformance/src/run.rs
++++ b/crates/metal2vulkan-conformance/src/run.rs
+@@ -3,7 +3,7 @@
+ //! One function per leg, so the command, a test and a device lane all drive the same code.
+ 
+ use crate::case::Case;
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ use crate::case::Side;
+ use crate::device::Venues;
+ use crate::replay::replay;
+@@ -93,7 +93,7 @@ pub fn replay_rt_on_under(
+ /// A case record mode must not run on Metal is refused there before anything is encoded; a case
+ /// whose answer is carried writes what its own measurement states. So one command fills a whole
+ /// selection's recordings without walking into a case whose Metal leg is not safe.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ pub fn record_all(cases: &[Box<dyn Case>]) -> Vec<(String, Result<std::path::PathBuf, String>)> {
+     cases
+         .iter()
+@@ -110,7 +110,7 @@ pub fn record_all(cases: &[Box<dyn Case>]) -> Vec<(String, Result<std::path::Pat
+ ///
+ /// A case whose answer is carried was never run here, so its validated answer is
+ /// [`crate::recording::Validated::NotRun`]: the absence is recorded, not guessed at.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ fn record_one(case: &dyn Case) -> Result<std::path::PathBuf, String> {
+     use crate::recording::Validated;
+     let answer = match case.metal_source() {
+@@ -155,7 +155,7 @@ fn record_one(case: &dyn Case) -> Result<std::path::PathBuf, String> {
+ /// This is the body of the child process [`crate::validated::take`] spawns: the parent reads what
+ /// this run's Metal said on its standard error. A call that did not answer is not a failure here —
+ /// the point is what the validation layer printed, whatever the call went on to do.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ pub fn validated_leg(case: &dyn Case) -> Result<(), String> {
+     use crate::transcript::Sites;
+     let inputs = case.inputs()?;
+@@ -172,7 +172,7 @@ pub fn validated_leg(case: &dyn Case) -> Result<(), String> {
+ /// safety rule is about what the suite asks Metal to do, not about which command asks it. A case
+ /// whose Metal leg would end the process or fault the device is left with no Metal figures, which
+ /// reads as an unmeasured row rather than as a fast one.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ pub fn metal_times(
+     cases: &[Box<dyn Case>],
+     rounds: u32,
+@@ -231,7 +231,7 @@ pub fn metal_times(
+ ///
+ /// The two sources the suite already holds for this: a row Metal never returned from, and a
+ /// carried answer whose case says re-recording it on Metal is not safe.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ fn metal_leg_refused(case: &dyn Case) -> Option<String> {
+     match case.metal_source() {
+         crate::case::MetalSource::Run => None,
+@@ -256,7 +256,7 @@ fn metal_leg_refused(case: &dyn Case) -> Option<String> {
+ ///
+ /// The case's window is closed **before** the side is dropped, so tearing a device down is not
+ /// charged to the case's calls on either leg.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ fn timed<S: Side>(case: &dyn Case, side: S) -> Result<crate::times::CaseRound, String> {
+     use crate::times::Timer;
+     let timer = Timer::new();
+@@ -289,7 +289,7 @@ fn timed<S: Side>(case: &dyn Case, side: S) -> Result<crate::times::CaseRound, S
+ }
+ 
+ /// The nanoseconds between two readings of one clock, or zero where the host answered neither.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ fn span(before: Option<u64>, after: Option<u64>) -> u64 {
+     match (before, after) {
+         (Some(before), Some(after)) => after.saturating_sub(before),
+diff --git a/crates/metal2vulkan-conformance/src/tests.rs b/crates/metal2vulkan-conformance/src/tests.rs
+index 60b49a5..1e42e6f 100644
+--- a/crates/metal2vulkan-conformance/src/tests.rs
++++ b/crates/metal2vulkan-conformance/src/tests.rs
+@@ -2289,7 +2289,7 @@ fn record_mode_refuses_a_case_whose_metal_run_stopped() {
+     let refusal = Failure::named("Error::Nil", "newLibraryWithData returned nil");
+     // Off macOS there is no Metal to record from, and that check comes first: both legs say so,
+     // so the test is honest about what it checked rather than appearing to check more.
+-    #[cfg(not(target_os = "macos"))]
++    #[cfg(any(not(target_os = "macos"), sf_replay_only))]
+     {
+         let mut stops = StubSide::new(words(&[7])).refusing("library", refusal.clone());
+         assert_eq!(
+@@ -2297,7 +2297,7 @@ fn record_mode_refuses_a_case_whose_metal_run_stopped() {
+             RecordError::NoMetal
+         );
+     }
+-    #[cfg(target_os = "macos")]
++    #[cfg(all(target_os = "macos", not(sf_replay_only)))]
+     {
+         // A refusal at the site the case makes with `made`: the run stops, and no recording is
+         // written. The site is named, and the refusal in the words a ledger row uses.
+@@ -2342,7 +2342,7 @@ fn record_mode_refuses_a_case_whose_metal_run_stopped() {
+ fn record_mode_counts_the_outcomes_it_saw_with_their_runs() {
+     // Off macOS there is no Metal to record from, and record mode says so rather than writing a
+     // recording keyed to an oracle that is not here.
+-    #[cfg(not(target_os = "macos"))]
++    #[cfg(any(not(target_os = "macos"), sf_replay_only))]
+     {
+         let case = WordsCase::new("words", 2);
+         let mut side = StubSide::new(words(&[1, 2]));
+@@ -2351,7 +2351,7 @@ fn record_mode_counts_the_outcomes_it_saw_with_their_runs() {
+             RecordError::NoMetal
+         );
+     }
+-    #[cfg(target_os = "macos")]
++    #[cfg(all(target_os = "macos", not(sf_replay_only)))]
+     {
+         let case = WordsCase::new("words", 2);
+         let mut side = StubSide::new(words(&[1, 2]));
+diff --git a/crates/metal2vulkan-conformance/src/validated.rs b/crates/metal2vulkan-conformance/src/validated.rs
+index 5ca354c..6283cfe 100644
+--- a/crates/metal2vulkan-conformance/src/validated.rs
++++ b/crates/metal2vulkan-conformance/src/validated.rs
+@@ -123,7 +123,7 @@ impl std::fmt::Display for LegError {
+ 
+ /// What Metal's API validation did with `case`, taken by running the case in a child of this
+ /// command with the layer on.
+-#[cfg(target_os = "macos")]
++#[cfg(all(target_os = "macos", not(sf_replay_only)))]
+ pub fn take(case: &dyn crate::case::Case) -> Result<Validated, LegError> {
+     let program = std::env::current_exe()
+         .map_err(|error| LegError::NotStarted(format!("this command's own path: {error}")))?;

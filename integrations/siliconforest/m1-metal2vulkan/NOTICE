@@ -1,0 +1,21 @@
+m1-metal2vulkan: the Metal API on Vulkan for SiliconForest
+
+Third-party software this directory's recipe fetches at a pinned revision (pin.env). None of it is
+copied into this repository.
+
+  metal2vulkan (translator, AIR front end, runtime, harness, conformance suite)
+    https://github.com/steelbrain/metal2vulkan  (Anees Iqbal and contributors)
+    SPDX: GPL-2.0-or-later OR LGPL-3.0-or-later. SiliconForest takes it under
+    LGPL-3.0-or-later. Our one change, patches/0001-conformance-replay-only-without-native-metal.patch,
+    is a modification of metal2vulkan files and is under the same licence.
+    The staged binaries carry the licence texts in share/.
+    Fixtures and conformance recordings are staged on the M1 for testing, never committed here.
+
+  Build-host tools (not shipped): Rust (MIT OR Apache-2.0), zig (MIT), cargo-zigbuild (MIT),
+  LLVM llvm-as (Apache-2.0 WITH LLVM-exception).
+
+Our own files here (README, pin.env, tools/, smoke/) are MIT.
+
+Excluded by the owner (22 November 2026): nothing from Darling (darlinghq: darling, darling-metal,
+Indium, Iridium, mslc) or PureDarwin's Metal code is used, linked, vendored or called by this
+directory. metal2vulkan contains no Darling code (checked: no reference in its tree at the pin).
