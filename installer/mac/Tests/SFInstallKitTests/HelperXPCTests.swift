@@ -12,7 +12,8 @@ final class InProcessHelper: @unchecked Sendable {
     let service: HelperService
     let delegate: HelperListenerDelegate
     init(_ config: HelperConfig, lifecycle: HelperLifecycle? = nil) {
-        service = HelperService(config: config, lifecycle: lifecycle)
+        // Never the production idle action (exit(0)): it would end the whole test process.
+        service = HelperService(config: config, lifecycle: lifecycle ?? HelperLifecycle(idleTimeout: config.idleTimeout, onIdle: {}))
         delegate = HelperListenerDelegate(service: service)
         listener.delegate = delegate
         listener.resume()
