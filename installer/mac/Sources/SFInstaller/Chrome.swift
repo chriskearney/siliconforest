@@ -33,8 +33,9 @@ struct RootView: View {
         let column = min(880, w - 144)
         // Centred on the 13-inch display; on wide displays, offset to the optical left third.
         let x = w > 1600 ? (w - column) * 0.36 : (w - column) / 2
-        // The Finish screen stands in the Clearing: light tokens over the morning scene.
-        let ui = s.screen == .finish(.installed) ? Theme(isDark: false) : theme
+        // Panels always use the token set matching the appearance (VISUAL §9). In dark mode the
+        // Finish screen is the same morning seen from the night side (GrovePalette's sunrise).
+        let ui = theme
         ZStack(alignment: .topLeading) {
             Grove(camera: s.screen.camera, dawn: s.dawn)
                 .animation(reduceMotion ? .easeInOut(duration: 0.15) : .easeInOut(duration: 1.6), value: s.screen)

@@ -58,6 +58,7 @@ struct RGBA {
     }
     init(r: Double, g: Double, b: Double, a: Double) { self.r = r; self.g = g; self.b = b; self.a = a }
     var color: Color { Color(.sRGB, red: r, green: g, blue: b, opacity: a) }
+    func with(alpha: Double) -> RGBA { RGBA(r: r, g: g, b: b, a: alpha) }
     static func lerp(_ x: RGBA, _ y: RGBA, _ t: Double) -> RGBA {
         RGBA(r: x.r + (y.r - x.r) * t, g: x.g + (y.g - x.g) * t, b: x.b + (y.b - x.b) * t, a: x.a + (y.a - x.a) * t)
     }
@@ -141,6 +142,22 @@ struct GroveSpec {
         mote: RGBA(0xFFFFFF), moteWarm: RGBA(0xFFE3BF), moteAlpha: 0.55,
         vignette: RGBA(0x1E3A2E), vignetteAlpha: 0.14, sun: 0.7)
 
+    /// Sunrise: the dark appearance's morning. The same Clearing geometry with the sun up and mist
+    /// in the valley, seen from the night side, so the dark token set still reads at 4.5:1 over it.
+    static let sunrise = GroveSpec(
+        sky: [RGBA(0x0B2226), RGBA(0x143433), RGBA(0x24493F), RGBA(0x4C5E4A), RGBA(0xA9794C), RGBA(0xE9A866)],
+        glow: RGBA(0xF6B47E), glowStrength: 0.7, upperGlow: RGBA(0xF8D9B4), upperGlowStrength: 0.12,
+        star: RGBA(0xE4FFF0), starWarm: RGBA(0xFFD9B8), starAlpha: 0.04,
+        constellation: RGBA(0xA6F2C8), constellationAlpha: 0.2,
+        farRidge: RGBA(0x3A564B), nearRidge: RGBA(0x233D35), ridgeRim: RGBA(0xFFCF9C), ridgeRimAlpha: 0.45,
+        mist: RGBA(0xF8DFC2), mistAlpha: 0.22,
+        farTrees: RGBA(0x2A473D), midTrees: RGBA(0x15302A), nearTrees: RGBA(0x081612),
+        rim: RGBA(0xF6B47E), rimAlpha: 0.34,
+        ground: [RGBA(0x17302A), RGBA(0x0A1714)],
+        trace: RGBA(0x9BE7C2), traceAlpha: 0.26, pulse: RGBA(0xF2FFF7), pulseWarm: RGBA(0xFFD3A3),
+        mote: RGBA(0xFFE9CC), moteWarm: RGBA(0xF8BE88), moteAlpha: 0.55,
+        vignette: RGBA(0x000000), vignetteAlpha: 0.34, sun: 0.6)
+
     /// Light appearance starts in pre-dawn mist and ends in the same Clearing (VISUAL §9).
     static let predawn = GroveSpec(
         sky: [RGBA(0x9FB4B3), RGBA(0xB3C5C1), RGBA(0xC8D4CD), RGBA(0xD8DDD4), RGBA(0xE4DCCB), RGBA(0xE9D2B9)],
@@ -167,10 +184,11 @@ enum GrovePalette {
     static func at(dawn: Double, dark: Bool) -> ForestPalette {
         let t = min(1, max(0, dawn))
         if dark {
-            // Night holds until first light, dawn breaks with progress, the Clearing comes last.
+            // Night holds until first light, dawn breaks with progress, sunrise comes last (VISUAL §9:
+            // "in dark mode the journey is Canopy → dawn"; light mode ends in the Clearing).
             if t < 0.6 { return ForestPalette(spec: .lerp(.night, .dawnBreak, smooth(t / 0.6)), night: 1 - t * 0.5) }
             let u = smooth((t - 0.6) / 0.4)
-            return ForestPalette(spec: .lerp(.dawnBreak, .clearing, u), night: 0.7 * (1 - u))
+            return ForestPalette(spec: .lerp(.dawnBreak, .sunrise, u), night: 0.7 - 0.4 * u)
         }
         return ForestPalette(spec: .lerp(.predawn, .clearing, smooth(t)), night: 0)
     }
@@ -427,9 +445,8 @@ struct ForestPainter {
 
         // Mist between the ridges
         let mistY = scene.horizon - h * 0.02
-        ctx.fill(Path(CGRect(x: 0, y: mistY - h * 0.05, width: w, height: h * 0.1)),
-                 with: .linearGradient(Gradient(colors: [P.mist.color.opacity(0), P.mist.color.opacity(P.mistAlpha * 1.3), P.mist.color.opacity(0)]),
-                                       startPoint: CGPoint(x: 0, y: mistY - h * 0.05), endPoint: CGPoint(x: 0, y: mistY + h * 0.05)))
+        bands(&ctx, top: mistY - h * 0.05, bottom: mistY + h * 0.05, width: w,
+              colors: [P.mist.with(alpha: 0), P.mist.with(alpha: P.mistAlpha * 1.3), P.mist.with(alpha: 0)])
         for i in 0..<4 {
             let speed = 6.0 + Double(i) * 3
             let span = Double(w) * 1.6
@@ -444,12 +461,9 @@ struct ForestPainter {
         c.fill(scene.farTrees, with: .color(P.farTrees.color))
 
         // Ground, with low mist and the horizon's reflection
-        ctx.fill(Path(CGRect(x: 0, y: scene.horizon + h * 0.012, width: w, height: h)),
-                 with: .linearGradient(Gradient(colors: [P.nearRidge.color] + P.ground.map(\.color)),
-                                       startPoint: CGPoint(x: 0, y: scene.horizon + h * 0.012), endPoint: CGPoint(x: 0, y: h)))
-        ctx.fill(Path(CGRect(x: 0, y: scene.horizon, width: w, height: h * 0.06)),
-                 with: .linearGradient(Gradient(colors: [P.mist.color.opacity(P.mistAlpha * 1.1), P.mist.color.opacity(0)]),
-                                       startPoint: CGPoint(x: 0, y: scene.horizon), endPoint: CGPoint(x: 0, y: scene.horizon + h * 0.06)))
+        bands(&ctx, top: scene.horizon + h * 0.012, bottom: h, width: w, colors: [P.nearRidge] + P.ground)
+        bands(&ctx, top: scene.horizon, bottom: scene.horizon + h * 0.06, width: w,
+              colors: [P.mist.with(alpha: P.mistAlpha * 1.1), P.mist.with(alpha: 0)])
         glow(&ctx, CGPoint(x: w * 0.5 - cam * 20 * unit, y: scene.horizon + h * 0.05), w * 0.34, h * 0.06, P.glow, P.glowStrength * 0.22)
 
         // Mid treeline
@@ -491,16 +505,38 @@ struct ForestPainter {
                                        center: CGPoint(x: w / 2, y: h * 0.45), startRadius: min(w, h) * 0.35, endRadius: max(w, h) * 0.75))
     }
 
+    /// A vertical gradient across the full width drawn as thin solid bands interpolated through
+    /// `colors` (alpha included), top to bottom. Linear-gradient fills of partial-height rects were
+    /// mis-clipped in whole tiles when ImageRenderer rasterised a canvas wider than about 2048 pt
+    /// (2560-point snapshots showed staircase blocks in the ground); solid fills are not.
+    private func bands(_ ctx: inout GraphicsContext, top: CGFloat, bottom: CGFloat, width: CGFloat, colors: [RGBA]) {
+        guard bottom > top, colors.count > 1 else { return }
+        // Whole-point bands that abut exactly (translucent bands must not overlap, or seams show).
+        let y0 = top.rounded(.down), y1 = bottom.rounded(.up)
+        let step: CGFloat = 2
+        var y = y0
+        while y < y1 {
+            let hgt = min(step, y1 - y)
+            let t = Double((y + hgt / 2 - y0) / (y1 - y0)) * Double(colors.count - 1)
+            let k = max(0, min(colors.count - 2, Int(t)))
+            let col = RGBA.lerp(colors[k], colors[k + 1], min(1, max(0, t - Double(k))))
+            if col.a > 0.001 { ctx.fill(Path(CGRect(x: 0, y: y, width: width, height: hgt)), with: .color(col.color)) }
+            y += hgt
+        }
+    }
+
+    /// A soft elliptical glow. Drawn with an elliptical gradient in the ellipse's own bounds rather
+    /// than a radial gradient under a non-uniform scale: on canvases wider than about 2048 pt the
+    /// scaled form rasterised in tiles with whole blocks wrong (2560-point snapshots, CHL-27).
     private func glow(_ ctx: inout GraphicsContext, _ center: CGPoint, _ rx: CGFloat, _ ry: CGFloat, _ color: RGBA, _ alpha: Double) {
         guard alpha > 0.002, rx > 0, ry > 0 else { return }
-        var c = ctx
-        c.translateBy(x: center.x, y: center.y)
-        c.scaleBy(x: 1, y: ry / rx)
         let col = color.color
-        c.fill(Path(ellipseIn: CGRect(x: -rx, y: -rx, width: rx * 2, height: rx * 2)),
-               with: .radialGradient(Gradient(stops: [.init(color: col.opacity(alpha), location: 0), .init(color: col.opacity(alpha * 0.45), location: 0.35),
-                                                      .init(color: col.opacity(0), location: 1)]), center: .zero, startRadius: 0, endRadius: rx))
+        let rect = CGRect(x: center.x - rx, y: center.y - ry, width: rx * 2, height: ry * 2)
+        let g = Gradient(stops: [.init(color: col.opacity(alpha), location: 0), .init(color: col.opacity(alpha * 0.45), location: 0.35),
+                                 .init(color: col.opacity(0), location: 1)])
+        ctx.fill(Path(ellipseIn: rect), with: .style(EllipticalGradient(gradient: g, center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5)))
     }
+
 
     private func constellation(_ ctx: inout GraphicsContext, _ scene: ForestScene, _ cam: CGFloat) {
         let pts = scene.constellation.map { CGPoint(x: $0.x - cam, y: $0.y) }
