@@ -10,7 +10,7 @@ import Foundation
 //   SFInstaller   the app: AppKit shell, screens, snapshot renderer
 //   SFEngine      the acting half: chokepoint, gate, journal, step machine, resize supervisor, image backend
 //   SFHelperKit   the helper's verb-only XPC protocol and service; SFHelper is its launchd executable
-//   SFRecovery    recoveryOS app: placeholder
+//   SFRecovery    recoveryOS app (AppKit only) over SFRecoveryKit (gate, steps, PTY driver)
 //
 // Safety: real-disk writes are compiled out. `SF_REAL_DISK_WRITES` is never defined here, and even
 // with it the only executor in this phase refuses every mutating operation (see RealDiskBackend).
@@ -50,12 +50,15 @@ let package = Package(
         .executableTarget(name: "SFHelper", dependencies: ["SFHelperKit", "SFEngine", "SFInstallKit", "SFIdentity"],
                           linkerSettings: [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
                                                          "-Xlinker", "Support/SFHelper-Info.plist"])]),
-        .executableTarget(name: "SFRecovery"),   // AppKit only (DESIGN §7.3)
+        // recoveryOS (DESIGN §7): Foundation-only core (gate, steps, PTY driver) and the AppKit app.
+        // scripts/check-recovery-links.sh fails the build if SFRecovery links anything §7.3 forbids.
+        .target(name: "SFRecoveryKit", swiftSettings: ui),
+        .executableTarget(name: "SFRecovery", dependencies: ["SFRecoveryKit"], swiftSettings: ui),
         .executableTarget(name: "sfinstallctl", dependencies: ["SFInstallKit", "SFCopy"]),
         // Same tests as an executable, for Command Line Tools-only Macs (see scripts/test.sh).
-        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit"], path: "Tests/CLTRunner",
+        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit", "SFRecoveryKit"], path: "Tests/CLTRunner",
                           swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
-        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit"],
+        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit", "SFRecoveryKit"],
                     swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
     ]
 )

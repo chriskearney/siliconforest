@@ -30,3 +30,4 @@ same composition with more forest on both sides; that size is checked when the l
 | 13-remove, 14-remove-confirm, 15-removing, 16-removed | Part 4, U1–U4 |
 | 17-stopped-can-undo, 17b-undone, 17c-stopped-nothing-changed | Part 5, E2, E4, E1 |
 | 18-quit-confirm | Quit during a step |
+| 19-recovery-password, 19-recovery-working, 19-recovery-failed | SFRecovery in recoveryOS (AppKit; DESIGN §7.4), rendered with `SFRecovery --snapshot` |
