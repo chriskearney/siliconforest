@@ -1,0 +1,24 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Start Minecraft 1.21.11 from the dock. The JDK, natives, and game stay
+# under /private/var/db/sfminecraft and are not part of this tree. The dock
+# icon is generated on the machine by minecraft/install-app.sh (not a Mojang
+# asset, not committed).
+set -eu
+B=${SFMINECRAFT:-/private/var/db/sfminecraft}
+RUN="$B/run-1.21.11.sh"
+if [ ! -x "$RUN" ]; then
+    echo "sf-open-minecraft: no launcher at $RUN" >&2
+    exit 1
+fi
+# An inherited runtime dir with no wayland-0 socket is not this desk (an SSH session).
+if [ ! -S "${XDG_RUNTIME_DIR:-}/wayland-0" ]; then
+    XDG_RUNTIME_DIR=/private/var/run/gpu-desktop
+fi
+export XDG_RUNTIME_DIR
+export XDG_STATE_HOME="${XDG_STATE_HOME:-/private/var/db/desktop-state}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export LANG="${LANG:-en_US.UTF-8}"
+# Driver thread for GL dispatch. RD8 steady shown/s moved from about 35 to about 40.
+export mesa_glthread="${mesa_glthread:-true}"
+exec "$RUN" "$@"

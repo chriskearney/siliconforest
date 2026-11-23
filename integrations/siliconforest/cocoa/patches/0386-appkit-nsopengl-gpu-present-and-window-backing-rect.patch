@@ -1,0 +1,574 @@
+diff -ru a/src/Frameworks/AppKit/NSApplication.h b/src/Frameworks/AppKit/NSApplication.h
+--- a/src/Frameworks/AppKit/NSApplication.h	2026-11-21 20:09:57.922355266 -0800
++++ b/src/Frameworks/AppKit/NSApplication.h	2026-11-21 20:52:24.413693826 -0800
+@@ -249,6 +249,8 @@
+ 
+ - (NSMenu *)servicesMenu;
+ - (void)setServicesMenu:(NSMenu *)menu;
++- (void)setAppleMenu:(NSMenu *)menu;
++- (NSMenu *)appleMenu;
+ - servicesProvider;
+ - (void)setServicesProvider:provider;
+ - (void)registerServicesMenuSendTypes:(NSArray *)sendTypes returnTypes:(NSArray *)returnTypes;
+diff -ru a/src/Frameworks/AppKit/NSApplication.m b/src/Frameworks/AppKit/NSApplication.m
+--- a/src/Frameworks/AppKit/NSApplication.m	2026-11-21 20:09:57.940204515 -0800
++++ b/src/Frameworks/AppKit/NSApplication.m	2026-11-21 20:52:24.499694610 -0800
+@@ -210,6 +210,9 @@
+ 
+ char SFLatestConfigureKey;
+ 
++// GLFW and SDL send the process's application menu here. One NSApp, so one slot.
++static NSMenu *_sfAppleMenu;
++
+ @implementation NSApplication
+ 
+ id NSApp=nil;
+@@ -2757,6 +2760,19 @@
+    _servicesMenu=[menu retain];
+ }
+ 
++// Private selector GLFW and SDL send while building the menu bar. The menu is kept
++// for -appleMenu. The menu bar itself is still the one -setMainMenu: installed.
++-(void)setAppleMenu:(NSMenu *)menu {
++   if (menu == _sfAppleMenu)
++      return;
++   [_sfAppleMenu release];
++   _sfAppleMenu = [menu retain];
++}
++
++-(NSMenu *)appleMenu {
++   return _sfAppleMenu;
++}
++
+ -servicesProvider {
+    return nil;
+ }
+diff -ru a/src/Frameworks/AppKit/NSOpenGL/NSOpenGLContext.m b/src/Frameworks/AppKit/NSOpenGL/NSOpenGLContext.m
+--- a/src/Frameworks/AppKit/NSOpenGL/NSOpenGLContext.m	2026-11-21 20:09:57.929064824 -0800
++++ b/src/Frameworks/AppKit/NSOpenGL/NSOpenGLContext.m	2026-11-21 20:28:46.835547520 -0800
+@@ -17,14 +17,193 @@
+ #import <OpenGL/OpenGL.h>
+ #import <OpenGL/gl.h>
+ #import <ApplicationServices/ApplicationServices.h>
++#include <dlfcn.h>
++#include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <time.h>
+ #import <Foundation/NSThread-Private.h>
+ 
+ @interface NSOpenGLContext(private)
+ -(void)_clearCurrentContext;
+ @end
+ 
++#define SF_NSGL_RING 3
++
++typedef struct {
++   CFTypeRef (*iosCreate)(CFDictionaryRef);
++   size_t (*iosGPUOffset)(CFTypeRef);
++   size_t (*iosWidth)(CFTypeRef);
++   size_t (*iosHeight)(CFTypeRef);
++   int (*cglCopyFB)(CFTypeRef, int);
++   int (*wsSetLayer)(int, uintptr_t, void *, double, double, double, double, double, double, double, double);
++   int (*wsPresent)(int, uint64_t);
++   uint64_t (*wsSerial)(int);
++   int (*wsTakes)(int);
++   void (*glBindFramebufferFn)(GLenum, GLuint);
++   int ready;
++} sfNSGLGPUAPI;
++
++static sfNSGLGPUAPI sfNSGLAPI;
++
++static void sfNSGLLoadGPUAPI(void) {
++   static dispatch_once_t once;
++   dispatch_once(&once, ^{
++    void *ios=dlopen("/System/Library/Frameworks/IOSurface.framework/IOSurface",RTLD_LAZY|RTLD_GLOBAL);
++    if(ios!=NULL){
++     sfNSGLAPI.iosCreate=(CFTypeRef (*)(CFDictionaryRef))dlsym(ios,"IOSurfaceCreate");
++     sfNSGLAPI.iosGPUOffset=(size_t (*)(CFTypeRef))dlsym(ios,"IOSurfaceSFGPUGetOffset");
++     sfNSGLAPI.iosWidth=(size_t (*)(CFTypeRef))dlsym(ios,"IOSurfaceGetWidth");
++     sfNSGLAPI.iosHeight=(size_t (*)(CFTypeRef))dlsym(ios,"IOSurfaceGetHeight");
++    }
++    sfNSGLAPI.cglCopyFB=(int (*)(CFTypeRef,int))dlsym(RTLD_DEFAULT,"CGLSFFXCopyFramebuffer");
++    sfNSGLAPI.wsSetLayer=(int (*)(int,uintptr_t,void *,double,double,double,double,double,double,double,double))dlsym(RTLD_DEFAULT,"_windowServerSFFXSetGPULayer");
++    sfNSGLAPI.wsPresent=(int (*)(int,uint64_t))dlsym(RTLD_DEFAULT,"_windowServerSFFXPresentLayers");
++    sfNSGLAPI.wsSerial=(uint64_t (*)(int))dlsym(RTLD_DEFAULT,"_windowServerSFFXGeometrySerial");
++    sfNSGLAPI.wsTakes=(int (*)(int))dlsym(RTLD_DEFAULT,"_windowServerSFFXTakesGPULayers");
++    sfNSGLAPI.glBindFramebufferFn=(void (*)(GLenum,GLuint))dlsym(RTLD_DEFAULT,"glBindFramebuffer");
++    sfNSGLAPI.ready=(sfNSGLAPI.iosCreate!=NULL && sfNSGLAPI.iosGPUOffset!=NULL &&
++                     sfNSGLAPI.iosWidth!=NULL && sfNSGLAPI.iosHeight!=NULL &&
++                     sfNSGLAPI.cglCopyFB!=NULL && sfNSGLAPI.wsSetLayer!=NULL &&
++                     sfNSGLAPI.wsPresent!=NULL && sfNSGLAPI.wsSerial!=NULL &&
++                     sfNSGLAPI.wsTakes!=NULL);
++   });
++}
++
++/* Default-on when WindowServer GPU presentation and IOSurface dma-buf storage are
++ * available; SF_NSGL_GPU_PRESENT=0 or SFFX_GPU_PRESENT=0 forces the CPU readback path. */
++static int sfNSGLGPUEnabled(void) {
++   static int mode=-1;
++   if(mode<0){
++    const char *v=getenv("SF_NSGL_GPU_PRESENT");
++    const char *fx=getenv("SFFX_GPU_PRESENT");
++    if((v!=NULL && !strcmp(v,"0")) || (fx!=NULL && !strcmp(fx,"0")))
++     mode=0;
++    else
++     mode=1;
++   }
++   return mode;
++}
++
++static uint64_t sfNSGLMonotonicNs(void) {
++   struct timespec ts;
++   clock_gettime(CLOCK_MONOTONIC,&ts);
++   return (uint64_t)ts.tv_sec*1000000000ULL+(uint64_t)ts.tv_nsec;
++}
++
++static double sfNSGLRefreshRate(void) {
++   static double hz=0.0;
++   static dispatch_once_t once;
++   dispatch_once(&once, ^{
++    CGDisplayModeRef mode=CGDisplayCopyDisplayMode(CGMainDisplayID());
++    if(mode!=NULL){
++     hz=CGDisplayModeGetRefreshRate(mode);
++     CGDisplayModeRelease(mode);
++    }
++    if(hz<15.0 || hz>240.0)
++     hz=60.0;
++   });
++   return hz;
++}
++
++static CFTypeRef sfNSGLCreateGPUSurface(int width,int height) {
++   CFMutableDictionaryRef props=CFDictionaryCreateMutable(NULL,0,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
++   if(props==NULL)
++    return NULL;
++   CFStringRef keys[]={
++    CFSTR("IOSurfaceWidth"),
++    CFSTR("IOSurfaceHeight"),
++    CFSTR("IOSurfaceBytesPerElement"),
++    CFSTR("IOSurfacePixelFormat"),
++    CFSTR("SFIOSurfaceGPUStorage")
++   };
++   int values[]={ width, height, 4, 0x42475241 /* 'BGRA' */, 1 };
++   for(int i=0;i<5;i++){
++    CFNumberRef n=CFNumberCreate(NULL,kCFNumberIntType,&values[i]);
++    if(n!=NULL){
++     CFDictionarySetValue(props,keys[i],n);
++     CFRelease(n);
++    }
++   }
++   CFTypeRef surface=sfNSGLAPI.iosCreate(props);
++   CFRelease(props);
++   if(surface!=NULL && sfNSGLAPI.iosGPUOffset(surface)==0){
++    CFRelease(surface);
++    return NULL;
++   }
++   return surface;
++}
++
++@interface SFNSGLGPUPresenter : NSObject {
++@public
++   CFTypeRef _surfaces[SF_NSGL_RING];
++   int _w[SF_NSGL_RING];
++   int _h[SF_NSGL_RING];
++   unsigned _next;
++   int _registeredWindowID;
++   uintptr_t _registeredKey;
++   BOOL _registered;
++   BOOL _disabled;
++   BOOL _loggedActive;
++   GLint _surfaceOpacity;
++   uint64_t _lastPresentNs;
++}
++-(void)unregisterLayer;
++-(CFTypeRef)surfaceForSlot:(unsigned)slot width:(int)w height:(int)h;
++@end
++
++@implementation SFNSGLGPUPresenter
++-(id)init {
++   if((self=[super init])){
++    _surfaceOpacity=1;
++   }
++   return self;
++}
++-(void)unregisterLayer {
++   if(_registered && _registeredWindowID>0 && sfNSGLAPI.wsSetLayer!=NULL)
++    sfNSGLAPI.wsSetLayer(_registeredWindowID,_registeredKey,NULL,0,0,0,0,0,0,0,0);
++   _registered=NO;
++   _registeredWindowID=0;
++}
++-(CFTypeRef)surfaceForSlot:(unsigned)slot width:(int)w height:(int)h {
++   if(_surfaces[slot]!=NULL && _w[slot]==w && _h[slot]==h)
++    return _surfaces[slot];
++   if(_surfaces[slot]!=NULL){
++    CFRelease(_surfaces[slot]);
++    _surfaces[slot]=NULL;
++    _w[slot]=_h[slot]=0;
++   }
++   CFTypeRef s=sfNSGLCreateGPUSurface(w,h);
++   if(s!=NULL){
++    _surfaces[slot]=s;
++    _w[slot]=w;
++    _h[slot]=h;
++   }
++   return s;
++}
++-(void)dealloc {
++   [self unregisterLayer];
++   for(int i=0;i<SF_NSGL_RING;i++){
++    if(_surfaces[i]!=NULL){
++     CFRelease(_surfaces[i]);
++     _surfaces[i]=NULL;
++    }
++   }
++   [super dealloc];
++}
++@end
++
++static char sfNSGLGPUStateKey;
++
++static SFNSGLGPUPresenter *sfNSGLStateForContext(NSOpenGLContext *ctx,BOOL create) {
++   SFNSGLGPUPresenter *st=(SFNSGLGPUPresenter *)objc_getAssociatedObject(ctx,&sfNSGLGPUStateKey);
++   if(st==nil && create){
++    st=[[[SFNSGLGPUPresenter alloc] init] autorelease];
++    objc_setAssociatedObject(ctx,&sfNSGLGPUStateKey,st,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++   }
++   return st;
++}
++
+ static void _freeImageBytes(void *info,const void *data,size_t size) {
+    free((void *)data);
+ }
+@@ -73,6 +252,9 @@
+ 
+ -(void)dealloc {
+ // FIXME: this doesn't actually work because if we are the current context we're retained by the thread shared object dict
++   SFNSGLGPUPresenter *st=sfNSGLStateForContext(self,NO);
++   if(st!=nil)
++    [st unregisterLayer];
+    if(_currentContext()==self)
+       _clearCurrentContext();
+    [_pixelFormat release];
+@@ -107,10 +289,19 @@
+ }
+ 
+ -(void)getValues:(GLint *)vals forParameter:(NSOpenGLContextParameter)parameter {   
++   if(parameter==NSOpenGLCPSurfaceOpacity && vals!=NULL){
++    SFNSGLGPUPresenter *st=sfNSGLStateForContext(self,NO);
++    *vals=st!=nil ? st->_surfaceOpacity : 1;
++    return;
++   }
+    CGLGetParameter(_glContext,parameter,vals);
+ }
+ 
+ -(void)setValues:(const GLint *)vals forParameter:(NSOpenGLContextParameter)parameter {   
++   if(parameter==NSOpenGLCPSurfaceOpacity && vals!=NULL){
++    SFNSGLGPUPresenter *st=sfNSGLStateForContext(self,YES);
++    st->_surfaceOpacity=*vals;
++   }
+    CGLSetParameter(_glContext,parameter,vals);
+ }
+ 
+@@ -147,8 +338,12 @@
+ }
+ 
+ -(void)setView:(NSView *)view {
+-   if(_view!=view)
++   if(_view!=view){
++    SFNSGLGPUPresenter *st=sfNSGLStateForContext(self,NO);
++    if(st!=nil)
++     [st unregisterLayer];
+     _hasPrepared=NO;
++   }
+     
+    _view=view;
+       
+@@ -289,15 +484,189 @@
+    return image;
+ }
+ 
+-// there is no GL surface in the window here: the frame is read back and drawn into the view like any other content
++-(BOOL)_sfFlushBufferGPUWithPrevious:(CGLContextObj)previous {
++   if(!sfNSGLGPUEnabled())
++    return NO;
++   sfNSGLLoadGPUAPI();
++   if(!sfNSGLAPI.ready)
++    return NO;
++
++   SFNSGLGPUPresenter *st=sfNSGLStateForContext(self,YES);
++   if(st->_disabled)
++    return NO;
++
++   NSWindow *win=[_view window];
++   if(win==nil || ![win isVisible] || [_view isHiddenOrHasHiddenAncestor]){
++    [st unregisterLayer];
++    return NO;
++   }
++   int wid=(int)[win windowNumber];
++   if(wid<=0 || !sfNSGLAPI.wsTakes(wid)){
++    [st unregisterLayer];
++    return NO;
++   }
++
++   NSRect bounds=[_view bounds];
++   NSRect visible=[_view visibleRect];
++   if(bounds.size.width<=0 || bounds.size.height<=0 || visible.size.width<=0 || visible.size.height<=0){
++    [st unregisterLayer];
++    return NO;
++   }
++
++   NSRect target=[_view convertRect:visible toView:nil];
++   NSRect wf=[win frame];
++   CGFloat scale=[win backingScaleFactor];
++   if(scale<=0)scale=1.0;
++   double dx=NSMinX(target)*scale;
++   double dy=(NSHeight(wf)-NSMaxY(target))*scale;
++   double dw=NSWidth(target)*scale;
++   double dh=NSHeight(target)*scale;
++   if(dw<=0 || dh<=0){
++    [st unregisterLayer];
++    return NO;
++   }
++
++   GLint size[2]={0,0};
++   if(CGLGetParameter(_glContext,kCGLCPSurfaceBackingSize,size)!=kCGLNoError || size[0]<=0 || size[1]<=0)
++    return NO;
++
++   unsigned slot=st->_next % SF_NSGL_RING;
++   CFTypeRef surface=[st surfaceForSlot:slot width:size[0] height:size[1]];
++   if(surface==NULL){
++    st->_disabled=YES;
++    [st unregisterLayer];
++    if(getenv("SF_NSGL_GPU_TRACE")!=NULL)
++     fprintf(stderr,"SF_NSGL_GPU disabled (no dma-buf IOSurface storage); falling back to CPU path\n");
++    return NO;
++   }
++
++   if(previous!=_glContext)
++    CGLSetCurrentContext(_glContext);
++
++   /* Save FBO 0 read/draw bindings and match GL_READ_BUFFER to GL_DRAW_BUFFER:
++    * Mesa's EGL pbuffers default GL_READ_BUFFER to GL_FRONT while double-buffered
++    * contexts draw to GL_BACK (the same rule _createImageFromDrawable uses). */
++   GLint savedReadFbo=0,savedDrawFbo=0,savedReadBuf=0,savedDrawBuf=0;
++   glGetIntegerv(0x8CAA /* GL_READ_FRAMEBUFFER_BINDING */,&savedReadFbo);
++   glGetIntegerv(0x8CA6 /* GL_DRAW_FRAMEBUFFER_BINDING */,&savedDrawFbo);
++   if(savedReadFbo!=0 && sfNSGLAPI.glBindFramebufferFn!=NULL)
++    sfNSGLAPI.glBindFramebufferFn(0x8CA8 /* GL_READ_FRAMEBUFFER */,0);
++   if(savedDrawFbo!=0 && sfNSGLAPI.glBindFramebufferFn!=NULL)
++    sfNSGLAPI.glBindFramebufferFn(0x8CA9 /* GL_DRAW_FRAMEBUFFER */,0);
++   glGetIntegerv(GL_READ_BUFFER,&savedReadBuf);
++   glGetIntegerv(GL_DRAW_BUFFER,&savedDrawBuf);
++   if(savedDrawBuf!=0 && savedDrawBuf!=savedReadBuf)
++    glReadBuffer((GLenum)savedDrawBuf);
++
++   /* For opaque contexts (the Cocoa default), ensure alpha is 1.0 on FBO 0 using
++    * core-profile-safe GL calls before blitting to the BGRA IOSurface. */
++   if(st->_surfaceOpacity!=0){
++    GLboolean mask[4]={GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE};
++    GLfloat clearColor[4]={0,0,0,0};
++    GLboolean scissor=glIsEnabled(GL_SCISSOR_TEST);
++    glGetBooleanv(GL_COLOR_WRITEMASK,mask);
++    glGetFloatv(GL_COLOR_CLEAR_VALUE,clearColor);
++    if(scissor)
++     glDisable(GL_SCISSOR_TEST);
++    glColorMask(GL_FALSE,GL_FALSE,GL_FALSE,GL_TRUE);
++    glClearColor(0.0f,0.0f,0.0f,1.0f);
++    glClear(GL_COLOR_BUFFER_BIT);
++    glColorMask(mask[0],mask[1],mask[2],mask[3]);
++    glClearColor(clearColor[0],clearColor[1],clearColor[2],clearColor[3]);
++    if(scissor)
++     glEnable(GL_SCISSOR_TEST);
++   }
++
++   /* CGLSFFXCopyFramebuffer blits FBO 0 (flipped top-row-first) into the dma-buf IOSurface and calls glFinish(). */
++   int copied=sfNSGLAPI.cglCopyFB(surface,1);
++   if(savedDrawBuf!=0 && savedDrawBuf!=savedReadBuf)
++    glReadBuffer((GLenum)savedReadBuf);
++   if(savedReadFbo!=0 && sfNSGLAPI.glBindFramebufferFn!=NULL)
++    sfNSGLAPI.glBindFramebufferFn(0x8CA8 /* GL_READ_FRAMEBUFFER */,(GLuint)savedReadFbo);
++   if(savedDrawFbo!=0 && sfNSGLAPI.glBindFramebufferFn!=NULL)
++    sfNSGLAPI.glBindFramebufferFn(0x8CA9 /* GL_DRAW_FRAMEBUFFER */,(GLuint)savedDrawFbo);
++   if(copied)
++    CGLFlushDrawable(_glContext);
++   if(previous!=_glContext)
++    CGLSetCurrentContext(previous);
++   if(!copied){
++    if(getenv("SF_NSGL_GPU_TRACE")!=NULL)
++     fprintf(stderr,"SF_NSGL_GPU copy failed (%dx%d); falling back to CPU for this frame\n",size[0],size[1]);
++    return NO;
++   }
++
++   st->_next++;
++   double scaleX=(double)size[0]/bounds.size.width;
++   double scaleY=(double)size[1]/bounds.size.height;
++   double sx=(NSMinX(visible)-NSMinX(bounds))*scaleX;
++   double sy=([_view isFlipped] ? (NSMinY(visible)-NSMinY(bounds)) : (NSMaxY(bounds)-NSMaxY(visible)))*scaleY;
++   double sw=NSWidth(visible)*scaleX;
++   double sh=NSHeight(visible)*scaleY;
++
++   if(st->_registered && st->_registeredWindowID!=wid)
++    [st unregisterLayer];
++   if(!sfNSGLAPI.wsSetLayer(wid,(uintptr_t)self,(void *)surface,sx,sy,sw,sh,dx,dy,dw,dh)){
++    [st unregisterLayer];
++    return NO;
++   }
++   st->_registered=YES;
++   st->_registeredWindowID=wid;
++   st->_registeredKey=(uintptr_t)self;
++
++   if(!st->_loggedActive && getenv("SF_NSGL_GPU_TRACE")!=NULL){
++    st->_loggedActive=YES;
++    fprintf(stderr,"SF_NSGL_GPU active: win=%d drawable=%dx%d dst=%.0fx%.0f@%.0f,%.0f scale=%.2f\n",
++            wid,size[0],size[1],dw,dh,dx,dy,(double)scale);
++   }
++
++   /* Honour swap interval (kCGLCPSwapInterval): pace frames to swapInterval / displayHz when > 0. */
++   GLint swapInterval=0;
++   CGLGetParameter(_glContext,kCGLCPSwapInterval,&swapInterval);
++   if(swapInterval>0){
++    uint64_t intervalNs=(uint64_t)((double)swapInterval*(1000000000.0/sfNSGLRefreshRate()));
++    uint64_t now=sfNSGLMonotonicNs();
++    if(st->_lastPresentNs!=0 && now<st->_lastPresentNs+intervalNs){
++     uint64_t rem=(st->_lastPresentNs+intervalNs)-now;
++     struct timespec req={ (time_t)(rem/1000000000ULL), (long)(rem%1000000000ULL) };
++     nanosleep(&req,NULL);
++     now=sfNSGLMonotonicNs();
++    }
++    st->_lastPresentNs=now;
++   } else {
++    st->_lastPresentNs=0;
++   }
++
++   uint64_t serial=sfNSGLAPI.wsSerial(wid);
++   int presented=(serial!=0) ? sfNSGLAPI.wsPresent(wid,serial) : 0;
++   if(!presented){
++    if([NSThread isMainThread]){
++     [win flushWindow];
++    } else {
++     [win retain];
++     dispatch_async(dispatch_get_main_queue(),^{
++      [win flushWindow];
++      [win release];
++     });
++    }
++   }
++   return YES;
++}
++
++// GPU present through dma-buf IOSurface ring + WindowServer GPU layer, with automatic CPU readback fallback
+ -(void)flushBuffer {
+    CGLContextObj previous=CGLGetCurrentContext();
+    CGImageRef    image;
+    BOOL          focused;
+ 
+-   CGLFlushDrawable(_glContext);
+-   if(_view==nil || [_view window]==nil)
++   if(_view==nil || [_view window]==nil){
++    CGLFlushDrawable(_glContext);
+     return;
++   }
++
++   if([self _sfFlushBufferGPUWithPrevious:previous])
++    return;
++
++   CGLFlushDrawable(_glContext);
+ 
+    if(previous!=_glContext)
+     CGLSetCurrentContext(_glContext);
+diff -ru a/src/Frameworks/AppKit/NSOpenGL/NSOpenGLPixelFormat.h b/src/Frameworks/AppKit/NSOpenGL/NSOpenGLPixelFormat.h
+--- a/src/Frameworks/AppKit/NSOpenGL/NSOpenGLPixelFormat.h	2026-11-21 20:09:57.929018442 -0800
++++ b/src/Frameworks/AppKit/NSOpenGL/NSOpenGLPixelFormat.h	2026-11-21 20:11:49.623240385 -0800
+@@ -62,6 +62,6 @@
+ - (void *)CGLPixelFormatObj;
+ - (GLint)numberOfVirtualScreens;
+ 
+-- (void)getValues:(long *)values forAttribute:(NSOpenGLPixelFormatAttribute)attribute forVirtualScreen:(int)screen;
++- (void)getValues:(GLint *)values forAttribute:(NSOpenGLPixelFormatAttribute)attribute forVirtualScreen:(GLint)screen;
+ 
+ @end
+diff -ru a/src/Frameworks/AppKit/NSOpenGL/NSOpenGLPixelFormat.m b/src/Frameworks/AppKit/NSOpenGL/NSOpenGLPixelFormat.m
+--- a/src/Frameworks/AppKit/NSOpenGL/NSOpenGLPixelFormat.m	2026-11-21 20:09:57.929032867 -0800
++++ b/src/Frameworks/AppKit/NSOpenGL/NSOpenGLPixelFormat.m	2026-11-21 20:11:52.603267025 -0800
+@@ -14,7 +14,11 @@
+ @implementation NSOpenGLPixelFormat
+ 
+ -initWithAttributes:(NSOpenGLPixelFormatAttribute *)attributes {
+-   CGLChoosePixelFormat(attributes,(CGLPixelFormatObj *)&_cglPixelFormat,&_numberOfVirtualScreens);
++   CGLError err=CGLChoosePixelFormat(attributes,(CGLPixelFormatObj *)&_cglPixelFormat,&_numberOfVirtualScreens);
++   if(err!=kCGLNoError || _cglPixelFormat==NULL){
++    [self release];
++    return nil;
++   }
+    return self;
+ }
+ 
+@@ -65,12 +69,13 @@
+    return _numberOfVirtualScreens;
+ }
+ 
+--(void)getValues:(long *)values forAttribute:(NSOpenGLPixelFormatAttribute)attribute forVirtualScreen:(int)screen {
++-(void)getValues:(GLint *)values forAttribute:(NSOpenGLPixelFormatAttribute)attribute forVirtualScreen:(GLint)screen {
+    GLint glValue=0;
+ 
+    CGLDescribePixelFormat(_cglPixelFormat,screen,attribute,&glValue);
+ 
+-   *values=glValue;
++   if(values!=NULL)
++    *values=glValue;
+ }
+ 
+ @end
+diff -ru a/src/Frameworks/AppKit/NSWindow.h b/src/Frameworks/AppKit/NSWindow.h
+--- a/src/Frameworks/AppKit/NSWindow.h	2026-11-21 20:09:57.938269914 -0800
++++ b/src/Frameworks/AppKit/NSWindow.h	2026-11-21 21:17:15.076858360 -0800
+@@ -503,10 +503,13 @@
+ - (NSRect)convertRectToScreen:(NSRect)rect;
+ - (NSRect)backingAlignedRect:(NSRect)rect options:(NSAlignmentOptions)options;
+ - (NSRect)convertRectFromScreen:(NSRect)rect;
++- (NSRect)convertRectToBacking:(NSRect)rect;
++- (NSRect)convertRectFromBacking:(NSRect)rect;
+ - (NSPoint)convertPointToScreen:(NSPoint)point;
+ - (NSPoint)convertPointFromScreen:(NSPoint)point;
+ 
+ - (NSRect)frameRectForContentRect:(NSRect)rect;
++- (NSRect)frameRectForContentRect:(NSRect)contentRect styleMask:(unsigned)styleMask;
+ - (NSRect)contentRectForFrameRect:(NSRect)rect;
+ - (NSRect)constrainFrameRect:(NSRect)rect toScreen:(NSScreen *)screen;
+ 
+diff -ru a/src/Frameworks/AppKit/NSWindow.m b/src/Frameworks/AppKit/NSWindow.m
+--- a/src/Frameworks/AppKit/NSWindow.m	2026-11-21 20:09:57.940397231 -0800
++++ b/src/Frameworks/AppKit/NSWindow.m	2026-11-21 21:17:34.108043453 -0800
+@@ -1952,6 +1952,18 @@
+    return rect;
+ }
+ 
++-(NSRect)convertRectToBacking:(NSRect)rect {
++   CGFloat s=[self backingScaleFactor];
++   if(s<=0)s=1.0;
++   return NSMakeRect(rect.origin.x*s,rect.origin.y*s,rect.size.width*s,rect.size.height*s);
++}
++
++-(NSRect)convertRectFromBacking:(NSRect)rect {
++   CGFloat s=[self backingScaleFactor];
++   if(s<=0)s=1.0;
++   return NSMakeRect(rect.origin.x/s,rect.origin.y/s,rect.size.width/s,rect.size.height/s);
++}
++
+ -(NSPoint)convertPointToScreen:(NSPoint)point {
+    return [self convertBaseToScreen:point];
+ }
+@@ -1975,6 +1987,12 @@
+     return result;
+ }
+ 
++// GLFW sends the two-argument form to the window. The style mask may be one it
++// is about to apply, so this is the class calculation, not the live frame.
++-(NSRect)frameRectForContentRect:(NSRect)contentRect styleMask:(unsigned)styleMask {
++   return [[self class] frameRectForContentRect:contentRect styleMask:styleMask];
++}
++
+ -(NSRect)contentRectForFrameRect:(NSRect)frameRect {
+    NSRect result=CGInsetRectForNativeWindowBorder(frameRect,[self styleMask]);
+ 

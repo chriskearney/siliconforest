@@ -41,7 +41,7 @@ static int receive_message(struct sfave_ipc *p,uint32_t m[4]) {
 int sfave_ipc_init(struct sfave_ipc *p,const struct sfave_preload *preload,
  const struct sfave_ipc_ops *ops,void *cpu,uint64_t iova,uint32_t bytes,
  uint64_t heap_iova,uint32_t heap_bytes) {
- int e=sfave_validate_preload(preload);
+ int e=sfave_preload_bootable(preload);
  if(e)return e;
  if(!p||!ops||!ops->read||!ops->write||!ops->delay_us||!ops->barrier||!cpu||
     ((uintptr_t)cpu&63)||!iova||(iova&0x3fff)||bytes!=0x700000||

@@ -2,7 +2,7 @@
 /* Polling T8103/13.5 transport port of upstream ave_ipc.c. See ../NOTICE.
  * Caller serializes all calls and owns mapped/coherent DMA until a real halt.
  * This module does NOT power/start the core, allocate/map DMA or reserve DATA.
- * It is not yet attached to the diagnostic service. */
+ * The INFO ioctl bring-up calls it after the coprocessor is powered. */
 #ifndef SFAVE_IPC_H
 #define SFAVE_IPC_H
 #include <stddef.h>

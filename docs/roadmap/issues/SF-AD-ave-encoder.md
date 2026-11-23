@@ -1,5 +1,23 @@
 # SF-AD — AVE encoder source-port study
 
+**Status, 22 November 2026: H.264 encode works on the M1 (J293/T8103).** The November 15 pause below
+is history. `/dev/sfave` boots the preloaded 13.5 firmware on its first ioctl and encodes IPPP
+H.264 (`integrations/siliconforest/m1-ave/README.md`). Observed on the M1:
+
+- Synthetic 720p: 50.96 dB against the source, about 3.6 ms per frame. 1920x1088 and 2560x1600 decode.
+- The desktop recorder encodes 2560x1600 at up to 60 fps through the AVE (about 16 ms per frame) and
+  uses software only when the AVE cannot open (`terminal-app/compositor/wm-darwin-record-ave.patch`).
+- FFmpeg `-c:v h264_sfave` output decodes through `-hwaccel sfavd`, one AVD job per frame, with picture
+  hashes equal to software decode (`m1-ave/build-ffmpeg-hw.nix`).
+- `bakein.sh` with normal capture on this kernel: 50 PASS, 0 FAIL, 2 SKIP.
+
+Not done or not established: HEVC, B frames and two-reference P frames (they hang on T8103), encoding
+without the DPE tunables file, a VideoToolbox encoder, and an install step that generates that
+file (it is on this M1 only, never in this repository). The default `rebase/build-kc.nix` has no
+room for this kext; `m1-ave/tools/pack-collection.sh` adds it to the installed collection. Stopping
+GPU clients once left them stuck in the kernel and blocked the next GL client on a fence until a
+reboot; that was not reproduced in the gate and its cause is open.
+
 **Paused by owner on 2026-11-15. Source and private inputs are preserved.
 No further AVE builds, boots, probes or extraction are authorized.**
 The first target is T8103/J293; preserve the working PDAppleAVD decoder and audio.

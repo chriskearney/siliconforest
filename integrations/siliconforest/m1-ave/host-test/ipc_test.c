@@ -57,6 +57,13 @@ int main(void) {
   .segment={{0x100000,0,0x100000,0xcc000,3},{0x300000,0xcc000,0x400000,0x128000,0}},
   .iboot="iBoot-8422.141.2",.firmware="AppleAVE2FW-6070.11.1",.rtkit="RTKit-2062.141.1"};
  unsigned char *memory=aligned_alloc(0x4000,0x700000);assert(memory);
+ {
+  struct sfave_ipc ipc;struct peer peer={.ipc=&ipc};
+  struct sfave_preload path=preload;path.firmware="AppleAVE2FW/Firmware/H13G";
+  const struct sfave_ipc_ops ops={&peer,read_reg,write_reg,delay,barrier};
+  assert(!sfave_ipc_init(&ipc,&path,&ops,memory,0x1000000,0x700000,0x2000000,0xc0000));
+  assert(!peer.reads&&!peer.writes);
+ }
  for(int fault=0;fault<=POSTED_DOORBELL_FAULT;fault++) {
   struct sfave_ipc ipc;struct peer peer={.ipc=&ipc,.fault=fault};
   const struct sfave_ipc_ops ops={&peer,read_reg,write_reg,delay,barrier};

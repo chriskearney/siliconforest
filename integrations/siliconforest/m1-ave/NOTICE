@@ -1,7 +1,9 @@
-PDAppleAVE source port, in progress; no hardware encoder result yet.
+SFAppleAVE is a port of the Linux driver below.
 Reference: https://github.com/aquarat/apple-m-series-ave-driver
 Pinned commit: 9ab14e45281e8f61fb499b760408028171a5f2b5 (GPL-2.0-only).
-Copied upstream files retain SPDX and notices. tools/upstream/COPYING is GPLv2.
+kernel/upstream/ave_session.[ch], ave.h, ave_hw.h, ave_soc.h, ave_dapf.h and ave_gop.h are unchanged from
+b564678b2725d74472dd9bf0c3fefa90c04f452c (2026-11-17), where ave_session.c equals the pinned commit.
+kernel/sfave_lx.c ports the IPC channel service of upstream ave_ipc.c. Copied upstream files retain SPDX and notices. tools/upstream/COPYING is GPLv2.
 No Apple kernel, firmware, DPE table or derived input bytes are in this tree.
 Private Acis extraction is owner-authorized; encoder firmware must come solely
 from this M1's iBoot preload, not a downloaded firmware file.

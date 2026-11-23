@@ -467,6 +467,40 @@
 #         IOSurface contents; CPU-drawn windows keep the backing-store path (SFFX_GPU_PRESENT=0 disables, =1 forces)
 #   0380w WindowServer (bake-in step 7): GPU presenter entry points accept calls unless SFFX_GPU_PRESENT=0; vector
 #         compare and GPU damage default on (=0 disables)
+#   0384w WindowServer: CGAssociateMouseAndMouseCursorPosition(false) locks the focused window's pointer
+#         (zwp_pointer_constraints_v1, persistent) and takes zwp_relative_pointer_v1 dx/dy (positive right,
+#         positive down, as NSEvent's deltas are on macOS). Without a relative pointer, motion stays absolute
+#         and its dy is positive down only while disassociated. (true) unlocks. Unlocked motion is unchanged.
+#   0385  CoreGraphics: those two calls go to WindowServer and succeed; CGDisplayMoveCursorToPoint moves within
+#         the display; a mode whose refresh is 0 is reported as 60 Hz
+#   0386  AppKit: -[NSOpenGLContext flushBuffer] presents through the GPU IOSurface ring (SF_NSGL_GPU_PRESENT=0
+#         keeps the CPU readback; any failure falls back to it); NSWindow backing-rect conversion; the pixel
+#         format query writes a GLint; -[NSApplication setAppleMenu:] keeps the menu and -appleMenu returns it;
+#         -[NSWindow frameRectForContentRect:styleMask:] answers GLFW's instance call with the class calculation
+#   0387w WindowServer: _windowServerSFFXPresentLayers presents a live GPU layer directly. The pace-hold used to
+#         set presentPending and return success; the frame callback does not compose that layer (0375w), so
+#         Minecraft's compose counter stayed at 3 and the window stayed the wallpaper. SF_WS_PACE_PRESENTS
+#         still holds a window that has no GPU layer.
+#   0388w WindowServer: a live GPU layer commits once per frame callback. 0387w committed every swap, and
+#         the compositor replaced those commits before a flip (WMPACING shown=0). The render thread composes
+#         into one attached buffer while the callback is outstanding; the callback commits it. A callback
+#         that does not arrive within 100 ms commits once and waits again. A window with no GPU layer is
+#         unchanged.
+#   0389w WindowServer: a GL layer is drawn opaque (texture RGB, alpha written as 1). Premultiplied
+#         source-over was keeping Minecraft's partial alpha (FBO0 alpha 64) and the content area stayed
+#         clear, so the desk wallpaper showed through. SFFX_GPU_LAYER_ALPHA=keep is the old blend.
+#         SFFX_GPU_LAYER_PROBE=1 logs the layer IOSurface (CPU and the imported texture, with the import's
+#         glGetError) and the composed dma-buf inside the layer rect.
+#   0390w WindowServer: a paced GPU commit re-attaches the last composed frame (gpuComposed, else the
+#         front buffer) and damages the whole window before wl_surface.commit. SFFX_GPU_BUF_TRACE=1 logs
+#         the buffer id, fd, offset, and whether that buffer is the one just composed. CPU windows are
+#         unchanged.
+#   0394w WindowServer: a GPU frame taken while a callback is in flight (0388w) is returned to the
+#         pool when that path commits a different frame instead (callback later than 100 ms). The
+#         abandoned frame was never committed, so the compositor will never release it. A frame
+#         already given to the compositor is left busy. If every non-given frame stays busy for
+#         more than 100 ms, reclaim the oldest of those and log SFWS RECLAIM-UNRELEASED. The
+#         scanout buffer is not reclaimed. 0393w (reclaim any oldest frame) is not in this series.
 #   0149  CoreVideo (TERM9; built by ./corevideo-displaylink.nix on CODEX's ../finch/CoreVideo/sf-displaylink.nix): the
 #         display link ticks right after the flip that showed the application's last frame (inNow = that flip,
 #         inOutputTime = the next), waits for a frame still in flight (at most two refreshes), else ticks on the
@@ -866,6 +900,7 @@ let
     ./patches/0370-appkit-zero-maximum-size-is-no-maximum.patch
     ./patches/0379-appkit-auto-gpu-present-for-gpu-layers.patch
     ./patches/0381-appkit-chonkcraft-additive-symbols.patch
+    ./patches/0386-appkit-nsopengl-gpu-present-and-window-backing-rect.patch
   ];
   windowserverPatches = [
     ./patches/0004-windowserver-server-decorations-and-scale.patch
@@ -901,6 +936,12 @@ let
     ./patches/0376w-windowserver-pace-presents-default-on.patch
     ./patches/0377w-windowserver-gpu-frame-requests-gpu-storage.patch
     ./patches/0380w-windowserver-gpu-presenter-auto-and-perf-defaults.patch
+    ./patches/0384w-windowserver-pointer-lock-and-relative-motion.patch
+    ./patches/0387w-windowserver-gpu-layer-present-not-paced.patch
+    ./patches/0388w-windowserver-gpu-commit-on-frame-callback.patch
+    ./patches/0389w-windowserver-opaque-gl-layer-and-probe.patch
+    ./patches/0390w-windowserver-commit-the-composed-gpu-frame.patch
+    ./patches/0394w-windowserver-return-uncommitted-gpu-frame.patch
   ];
   windowserverSrc = patchedDir "src/Frameworks/WindowServer" windowserverPatches;
   # (IOSURF) VLC's private copy only: the system's patches and the opt-in cadence hold (SF_WS_CADENCE)
@@ -952,6 +993,7 @@ let
     ./patches/0135-coregraphics-display-fade-opengl-acceleration.patch
     ./patches/0342-coregraphics-displays-with-point-and-rect.patch
     ./patches/0382-coregraphics-display-config-and-event-stubs.patch
+    ./patches/0385-coregraphics-pointer-lock-and-cursor-warp.patch
   ];
   coregraphics = optimised (pd."coregraphics-arm64".override { src = coregraphicsSrc; });
   # QuartzCore: upstream's recipe (not optimised, as installed; its library is the root's QuartzCore.pd, beside the
@@ -990,18 +1032,18 @@ let
     buildPhase = builtins.replaceStrings
       [ "cc=\"" "rpc_wayland.o xdg-shell-protocol.o" ]
       [ ''
-        for x in unstable/xdg-decoration/xdg-decoration-unstable-v1 staging/fractional-scale/fractional-scale-v1 stable/viewporter/viewporter staging/xdg-activation/xdg-activation-v1 unstable/pointer-gestures/pointer-gestures-unstable-v1 staging/cursor-shape/cursor-shape-v1 unstable/tablet/tablet-unstable-v2 stable/presentation-time/presentation-time; do
+        for x in unstable/xdg-decoration/xdg-decoration-unstable-v1 staging/fractional-scale/fractional-scale-v1 stable/viewporter/viewporter staging/xdg-activation/xdg-activation-v1 unstable/pointer-gestures/pointer-gestures-unstable-v1 unstable/relative-pointer/relative-pointer-unstable-v1 unstable/pointer-constraints/pointer-constraints-unstable-v1 staging/cursor-shape/cursor-shape-v1 unstable/tablet/tablet-unstable-v2 stable/presentation-time/presentation-time; do
           n=$(basename $x)
           wayland-scanner client-header ${wp}/$x.xml $n-client-protocol.h
           wayland-scanner private-code ${wp}/$x.xml $n-protocol.c
         done
         cc="''
-        "rpc_wayland.o xdg-decoration-unstable-v1-protocol.o fractional-scale-v1-protocol.o viewporter-protocol.o xdg-activation-v1-protocol.o pointer-gestures-unstable-v1-protocol.o cursor-shape-v1-protocol.o tablet-unstable-v2-protocol.o presentation-time-protocol.o xdg-shell-protocol.o" ]
+        "rpc_wayland.o xdg-decoration-unstable-v1-protocol.o fractional-scale-v1-protocol.o viewporter-protocol.o xdg-activation-v1-protocol.o pointer-gestures-unstable-v1-protocol.o relative-pointer-unstable-v1-protocol.o pointer-constraints-unstable-v1-protocol.o cursor-shape-v1-protocol.o tablet-unstable-v2-protocol.o presentation-time-protocol.o xdg-shell-protocol.o" ]
       (builtins.replaceStrings
         [ "$cc $cflags -c xdg-shell-protocol.c -o xdg-shell-protocol.o" ]
         [ ''
           $cc $cflags -c xdg-shell-protocol.c -o xdg-shell-protocol.o
-              for n in xdg-decoration-unstable-v1 fractional-scale-v1 viewporter xdg-activation-v1 pointer-gestures-unstable-v1 cursor-shape-v1 tablet-unstable-v2 presentation-time; do $cc $cflags -c $n-protocol.c -o $n-protocol.o; done'' ]
+              for n in xdg-decoration-unstable-v1 fractional-scale-v1 viewporter xdg-activation-v1 pointer-gestures-unstable-v1 relative-pointer-unstable-v1 pointer-constraints-unstable-v1 cursor-shape-v1 tablet-unstable-v2 presentation-time; do $cc $cflags -c $n-protocol.c -o $n-protocol.o; done'' ]
         old.buildPhase);
   }));
   windowserver = mkWindowserver windowserverSrc;

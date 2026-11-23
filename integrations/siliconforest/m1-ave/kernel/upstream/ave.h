@@ -1,0 +1,384 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Apple AVE (Video Encoder) - driver private definitions
+ *
+ * UNTESTED. No part of this has run on hardware. The register sequences and
+ * constants come from ave_hw.h / ave_abi.h, which are transcribed from
+ * AppleAVE2.kext and the AVE firmware; the surrounding logic is new code and
+ * has never been executed.
+ */
+#ifndef __AVE_H__
+#define __AVE_H__
+
+#include <linux/debugfs.h>
+#include <linux/delay.h>
+#include <linux/device.h>
+#include <linux/io.h>
+#include <linux/notifier.h>
+#include <linux/ratelimit.h>
+#include <linux/reset.h>
+#include <linux/types.h>
+#include <linux/workqueue.h>
+
+#include "ave_hw.h"
+#include "ave_abi.h"
+#include "ave_version.h"
+#include "ave_soc.h"
+
+/* One mapped MMIO bank; index matches the ADT reg index. */
+struct ave_bank {
+	phys_addr_t		phys;	/* AP-physical start, for the IOBA patch */
+	void __iomem	*base;
+	resource_size_t	size;
+};
+
+/* A DMA-coherent region shared with the coprocessor. */
+struct ave_dma_buf {
+	void		*cpu;
+	dma_addr_t	iova;
+	size_t		size;
+};
+
+/*
+ * One IPC channel, indexed by host channel id (enum ave_boot_ch_id in
+ * ave_abi_boot.h). The descriptor comes from the firmware; rd/wr are
+ * host-private (the firmware never reads them - the only shared state is each
+ * slot's phase bit). Layout mirrors Apple's 0x30-byte handle, docs/36 §6.
+ */
+struct ave_channel {
+	bool		bound;
+	u32		id;
+	u32		desc_index;	/* position in the firmware's table */
+	u32		dir;		/* descriptor +0x40 */
+	u32		doorbell_bit;	/* descriptor +0x44 */
+	u32		nslots;		/* descriptor +0x48 */
+	u32		type;		/* host ring type, from dir */
+	s32		rd;		/* -1 = nothing outstanding */
+	s32		wr;		/* -1 = full */
+	u32		nrecv;
+	u32		nsend;
+	void		*ring;		/* into ipc.cpu */
+	u64		ring_fw;	/* descriptor +0x4c */
+};
+
+struct ave_v4l2;
+
+/* One DAPF slot as read back (ave_dapf.c); the probe-time capture for resume. */
+struct ave_dapf_slot {
+	u32	r0, r4;
+	u64	start, end;
+};
+#define AVE_DAPF_SLOTS		16
+
+/*
+ * System sleep (docs/86). ON is everything probe leaves behind; the PM
+ * notifier takes a powered encoder to OFF (core halted or reset, every
+ * mapping released, power dropped) and a work item after resume takes it
+ * back to ON through probe's stages 6-16. DEAD: that boot failed before the
+ * core was released, power is off, and the device waits for a re-probe.
+ */
+enum ave_pm_state {
+	AVE_PM_ON = 0,
+	AVE_PM_SUSPENDING,
+	AVE_PM_OFF,
+	AVE_PM_BOOTING,
+	AVE_PM_DEAD,
+};
+
+struct ave_device {
+	struct dentry		*dva_dentry;	/* docs/93: apple_ave_dva */
+	struct dentry		*mmio_dentry;	/* docs/93: apple_ave_mmio */
+	struct device		*dev;
+	const struct ave_soc	*soc;		/* from the compatible; ave_soc.c */
+	struct ave_bank		bank[AVE_NUM_BANKS];
+	enum ave_fw_abi		fw_abi;		/* chosen before any command */
+
+	/* --- boot/IPC state (owner: ave_ipc.c work) --- */
+	/*
+	 * Per-version boot/IPC descriptor (ave_abi_boot.h), set by
+	 * ave_ipc_init(). NULL until then; the IRQ handler uses it to know the
+	 * lock below has been initialised.
+	 */
+	const struct ave_boot_abi *boot_abi;
+	spinlock_t		ipc_lock;	/* mailbox capture, rings, pool */
+	struct gen_pool		*ipc_pool;	/* 64-byte granule over FwIPC */
+	u8			boot_phase;	/* enum in ave_ipc.c */
+	bool			ipc_up;		/* ready flag cleared: rings live */
+	/* Mailbox messages the IRQ handler took before RecvIOPMsg could. */
+	bool			mbox_pending;
+	u32			mbox_status;
+	u32			mbox[4];
+	u32			msg1[4];	/* message 1 as received */
+	u64			ipc_fw_base;	/* message 3: fw view of FwIPC */
+	struct ave_dma_buf	fwheap;		/* message 1 scratch 3 */
+	void			*chanmem;	/* channel block, in FwIPC */
+	u32			chanmem_size;
+	void			*ipcinfo;	/* 0x50-byte info block, in FwIPC */
+	void			*info_log;	/* 26.6.2 +0x10 block, in FwIPC */
+	u32			client_buf_size; /* message 5 scratch 2 */
+	u64			time_base;	/* 26.6.2 scratch 4/5 */
+	/* SHAREDMALLOC allocations (gen_pool needs the size back). */
+#define AVE_SHMALLOC_MAX	64
+	struct { void *cpu; u32 size; } shm[AVE_SHMALLOC_MAX];
+	/*
+	 * Channel dispatch after the handshake, called from the IRQ handler.
+	 * A pointer so ave_drv.c needs no ave_abi_boot.h include; see ave_ipc.c.
+	 */
+	void			(*ipc_irq)(struct ave_device *ave, u32 status);
+	/* Command-layer hook for IO / IO_T2H payloads (CPU address or NULL). */
+	void			(*ipc_rx)(struct ave_device *ave, u32 chan_id,
+					  void *buf, u32 size, u32 flags);
+	struct ratelimit_state	fwlog_rs;
+	unsigned long		fwlog_lines;
+	/* --- end boot/IPC --- */
+
+	/* --- DAPF / fetch-path state (owner: ave_fw.c / ave_dapf.c work) --- */
+	/* Optional "cpudart"/"dapf" reg entries: devm_ioremap, NOT requested. */
+	void __iomem		*cpudart;
+	void __iomem		*dart1;		/* datapath DART, if in iommus */
+	void __iomem		*dapf;
+	phys_addr_t		cpudart_phys;
+	phys_addr_t		dapf_phys;
+	bool			dapf_programmed;
+	/* iBoot segment DART mappings (ave_fw.c, fw_map_data / fw_map_text) */
+	struct iommu_domain	*iboot_domain;
+	bool			iboot_data_mapped;
+	struct page		*owned_data;	/* data_owned: our DATA */
+	/* ave_fw_data_owned(): decided once per probe from soc->iboot.data_owned */
+	bool			data_mode_set;
+	bool			data_owned;
+	bool			iboot_text_mapped;
+	/*
+	 * Pristine copy of the firmware's DATA segment (ave_fw.c,
+	 * fw_restore_data). vmalloc'd AVE_IBOOT_DATA_SIZE buffer, loaded once
+	 * from the committed blob and memcpy'd back over physical DATA before
+	 * each core start, mirroring macOS. NULL until first use; freed on
+	 * unload.
+	 */
+	u8			*iboot_data_pristine;
+	/*
+	 * AVE_DPE tunables from soc->dpe_fw, loaded at the first power-on
+	 * (ave_dpe_load) and kept for every later one (reload, resume).
+	 */
+	struct ave_dpe_set	dpe;
+	bool			dpe_loaded;
+	/*
+	 * docs/100: this boot's DATA as iBoot left it, copied at the first
+	 * start of a boot and checked against the image; exposed read-only
+	 * in debugfs (apple_ave[N]_iboot_data) so that the fetch tool can keep
+	 * it as the pristine blob for reloads in later boots.
+	 */
+	u8			*iboot_data_cold;
+	struct debugfs_blob_wrapper	cold_blob;
+	struct dentry		*cold_dentry;
+	/* dart-ave0 SMMU, read-only fault watch (ave_smmu.c, smmu_watch). */
+	void __iomem		*smmu;
+	int			smmu_irq;
+	bool			smmu_live;	/* handler may read the block */
+	unsigned long		smmu_faults;
+	struct ratelimit_state	smmu_rs;
+	/* --- end DAPF --- */
+
+	/*
+	 * Boot-handshake capture. The IRQ is requested before the firmware
+	 * has said anything, and the handler must write-1-clear the whole
+	 * status word or the line stays asserted. That would consume the
+	 * firmware's very first message and we would record a working boot as
+	 * silence - so during the handshake the handler stashes it here
+	 * instead of dropping it, and ave_recv_iop_msg() accepts either
+	 * source.
+	 */
+#define AVE_SNAP_PAGES	4096			/* 16 MiB at 4 KiB pages */
+	u32			snap[AVE_SNAP_PAGES];	/* CRC of iBoot's image */
+	bool			snap_valid;
+	bool			powered;   /* holds a runtime-PM ref from stage 6 */
+	bool			irq_enabled;	/* enabled only while powered */
+	bool			hs_seen;
+	u32			hs_status;
+	u32			hs_scratch[4];
+	int			irq;
+	struct reset_control	*rst;
+
+	/* Power domains, in ADT power-gates order. */
+	struct dev_pm_domain_list *pd_list;
+	struct device		*me1_dev;	/* venc_me1 holder, power_me1=1 */
+	struct device		*me0_dev;	/* venc_me0 holder, SoCs with me0_node */
+	struct device		*pmp_dev;	/* pmp-venc-sys holder, pmp_report=1 */
+	bool			pmp_voted;	/* pmp_vote written, not yet released */
+	bool			pmp_vote_streaming; /* vote only while a stream is open */
+
+	/*
+	 * Firmware. We load it ourselves rather than adopting an iBoot
+	 * pre-load, so that no bootloader patch is needed. It must end up at
+	 * DART IOVA 0; see ave_fw.c.
+	 */
+	struct {
+		void		*cpu;
+		dma_addr_t	iova;		/* where dma_alloc put it   */
+		size_t		size;
+		bool		mapped_at_zero;
+		u64		fw_base;	/* reported back by the fw  */
+		u64		map_iova;	/* where the core fetches */
+	} fw;
+
+	struct ave_dma_buf	ipc;		/* FwIPC: 7 MiB (13.5) / 20 MiB (26.6.2) */
+	struct ave_dma_buf	fwcfg;		/* 26.6.2 only: 56-byte boot block */
+	struct ave_dma_buf	fwlog;		/* 26.6.2 only: FwLog surface      */
+	struct ave_channel	chan[8];	/* by host id; AVE_CH_MAX */
+	unsigned int		nchannels;	/* descriptors bound */
+
+	/*
+	 * Buffers handed to the firmware by ave_session.c. The firmware keeps
+	 * the addresses after the self-test returns, so they are freed only in
+	 * ave_remove(), after the block is powered off.
+	 */
+	void			*session_bufs;
+	void			*sess_rx;	/* ave_session.c reply capture, per device */
+	struct ave_v4l2		*v4l2;		/* ave_v4l2.c, v4l2=1 */
+	bool			dart_check_quiet; /* streaming: log DART mismatches only */
+
+	bool			running;
+	/*
+	 * Config was accepted with bCreateMcpu = 1, so the controller object at
+	 * CmdProcessor+0x7A10 exists (created behind that flag, hence
+	 * presumably the McpuController - the name is inferred). Halt calls it
+	 * with no null check (fw 0x10d44), and its only creator is
+	 * ProcessConfig (fw 0xe84c) - so Halt before Config crashes the
+	 * firmware. Measured 2026-09-14, results/h1-1789369083.kmsg.
+	 */
+	bool			mcpu_created;
+	/*
+	 * Open (command 2) was accepted, so the firmware has a registered
+	 * client holding queue slots and buffer addresses. macOS never powers
+	 * the block down in this state: AVE_Drv::TryPowerOff refuses unless
+	 * the client list is empty (kext 0xef0920), and AVE_Drv::PowerOff
+	 * queues Stop then Close for every live client and drains both queues
+	 * first (0xeef70c). We abandoned the client instead, and unloaded
+	 * twice into a machine reset seconds later. docs/63.
+	 */
+	bool			client_open;
+	/*
+	 * The open client's codec, 0 = AVC, 1 = HEVC: its Stop and Close
+	 * carry it in the header too (docs/77 §1.2). Kept here, not in the
+	 * session buffers, because remove() closes the client after those
+	 * may be gone.
+	 */
+	u8			client_codec;
+	/*
+	 * Set when a teardown could not be proven clean: nothing is unmapped,
+	 * nothing this driver holds is freed, and ave_power_off() skips the
+	 * runtime-PM put, including from its devres action.
+	 *
+	 * Skipping that put is NOT by itself enough to keep the block
+	 * powered, and the earlier version of this comment claimed it was.
+	 * The domains come from devm_pm_domain_attach_list(), so devres
+	 * detaches them when remove() returns and genpd gates every one that
+	 * has no other member - venc_me0, venc_pipe4, venc_pipe5, venc_dma.
+	 * What actually holds them up is the abandoned venc_me1 holder
+	 * (ave_power_me1_abandon), and venc_sys, which the two DARTs keep up
+	 * by living in it.
+	 */
+	bool			keep_powered;
+	/*
+	 * CPU_STATUS read STOPPED at stage 7, so a previous load in this boot
+	 * halted this core and it is sitting in its wfi. That is a known,
+	 * recoverable state - block reset plus a DATA restore - and since the
+	 * driver now always halts at unload it is the NORMAL state for every
+	 * load after the first. Recovering from it automatically is what
+	 * makes more than one experiment per boot possible; without it the
+	 * second load fails at stage 13 with "ASC did not become idle
+	 * (status 0x2e)", which is what s1-9 did (docs/53).
+	 */
+	bool			recover_halted;
+	/*
+	 * docs/84 §5: a Process timed out, so the firmware is wedged (R1).
+	 * Encodes and starts fail fast; the last close re-probes the device,
+	 * which resets the core and restores DATA (R7).
+	 */
+	bool			fw_hung;
+	bool			recover_scheduled;
+
+	/* --- system sleep (ave_drv.c, pm_sleep; docs/86) --- */
+	enum ave_pm_state	pm_state;
+	bool			asc_started;	/* stage 13 released the core this boot */
+	bool			pm_nb_on;	/* pm_nb registered */
+	struct notifier_block	pm_nb;
+	struct work_struct	pm_work;	/* the resume boot */
+	/*
+	 * The DAPF as it was when this probe's core started (after stage 8,
+	 * so ave1's entries are the driver's own): what resume compares with
+	 * and, if s2idle took it, writes back (docs/84 §3: Linux can).
+	 */
+	struct ave_dapf_slot	dapf_boot[AVE_DAPF_SLOTS];
+	u64			dapf_boot_fp;
+	bool			dapf_boot_valid;
+};
+
+/*
+ * Crash-surviving progress markers. There is no pstore backend on this
+ * machine, so a hard crash leaves nothing but what userspace already synced
+ * to disk. With step_ms=N every marker is logged and then held for N ms, long
+ * enough for an fsync-per-line /dev/kmsg reader to persist it: the last
+ * marker on disk names the operation that killed the machine.
+ */
+extern int ave_step_ms;
+#define ave_step(ave, fmt, ...)						\
+	do {								\
+		dev_info((ave)->dev, "STEP " fmt "\n", ##__VA_ARGS__);	\
+		if (ave_step_ms)					\
+			msleep(ave_step_ms);				\
+	} while (0)
+
+static inline u32 ave_read(struct ave_device *ave, unsigned int bank, u32 off)
+{
+	return readl_relaxed(ave->bank[bank].base + off);
+}
+
+static inline void ave_write(struct ave_device *ave, unsigned int bank,
+			     u32 off, u32 val)
+{
+	writel_relaxed(val, ave->bank[bank].base + off);
+}
+
+static inline u64 ave_read64(struct ave_device *ave, unsigned int bank, u32 off)
+{
+	return readq_relaxed(ave->bank[bank].base + off);
+}
+
+static inline void ave_write64(struct ave_device *ave, unsigned int bank,
+			       u32 off, u64 val)
+{
+	writeq_relaxed(val, ave->bank[bank].base + off);
+}
+
+/* ave_fw.c */
+int ave_fw_load(struct ave_device *ave);
+void __iomem *ave_devm_ioremap_np(struct device *dev, phys_addr_t pa, size_t size);
+void ave_schedule_recover(struct ave_device *ave);
+void ave_pmp_stream_on(struct ave_device *ave);
+void ave_pmp_stream_off(struct ave_device *ave);
+void ave_fw_unload(struct ave_device *ave);
+int ave_fw_map_text_mode(void);
+int ave_fw_restore_data(struct ave_device *ave);
+int ave_fw_data_ran(struct ave_device *ave);
+int ave_fw_placement_from_adt(struct ave_device *ave);
+void ave_fw_capture_cold(struct ave_device *ave);
+
+/* ave_ipc.c */
+int ave_boot_config(struct ave_device *ave);
+int ave_recv_iop_msg(struct ave_device *ave, u32 out[4], unsigned int timeout_ms);
+void ave_fw_log_dump(struct ave_device *ave);
+void ave_fw_globals_dump(struct ave_device *ave);
+void ave_fw_peek_phys(struct ave_device *ave);
+void ave_fw_snapshot_phys(struct ave_device *ave);
+void ave_fw_diff_phys(struct ave_device *ave);
+void ave_fw_identify_phys(struct ave_device *ave);
+int ave_ipc_init(struct ave_device *ave);
+void ave_ipc_fini(struct ave_device *ave);
+int ave_ipc_handshake(struct ave_device *ave);
+int ave_ipc_send(struct ave_device *ave, u32 chan_id, dma_addr_t payload,
+		 u64 arg1, u64 arg2);
+int ave_ipc_recv(struct ave_device *ave, u32 chan_id, u64 *out, size_t n);
+void ave_ipc_ring_doorbell(struct ave_device *ave, u32 chan_id);
+
+#endif /* __AVE_H__ */

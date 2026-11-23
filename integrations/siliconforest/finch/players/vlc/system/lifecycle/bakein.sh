@@ -19,7 +19,7 @@ log "start $L: passes $P; hpm0 link: $("${M5[@]}" "$VDM nop" 2>&1 | grep -E 'Fou
 check start; D0=$(m1_alive)
 for p in $P; do
   case $p in
-  desk) CAP=120 bash $HERE/m1.sh $L-desk "bakein $L: desktop basics (four themes by request, sf-wafer put back, state compared; dock observed)" $HERE/m1/obs-desk.sh;;
+  desk) CAP=120 bash $HERE/m1.sh $L-desk "bakein $L: desktop basics (four themes by request, the theme saved at the start of the run put back, state compared; dock observed)" $HERE/m1/obs-desk.sh;;
   *) nc=""; case " ${NOCAP_APPS:-ff vlc qt cc} " in *" $p "*) nc="NOCAP=1;";; esac
      PASSENV="APP=$p; $nc" CAP=200 bash $HERE/m1.sh $L-$p "bakein $L: $p launched once (observe mode: session log, captures, TERM)" $HERE/m1/obs-app.sh;;
   esac

@@ -94,6 +94,8 @@ let
     install -m 0755 ${./desktop/system/sf-open-chonkcraft} $out/usr/bin/sf-open-chonkcraft
     install -m 0755 ${./desktop/system/sf-open-preview} $out/usr/bin/sf-open-preview
     install -m 0755 ${./desktop/system/sf-open-textedit} $out/usr/bin/sf-open-textedit
+    install -m 0755 ${./desktop/system/sf-open-minecraft} $out/usr/bin/sf-open-minecraft
+    install -m 0755 ${./desktop/system/sf-screenrecord} $out/usr/bin/sf-screenrecord
   '';
   # Combined system root tree: macosAppsRoot plus the three out-of-root system libraries
   # (libSystem legacy exports, Finch ColorSync, Finch AudioToolbox) and graphics/media providers.

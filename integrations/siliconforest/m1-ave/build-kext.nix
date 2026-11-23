@@ -4,7 +4,7 @@ let
  source=import ../rebase/pd.nix;
  inherit(source) pd pkgs;
 in pd.packages.x86_64-linux.kexts-arm64.overrideAttrs(old: {
- pname="siliconforest-apple-ave-diagnostic";
+ pname="siliconforest-apple-ave-boot";
  src=pkgs.runCommand "siliconforest-apple-ave-diagnostic-tree" {} ''
   cp -R ${old.src} $out
   chmod -R u+w $out

@@ -1,0 +1,21 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Record the desktop to an H.264 movie: the compositor's own recorder, which converts each
+# frame to NV12 on the GPU and encodes it with the Apple Video Encoder (/dev/sfave), or with
+# software when the encoder is not available. The compositor's log says which (WMRECORD).
+#   sf-screenrecord [-H] [seconds] [file.mp4]     -H: half size. Default: 20 s, ~/sf-screenrecord-<time>.mp4
+set -eu
+SIZE=-F
+if [ "${1:-}" = -H ]; then SIZE=-H; shift; fi
+SECONDS_TO_RECORD=${1:-20}
+case "$SECONDS_TO_RECORD" in
+    ''|*[!0-9]*|0) echo "usage: sf-screenrecord [-H] [seconds] [file.mp4]" >&2; exit 2;;
+esac
+OUT=${2:-${HOME:-/private/tmp}/sf-screenrecord-$(date +%Y%m%d-%H%M%S).mp4}
+# An inherited runtime dir with no wayland-0 socket is not this desk (an SSH session).
+if [ ! -S "${XDG_RUNTIME_DIR:-}/wayland-0" ]; then
+    XDG_RUNTIME_DIR=/private/var/run/gpu-desktop
+fi
+export XDG_RUNTIME_DIR
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+exec "${SF_SCREENRECORD_DESKTOP:-/usr/bin/chonkstep-darwin-desktop}" --screencapture -v -V "$SECONDS_TO_RECORD" "$SIZE" "$OUT"

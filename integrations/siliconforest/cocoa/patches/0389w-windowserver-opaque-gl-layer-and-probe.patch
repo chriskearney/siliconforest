@@ -1,0 +1,96 @@
+--- a/src/Frameworks/WindowServer/sffx_gpu_present.h
++++ b/src/Frameworks/WindowServer/sffx_gpu_present.h
+@@ -57,6 +57,7 @@
+  void (*glReadPixels)(int,int,int,int,unsigned,unsigned,void *);
+  void (*glViewport)(int,int,int,int),(*glClearColor)(float,float,float,float),(*glClear)(unsigned);
+  void (*glDisable)(unsigned),(*glEnable)(unsigned),(*glBlendFunc)(unsigned,unsigned),(*glScissor)(int,int,int,int);
++ void (*glColorMask)(unsigned char,unsigned char,unsigned char,unsigned char);
+  void (*glMatrixMode)(unsigned),(*glLoadIdentity)(void),(*glOrtho)(double,double,double,double,double,double);
+  void (*glBegin)(unsigned),(*glEnd)(void),(*glVertex2f)(float,float),(*glTexCoord2f)(float,float),(*glColor4f)(float,float,float,float),(*glFinish)(void);
+  void *(*IOSurfaceCreate)(CFDictionaryRef);
+@@ -79,6 +80,7 @@
+  SFLOAD(gl,glTexParameteri);SFLOAD(gl,glPixelStorei);SFLOAD(gl,glGenFramebuffers);SFLOAD(gl,glBindFramebuffer);SFLOAD(gl,glDeleteFramebuffers);
+  SFLOAD(gl,glFramebufferTexture2D);SFLOAD(gl,glCheckFramebufferStatus);SFLOAD(gl,glGetError);SFLOAD(gl,glGetString);
+  SFLOAD(gl,glReadPixels);SFLOAD(gl,glViewport);SFLOAD(gl,glClearColor);SFLOAD(gl,glClear);SFLOAD(gl,glDisable);SFLOAD(gl,glEnable);SFLOAD(gl,glBlendFunc);SFLOAD(gl,glScissor);
++ SFLOAD(gl,glColorMask);
+  SFLOAD(gl,glMatrixMode);SFLOAD(gl,glLoadIdentity);SFLOAD(gl,glOrtho);SFLOAD(gl,glBegin);SFLOAD(gl,glEnd);
+  SFLOAD(gl,glVertex2f);SFLOAD(gl,glTexCoord2f);SFLOAD(gl,glColor4f);SFLOAD(gl,glFinish);
+  SFLOAD(surface,IOSurfaceGetBaseAddress);SFLOAD(surface,IOSurfaceCreate);SFLOAD(surface,IOSurfaceSFGPUCopyFD);SFLOAD(surface,IOSurfaceSFGPUGetOffset);
+@@ -322,9 +324,74 @@
+   for(int i=0;i<p->count&&good;i++){
+    struct sfGPULayer *l=&p->layers[i];int lw=(int)sfGPU.IOSurfaceGetWidth(l->surface),lh=(int)sfGPU.IOSurfaceGetHeight(l->surface);
+    if(damageMode&&!(l->dx<region[2]&&region[0]<l->dx+l->dw&&l->dy<region[3]&&region[1]<l->dy+l->dh))continue;
+-   sfGPU.glBindTexture(0x0de1,sfGPULayerTexture(l));
+-   good=lw>0&&lh>0&&sfGPU.CGLTexImageIOSurface2D(p->context,0x0de1,0x1908,lw,lh,0x80e1,0x8367,l->surface,0)==0;
+-   if(good){sfGPUTextureParameters();sfGPUQuad(l->dx,l->dy,l->dw,l->dh,l->sx/lw,l->sy/lh,l->sw/lw,l->sh/lh);p->layerBytes+=(uint64_t)lw*lh*4;}
++   unsigned layerTex=sfGPULayerTexture(l);
++   sfGPU.glBindTexture(0x0de1,layerTex);
++   int imported=lw>0&&lh>0&&sfGPU.CGLTexImageIOSurface2D(p->context,0x0de1,0x1908,lw,lh,0x80e1,0x8367,l->surface,0)==0;
++   unsigned importErr=sfGPU.glGetError(); // (0389w) the import's own error, before any later call
++   good=imported&&importErr==0;
++   static unsigned sfGPUProbeN;
++   const char *probeEnv=getenv("SFFX_GPU_LAYER_PROBE");
++   int probe=probeEnv&&probeEnv[0]&&strcmp(probeEnv,"0");
++   sfGPUProbeN++;
++   int logProbe=probe&&(sfGPUProbeN<=4||sfGPUProbeN%30==0)&&sfGPUProbeN<=150;
++   if(logProbe){
++    unsigned cb=0,cg=0,cr=0,ca=0,qb=0,qg=0,qr=0,qa=0;
++    const unsigned char *raw=sfGPU.IOSurfaceGetBaseAddress(l->surface);
++    size_t stride=sfGPU.IOSurfaceGetBytesPerRow(l->surface),off=sfGPU.IOSurfaceSFGPUGetOffset(l->surface);
++    int cx=lw/2,cy=lh/2,qx=lw/4,qy=lh/2;
++    if(raw&&stride>(size_t)cx*4&&(size_t)cy*stride+ (size_t)cx*4+4<= (size_t)cy*stride+stride){
++     const unsigned char *c=raw+(size_t)cy*stride+(size_t)cx*4;
++     const unsigned char *q=raw+(size_t)qy*stride+(size_t)qx*4;
++     cb=c[0];cg=c[1];cr=c[2];ca=c[3];qb=q[0];qg=q[1];qr=q[2];qa=q[3];
++    }
++    unsigned char gr[4]={0},gq[4]={0};
++    sfGPU.glFramebufferTexture2D(0x8d40,0x8ce0,0x0de1,layerTex,0);
++    if(sfGPU.glCheckFramebufferStatus(0x8d40)==0x8cd5){
++     sfGPU.glReadPixels(cx,cy,1,1,0x1908,0x1401,gr);
++     sfGPU.glReadPixels(qx,qy,1,1,0x1908,0x1401,gq);
++    }
++    sfGPU.glFramebufferTexture2D(0x8d40,0x8ce0,0x0de1,f->texture,0);
++    for(int clear=0;clear<8&&sfGPU.glGetError();clear++){}
++    fprintf(stderr,"SFGPULAYER probe n=%u import=%d glerr=0x%x surf=%dx%d dst=%.0f,%.0f %.0fx%.0f src=%.0f,%.0f %.0fx%.0f offset=%zu stride=%zu cpu=unmap:%d centerBGRA=%u,%u,%u,%u quarterBGRA=%u,%u,%u,%u glCenterRGBA=%u,%u,%u,%u glQuarterRGBA=%u,%u,%u,%u\n",
++     sfGPUProbeN,imported,importErr,lw,lh,l->dx,l->dy,l->dw,l->dh,l->sx,l->sy,l->sw,l->sh,off,stride,raw?0:1,
++     cb,cg,cr,ca,qb,qg,qr,qa,gr[0],gr[1],gr[2],gr[3],gq[0],gq[1],gq[2],gq[3]);
++   }
++   if(good){
++    sfGPUTextureParameters();
++    const char *keep=getenv("SFFX_GPU_LAYER_ALPHA");
++    // (0389w) A GL layer often stores straight or partial alpha (Minecraft FBO0 alpha 64, and 0
++    // reads as transparent). Premultiplied source-over then leaves the content area clear and
++    // the desk wallpaper shows through. ChonkCraft writes the layer with alpha held at 1.
++    // Default here: texture RGB replaces the base, alpha is written as 1. SFFX_GPU_LAYER_ALPHA=keep
++    // is the old premultiplied blend.
++    if(!(keep&&!strcmp(keep,"keep"))){
++     sfGPU.glDisable(0x0be2);
++     sfGPU.glColorMask(1,1,1,0);
++     sfGPUQuad(l->dx,l->dy,l->dw,l->dh,l->sx/lw,l->sy/lh,l->sw/lw,l->sh/lh);
++     sfGPU.glDisable(0x0de1);
++     sfGPU.glColorMask(0,0,0,1);
++     sfGPU.glColor4f(0,0,0,1);
++     sfGPUQuad(l->dx,l->dy,l->dw,l->dh,0,0,0,0);
++     sfGPU.glColor4f(1,1,1,1);
++     sfGPU.glColorMask(1,1,1,1);
++     sfGPU.glEnable(0x0de1);
++     sfGPU.glEnable(0x0be2);
++    }else sfGPUQuad(l->dx,l->dy,l->dw,l->dh,l->sx/lw,l->sy/lh,l->sw/lw,l->sh/lh);
++    p->layerBytes+=(uint64_t)lw*lh*4;
++    if(logProbe){
++     int px=(int)(l->dx+l->dw/2),py=(int)(l->dy+l->dh/2);
++     if(px<0)px=0; if(py<0)py=0; if(px>=w)px=w-1; if(py>=h)py=h-1;
++     sfGPU.glFinish();
++     unsigned char gp[4]={0};sfGPU.glReadPixels(px,py,1,1,0x1908,0x1401,gp);
++     const unsigned char *raw=sfGPU.IOSurfaceGetBaseAddress(f->surface);
++     size_t stride=sfGPU.IOSurfaceGetBytesPerRow(f->surface);
++     unsigned db=0,dg=0,dr=0,da=0;int unmap=raw==NULL||stride<(size_t)(px+1)*4;
++     if(!unmap){const unsigned char *q=raw+(size_t)py*stride+(size_t)px*4;db=q[0];dg=q[1];dr=q[2];da=q[3];}
++     for(int clear=0;clear<8&&sfGPU.glGetError();clear++){}
++     fprintf(stderr,"SFGPUCOMPOSE probe n=%u inside=%d,%d window=%dx%d glRGBA=%u,%u,%u,%u dmaBGRA=%u,%u,%u,%u dma_unmap=%d stride=%zu\n",
++      sfGPUProbeN,px,py,w,h,gp[0],gp[1],gp[2],gp[3],db,dg,dr,da,unmap,stride);
++    }
++   }
+   }
+   if(trace)drawDone=sfGPUClockMs();
+   if(damageMode)sfGPU.glDisable(0x0c11);

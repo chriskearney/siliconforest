@@ -1,0 +1,84 @@
+diff -ru a/src/Frameworks/CoreGraphics/CGDirectDisplay_siliconforest.m b/src/Frameworks/CoreGraphics/CGDirectDisplay_siliconforest.m
+--- a/src/Frameworks/CoreGraphics/CGDirectDisplay_siliconforest.m	2026-11-21 20:09:57.920126387 -0800
++++ b/src/Frameworks/CoreGraphics/CGDirectDisplay_siliconforest.m	2026-11-21 20:10:25.914491895 -0800
+@@ -136,10 +136,26 @@
+     return kCGErrorIllegalArgument;
+ }
+ 
+-// decouples the cursor from mouse motion for mouse-look, the Wayland WindowServer has no pointer lock yet,
+-// so events keep their deltas and the cursor stays attached
++// Pointer lock / mouse disassociation via WindowServer (zwp_pointer_constraints_v1 + zwp_relative_pointer_v1)
++static kern_return_t sfCallWindowServerRPC(void *data, size_t len, void *reply, int *replyLen) {
++    static kern_return_t (*rpcFn)(void *, size_t, void *, int *);
++    static dispatch_once_t once;
++    dispatch_once(&once, ^{
++        rpcFn = (kern_return_t (*)(void *, size_t, void *, int *))dlsym(RTLD_DEFAULT, "_windowServerRPC");
++    });
++    return rpcFn != NULL ? rpcFn(data, len, reply, replyLen) : KERN_FAILURE;
++}
++
+ CGError CGAssociateMouseAndMouseCursorPosition(boolean_t connected) {
+-    (void)connected;
++    struct {
++        uint32_t code;
++        uint32_t len;
++        int val1;
++        int val2;
++        int val3;
++        int val4;
++    } msg = { 103 /* kCGAssociateMouseAndMouseCursorPosition */, 4, connected ? 1 : 0, 0, 0, 0 };
++    (void)sfCallWindowServerRPC(&msg, sizeof(msg), NULL, NULL);
+     return kCGErrorSuccess;
+ }
+ 
+@@ -245,7 +261,7 @@
+     // wl_output reports the new size before the head marks its mode current, the size decides
+     for (int i = 0; i < count; i++) {
+         if (modes[i].width == (size_t)bounds.size.width && modes[i].height == (size_t)bounds.size.height)
+-            return newMode(modes[i].width, modes[i].height, modes[i].refresh, modes[i].modeID);
++            return newMode(modes[i].width, modes[i].height, modes[i].refresh > 0.0 ? modes[i].refresh : 60.0, modes[i].modeID);
+     }
+     return newMode((size_t)bounds.size.width, (size_t)bounds.size.height, 60.0, 0);
+ }
+@@ -272,7 +288,7 @@
+         CGDisplayModeRelease(mode);
+     }
+     for (int i = 0; i < count; i++) {
+-        CGDisplayModeRef mode = newMode(modes[i].width, modes[i].height, modes[i].refresh, modes[i].modeID);
++        CGDisplayModeRef mode = newMode(modes[i].width, modes[i].height, modes[i].refresh > 0.0 ? modes[i].refresh : 60.0, modes[i].modeID);
+ 
+         CFArrayAppendValue(result, mode);
+         CGDisplayModeRelease(mode);
+@@ -596,9 +612,30 @@
+     return CGSizeMake(bounds.size.width * 25.4 / 96, bounds.size.height * 25.4 / 96);
+ }
+ 
+-// Wayland gives clients no way to move the pointer
++// Warps the tracked cursor location and, when pointer-locked, sets Wayland's cursor position hint.
+ CGError CGWarpMouseCursorPosition(CGPoint newCursorPosition) {
+-    return kCGErrorCannotComplete;
++    struct {
++        uint32_t code;
++        uint32_t len;
++        int val1;
++        int val2;
++        int val3;
++        int val4;
++    } msg = {
++        104 /* kCGWarpMouseCursorPosition */,
++        12,
++        (int)(newCursorPosition.x * 256.0 + (newCursorPosition.x >= 0 ? 0.5 : -0.5)),
++        (int)(newCursorPosition.y * 256.0 + (newCursorPosition.y >= 0 ? 0.5 : -0.5)),
++        256,
++        0
++    };
++    (void)sfCallWindowServerRPC(&msg, sizeof(msg), NULL, NULL);
++    return kCGErrorSuccess;
++}
++
++CGError CGDisplayMoveCursorToPoint(CGDirectDisplayID display, CGPoint point) {
++    CGRect bounds = CGDisplayBounds(display);
++    return CGWarpMouseCursorPosition(CGPointMake(bounds.origin.x + point.x, bounds.origin.y + point.y));
+ }
+ 
+ // capture needs the compositor, so it fails like macOS without screen recording consent
