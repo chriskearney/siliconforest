@@ -10,6 +10,12 @@ Written 22 November 2026 and updated 23 November for CHL-27, gate G2 of [`FIRST-
 >
 > **The Air cannot reach an m1n1 USB proxy without a boot-chain write.** Every other route needs NVRAM or does not work. The smallest
 > route is one temporary, reversible replacement of `m1n1/boot.bin` on the Air's ESP. With approval, it is one command (section 6).
+>
+> **Re-checked read-only on 23 November at 02:40 PST.** The Air is up on its normal Linux, with no restart since before the
+> 22 November backup. Stage 2 is still `f5a82fdb-dirty`, `m1n1/boot.bin` still matches the pinned hash, no one-shot boot is pending,
+> the default boot entry and partition table are unchanged, and no `boot.bin.pre-g2` exists. Of the 76 ESP files, only `limine.conf`
+> and `limine_history/snapshots.json` differ, and both were rewritten by the Air's own hourly snapshot timer. The Linux root is
+> still full (about 1.3 MB free). `g2.py plan` at `8341c4eab` passes 16 of 16 input checks.
 
 ## 1. What is on the Air
 
