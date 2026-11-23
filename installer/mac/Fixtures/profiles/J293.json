@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "_comment": "TEST FIXTURE. The canonical profile is installer/profiles/J293.json (written with docs/installer/DESIGN.md); the app prefers it when present.",
+  "id": "J293",
+  "marketingName": "MacBook Pro (13-inch, M1, 2020)",
+  "modelIdentifiers": [
+    "MacBookPro17,1"
+  ],
+  "board": "J293AP",
+  "soc": {
+    "id": "t8103",
+    "name": "Apple M1",
+    "chipID": "0x8103"
+  },
+  "support": {
+    "status": "supported",
+    "minMacOS": "12.3",
+    "stubFirmware": [
+      "12.3",
+      "12.3.1",
+      "13.5"
+    ],
+    "preferredStubFirmware": "13.5"
+  },
+  "partitioning": {
+    "stubContainerBytes": 2500000000,
+    "bootPartition": {
+      "name": "SFBOOT",
+      "format": "fat32",
+      "bytes": 524288000
+    },
+    "rootMinBytes": 16975712000,
+    "rootRecommendedBytes": 76975712000,
+    "macOSMinFreeBytes": 40000000000,
+    "alignmentBytes": 4096,
+    "rootFilesystem": "ext4"
+  },
+  "firmware": [
+    {
+      "id": "wifi",
+      "source": "/usr/share/firmware/wifi",
+      "destination": "vendorfw/wifi",
+      "summary": "Wi-Fi (BCM4378)"
+    },
+    {
+      "id": "bluetooth",
+      "source": "/usr/share/firmware/bluetooth",
+      "destination": "vendorfw/bluetooth",
+      "summary": "Bluetooth"
+    }
+  ],
+  "kernel": {
+    "stage1": "m1n1.bin",
+    "stage2": "sf/boot.bin",
+    "collection": "sf/kernel.bin",
+    "kexts": [
+      "SFApplePCIEBridge",
+      "SFNVMe",
+      "SFAGX",
+      "SFDCP",
+      "SFAVD",
+      "SFM1Keyboard",
+      "SFM1Trackpad",
+      "SFBWFM",
+      "SFSound",
+      "SFSpeakerGuard",
+      "SFThunderbolt",
+      "SFCPUFreq"
+    ],
+    "bootArgs": [
+      "sfm1kbd=1",
+      "sfm1trackpadenum=1",
+      "sfm1trackpadchild=1",
+      "sfgpudt=2",
+      "sfagx=1",
+      "sfdispdt=2",
+      "sfdcp=2",
+      "sfnvme=3",
+      "sfnvme_write=1",
+      "sfnvme_readfence=1",
+      "sfcpuheld=1",
+      "sfapciebridge=1",
+      "sfavd=1",
+      "sftextboot=0"
+    ]
+  },
+  "quirks": [
+    {
+      "id": "one-true-recovery",
+      "summary": "Startup security for SiliconForest can only be set from recoveryOS reached by holding the power button."
+    },
+    {
+      "id": "touch-bar",
+      "summary": "The Touch Bar is not driven yet; function keys come from Fn + number row."
+    },
+    {
+      "id": "speaker-protection",
+      "summary": "Speakers stay muted until the speaker-protection unit is running."
+    }
+  ]
+}

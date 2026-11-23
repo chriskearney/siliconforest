@@ -1,0 +1,8 @@
+.build/
+build/
+.swiftpm/
+*.xcodeproj
+snapshots-out/
+
+# The repo root ignores sources/ (and git on macOS matches it case-insensitively): keep SwiftPM sources.
+!/Sources/
