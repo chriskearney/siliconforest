@@ -1,0 +1,365 @@
+name: Installer dry-run preview
+
+# Builds, Developer ID-signs, notarizes and staples the macOS installer app.
+# The app is a dry-run preview: disk writes are compiled out. Do not use it to
+# change a real disk.
+on:
+  push:
+    tags:
+      - "installer-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp (no installer-v prefix)"
+        required: true
+        default: "0.1.0-preview1"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: installer-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Resolve preview version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - name: Validate version
+        id: release
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            version="${GITHUB_REF_NAME}"
+            version="${version#installer-v}"
+          else
+            version="${REQUESTED_VERSION}"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+(\.[0-9]+){1,2}([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid installer version: $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=installer-v${version}" >> "$GITHUB_OUTPUT"
+
+  macos:
+    name: Signed and notarized dry-run DMG (Apple silicon)
+    needs: validate
+    runs-on: macos-15
+    env:
+      INSTALLER_VERSION: ${{ needs.validate.outputs.version }}
+      INSTALLER_TAG: ${{ needs.validate.outputs.tag }}
+      MAC_CERTIFICATE_P12_BASE64: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
+      MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+      MAC_SIGNING_IDENTITY: ${{ secrets.MAC_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm the Apple-silicon macOS runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(uname -s)" == Darwin ]]
+          [[ "$(uname -m)" == arm64 ]]
+          xcodebuild -version
+          swift --version
+          xcrun notarytool --version
+
+      - name: Preserve the runner keychain configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain_list="$RUNNER_TEMP/original-user-keychains.txt"
+          default_keychain="$RUNNER_TEMP/original-default-keychain.txt"
+          security list-keychains -d user \
+            | sed 's/^[[:space:]]*"//; s/"[[:space:]]*$//' > "$keychain_list"
+          security default-keychain -d user \
+            | sed 's/^[[:space:]]*"//; s/"[[:space:]]*$//' > "$default_keychain"
+          echo "MAC_ORIGINAL_KEYCHAIN_LIST=$keychain_list" >> "$GITHUB_ENV"
+          echo "MAC_ORIGINAL_DEFAULT_KEYCHAIN=$default_keychain" >> "$GITHUB_ENV"
+
+      - name: Resolve Apple signing capability
+        id: apple-signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          import_certificate=false
+          if [[ -n "$MAC_CERTIFICATE_P12_BASE64" && \
+                -n "$MAC_CERTIFICATE_PASSWORD" && \
+                -n "$MAC_SIGNING_IDENTITY" ]]; then
+            import_certificate=true
+          elif ! security find-identity -v -p codesigning \
+              | grep -q 'Developer ID Application:'; then
+            echo "A Developer ID Application identity is required." >&2
+            echo "Configure the MAC_CERTIFICATE_* secrets or install the identity on the runner." >&2
+            exit 1
+          fi
+
+          api_values=0
+          [[ -n "${APP_STORE_CONNECT_API_KEY_BASE64:-}" ]] && ((api_values += 1))
+          [[ -n "${APP_STORE_CONNECT_KEY_ID:-}" ]] && ((api_values += 1))
+          [[ -n "${APP_STORE_CONNECT_ISSUER_ID:-}" ]] && ((api_values += 1))
+          apple_values=0
+          [[ -n "${APPLE_ID:-}" ]] && ((apple_values += 1))
+          [[ -n "${APPLE_APP_PASSWORD:-}" ]] && ((apple_values += 1))
+          [[ -n "${APPLE_TEAM_ID:-}" ]] && ((apple_values += 1))
+          if [[ "$api_values" -ne 3 && "$apple_values" -ne 3 ]]; then
+            echo "Complete App Store Connect API or Apple-ID notarization credentials are required." >&2
+            exit 1
+          fi
+          echo "import_certificate=$import_certificate" >> "$GITHUB_OUTPUT"
+
+      - name: Import Developer ID certificate
+        if: steps.apple-signing.outputs.import_certificate == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cert_path="$RUNNER_TEMP/sf-installer-signing.p12"
+          keychain_path="$RUNNER_TEMP/sf-installer-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          CERT_PATH="$cert_path" python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+          Path(os.environ["CERT_PATH"]).write_bytes(
+              base64.b64decode(os.environ["MAC_CERTIFICATE_P12_BASE64"])
+          )
+          PY
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          curl -fsSL https://www.apple.com/appleca/AppleIncRootCertificate.cer \
+            -o "$RUNNER_TEMP/AppleIncRootCertificate.cer"
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer \
+            -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          security import "$RUNNER_TEMP/AppleIncRootCertificate.cer" -A -k "$keychain_path"
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -A -k "$keychain_path"
+          security import "$cert_path" -P "$MAC_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain_path"
+          security list-keychains -d user -s \
+            "$keychain_path" "/Library/Keychains/System.keychain"
+          security default-keychain -s "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$keychain_password" "$keychain_path"
+          echo "MAC_KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
+          rm -f "$cert_path"
+
+      - name: Install App Store Connect key for notarization
+        if: env.APP_STORE_CONNECT_API_KEY_BASE64 != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          key_dir="$RUNNER_TEMP/notary-private-keys"
+          key_path="$key_dir/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          mkdir -p "$key_dir"
+          KEY_PATH="$key_path" python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+          Path(os.environ["KEY_PATH"]).write_bytes(
+              base64.b64decode(os.environ["APP_STORE_CONNECT_API_KEY_BASE64"])
+          )
+          PY
+          chmod 600 "$key_path"
+          echo "APP_STORE_CONNECT_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Build and sign the installer app
+        working-directory: installer/mac
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          SIGN_IDENTITY: ${{ secrets.MAC_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          [[ -n "$SIGN_IDENTITY" && "$SIGN_IDENTITY" != "-" ]]
+          scripts/make-app.sh
+          app="build/SiliconForest Installer.app"
+          test -d "$app"
+          codesign --verify --strict --verbose=2 "$app"
+          codesign -dvv "$app" 2>&1 | grep -F 'Authority=Developer ID Application:'
+
+      - name: Package, sign, notarize and staple the DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="installer/mac/build/SiliconForest Installer.app"
+          dist="installer/mac/build/dist"
+          mkdir -p "$dist"
+          dmg="$dist/SiliconForest-Installer-${INSTALLER_VERSION}-dryrun-preview.dmg"
+          staging="$dist/dmg-staging"
+          rm -rf "$staging" "$dmg"
+          mkdir -p "$staging"
+          ditto "$app" "$staging/SiliconForest Installer.app"
+          ln -s /Applications "$staging/Applications"
+          cat > "$staging/DRY-RUN PREVIEW.txt" <<'TXT'
+          SiliconForest Installer — dry-run preview
+
+          This build is a design and flow preview only. Disk writes are compiled
+          out. It will not install, resize, or remove anything on a real Mac.
+
+          Do not use this as an installer.
+          TXT
+          dmg_created=false
+          for attempt in 1 2 3; do
+            if hdiutil create -volname "SiliconForest Installer" -srcfolder "$staging" \
+                -ov -format UDZO "$dmg"; then
+              dmg_created=true
+              break
+            fi
+            echo "DMG creation attempt ${attempt} failed; retrying." >&2
+            sleep 5
+          done
+          if [[ "$dmg_created" != true ]]; then
+            echo "Unable to create the DMG after three attempts." >&2
+            exit 1
+          fi
+          hdiutil verify "$dmg"
+
+          identity="$MAC_SIGNING_IDENTITY"
+          dmg_codesign=(--force --timestamp --sign "$identity")
+          if [[ -n "${MAC_KEYCHAIN_PATH:-}" ]]; then
+            dmg_codesign+=(--keychain "$MAC_KEYCHAIN_PATH")
+          fi
+          codesign "${dmg_codesign[@]}" "$dmg"
+          codesign --verify --verbose=2 "$dmg"
+
+          notary_args=()
+          api_values=(
+            "${APP_STORE_CONNECT_API_KEY_PATH:-}"
+            "${APP_STORE_CONNECT_KEY_ID:-}"
+            "${APP_STORE_CONNECT_ISSUER_ID:-}"
+          )
+          api_count=0
+          for value in "${api_values[@]}"; do
+            [[ -n "${value}" ]] && ((api_count += 1))
+          done
+          if (( api_count == 3 )); then
+            [[ -f "${APP_STORE_CONNECT_API_KEY_PATH}" ]] || {
+              echo "App Store Connect private key not found: ${APP_STORE_CONNECT_API_KEY_PATH}" >&2
+              exit 1
+            }
+            notary_args=(
+              --key "${APP_STORE_CONNECT_API_KEY_PATH}"
+              --key-id "${APP_STORE_CONNECT_KEY_ID}"
+              --issuer "${APP_STORE_CONNECT_ISSUER_ID}"
+            )
+          elif (( api_count != 0 )); then
+            echo "App Store Connect notarization requires key path, key ID, and issuer ID." >&2
+            exit 1
+          elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
+            notary_args=(
+              --apple-id "${APPLE_ID}"
+              --password "${APPLE_APP_PASSWORD}"
+              --team-id "${APPLE_TEAM_ID}"
+            )
+          else
+            echo "Notarization credentials are incomplete." >&2
+            exit 1
+          fi
+
+          result="$dist/notary-result.json"
+          xcrun notarytool submit "$dmg" "${notary_args[@]}" \
+            --wait --output-format json | tee "$result"
+          status="$(python3 -c \
+            'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$result")"
+          submission_id="$(python3 -c \
+            'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$result")"
+          echo "NOTARY_STATUS=$status" >> "$GITHUB_ENV"
+          echo "NOTARY_SUBMISSION_ID=$submission_id" >> "$GITHUB_ENV"
+          echo "Notarization status=$status id=$submission_id"
+          if [[ "$status" != Accepted ]]; then
+            xcrun notarytool log "$submission_id" "${notary_args[@]}" || true
+            echo "Apple notarization did not accept the DMG: $status" >&2
+            exit 1
+          fi
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature \
+            --verbose=2 "$dmg"
+          (cd "$dist" && shasum -a 256 "$(basename "$dmg")" > "$(basename "$dmg").sha256")
+          echo "DMG=$dmg" >> "$GITHUB_ENV"
+
+      - name: Upload signed dry-run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: siliconforest-installer-macos-dryrun-preview
+          path: |
+            installer/mac/build/dist/*.dmg
+            installer/mac/build/dist/*.sha256
+            installer/mac/build/dist/notary-result.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$INSTALLER_TAG"
+          version="$INSTALLER_VERSION"
+          title="SiliconForest Installer ${version} (dry-run preview)"
+          notes="$RUNNER_TEMP/release-notes.md"
+          cat > "$notes" <<EOF
+          **Dry-run preview only — this will not install SiliconForest or change a real disk.**
+
+          Disk writes are compiled out of this build. Use it to look at the installer UI and flow, not to resize, partition, or write any volume.
+
+          Team: \`Z642ZK8JK4\`. The application and DMG are Developer ID signed, notarized, and stapled.
+
+          - \`SiliconForest-Installer-${version}-dryrun-preview.dmg\`
+          EOF
+          assets=(installer/mac/build/dist/*.dmg installer/mac/build/dist/*.sha256)
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title "$title" --notes-file "$notes" --prerelease
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title "$title" --notes-file "$notes" --prerelease \
+              --target "$GITHUB_SHA"
+          fi
+          gh release upload "$tag" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Clean up signing keychain
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          original_keychains=()
+          if [[ -s "${MAC_ORIGINAL_KEYCHAIN_LIST:-}" ]]; then
+            while IFS= read -r keychain; do
+              [[ -n "$keychain" ]] && original_keychains+=("$keychain")
+            done < "$MAC_ORIGINAL_KEYCHAIN_LIST"
+          fi
+          if [[ "${#original_keychains[@]}" -gt 0 ]]; then
+            security list-keychains -d user -s "${original_keychains[@]}"
+          else
+            security list-keychains -d user -s "/Library/Keychains/System.keychain"
+          fi
+          if [[ -s "${MAC_ORIGINAL_DEFAULT_KEYCHAIN:-}" ]]; then
+            original_default="$(head -n 1 "$MAC_ORIGINAL_DEFAULT_KEYCHAIN")"
+            [[ -n "$original_default" ]] && security default-keychain -s "$original_default"
+          else
+            security default-keychain -s "/Library/Keychains/System.keychain"
+          fi
+          if [[ -n "${MAC_KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$MAC_KEYCHAIN_PATH" 2>/dev/null
+          fi
+          rm -f "$RUNNER_TEMP"/sf-installer-signing.p12
+          rm -rf "$RUNNER_TEMP"/notary-private-keys
+          true
