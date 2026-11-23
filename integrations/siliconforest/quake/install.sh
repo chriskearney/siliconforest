@@ -17,6 +17,9 @@ B=/private/var/db/sfquake
 DMG_URL=https://github.com/MacSourcePorts/MSPBuildSystem/releases/download/Quakespasm_2026-07-22/QuakeSpasm-0.96.3.dmg
 DMG_SHA=012478fc3953bf68d63b9e261a699e50ee82c99c6e9f89b601ca58abf7332a63
 EXE_SHA=470424be8d0470f28539057a2ab0de77ee82f051e94054a7a7f6a6ef4046a2fd
+# The app's own icon (CFBundleIconFile). The dock decodes it from the bundle in place.
+ICNS_SHA=fc13de7c0cd8b26bc2a91c9e2e31f7730f53363d22e9fe2d8989a6631acdea70
+DOCK_ID=com.macsourceports.QuakeSpasm
 ZIP_URL=https://ftp.idtech.space/idstuff/quake/quake106.zip
 ZIP_SHA=ec6c9d34b1ae0252ac0066045b6611a7919c2a0d78a3a66d9387a8f597553239
 PAK_MD5=5906e5998fc3d896ddaf5e6a62e03abb
@@ -51,6 +54,7 @@ for p in libFLAC:libFLAC.14 libmad:libmad.0 libogg:libogg.0 libopus:libopus.0 li
   ln -s "${p##*:}.dylib" "$F/$l.dylib"
 done
 check "$EXE_SHA" "$A/Contents/MacOS/QuakeSpasm"
+check "$ICNS_SHA" "$A/Contents/Resources/QuakeSpasm.icns"
 for l in FLAC mad ogg opus opusfile vorbis vorbisfile xmp; do
   llvm-lipo -archs "$F/lib$l.dylib" | grep -qw arm64 || { echo "install: lib$l has no arm64" >&2; exit 1; }
 done
@@ -79,5 +83,15 @@ tar -C "$WORK/fw" --owner=0 --group=0 -cf - . | "${M1[@]}" "tar -C $B/fw -xf -" 
 "${M1[@]}" 'cat > /usr/bin/sf-open-quake && chmod 755 /usr/bin/sf-open-quake' < "$SF/desktop/system/sf-open-quake" 9>&-
 "${M1[@]}" 'cat > /usr/share/applications/com.macsourceports.QuakeSpasm.desktop' \
   < "$SF/desktop/system/applications/com.macsourceports.QuakeSpasm.desktop" 9>&-
+# The dock tile: added to the default pins and to the session's own list, once. An empty session
+# list is left alone, because the dock fills it from the defaults.
+"${M1[@]}" "D=/usr/share/chonkstep/dock-pins; S=/private/var/db/desktop-state/chonkstep/dock
+  if [ -f \$D ] && ! grep -qxF $DOCK_ID \$D; then echo $DOCK_ID >> \$D; fi
+  if grep -q '[^[:space:]]' \$S 2>/dev/null && ! grep -qxF $DOCK_ID \$S; then
+    [ -e \$S.before-quake ] || cp -p \$S \$S.before-quake
+    XDG_STATE_HOME=/private/var/db/desktop-state XDG_RUNTIME_DIR=/private/var/run/gpu-desktop WAYLAND_DISPLAY=wayland-0 \
+      /usr/bin/chonkstep-dock --pin $DOCK_ID
+  fi
+  grep -qxF $DOCK_ID \$D" </dev/null 9>&-
 "${M1[@]}" "md5 $B/game/id1/pak0.pak; shasum -a 256 $B/QuakeSpasm.app/Contents/MacOS/QuakeSpasm; ls -la /usr/bin/sf-open-quake" </dev/null 9>&-
 echo "installed Quake at $B"

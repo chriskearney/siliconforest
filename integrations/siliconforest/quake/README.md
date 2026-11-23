@@ -20,7 +20,7 @@ the engine inside prints `QuakeSpasm v0.97.0`. Ironwail needs OpenGL 4.3 compute
 | `frameworks/IOKitFill.c` | re-exports a renamed copy of the M1's IOKit and adds the two mouse-acceleration calls the engine imports; both return `kIOReturnUnsupported` |
 | `frameworks/sfquakestart.c` | inserted at launch: makes the app's `SDLMain` the delegate, because this build's `Info.plist` has no `NSMainNibFile` and the engine would never start |
 | `../desktop/system/sf-open-quake` | the launcher; these libraries apply to the Quake process only |
-| `../desktop/system/applications/com.macsourceports.QuakeSpasm.desktop` | the desktop entry (not pinned to the dock) |
+| `../desktop/system/applications/com.macsourceports.QuakeSpasm.desktop` | the desktop entry. `Icon=` names the app bundle, so the dock decodes the app's own `QuakeSpasm.icns` in place, as for other Mac apps. The image is not in this tree. `install.sh` checks its hash and adds the dock pin once |
 
 ## Measured (23 November 2026, M1, panel on)
 
