@@ -46,6 +46,7 @@ All of it is read-only and runs before any password or approval.
 | APFS health | Last `diskutil verifyVolume` is **offered**, not forced | Failure: guided repair from recoveryOS |
 | Another install of ours | Install marker, journal, layout | Route to Resume, Repair or Remove |
 | Other operating systems | Volume groups, Linux and EFI partitions | Listed and **left alone** |
+| Current default boot volume | `nvram`, `bless --getBoot` | **Record** it. The install restores it, whichever OS it is |
 | Network reachable | HEAD on the channel file and Apple's CDN | **Block** before any change |
 
 ## 3. Layout classification
@@ -158,14 +159,14 @@ Numbering leaves gaps for later insertions. **Recorded in the journal; the journ
 | `S52 receipt-slot` | Write header and install ID | Read back | Compare | Covered by root erase |
 | `S55 boot-object` | Stage 1 + variables into the app | Hash, size limit | Hash | Covered by stub delete |
 | `S60 recovery-stage` | Copy app, plan, marker | Hashes | Hash | Covered by stub delete |
-| `S65 blessed` | `bless --setBoot` on stub (needs password) | **Read back** default volume | Read | Bless macOS, verify |
+| `S65 blessed` | `bless --setBoot` on stub (needs password) | **Read back** default volume | Read | Restore previous default, verify |
 | `S68 handoff` | Hide `SystemVersion.plist`, enable marker | Files | Check | Restore |
-| `S70 awaiting-recovery` | The Mac shuts down | | | Bless macOS, then full rollback |
+| `S70 awaiting-recovery` | The Mac shuts down | | | Restore previous default, then full rollback |
 | `R10 gate` | Recovery checks | Paired + 1TR | Rerun | Explain, shut down |
 | `R20 policy` | `bputil -nc` | `bputil -d` shows Permissive | Read policy | **None.** See below |
 | `R30 boot-object` | `kmutil configure-boot` | Custom object present | Read policy | **None.** Forward only |
 | `R40 markers` | Disable marker, restore version file | Files | Check | |
-| `R50 boot-select` | macOS default, SiliconForest next (S5) | Read back | Read | |
+| `R50 boot-select` | Previous default restored, SiliconForest next (S5, S12) | Read back | Read | |
 | `S80 first-boot` | SiliconForest starts | Receipt | Read slot | Use Remove |
 | `S90 installed` | Verified in macOS | `desktop-ready` | Terminal state | Use Remove |
 
@@ -245,7 +246,7 @@ Differences must be listed and justified one by one. Boot personalisation is not
 
 ## 11. Real-hardware acceptance
 
-From SF-AJ's checklist, extended. **Requires a spare J293 and Chris's go. Stop at any unexpected output. Never use DFU.**
+From SF-AJ's checklist, extended. **Runs first on the M1 Air (J313), with Chris's go. Stop at any unexpected output. Never use DFU.**
 
 1. Launch, compatibility, every refusal worded correctly.
 2. Dry run prints the plan. Quit: disk unchanged.
@@ -253,13 +254,13 @@ From SF-AJ's checklist, extended. **Requires a spare J293 and Chris's go. Stop a
 4. Before recovery, verify partitions, hashes, firmware slot, receipt header.
 5. Recovery: wrong ways first (release early, double-press), then right.
 6. First start: mark, desktop, Wi-Fi, keyboard, trackpad, Touch Bar, restart.
-7. Back in macOS: **receipt read**, Verified screen. `diskutil verifyVolume /` clean.
+7. Back in macOS (start it from the picker if another OS is the default): **receipt read**, Verified screen. `diskutil verifyVolume /` clean.
 8. Picker → SiliconForest three times.
 9. Update kernel and stage 2 with a second release.
 10. Force-quit the app during each long phase. Reattach.
 11. Kill power during the root image write. Recover.
 12. Update macOS between the stages. Recover.
-13. Force a failed first boot (a deliberately bad kernel). Confirm the Mac returns to macOS and the app offers recovery.
+13. Force a failed first boot (a deliberately bad kernel). Confirm the Mac returns to its previous default and the app offers recovery.
 14. Remove. The partition table matches the original. macOS has its size back. Reinstall works.
 
 ## 12. Dry run

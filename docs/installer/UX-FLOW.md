@@ -171,7 +171,7 @@ Primary: **Continue**
 | Option | Default | Help |
 |---|---|---|
 | **Name at startup** | SiliconForest | The name in the startup picker |
-| **After setup** | Start SiliconForest once, keep macOS as the default | If the first start has any trouble, your Mac comes back to macOS |
+| **After setup** | Start SiliconForest once, keep your current startup system | If the first start has any trouble, your Mac goes back to the system it starts today |
 | | ○ Make SiliconForest the default after it starts successfully | |
 
 Advanced (collapsed):
@@ -309,7 +309,7 @@ The recovery app can use AppKit only. It shows the same forest as a still image,
 ### R3. Ready
 
 > # All set
-> Your Mac will now start SiliconForest for the first time. If anything goes wrong, turn it off and on and you'll be back in macOS.
+> Your Mac will now start SiliconForest for the first time. If anything goes wrong, turn it off and on and you'll be back in {current startup system}.
 
 **Restart** (auto after 15 seconds, with a visible countdown and **Wait**)
 
@@ -330,7 +330,7 @@ The recovery app can use AppKit only. It shows the same forest as a still image,
 
 ## Part 3. Back in macOS
 
-The app reopens at next login, or when the user opens it, and reads the boot receipt.
+The app reopens at the next macOS login, or when the user opens it, and reads the boot receipt. If another system is the default, the user starts macOS from the picker to see this.
 
 ### F1. Installed
 
@@ -355,7 +355,7 @@ The forest has reached full dawn. This is the only screen with a celebration: th
 ### F3. Didn't start
 
 > # SiliconForest didn't start
-> Your Mac came back to macOS safely. Nothing in macOS was changed.
+> Your Mac went back to {current startup system} safely. Nothing in macOS was changed.
 
 **Try Again** · **Export Diagnostics** · **Remove SiliconForest…**
 

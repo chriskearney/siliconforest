@@ -16,8 +16,9 @@ CHL-27 phase 1, 22 November 2026.
 | [`VISUAL-DESIGN.md`](VISUAL-DESIGN.md) | Branding, type, colour, motion, dark and light, accessibility |
 | [`ENGINE.md`](ENGINE.md) | Preflight, sizing, state machine, journal, rollback, dry run |
 | [`ADDING-A-MAC.md`](ADDING-A-MAC.md) | The checklist for each future Mac |
+| [`FIRST-INSTALL-J313.md`](FIRST-INSTALL-J313.md) | The M1 Air as first real install target: its state, board differences, order of work |
 | [`RESEARCH.md`](RESEARCH.md) | Omacom, Asahi, Apple and UX research with sources |
-| [`installer/profiles/`](../../installer/profiles/) | The J293 profile and its JSON schema |
+| [`installer/profiles/`](../../installer/profiles/) | The J293 and J313 profiles and their JSON schema |
 
 ![The Choose Your Space screen, in the Canopy palette](mockups/choose-space.svg)
 
@@ -55,17 +56,17 @@ macOS. The same app removes SiliconForest and gives the space back.
 
 | # | Decision | Why | Cost or risk |
 |---|---|---|---|
-| **D1** | **Port the Asahi v0.9.2 engine to Swift**, proven by differential tests against the real thing | A root helper with no interpreter and no relaxed entitlements. Byte-level progress. Fixes the known upstream hazards. v0.9.2 is MIT; upstream's next core may be GPL | The stub is the most field-tested code we would be rewriting. Fallback in [section 6.4](#64-fallback-for-d1) |
+| **D1** | **Decided by Chris: native Swift engine.** A port of the Asahi v0.9.2 engine, proven by differential tests against the real thing | A root helper with no interpreter and no relaxed entitlements. Byte-level progress. Fixes the known upstream hazards. v0.9.2 is MIT; upstream's next core may be GPL | The stub is the most field-tested code we would be rewriting. Fallback in [section 6.4](#64-fallback-for-d1) |
 | **D2** | **SMAppService daemon, registered only while needed** | The supported API. Short life avoids its weakest area, upgrades | Requires Login Items approval. 13.x is the riskiest range (spikes S1, S2) |
 | **D3** | **Recovery step is a small AppKit app started by a shell launcher**, which falls back to Terminal and our script if the app cannot start | SwiftUI and Python are absent from the 13.5 recoveryOS. The script launch path is the one Asahi ships | Fullscreen in recoveryOS is unproven (spike S3) |
 | **D4** | **"Installed" means a boot receipt exists** | Omacom's J293 boot loop shows that enrollment is not success | Needs a small first-boot job and a reserved slot in the root image |
-| **D5** | **macOS stays the default. The first SiliconForest start is one-shot** | A failed start must land in macOS, because SiliconForest cannot change NVRAM | Depends on `bless --nextonly` in recovery (spike S5). Fallback in [section 8.3](#83-first-boot-and-the-boot-receipt) |
+| **D5** | **The previous default stays the default. The first SiliconForest start is one-shot** | A failed start must land in a working system, because SiliconForest cannot change NVRAM. On the Air that system is Linux, not macOS | Depends on `bless --nextonly` in recovery (spike S5). Fallback in [section 8.3](#83-first-boot-and-the-boot-receipt) |
 | **D6** | **All downloads and hashes finish before the first disk write** | A network failure then costs nothing | Temporary space on macOS, which the plan accounts for |
-| **D7** | **Firmware comes from Apple's 13.5 recovery image for this Mac, extracted on the Mac** | The same version on every install, matching the one our drivers were brought up on. Nothing Apple-owned ships with us | Differs from "the user's live macOS", whose firmware version varies. See open question Q5 |
+| **D7** | **Firmware comes from Apple's 13.5 recovery image for this Mac, extracted on the Mac** | The same version on every install, matching the one our drivers were brought up on. Nothing Apple-owned ships with us | **Accepted by Chris.** It differs from the live macOS, whose firmware version varies |
 | **D8** | **No telemetry, no accounts, no background agent after install** | Trust | We learn about failures only from diagnostics users choose to send |
 | **D9** | **The app enters native full screen at launch**, with no kiosk lockouts | Chris's brief. The HIG prefers user choice, so we keep every exit: Esc, the green button, Dock reveal, force quit | A deliberate, documented departure from the HIG |
 | **D10** | **Deployment target macOS 13.5** | Do not force a macOS update, which also changes system firmware. The visual design does not need newer APIs ([`VISUAL-DESIGN.md`](VISUAL-DESIGN.md) section 7) | A wider test matrix |
-| **D11** | **Upper macOS bound per Mac; new majors are refused until tested** | Reported resize failure on macOS 27 and `bless` failures on 26.x | Users on the newest macOS may wait |
+| **D11** | **macOS 27 is a required target, gated on a real resize test** (spike S11). Later majors are refused until added | Chris's Pro is believed to run 27, and a resize failure was reported on 27.0.1 | Release builds refuse 27 until S11 passes |
 | **D12** | **We never modify an install we did not create** | The development M1's hand-made layout, and any Asahi or Omarchy install, must be safe | Those users see a clear refusal instead of adoption |
 
 ## 4. Architecture
@@ -226,7 +227,7 @@ So **a recovery UI failure cannot strand the user.** The worst case is exactly t
 4. **`bputil -nc -v <VGID>`** then **`kmutil configure-boot -c boot.bin --raw --entry-point 2048 --lowest-virtual-address 0 -v <system>`**, each driven through a PTY that waits for echo-off before sending the password and redacts it from logs. Our own code (see the provenance note in [`RESEARCH.md`](RESEARCH.md) section 2).
 5. **Read back** that the policy is Permissive and the custom boot object is present.
 6. **Clean up the markers:** disable `.IAPhysicalMedia`, restore `SystemVersion.plist`.
-7. **Restore macOS as default and set SiliconForest for the next boot only** (spike S5).
+7. **Restore the previous default and set SiliconForest for the next boot only** (spikes S5, S12).
 8. **Restart.**
 
 Each step is journaled in `SFInstall/state/`, so re-entering recovery resumes at the right step. A LocalPolicy change is never
@@ -293,14 +294,14 @@ macOS cannot mount ext4, but the helper can read those bytes at their known offs
 | Empty | **SiliconForest did not start**: try again, export diagnostics, or remove it |
 
 If `bless --nextonly` proves unusable in the 13.5 recovery, we fall back to leaving SiliconForest as default for that one start, with an
-unmissable instruction to hold the power button if it fails. The Done screen then restores macOS as default using `bless` from macOS.
+unmissable instruction to hold the power button if it fails. The Done screen then restores the previous default using `bless` from macOS.
 
 ### 8.4 Uninstall
 
 1. **Identify** our install from the receipt in `sf/install.json` and the stub's marker. Refuse anything unproven.
 2. **Show** what will be removed, what stays, and the resulting macOS size.
 3. **Confirm** by typing the volume name, because this deletes user data.
-4. **Make macOS the default and verify it** by reading it back.
+4. **If SiliconForest is the default, restore the previous default** (or macOS if that system is gone) and verify it by reading it back.
 5. **Delete** the stub container, then SFBOOT, then the root, by partition UUID, revalidating the layout around each step.
 6. **Regrow** macOS with `diskutil apfs resizeContainer <macOS> 0`, if the space is directly after it. Otherwise leave it free and say so.
 7. **Verify** the partition table against the one saved before install, then unregister the helper.
@@ -324,7 +325,7 @@ Everything that varies by Mac lives in one declarative file, `installer/profiles
 [`device-profile.schema.json`](../../installer/profiles/device-profile.schema.json) at build time and at launch.
 
 - **Identity:** target type, model, device class, SoC, chip and board IDs, compatibles.
-- **Host macOS:** minimum, highest tested major, blocked majors with their reasons.
+- **Host macOS:** minimum, highest allowed major, gated majors with their spike and reason.
 - **Stub:** version, build, restore image, minimum iBoot and system firmware.
 - **Boot chain:** stage 1 and stage 2 limits, `kmutil` arguments, pack options.
 - **Kernel:** collection recipe, boot-argument template.
@@ -333,8 +334,8 @@ Everything that varies by Mac lives in one declarative file, `installer/profiles
 - **Firmware:** what to extract, from where, to which path. **Names only, never bytes.**
 - **Quirks and support evidence.**
 
-A signed release can **narrow** the supported list but never widen it. The J293 profile is
-[`installer/profiles/J293.json`](../../installer/profiles/J293.json). The process for a new Mac is [`ADDING-A-MAC.md`](ADDING-A-MAC.md).
+A signed release can **narrow** the supported list but never widen it. The profiles are
+[`J293.json`](../../installer/profiles/J293.json) and [`J313.json`](../../installer/profiles/J313.json). The process for a new Mac is [`ADDING-A-MAC.md`](ADDING-A-MAC.md).
 
 ## 10. Release trust
 
@@ -353,7 +354,7 @@ install.json           → sizes, hashes, root parameters, slot offsets (listed 
 
 **The M3 holds the signing identity. This is a plan only. Nothing in this phase touches the M3.**
 
-1. **Identities:** `Developer ID Application` for the app, helper, recovery binary and dmg. No Installer certificate, because we ship a dmg.
+1. **Identities:** `Developer ID Application: Chris Kearney (<TEAMID>)` for the app, helper, recovery binary and dmg. No Installer certificate, because we ship a dmg.
 2. **Build with no secrets** in CI: Xcode 27, deployment target 13.5, universal not needed (arm64 only).
 3. **Sign inside out, never `--deep`,** with hardened runtime and secure timestamps:
 
@@ -398,7 +399,7 @@ numbers, ECIDs, user names, Wi-Fi data, firmware and machine calibration. Identi
 | XCUITest | Mac | The whole flow, fake helper, windowed; one real fullscreen smoke test |
 | **Sparse-image rehearsal** | Mac, sudo | Real `diskutil` on an attached image. Hard-refuses any device that is not image-backed |
 | VM | Local | App, helper registration, macOS 13.5 to current |
-| Real hardware | Spare J293, with Chris's go | The SF-AJ checklist, extended: [`ENGINE.md`](ENGINE.md) section 11 |
+| Real hardware | M1 Air (J313), with Chris's go | The SF-AJ checklist, extended: [`ENGINE.md`](ENGINE.md) section 11 |
 
 Hosted GitHub runners do not cover macOS 13 or 14, so those need a local VM or Mac.
 
@@ -422,7 +423,7 @@ These are invariants. Tests enforce them and no flag can turn them off.
 
 ## 15. Spikes before we commit
 
-None of these has been run. Those marked **Mac** involve a real disk or boot policy and need Chris's explicit go, ideally on a spare J293.
+None of these has been run. Those marked **Mac** involve a real disk or boot policy and need Chris's explicit go. They run on the M1 Air.
 
 | # | Question | Decides | Where |
 |---|---|---|---|
@@ -433,9 +434,11 @@ None of these has been run. Those marked **Mac** involve a real disk or boot pol
 | **S5** | Does the 13.5 recovery `bless --setBoot --nextonly` work on Apple silicon? | The one-shot first boot (D5) | **Mac** |
 | **S6** | Do PTY-driven `bputil -nc` and `kmutil configure-boot` accept credentials, including the `y/n` prompt? | The recovery app | **Mac** |
 | **S7** | register → unregister → re-register on 13.5, 14, 15, 26, 27 | The short-lived helper | VM |
-| **S8** | Does Omacom #218's boot loop reproduce with **our** stage 1 on the same firmware? | Whether J293 is safe on current macOS | **Mac** |
+| **S8** | Does Omacom #218's boot loop reproduce with **our** stage 1 on its firmware family? Our hand-made J293 install has started on 20457-family firmware; #218 is on 18000.161.9 | Which firmware families are safe | **Mac** |
 | **S9** | Can the boot-receipt slot be read reliably from macOS after an unclean shutdown? | D4 | **Mac** |
 | **S10** | How does Software Update treat our stub (Omacom #231)? | Whether we need a mitigation | **Mac** |
+| **S11** | Does `diskutil apfs resizeContainer` shrink on **macOS 27** on T8103? | Opens the macOS 27 gate (D11). The Air is on 14.x firmware, so this needs an update Chris must approve | **Mac** |
+| **S12** | Can a non-macOS default (the Air's Linux) be restored with `bless` from recovery or macOS? | Restoring the previous default (D5) | **Mac** |
 
 ## 16. Dependencies outside the installer
 
@@ -489,21 +492,30 @@ Ported files keep the Asahi MIT notice and name their source path and revision.
 
 | Milestone | Delivers | Touches a real disk? |
 |---|---|---|
-| **M0 Spikes** | S2, S4, S7 in VMs; S1, S3, S5, S6, S8–S10 when Chris approves a test Mac | Only with approval |
+| **M0 Spikes** | S2, S4, S7 in VMs; S1, S3, S5, S6, S8–S12 on the M1 Air, each with Chris's go | Only with approval |
 | **M1 Skeleton** | App shell, design system, every screen in the simulator. **Chris can see and judge the whole flow here** | No |
 | **M2 Read-only** | Real probe, disk bar on the real disk, real plan, dry run | No |
 | **M3 Engine on images** | Swift engine, journal, gate, stub builder, differential tests, fault injection | Image-backed only |
-| **M4 Recovery** | SFRecovery, launcher, fallback | Spare Mac |
-| **M5 First real install** | Full install, boot receipt, uninstall on a spare J293 | **Yes, with Chris's go** |
+| **M4 Recovery** | SFRecovery, launcher, fallback | M1 Air, with approval |
+| **M5 First real install** | J313 bring-up, then full install, boot receipt and uninstall on the M1 Air ([plan](FIRST-INSTALL-J313.md)) | **Yes, with Chris's go** |
 | **M6 Release** | Signing, notarization, the rest of the macOS matrix, public dmg | Yes |
 
-## 19. Open questions for Chris
+## 19. Decisions and open questions
+
+Decided by Chris on 22 November 2026:
+
+| Question | Decision |
+|---|---|
+| Engine | **Native Swift** (D1) |
+| First real install target | **The M1 Air (J313).** There is no spare 13-inch Pro |
+| macOS 27 | The 13-inch Pro is believed to run it, so it is a **required target**, gated on S11. Its captured system firmware is in the 20457 family reported for macOS 27, which does not by itself prove the installed macOS |
+| Firmware source | **Apple's 13.5 recovery image**, extracted on the Mac (D7) |
+| Developer ID | **Chris Kearney** |
+
+Still open:
 
 | # | Question | Recommendation |
 |---|---|---|
-| **Q1** | Is there a **spare J293** for M5? The development M1's hand-made layout (root before stub) must never be the first target, and the installer will refuse to modify it | Find a spare, or approve a full disk backup and a dedicated window |
-| **Q2** | Native Swift engine (D1), or keep embedding Asahi's Python? | Native, with the M3 fallback |
-| **Q3** | Which macOS is on the M1 today? If it is 27, D11 refuses it until a resize test passes | Tell us; do not update it for this |
-| **Q4** | Should new majors be blocked outright (D11), or allowed with a warning? | Blocked until one real install passes |
-| **Q5** | You asked for firmware from "the user's own macOS". The design takes it from Apple's 13.5 recovery image on that Mac, because the live macOS version varies and our drivers were brought up on 13.5. Is that acceptable? | Yes |
-| **Q6** | When should the release key be created, and does the Developer ID on the M3 belong to you or to an organisation? The name appears in Gatekeeper and Login Items | Decide before M6 |
+| **Q1** | May the Air be updated to macOS 27 after its first install passes on 14.x? This raises its system firmware irreversibly, and S11 needs it | Decide at gate G7, after the first install |
+| **Q2** | Can the Air be connected to the M5 by USB-C for RAM boots (gate G2)? | Yes. It is the existing safe bring-up path |
+| **Q3** | When will the release signing key be created? | Before M6 |

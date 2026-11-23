@@ -55,7 +55,7 @@ cp installer/profiles/J293.json installer/profiles/<BOARD>.json
 ```
 
 - [ ] `identity`: all fields
-- [ ] `host_macos`: range and blocked majors, each with a reason
+- [ ] `host_macos`: allowed range and gated majors, each with its spike and reason
 - [ ] `stub`: from step 2
 - [ ] `boot`: stage limits, entry point, pack options
 - [ ] `kernel`: collection recipe and boot-argument template
@@ -112,4 +112,4 @@ Record the results in a report under `reports/`, with raw logs kept private. Set
 ## Sibling Macs
 
 A shared SoC reduces the work but removes none of the gates. For example, the 13-inch MacBook Air (J313) shares T8103 with J293 but has a
-different display, keyboard, power and thermal design, no Touch Bar, and different MMIO details.
+different display, audio, power and thermal design, and no Touch Bar. [`FIRST-INSTALL-J313.md`](FIRST-INSTALL-J313.md) is the worked example: its sound hardware makes J293's driver unsafe there, even though both are T8103.
