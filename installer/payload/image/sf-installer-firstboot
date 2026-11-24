@@ -1,0 +1,43 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+#
+# /usr/libexec/sf-installer-firstboot: what launchd's job org.siliconforest.firstboot runs on a root
+# written by the SiliconForest Installer (docs/installer/PAYLOAD.md section 4). At every start, and
+# idempotently:
+#   1. records root-mounted and launchd-up in the boot receipt (sf-boot-receipt; nothing is written
+#      when the installer left no receipt header, e.g. a development install)
+#   2. installs the firmware the installer extracted on this Mac into /Library/Firmware, once
+#   3. runs the release's own first-start job, /usr/libexec/sf-firstboot
+#   4. waits up to 10 minutes for the desktop session's Wayland socket and records desktop-ready
+# It never fails the boot: every outcome goes to /var/log/sf-firstboot.log.
+PATH=/bin:/sbin:/usr/bin:/usr/sbin; export PATH
+log=/var/log/sf-firstboot.log
+mkdir -p /var/log
+receipt() { /usr/bin/perl /usr/libexec/sf-boot-receipt "$1"; rc=$?
+    case $rc in 0) echo "receipt: $1";; 3) echo "receipt: no installer header, not recorded";; *) echo "receipt: $1 FAILED ($rc)";; esac; }
+{
+    echo "sf-installer-firstboot $(date -u +%FT%TZ 2>/dev/null)"
+    if mount 2>/dev/null | grep -q ' on / (ext4'; then receipt root-mounted; else echo "root is not ext4: $(mount 2>/dev/null | head -1)"; fi
+    receipt launchd-up
+    stamp=/private/var/db/sf-firmware-installed
+    if [ ! -e "$stamp" ]; then
+        mkdir -p /Library/Firmware/apple /Library/Firmware/brcm
+        /usr/bin/perl /usr/libexec/sf-unpack-firmware /private/var/db/sf-firmware-slot /Library/Firmware; rc=$?
+        case $rc in
+            0) touch "$stamp"; receipt firmware-installed;;
+            3) echo "firmware slot is empty (no firmware was written by the installer)";;
+            *) echo "firmware installation FAILED ($rc)";;
+        esac
+    fi
+} >> "$log" 2>&1
+[ -r /usr/libexec/sf-firstboot ] && /bin/sh /usr/libexec/sf-firstboot
+{
+    n=0
+    while [ "$n" -lt 600 ]; do
+        if [ -S /private/var/run/gpu-desktop/wayland-0 ]; then receipt desktop-ready; break; fi
+        sleep 1; n=$((n + 1))
+    done
+    [ "$n" -lt 600 ] || echo "desktop did not come up within 600 s; desktop-ready not recorded"
+} >> "$log" 2>&1
+exit 0

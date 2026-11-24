@@ -1,0 +1,41 @@
+name: Installer payload rehearsal
+
+# The installer's shippable payload (docs/installer/PAYLOAD.md): root preparation, growth, boot
+# receipt, firmware slot, release signing and verification, on ordinary files only. The release
+# made here is a rehearsal on a synthetic root, signed by a throwaway TEST-ONLY key made in the
+# runner's temporary directory. Nothing is published and no device is opened.
+on:
+  push:
+    paths:
+      - "installer/payload/**"
+      - "installer/profiles/**"
+      - "tests/test_installer_payload.py"
+      - ".github/workflows/installer-payload.yml"
+  pull_request:
+    paths:
+      - "installer/payload/**"
+      - "installer/profiles/**"
+      - "tests/test_installer_payload.py"
+      - ".github/workflows/installer-payload.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installer-payload-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rehearse:
+    name: Payload tests and rehearsal release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get install -y -q e2fsprogs xz-utils openssh-client
+      - name: Payload tests
+        run: python3 -m unittest -v tests.test_installer_payload
+      - name: Rehearsal release (synthetic root, TEST-ONLY key)
+        run: installer/payload/rehearse.sh "$RUNNER_TEMP/rehearsal"

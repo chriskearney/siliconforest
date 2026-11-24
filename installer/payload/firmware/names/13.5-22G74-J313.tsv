@@ -1,0 +1,15 @@
+# Apple firmware names and hashes only (never the files). Made by extract_firmware.py.
+# version: 13.5
+# build: 22G74
+# url: https://updates.cdn-apple.com/2023SummerFCS/fullrestores/032-69606/D3E05CDF-E105-434C-A4A1-4E3DC7668DD0/UniversalMac_13.5_22G74_Restore.ipsw
+# bytes: 12893195726
+# build_manifest_sha256: 09e3d094f126bbc8d530aa230159b8d3077f3e193520a8e2b3b273e799d63834
+# basesystem_member: 022-15462-082.dmg
+# basesystem_bytes: 1815115416
+# basesystem_sha256: 12d11461f4a2726e5451da04cde0603ed9e4e3ba6ed138be0b9ad3c05a4ce4bb
+# board	name	bytes	sha256
+J313	brcm/brcmfmac4378b1-pcie.apple,shikoku-RASP-m.txt	7689	a293ce46ef655e7411153d515cb18c787512c692e5556534074f8cb7f3a3bb4e
+J313	brcm/brcmfmac4378b1-pcie.apple,shikoku-RASP-u.txt	7628	d3af98e743a8528167d81dacd03de203e2d4c334ece0af5a8d72c4c4aff1b0eb
+J313	brcm/brcmfmac4378b1-pcie.apple,shikoku.bin	1377067	c1c8e9ac706099da73b3657ccc2c44d5f3e42505979e0328923cc28940b90091
+J313	brcm/brcmfmac4378b1-pcie.apple,shikoku.clm_blob	35373	aeeeeacffafba8b2d7dad8d9505501d3f6fb9ae195111c1c808ea24adc7fa037
+J313	brcm/brcmfmac4378b1-pcie.apple,shikoku.txcap_blob	697	2bc0be89cfe244dd8d228b1fc710513da26b43795c7e83c2991a1444eda2e3f6

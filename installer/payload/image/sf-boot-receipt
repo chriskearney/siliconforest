@@ -1,0 +1,44 @@
+#!/usr/bin/perl
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+#
+# /usr/libexec/sf-boot-receipt STAGE: record one first-start stage in the boot receipt
+# (docs/installer/DESIGN.md section 8.3, docs/installer/PAYLOAD.md section 4).
+#
+# The receipt is /private/var/db/sf-boot-receipt: 64 KiB, preallocated as one contiguous extent by
+# the image recipe, so macOS can read it through the raw partition at the offset install.json
+# records. The installer wrote "SFRCPT1\ninstall=<32 hex>\n" there (step S52). This program writes
+# "<stage> <unix time>\n" at the first NUL byte, in place (never truncating or reallocating the
+# file), and fsyncs. A stage already present is not written again.
+#
+# Exit status: 0 recorded or already present, 3 no installer header (a root not installed by the
+# installer: nothing is written), 2 any other failure.
+use strict;
+use warnings;
+use Fcntl qw(O_RDWR);
+use IO::Handle;
+
+my $slot = $ENV{SF_RECEIPT_PATH} // '/private/var/db/sf-boot-receipt';
+my $size = 64 * 1024;
+my ($stage) = @ARGV;
+die "usage: $0 STAGE\n" unless @ARGV == 1 && $stage =~ /\A[a-z][a-z0-9-]{0,31}\z/;
+
+sysopen(my $fh, $slot, O_RDWR) or do { warn "open $slot: $!\n"; exit 2 };
+binmode $fh;
+my @st = stat($fh);
+if ($st[7] != $size) { warn "receipt slot has the wrong size\n"; exit 2 }
+my $buf = '';
+my $got = sysread($fh, $buf, $size);
+if (!defined $got || $got != $size) { warn "short read of the receipt\n"; exit 2 }
+exit 3 unless $buf =~ /\ASFRCPT1\ninstall=[0-9a-f]{32}\n/;
+exit 0 if $buf =~ /^\Q$stage\E [0-9]+\n/m;
+my $end = index($buf, "\0");
+my $line = sprintf("%s %d\n", $stage, time);
+if ($end < 0 || $end + length($line) > $size) { warn "receipt is full\n"; exit 2 }
+if (substr($buf, $end) =~ /[^\0]/) { warn "receipt has bytes after its end\n"; exit 2 }
+sysseek($fh, $end, 0) or do { warn "seek: $!\n"; exit 2 };
+my $w = syswrite($fh, $line);
+if (!defined $w || $w != length($line)) { warn "write: $!\n"; exit 2 }
+$fh->sync or do { warn "fsync: $!\n"; exit 2 };
+close $fh or exit 2;
+exit 0;
