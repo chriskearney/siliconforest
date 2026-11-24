@@ -6,7 +6,7 @@
 Decided 22 November 2026. There is no spare 13-inch M1 MacBook Pro, and the development Pro's hand-made layout must not be the
 installer's first target, so the **13-inch M1 MacBook Air (J313)** is the first real install target.
 
-> **Status.** SiliconForest has never booted on J313. G0 and G1 are done on the build host only (section 5). The inventory below was
+> **Status.** SiliconForest first booted on J313 on 24 November 2026, as a console-only RAM boot (G2). G0 and G1 are done (section 5). The inventory below was
 > read-only, and the board comparison used Apple's public 13.5 device trees, not a live boot.
 
 ## 1. The Air today
@@ -61,8 +61,8 @@ Each gate needs the previous one. Steps marked **Air** change or boot the Air an
 |---|---|---|---|
 | **G0** | Board-aware keyboard and display changes. Sound and Touch Bar off on J313. Host tests | No | **Done on the host**, `ae9fe1c71` |
 | **G1** | Build a J313 kernel collection | No | **Built, not booted**, from `ae9fe1c71` |
-| **G2** | RAM boot through m1n1 with **read-only storage**, returning to Linux | **Air**, needs a USB-C link to the M5 | Not run. See [`G2-RUNBOOK-J313.md`](G2-RUNBOOK-J313.md) |
-| **G3** | Display, keyboard, trackpad, Wi-Fi and thermal behaviour observed on the Air | **Air** | Not run |
+| **G2** | RAM boot through m1n1 with **read-only storage**, returning to Linux | **Air**, needs a USB-C link to the M5 | **Passed 24 Nov 2026**: `BOOT_OBSERVED_LINUX_RESTORED`. See [`G2-RUNBOOK-J313.md`](G2-RUNBOOK-J313.md) |
+| **G3** | Display, keyboard, trackpad, Wi-Fi and thermal behaviour observed on the Air | **Air** | Log-only part done in G2 (no one at the Air). A person is still needed |
 | **G4** | Installer M1 to M3: simulator, dry run, Swift engine on disk images | No | Not recorded here |
 | **G5** | Boot macOS once. Read its version, used space and limits. Dry-run the real plan | **Air**, read-only | Not run |
 | **G6** | Current backup confirmed, then the **first real install** and the full checklist in [`ENGINE.md`](ENGINE.md) section 11 | **Air** | Not run |

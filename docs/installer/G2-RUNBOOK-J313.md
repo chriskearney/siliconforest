@@ -22,6 +22,15 @@ Written 22 November 2026 and updated 23 November for CHL-27, gate G2 of [`FIRST-
 > record had no kernel protection receipt. Linux came back, stage 2 was restored and verified, and the latch was cleared.
 > `packet-002` is `packet-001` with that receipt, derived from the build by `launcher/protection_receipt.py`; the kernel and
 > RAM root are unchanged. `g2.py plan` now runs the launcher's own `configure_kernel_text_policy` on the packet before any Air step.
+>
+> **Second G2 run, 24 November 11:36 PST, with `packet-002`: `BOOT_OBSERVED_LINUX_RESTORED`.** Nobody was at the Air, by Chris's
+> choice. The DEVELOPMENT T8103 kernel booted on J313 from RAM and the guest script ran to its end. From the console log only:
+> `G2_ROOT` the RAM root; `RB_NVME_OK` nothing attached to the NVMe nub; `G2_WIFI interface=en0 scan_lines=30` (the `apple,shikoku`
+> firmware loaded on BCM4378 rev 3); `G2_INPUT kbd=yes mouse=no`, with keyboard product `0x0281` and its descriptor read and a
+> 110-byte trackpad descriptor read for enumeration only; the framebuffer at 2560x1600; die temperature 48.9 to 53.1 °C over the
+> run, with no fan and nothing near the 92 °C cap; no panic. One M5 reset. Linux came back, stage 2 `f5a82fdb-dirty` and the
+> pinned `boot.bin` were restored, the kept copy was deleted, the default entry was unchanged and the latch was cleared.
+> Still open for G3, which needs a person: typed keyboard input, the panel's brightness, and how the trackpad behaves.
 
 ## 1. What is on the Air
 
