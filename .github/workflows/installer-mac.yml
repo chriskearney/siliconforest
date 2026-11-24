@@ -26,7 +26,7 @@ jobs:
   test:
     name: SFInstallKit tests (image-backed only)
     runs-on: macos-15
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +42,11 @@ jobs:
       - name: Run installer tests
         working-directory: installer/mac
         shell: bash
+        env:
+          # Default sample sweep did not finish in 90 minutes on macos-15
+          # (run 45487533893, cancelled in everyJournalStateHasAWayForwardAndBack).
+          # Keep a smaller sample here; the full sample remains a local/M5 run.
+          SF_SWEEP_RECORDS: "13,41,60"
         run: |
           set -euo pipefail
           unset SF_REAL_DISK_WRITES || true

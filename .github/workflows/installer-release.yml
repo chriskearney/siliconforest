@@ -80,9 +80,13 @@ jobs:
           swift --version
           xcrun notarytool --version
 
-      - name: Run installer tests (image-backed only)
+      - name: Run installer tests (no disk images)
         working-directory: installer/mac
         shell: bash
+        env:
+          # Image fault-injection exceeded the 90-minute job limit on macos-15
+          # (run 45487572388). Full image suites stay in installer-mac.yml.
+          SF_IMAGE_TESTS: "0"
         run: |
           set -euo pipefail
           unset SF_REAL_DISK_WRITES || true
