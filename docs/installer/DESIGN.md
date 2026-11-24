@@ -17,6 +17,7 @@ CHL-27 phase 1, 22 November 2026.
 | [`ENGINE.md`](ENGINE.md) | Preflight, sizing, state machine, journal, rollback, dry run |
 | [`ADDING-A-MAC.md`](ADDING-A-MAC.md) | The checklist for each future Mac |
 | [`FIRST-INSTALL-J313.md`](FIRST-INSTALL-J313.md) | The M1 Air as first real install target: its state, board differences, order of work |
+| [`PAYLOAD.md`](PAYLOAD.md) | The shippable release: installer root, slots, receipt, growth, firmware extraction, signing and verification |
 | [`RESEARCH.md`](RESEARCH.md) | Omacom, Asahi, Apple and UX research with sources |
 | [`installer/profiles/`](../../installer/profiles/) | The J293 and J313 profiles and their JSON schema |
 
@@ -446,10 +447,10 @@ The installer cannot ship until these exist. None is started by this design.
 
 1. **A current release image.** The `release-image` and `image-install` branches predate the current system. The image must be rebuilt from the integration line.
 2. **The release signing key**, made and kept by Chris.
-3. **Root growth at first start.** Today's root is a fixed 4 GiB image, so a larger partition is wasted until it can grow. Until then the disk screen locks to the fixed size and says why.
-4. **The first-boot account screen** (SF-AJ D8). The release image's `sf` account has no password, which is unacceptable on anyone else's Mac.
-5. **The boot-receipt slot and first-boot job** in the image recipe.
-6. **The firmware slot** from `image-install`, carried into the new image.
+3. **Root growth.** Today's root is a fixed 4 GiB image, so a larger partition is wasted until it can grow. Until then the disk screen locks to the fixed size and says why. *P1 (24 Nov): the helper grows the root offline with `resize2fs` at a new step S48; proven on the real 0.1.0 root, not yet booted ([`PAYLOAD.md`](PAYLOAD.md) section 6).*
+4. **The first-boot account screen** (SF-AJ D8). The release image's `sf` account has no password, which is unacceptable on anyone else's Mac. *Not built; what the root does today and what is needed are in [`PAYLOAD.md`](PAYLOAD.md) section 5.*
+5. **The boot-receipt slot and first-boot job** in the image recipe. *P1: `installer/payload/image/prepare_root.py`, on files only.*
+6. **The firmware slot** from `image-install`, carried into the new image. *P1: carried, and J313's Wi-Fi firmware extracted from the 13.5 image on the M5 ([`PAYLOAD.md`](PAYLOAD.md) section 8).*
 
 ## 17. Proposed code layout
 
