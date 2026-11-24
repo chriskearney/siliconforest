@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 SiliconForest contributors
+# Applied by release/base-tree.nix to the base source when the build system is aarch64-linux.
+--- a/build.nix
++++ b/build.nix
+@@ -68,4 +68,5 @@
+ let
+   isDarwinHost = stdenv.hostPlatform.isDarwin;
++  isAarch64LinuxHost = stdenv.buildPlatform.isAarch64 && stdenv.buildPlatform.isLinux;
+   isArm64 = siliconforestArch == "arm64";
+   # nix-toolchain.cmake's NIX_DARWIN_TOOLCHAIN_DIR just needs to point at
+@@ -123,4 +124,12 @@
+   configurePhase = ''
+     runHook preConfigure
++  '' + lib.optionalString (enableKernel && isAarch64LinuxHost) ''
++    # Keep EOF distinct from bytes in the native XNU header scanner.
++    # The kexts build is kernel-enabled too, and its source set has no SETUP tools.
++    if [ -f src/Kernel/xnu/SETUP/decomment/decomment.c ]; then
++      substituteInPlace src/Kernel/xnu/SETUP/decomment/decomment.c \
++        --replace-fail 'char bufchar;' 'int bufchar;'
++    fi
++  '' + ''
+     # xnu's SETUP tools run on the build machine. On a Mac they require stdenv's SDK (initially $SDKROOT), not ours.
+     hostSdkRoot="''${SDKROOT:-}"
+@@ -271,4 +280,9 @@
+ EOF
+     chmod +x .nix-stubs/libtool
++  '' + lib.optionalString (enableKernel && isAarch64LinuxHost) ''
++    # XNU's build stripes require a positive physical CPU count.
++    if ! grep -q '^core id' /proc/cpuinfo; then
++      export MAKEFLAGS="''${MAKEFLAGS:-} SYSCTL_HW_PHYSICALCPU=1"
++    fi
+   '' + ''
+     export PATH="$PWD/.nix-stubs:$PWD/build-nix/tools/mig:$PWD/build-nix/tools/cctools/misc:$PWD/build-nix/tools/dtrace_ctf/tools:$PATH"

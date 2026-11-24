@@ -1,0 +1,120 @@
+arm64: Gate QEMU platform setup on the firmware description
+
+diff --git a/src/Kernel/Extensions/SFArmPlatformExpert/SFArmPlatformExpert.cpp b/src/Kernel/Extensions/SFArmPlatformExpert/SFArmPlatformExpert.cpp
+index ea151bb..e517767 100644
+--- a/src/Kernel/Extensions/SFArmPlatformExpert/SFArmPlatformExpert.cpp
++++ b/src/Kernel/Extensions/SFArmPlatformExpert/SFArmPlatformExpert.cpp
+@@ -57,6 +57,7 @@ protected:
+ };
+ 
+ static bool sf_platform_is_bcm283x(void);
++static bool sf_root_is_qemu(IORegistryEntry *root);
+ 
+ #if defined(__arm64__)
+ // without a handler reboot(2) returned to a torn-down userland and the board sat there,
+@@ -237,12 +238,12 @@ SFArmPlatformExpert::publishSocNubs(void)
+ void
+ SFArmPlatformExpert::startQemuRTC(void)
+ {
+-	IORegistryEntry *armio = IORegistryEntry::fromPath("/arm-io", gIODTPlane);
+-	OSData *type = armio != NULL ? OSDynamicCast(OSData, armio->getProperty("device_type")) : NULL;
++	IORegistryEntry *root = IORegistryEntry::fromPath("/", gIODTPlane);
++	bool qemu = root != NULL && sf_root_is_qemu(root);
++	OSSafeReleaseNULL(root);
+ 	IOMemoryDescriptor *md;
+ 
+-	if (type == NULL || strncmp((const char *)type->getBytesNoCopy(), "qemuvirt-io", type->getLength()) != 0) {
+-		OSSafeReleaseNULL(armio);
++	if (!qemu) {
+ 		bool have_time = PE_parse_boot_argn("sftime", &fBootSecs, sizeof(fBootSecs)) && fBootSecs > 0;
+ 		if (have_time)
+ 			IOLog("SFArmPlatformExpert: calendar from sftime %ld\n", fBootSecs);
+@@ -255,7 +256,6 @@ SFArmPlatformExpert::startQemuRTC(void)
+ 		if (!have_time)
+ 			return;
+ 	} else {
+-		OSSafeReleaseNULL(armio);
+ 		md = IOMemoryDescriptor::withPhysicalAddress(SF_QEMU_PL031_PHYS, 0x1000, kIODirectionInOut);
+ 		if (md == NULL) {
+ 			return;
+@@ -442,15 +442,14 @@ sf_set_identity(IORegistryEntry *e, const SFIdentityProp *props, size_t n)
+ 	}
+ }
+ 
+-// QEMU virt: the loader's "ACPI" placeholder root, or a carried-over linux,dummy-virt
+ static bool
+ sf_root_is_qemu(IORegistryEntry *root)
+ {
+-	OSData *c = OSDynamicCast(OSData, root->getProperty("compatible"));
++	static const char qemu[] = "qemu-virt";
++	OSData *platform = OSDynamicCast(OSData, root->getProperty("sf,firmware-platform"));
+ 
+-	if (c == NULL || c->getLength() == 0) return false;
+-	if (c->getLength() >= 5 && memcmp(c->getBytesNoCopy(), "ACPI", 5) == 0) return true;
+-	return sf_compat_has(c, "linux,dummy-virt");
++	return platform != NULL && platform->getLength() == sizeof(qemu) &&
++	       memcmp(platform->getBytesNoCopy(), qemu, sizeof(qemu)) == 0;
+ }
+ 
+ static size_t
+@@ -664,10 +663,14 @@ SFArmPlatformExpert::platformModelName(void)
+ 	// a board's own device tree names it in the root's model or first compatible entry
+ 	root = IORegistryEntry::fromPath("/", gIODTPlane);
+ 	if (root != NULL) {
+-		if (!sf_root_is_qemu(root)) sf_board_name(root, sModel, sizeof(sModel));
++		if (sf_root_is_qemu(root)) {
++			strlcpy(sModel, "QEMU Virtual ARM64", sizeof(sModel));
++		} else {
++			sf_board_name(root, sModel, sizeof(sModel));
++		}
+ 		root->release();
+ 	}
+-	return sModel[0] != '\0' ? sModel : "QEMU Virtual ARM64";
++	return sModel[0] != '\0' ? sModel : "ARM";
+ }
+ 
+ /*
+diff --git a/src/Kernel/xnu/pexpert/arm/pe_init.c b/src/Kernel/xnu/pexpert/arm/pe_init.c
+index 0125256..b6ae2a8 100644
+--- a/src/Kernel/xnu/pexpert/arm/pe_init.c
++++ b/src/Kernel/xnu/pexpert/arm/pe_init.c
+@@ -126,10 +126,30 @@ pe_init_fill_buffer_from_property(DTEntry entry, const char *property_name, char
+ 	}
+ }
+ 
++#if defined(QEMUVIRT)
++static bool
++sf_is_qemu_virt(void)
++{
++	DTEntry root;
++	const void *platform;
++	unsigned int size;
++	static const char qemu[] = "qemu-virt";
++
++	return SecureDTLookupEntry(NULL, "/", &root) == kSuccess &&
++	       SecureDTGetProperty(root, "sf,firmware-platform", &platform, &size) == kSuccess &&
++	       size == sizeof(qemu) && memcmp(platform, qemu, sizeof(qemu)) == 0;
++}
++#endif
++
+ static void
+ check_for_panic_log(void)
+ {
+ #ifdef PLATFORM_PANIC_LOG_PADDR
++#if defined(QEMUVIRT)
++	if (!sf_is_qemu_virt()) {
++		return;
++	}
++#endif
+ 	gPanicBase = ml_io_map_wcomb(PLATFORM_PANIC_LOG_PADDR, PLATFORM_PANIC_LOG_SIZE);
+ 	panic_text_len = PLATFORM_PANIC_LOG_SIZE - sizeof(struct embedded_panic_header);
+ 	gPanicSize = PLATFORM_PANIC_LOG_SIZE;
+@@ -482,7 +502,7 @@ PE_init_platform(boolean_t vm_initialized, void *args)
+ 		}
+ #if defined(QEMUVIRT)
+ 		// hw.target as on Apple's virtual platform, which the paravirt stand-ins imitate
+-		if (gTargetTypeBuffer[0] == '\0') {
++		if (sf_is_qemu_virt() && gTargetTypeBuffer[0] == '\0') {
+ 			strlcpy(gTargetTypeBuffer, "VMA2MACOS", sizeof(gTargetTypeBuffer));
+ 		}
+ #endif

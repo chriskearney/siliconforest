@@ -16,7 +16,7 @@
 { extra ? [ ], remove ? [ ] }:
 let
   pd = import ./pin.nix;
-  pkgs = import (import ../../../release/cocoa-base.nix).pd.inputs.nixpkgs { system = "x86_64-linux"; };
+  pkgs = (import ../../../release/cocoa-base.nix).pkgs;
   # upstream's Swift runtime with the Darwin module map of before the rename (../rebase/swift-darwin-module.nix)
   swiftRuntime = import ../rebase/swift-darwin-module.nix pd."swift-runtime-arm64";
   parts = [

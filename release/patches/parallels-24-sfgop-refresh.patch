@@ -1,0 +1,233 @@
+SFGOP: Reopen the VirtIO framebuffer after a mode change
+
+Read the VirtIO framebuffer generation around the mode, pixel layout and mapping in SFGOPOpen and open again when it moved. Each connection keeps the generation it opened at until SFGOPClose. SFGOPRefresh closes and reopens when the driver published a new framebuffer, so the old mapping goes with its connection.
+
+diff --git a/src/Libraries/SFGOP/SFGOP.c b/src/Libraries/SFGOP/SFGOP.c
+index 96126c0..fe6d018 100644
+--- a/src/Libraries/SFGOP/SFGOP.c
++++ b/src/Libraries/SFGOP/SFGOP.c
+@@ -1,7 +1,9 @@
+ #include <SFGOP.h>
+ #include <IOKit/IOKitLib.h>
+ #include <mach/mach.h>
++#include <pthread.h>
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <string.h>
+ 
+ #define kIOFBVRAMMemory 110
+@@ -9,6 +11,9 @@
+ #define kIOFBGetCurrentDisplayModeSelector 2
+ #define kIOFBSystemAperture 0
+ #define kSFGPU_Present 11
++#define kSFGPU_ModeGeneration 15
++/* An open retries this often when the display mode changes while it reads it. */
++#define kSFGOPOpenAttempts 4
+ 
+ typedef struct SFGOPPresentRect {
+     uint32_t x, y, width, height;
+@@ -21,6 +26,20 @@ static const char *gSFGOPLastErrorStage = "none";
+ static mach_port_t gSFGOPKindService = MACH_PORT_NULL;
+ static uint32_t gSFGOPKind = kSFGOPServiceUnknown;
+ 
++/* The VirtIO framebuffer generation each open read its mode and mapping at,
++ * one record per connection; SFGOPClose drops it. Keyed by the connection,
++ * because a caller may move its SFGOPFramebuffer after the open. A driver
++ * without the generation query gets no record, and SFGOPRefresh then never
++ * reopens. */
++typedef struct SFGOPGeneration {
++    mach_port_t connect;
++    uint64_t generation;
++    struct SFGOPGeneration *next;
++} SFGOPGeneration;
++
++static pthread_mutex_t gSFGOPGenerationLock = PTHREAD_MUTEX_INITIALIZER;
++static SFGOPGeneration *gSFGOPGenerations;
++
+ /* Callers (C, and Rust bindings built against the original header) rely on
+  * this exact 64-byte layout. The queries below must not grow it. */
+ _Static_assert(sizeof(SFGOPFramebuffer) == 64, "SFGOPFramebuffer ABI size");
+@@ -80,8 +99,72 @@ sfgop_geometry_valid(const IOPixelInformation *pi)
+     return 1;
+ }
+ 
+-kern_return_t
+-SFGOPOpen(SFGOPFramebuffer *fb)
++/* The VirtIO driver's count of published framebuffers. Selector 15 is
++ * IOFramebuffer's extSetColorConvertTable, so it goes to VirtIO only. */
++static kern_return_t
++sfgop_generation(SFGOPFramebuffer *fb, uint64_t *generation)
++{
++    uint32_t count = 1;
++
++    *generation = 0;
++    if (SFGOPGetServiceKind(fb) != kSFGOPServiceVirtioTransfer)
++        return KERN_NOT_SUPPORTED;
++    return IOConnectCallScalarMethod(fb->connect, kSFGPU_ModeGeneration,
++        NULL, 0, generation, &count);
++}
++
++static int
++sfgop_generation_record(mach_port_t connect, uint64_t generation)
++{
++    SFGOPGeneration *record = malloc(sizeof(*record));
++
++    if (record == NULL)
++        return 0;
++    record->connect = connect;
++    record->generation = generation;
++    pthread_mutex_lock(&gSFGOPGenerationLock);
++    record->next = gSFGOPGenerations;
++    gSFGOPGenerations = record;
++    pthread_mutex_unlock(&gSFGOPGenerationLock);
++    return 1;
++}
++
++static int
++sfgop_generation_opened(mach_port_t connect, uint64_t *generation)
++{
++    int found = 0;
++
++    pthread_mutex_lock(&gSFGOPGenerationLock);
++    for (SFGOPGeneration *record = gSFGOPGenerations; record != NULL; record = record->next) {
++        if (record->connect == connect) {
++            *generation = record->generation;
++            found = 1;
++            break;
++        }
++    }
++    pthread_mutex_unlock(&gSFGOPGenerationLock);
++    return found;
++}
++
++static void
++sfgop_generation_forget(mach_port_t connect)
++{
++    SFGOPGeneration *gone = NULL;
++
++    pthread_mutex_lock(&gSFGOPGenerationLock);
++    for (SFGOPGeneration **link = &gSFGOPGenerations; *link != NULL; link = &(*link)->next) {
++        if ((*link)->connect == connect) {
++            gone = *link;
++            *link = gone->next;
++            break;
++        }
++    }
++    pthread_mutex_unlock(&gSFGOPGenerationLock);
++    free(gone);
++}
++
++static kern_return_t
++sfgop_open(SFGOPFramebuffer *fb)
+ {
+     kern_return_t kr;
+ #ifdef _SF_IOKITLIB_H
+@@ -94,6 +177,8 @@ SFGOPOpen(SFGOPFramebuffer *fb)
+     uint64_t scalarIn[3];
+     IOPixelInformation pixelInfo;
+     size_t pixelInfoSize = sizeof(pixelInfo);
++    uint64_t generation = 0, after = 0;
++    int followed = 0;
+ 
+     if (fb == NULL) {
+         SFGOP_SET_STAGE("argument");
+@@ -154,6 +239,9 @@ SFGOPOpen(SFGOPFramebuffer *fb)
+     if (kr != KERN_SUCCESS) {
+         goto fail;
+     }
++    /* The mode, its pixel layout and the mapping below belong together only
++     * when no new framebuffer was published while they were read. */
++    followed = sfgop_generation(fb, &generation) == KERN_SUCCESS;
+ 
+     SFGOP_SET_STAGE("GetCurrentDisplayMode");
+     kr = IOConnectCallScalarMethod(fb->connect,
+@@ -212,6 +300,24 @@ SFGOPOpen(SFGOPFramebuffer *fb)
+     fb->componentMasks[1] = pixelInfo.componentMasks[1];
+     fb->componentMasks[2] = pixelInfo.componentMasks[2];
+ 
++    if (followed) {
++        SFGOP_SET_STAGE("ModeGeneration");
++        kr = sfgop_generation(fb, &after);
++        if (kr != KERN_SUCCESS) {
++            goto fail;
++        }
++        if (after != generation) {
++            SFGOP_SET_STAGE("ModeGeneration:moved");
++            kr = KERN_ABORTED;
++            goto fail;
++        }
++        if (!sfgop_generation_record(fb->connect, generation)) {
++            SFGOP_SET_STAGE("ModeGeneration:record");
++            kr = KERN_RESOURCE_SHORTAGE;
++            goto fail;
++        }
++    }
++
+     SFGOP_SET_STAGE("none");
+     return KERN_SUCCESS;
+ 
+@@ -220,6 +326,39 @@ fail:
+     return kr;
+ }
+ 
++kern_return_t
++SFGOPOpen(SFGOPFramebuffer *fb)
++{
++    kern_return_t kr = KERN_ABORTED;
++
++    for (int attempt = 0; attempt < kSFGOPOpenAttempts && kr == KERN_ABORTED; attempt++) {
++        kr = sfgop_open(fb);
++    }
++    return kr;
++}
++
++kern_return_t
++SFGOPRefresh(SFGOPFramebuffer *fb, int *changed)
++{
++    kern_return_t kr;
++    uint64_t generation, opened;
++
++    if (changed != NULL)
++        *changed = 0;
++    if (fb == NULL || changed == NULL || fb->connect == IO_OBJECT_NULL)
++        return KERN_INVALID_ARGUMENT;
++    if (!sfgop_generation_opened(fb->connect, &opened))
++        return KERN_SUCCESS;
++    kr = sfgop_generation(fb, &generation);
++    if (kr != KERN_SUCCESS || generation == opened)
++        return kr;
++    /* Closing the connection takes the old mapping with it; the driver keeps
++     * that framebuffer's memory until the mapping is gone. */
++    *changed = 1;
++    SFGOPClose(fb);
++    return SFGOPOpen(fb);
++}
++
+ void
+ SFGOPClose(SFGOPFramebuffer *fb)
+ {
+@@ -231,6 +370,7 @@ SFGOPClose(SFGOPFramebuffer *fb)
+             mach_task_self(), fb->address);
+     }
+     if (fb->connect != IO_OBJECT_NULL) {
++        sfgop_generation_forget(fb->connect);
+         (void)IOServiceClose(fb->connect);
+     }
+     if (fb->service != IO_OBJECT_NULL) {
+diff --git a/src/Libraries/SFGOP/include/SFGOP.h b/src/Libraries/SFGOP/include/SFGOP.h
+index 4ecd267..01feded 100644
+--- a/src/Libraries/SFGOP/include/SFGOP.h
++++ b/src/Libraries/SFGOP/include/SFGOP.h
+@@ -47,6 +47,12 @@ typedef enum SFGOPPixelFormat {
+  * SFGOPLastErrorStage() names the step. */
+ kern_return_t SFGOPOpen(SFGOPFramebuffer *fb);
+ void SFGOPClose(SFGOPFramebuffer *fb);
++/* For kSFGOPServiceVirtioTransfer, after the driver published a new
++ * framebuffer (the display mode changed): closes fb, sets *changed to 1 and
++ * opens again as SFGOPOpen does, so fb describes and maps the current mode.
++ * The old mapping is gone once *changed is 1, whatever the result; on
++ * failure fb is zeroed. Otherwise *changed is 0 and fb is untouched. */
++kern_return_t SFGOPRefresh(SFGOPFramebuffer *fb, int *changed);
+ /* Transfers a rect to the display for kSFGOPServiceVirtioTransfer only.
+  * Any other service returns KERN_NOT_SUPPORTED without a driver call:
+  * a direct-memory framebuffer has no present step. */

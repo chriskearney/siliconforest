@@ -8,7 +8,8 @@
 #   unattended (@AUTOPILOT@ = 1): the compositor drives itself (CHONKSTEP_DARWIN_AUTOPILOT).
 PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin; export PATH
 session=${1:-000000000000000000000000000000000000000000000001}
-runtime=/private/var/run/qemu-desktop
+# The system bootstrap empties /var/run before starting the desktop job.
+runtime=/var/run/qemu-desktop
 mkdir -p "$runtime" && chmod 0700 "$runtime"
 # The menu's Theme and Display choices are kept here, as on the M1 (the root is a disk here,
 # but every run starts from a fresh copy of the image).

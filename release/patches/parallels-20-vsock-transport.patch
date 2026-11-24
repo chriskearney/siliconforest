@@ -1,0 +1,1007 @@
+Add a virtio socket transport
+
+diff --git a/nix/arm64.nix b/nix/arm64.nix
+index 23b9e35..7a6c9b4 100644
+--- a/nix/arm64.nix
++++ b/nix/arm64.nix
+@@ -3153,7 +3153,7 @@ let
+     buildTargets = [
+       "IOPCIFamily" "IOStorageFamily" "IOCDStorageFamily.kext"
+       "IODVDStorageFamily.kext" "IOBDStorageFamily.kext" "IOVirtIOFamily.kext"
+-      "IOVirtIONet.kext" "IONetworkingFamily.kext" "IOHIDFamily.kext"
++      "IOVirtIONet.kext" "IOVirtIOSocket.kext" "IONetworkingFamily.kext" "IOHIDFamily.kext"
+       "RavynAHCIPort.kext" "ext4.kext" "Ext4FileSystemDriver.kext"
+       "ApfsFileSystemDriver.kext"
+       "AppleFileSystemDriver.kext" "corecrypto.kext" "pthread.kext" "amfi.kext"
+@@ -3188,7 +3188,7 @@ let
+       "SFPowerVR.kext" "SFSun60iDisplay.kext" "SFTegraDisplay.kext" "SFTegraXUSB.kext"
+       "IOPCIFamily.kext" "IOStorageFamily.kext" "IOCDStorageFamily.kext"
+       "IODVDStorageFamily.kext" "IOBDStorageFamily.kext" "IOVirtIOFamily.kext"
+-      "IOVirtIONet.kext" "IONetworkingFamily.kext" "IOHIDFamily.kext"
++      "IOVirtIONet.kext" "IOVirtIOSocket.kext" "IONetworkingFamily.kext" "IOHIDFamily.kext"
+       "RavynAHCIPort.kext" "ext4.kext" "Ext4FileSystemDriver.kext"
+       "ApfsFileSystemDriver.kext"
+       "AppleFileSystemDriver.kext" "corecrypto.kext" "pthread.kext" "amfi.kext"
+diff --git a/src/Kernel/Extensions/CMakeLists.txt b/src/Kernel/Extensions/CMakeLists.txt
+index 7fc1a1e..c0d8c21 100644
+--- a/src/Kernel/Extensions/CMakeLists.txt
++++ b/src/Kernel/Extensions/CMakeLists.txt
+@@ -54,6 +54,9 @@ add_subdirectory(SFVirtualFramebuffer)
+ add_subdirectory(IOVirtIOFamily)
+ add_subdirectory(IOVirtIOGPU)
+ add_subdirectory(IOVirtIONet)
++if(SILICONFOREST_ARCH STREQUAL "arm64")
++    add_subdirectory(IOVirtIOSocket)
++endif()
+ add_subdirectory(IOVirtIOInput)
+ add_subdirectory(IOVirtIOBlock)
+ if(SILICONFOREST_ARCH STREQUAL "x86_64")
+@@ -147,6 +150,9 @@ if(SILICONFOREST_ARM64)
+ endif()
+ 
+ add_custom_target(kexts)
++if(TARGET IOVirtIOSocket.kext)
++    add_dependencies(kexts IOVirtIOSocket.kext)
++endif()
+ add_dependencies(kexts
+     IOPCIFamily ApplePIODMA IOStorageFamily IOCDStorageFamily.kext
+     IODVDStorageFamily.kext IOBDStorageFamily.kext IONVMEFamily.kext
+diff --git a/src/Kernel/Extensions/IOVirtIOSocket/CMakeLists.txt b/src/Kernel/Extensions/IOVirtIOSocket/CMakeLists.txt
+new file mode 100644
+index 0000000..fafc9da
+--- /dev/null
++++ b/src/Kernel/Extensions/IOVirtIOSocket/CMakeLists.txt
+@@ -0,0 +1,15 @@
++# SPDX-License-Identifier: MIT
++# Copyright (c) 2026 SiliconForest contributors
++add_kext_bundle(IOVirtIOSocket.kext INFO_PLIST Info.plist KERNEL_PRIVATE
++    BUNDLE_IDENTIFIER org.siliconforest.driver.IOVirtIOSocket BUNDLE_VERSION 1.0.0)
++set_property(TARGET IOVirtIOSocket.kext PROPERTY OUTPUT_NAME IOVirtIOSocket)
++set_property(TARGET IOVirtIOSocket.kext PROPERTY CXX_STANDARD 14)
++
++target_sources(IOVirtIOSocket.kext PRIVATE IOVirtIOSocket.cpp)
++target_include_directories(IOVirtIOSocket.kext PRIVATE
++    ../IOPCIFamily/include
++    ../IOVirtIOFamily)
++target_link_libraries(IOVirtIOSocket.kext PRIVATE xnu_kernel_private_headers)
++target_compile_definitions(IOVirtIOSocket.kext PRIVATE __PRIVATE_SPI__)
++add_dependencies(IOVirtIOSocket.kext IOVirtIOFamily.kext)
++install(TARGETS IOVirtIOSocket.kext DESTINATION System/Library/Extensions COMPONENT BaseSystem)
+diff --git a/src/Kernel/Extensions/IOVirtIOSocket/IOVirtIOSocket.cpp b/src/Kernel/Extensions/IOVirtIOSocket/IOVirtIOSocket.cpp
+new file mode 100644
+index 0000000..54da90f
+--- /dev/null
++++ b/src/Kernel/Extensions/IOVirtIOSocket/IOVirtIOSocket.cpp
+@@ -0,0 +1,616 @@
++// SPDX-License-Identifier: MIT
++// Copyright (c) 2026 SiliconForest contributors
++#include "IOVirtIOSocket.h"
++
++#include <kern/clock.h>
++#include <mach/mach_time.h>
++#include <sys/errno.h>
++
++#define super IOService
++OSDefineMetaClassAndStructors(IOVirtIOSocket, IOService)
++
++using namespace SFVirtioSocket;
++
++bool IOVirtIOSocket::start(IOService *provider)
++{
++    if (!super::start(provider))
++        return false;
++
++    fPCI = OSDynamicCast(IOPCIDevice, provider);
++    fLock = IOLockAlloc();
++    fWorkLoop = IOWorkLoop::workLoop();
++    uint32_t offered = 0, features = 0;
++    if (!fPCI || !fLock || !fWorkLoop || !fPCI->open(this))
++        goto fail;
++    fPCIOpen = true;
++
++    // This work loop polls all three queues. Suppress INTx and used interrupts.
++    fPCI->configWrite16(kIOPCIConfigCommand,
++        fPCI->configRead16(kIOPCIConfigCommand) | kIOPCICommandInterruptDisable);
++    if (!fPCITransport.attach(fPCI))
++        goto fail;
++    offered = fPCITransport.deviceFeaturesLow();
++    features = offered & 1u; // VIRTIO_VSOCK_F_STREAM (VirtIO 1.2, section 5.10.3)
++    if (!fPCITransport.negotiateFeatures(features) || !sf_readCID(fCID))
++        goto fail;
++    for (unsigned index = 0; index < QueueCount; ++index) {
++        if (!sf_initQueue(index))
++            goto fail;
++    }
++
++    fTimer = IOTimerEventSource::timerEventSource(this, &IOVirtIOSocket::sf_timer);
++    if (!fTimer || fWorkLoop->addEventSource(fTimer) != kIOReturnSuccess)
++        goto fail;
++    fTimerAdded = true;
++
++    fPCITransport.setDriverOk();
++    if (!fPCITransport.isDeviceOk())
++        goto fail;
++    fPCITransport.notify(&fQueue[Rx]);
++    fPCITransport.notify(&fQueue[Event]);
++
++    fTransport = {VSOCK_PROTO_STANDARD, this, &sf_getCID, &sf_attachSocket,
++                  &sf_detachSocket, &sf_putMessage};
++    fOnline = true;
++    if (vsock_add_transport(&fTransport) != 0)
++        goto fail;
++
++    // A PCB keeps a raw pointer to its transport. Use the lifetime of the
++    // boot kernel for this provider, including if the PCI device goes offline.
++    retain();
++    fRegistered = true;
++    fTimer->setTimeoutMS(5);
++    registerService();
++    return true;
++
++fail:
++    IOLog("IOVirtIOSocket: initial setup failed\n");
++    sf_releaseHardware();
++    if (fLock) {
++        IOLockFree(fLock);
++        fLock = nullptr;
++    }
++    return false;
++}
++
++void IOVirtIOSocket::stop(IOService *provider)
++{
++    IOLockLock(fLock);
++    fStopping = true;
++    fOnline = false;
++    bzero(fFlows, sizeof(fFlows));
++    IOLockUnlock(fLock);
++    sf_releaseHardware();
++    if (fRegistered)
++        vsock_reset_transport(&fTransport);
++    super::stop(provider);
++}
++
++void IOVirtIOSocket::sf_releaseHardware()
++{
++    if (fTimer) {
++        fTimer->cancelTimeout();
++        if (fTimerAdded)
++            fWorkLoop->removeEventSource(fTimer);
++        OSSafeReleaseNULL(fTimer);
++        fTimerAdded = false;
++    }
++    if (fPCIOpen) {
++        fPCITransport.detach();
++        fPCI->setBusMasterEnable(false);
++        fPCI->close(this);
++        fPCIOpen = false;
++    }
++    for (unsigned index = 0; index < QueueCount; ++index) {
++        fPCITransport.freeQueue(&fQueue[index]);
++        for (auto &buffer : fBuffers[index])
++            OSSafeReleaseNULL(buffer);
++    }
++    OSSafeReleaseNULL(fWorkLoop);
++    fPCI = nullptr;
++}
++
++bool IOVirtIOSocket::sf_readCID(uint32_t &cid)
++{
++    uint8_t previous[8], current[8];
++    if (!fPCITransport.sf_readDeviceConfig(0, previous, sizeof(previous)))
++        return false;
++    for (unsigned attempt = 0; attempt < 4; ++attempt) {
++        if (!fPCITransport.sf_readDeviceConfig(0, current, sizeof(current)))
++            return false;
++        if (memcmp(current, previous, sizeof(current)) == 0) {
++            cid = read32(current);
++            return read32(current + 4) == 0 && validGuestCID(cid);
++        }
++        memcpy(previous, current, sizeof(previous));
++    }
++    return false;
++}
++
++unsigned IOVirtIOSocket::sf_bufferCount(const VirtQueue &queue)
++{
++    return queue.queueSize < BufferCount ? queue.queueSize : BufferCount;
++}
++
++bool IOVirtIOSocket::sf_initQueue(unsigned index)
++{
++    VirtQueue &queue = fQueue[index];
++    constexpr uint16_t MaxSplitQueueSize = 32768;
++    if (!fPCITransport.initQueue(&queue, uint16_t(index), MaxSplitQueueSize))
++        return false;
++    static_cast<VRingAvailHdr *>(queue.avail)->flags = 1; // VIRTQ_AVAIL_F_NO_INTERRUPT
++    fPCITransport.enableFreeList(&queue);
++    // Keep the device's ring geometry while using only the first descriptors.
++    const unsigned count = sf_bufferCount(queue);
++    queue.numFree = uint16_t(count);
++    for (unsigned slot = 0; slot < count; ++slot) {
++        fBuffers[index][slot] = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(
++            kernel_task, kIODirectionInOut | kIOMemoryPhysicallyContiguous,
++            index == Event ? sizeof(uint32_t) : BufferSize, 0xffffffffULL);
++        if (!fBuffers[index][slot])
++            return false;
++        if (index != Tx)
++            sf_postWritable(index, slot);
++    }
++    return true;
++}
++
++void IOVirtIOSocket::sf_postWritable(unsigned index, unsigned slot)
++{
++    VirtQueue &queue = fQueue[index];
++    assert(queue.freeHead == slot && queue.numFree > 0);
++    VirtIOChainEntry entry = {fBuffers[index][slot]->getPhysicalAddress(),
++                             index == Event ? uint32_t(sizeof(uint32_t)) : BufferSize, true, false};
++    fPCITransport.addDescChainFree(&queue, &entry, 1);
++}
++
++bool IOVirtIOSocket::sf_submit(const Packet &packet, mbuf_t data)
++{
++    VirtQueue &queue = fQueue[Tx];
++    if (queue.numFree == 0)
++        return false;
++
++    const uint16_t slot = queue.freeHead;
++    auto *buffer = fBuffers[Tx][slot];
++    auto *bytes = static_cast<uint8_t *>(buffer->getBytesNoCopy());
++    if (packet.length && mbuf_copydata(data, 0, packet.length, bytes + HeaderSize) != 0)
++        return false;
++
++    encode(bytes, packet);
++    VirtIOChainEntry entry = {buffer->getPhysicalAddress(), uint32_t(HeaderSize) + packet.length,
++                             false, false};
++    fPCITransport.addDescChainFree(&queue, &entry, 1);
++    fTxInFlight[slot] = true;
++    fPCITransport.notify(&queue);
++    return true;
++}
++
++bool IOVirtIOSocket::sf_control(const Packet &packet)
++{
++    if (fControlCount == 0 && sf_submit(packet, nullptr))
++        return true;
++    if (fControlCount == ControlCount)
++        return false;
++    fControls[(fControlStart + fControlCount) % ControlCount] = packet;
++    ++fControlCount;
++    return true;
++}
++
++void IOVirtIOSocket::sf_drainTx()
++{
++    VirtQueue &queue = fQueue[Tx];
++    uint16_t slot;
++    for (unsigned i = 0; i < sf_bufferCount(queue) && fPCITransport.pollForCompletion(&queue, 0, nullptr, &slot); ++i) {
++        if (slot >= sf_bufferCount(queue) || !fTxInFlight[slot])
++            continue;
++        fTxInFlight[slot] = false;
++        fPCITransport.freeDescChain(&queue, slot);
++    }
++    while (fControlCount && sf_submit(fControls[fControlStart], nullptr)) {
++        fControlStart = (fControlStart + 1) % ControlCount;
++        --fControlCount;
++    }
++}
++
++IOVirtIOSocket::Flow *IOVirtIOSocket::sf_findFlow(vsock_address local, vsock_address peer)
++{
++    for (auto &flow : fFlows) {
++        if (flow.state != State::None && flow.local.cid == local.cid && flow.local.port == local.port &&
++            flow.peer.cid == peer.cid && flow.peer.port == peer.port)
++            return &flow;
++    }
++    return nullptr;
++}
++
++IOVirtIOSocket::Flow *IOVirtIOSocket::sf_newFlow(vsock_address local, vsock_address peer, State state)
++{
++    for (auto &flow : fFlows) {
++        if (flow.state == State::None) {
++            flow = {};
++            flow.local = local;
++            flow.peer = peer;
++            flow.state = state;
++            clock_interval_to_deadline(5, NSEC_PER_SEC, &flow.deadline);
++            return &flow;
++        }
++    }
++    return nullptr;
++}
++
++int IOVirtIOSocket::sf_send(vsock_address src, vsock_address dst, vsock_operation op,
++                           uint32_t buffer, uint32_t forwarded, mbuf_t data)
++{
++    auto *flow = sf_findFlow(src, dst);
++
++    // XNU also asks for a local reset when an incoming RST ends a pending
++    // connect, or when the virtio device resets. Neither needs a reply.
++    if (op == VSOCK_RESET && (!flow || flow->state == State::Closing))
++        return 0;
++    if (!fOnline || src.cid != fCID)
++        return ENETDOWN;
++
++    const size_t length = data ? mbuf_pkthdr_len(data) : 0;
++    if (length > VSOCK_MAX_PACKET_SIZE)
++        return EMSGSIZE;
++
++    Packet packet = {src.cid, dst.cid, src.port, dst.port, uint32_t(length),
++                     Stream, 0, 0, buffer, forwarded};
++    switch (op) {
++    case VSOCK_REQUEST:
++        if (flow)
++            return EADDRINUSE;
++        flow = sf_newFlow(src, dst, State::RequestSent);
++        if (!flow)
++            return ENOBUFS;
++        packet.operation = Request;
++        break;
++    case VSOCK_RESPONSE:
++        if (!flow || flow->state != State::RequestReceived)
++            return ENOTCONN;
++        packet.operation = Response;
++        break;
++    case VSOCK_PAYLOAD:
++        if (!flow || flow->state != State::Established)
++            return ENOTCONN;
++        if ((flow->localShutdown & Send) || (flow->peerShutdown & Receive))
++            return EPIPE;
++        if (length > credit(flow->peerBuffer, flow->sent, flow->peerForwarded))
++            return EWOULDBLOCK;
++        packet.operation = Data;
++        if (fControlCount || !sf_submit(packet, data))
++            return ENOBUFS;
++        flow->sent += uint32_t(length);
++        flow->localBuffer = buffer;
++        flow->localForwarded = forwarded;
++        return 0;
++    case VSOCK_SHUTDOWN:
++    case VSOCK_SHUTDOWN_RECEIVE:
++    case VSOCK_SHUTDOWN_SEND:
++        if (!flow || flow->state != State::Established)
++            return ENOTCONN;
++        packet.operation = Shutdown;
++        packet.flags = flow->localShutdown | (op == VSOCK_SHUTDOWN ? Both :
++            op == VSOCK_SHUTDOWN_RECEIVE ? Receive : Send);
++        if (packet.flags == flow->localShutdown)
++            return 0;
++        break;
++    case VSOCK_RESET:
++        if (flow->state == State::Established && flow->peerShutdown != Both) {
++            packet.operation = Shutdown;
++            packet.flags = Both;
++        } else {
++            packet.operation = Reset;
++        }
++        break;
++    case VSOCK_CREDIT_UPDATE:
++    case VSOCK_CREDIT_REQUEST:
++        if (!flow || flow->state != State::Established)
++            return ENOTCONN;
++        packet.operation = op == VSOCK_CREDIT_UPDATE ? CreditUpdate : CreditRequest;
++        break;
++    }
++
++    if (!sf_control(packet)) {
++        if (op == VSOCK_REQUEST)
++            flow->state = State::None;
++        return ENOBUFS;
++    }
++    flow->localBuffer = buffer;
++    flow->localForwarded = forwarded;
++    if (packet.operation == Shutdown)
++        flow->localShutdown = packet.flags;
++    if (op == VSOCK_RESPONSE)
++        flow->state = State::Established;
++    if (op == VSOCK_RESET) {
++        if (packet.operation == Shutdown) {
++            flow->state = State::Closing;
++            clock_interval_to_deadline(2, NSEC_PER_SEC, &flow->deadline);
++        } else {
++            flow->state = State::None;
++        }
++    }
++    return 0;
++}
++
++
++void IOVirtIOSocket::sf_replyReset(const Packet &packet)
++{
++    if (packet.operation == Reset)
++        return;
++    const auto *flow = sf_findFlow({packet.dstCID, packet.dstPort}, {packet.srcCID, packet.srcPort});
++    const Packet reset = {fCID, packet.srcCID, packet.dstPort, packet.srcPort, 0, packet.type, Reset, 0,
++                          flow ? flow->localBuffer : 0, flow ? flow->localForwarded : 0};
++    sf_control(reset);
++}
++
++void IOVirtIOSocket::sf_deliver(const Packet &packet, vsock_operation operation, mbuf_t data)
++{
++    IOLockUnlock(fLock);
++    vsock_put_message({packet.srcCID, packet.srcPort}, {packet.dstCID, packet.dstPort}, operation,
++                      packet.buffer, packet.forwarded, data, VSOCK_PROTO_STANDARD);
++    IOLockLock(fLock);
++}
++
++bool IOVirtIOSocket::sf_decodeRx(const uint8_t *bytes, Packet &packet)
++{
++    if (fRxLength > BufferSize || !decode(bytes, fRxLength, packet))
++        return false;
++    if (packet.dstCID != fCID || packet.srcCID == fCID || packet.srcCID == UINT32_MAX ||
++        packet.srcPort == UINT32_MAX || packet.dstPort == UINT32_MAX)
++        return false;
++    if (packet.type != Stream || packet.operation < Request || packet.operation > CreditRequest ||
++        (packet.operation != Data && packet.length != 0) ||
++        (packet.operation == Shutdown ? (!packet.flags || (packet.flags & ~Both)) : packet.flags != 0)) {
++        sf_replyReset(packet);
++        return false;
++    }
++    return true;
++}
++
++bool IOVirtIOSocket::sf_processRx(const Packet &packet, const uint8_t *bytes)
++{
++    const vsock_address local = {packet.dstCID, packet.dstPort};
++    const vsock_address peer = {packet.srcCID, packet.srcPort};
++    auto *flow = sf_findFlow(local, peer);
++    using RxAction = SFVirtioSocket::Action;
++    const RxAction action = receive(flow ? flow->state : State::None, packet.operation);
++    switch (action) {
++    case RxAction::Ignore:
++        if (flow && flow->state == State::Closing && packet.operation == Shutdown && packet.flags == Both) {
++            sf_replyReset(packet);
++            flow->state = State::None;
++        }
++        return true;
++    case RxAction::Reject:
++        sf_replyReset(packet);
++        if (flow) {
++            flow->state = State::None;
++            sf_deliver(packet, VSOCK_RESET, nullptr);
++        }
++        return true;
++    case RxAction::Finish:
++        flow->state = State::None;
++        return true;
++    case RxAction::Refuse:
++    case RxAction::Disconnect:
++        flow->state = State::None;
++        sf_deliver(packet, VSOCK_RESET, nullptr);
++        return true;
++    case RxAction::Accept:
++        if (packet.forwarded != 0 || !(flow = sf_newFlow(local, peer, State::RequestReceived))) {
++            sf_replyReset(packet);
++            return true;
++        }
++        flow->peerBuffer = packet.buffer;
++        sf_deliver(packet, VSOCK_REQUEST, nullptr);
++        return true;
++    case RxAction::Establish:
++    case RxAction::Deliver:
++        break;
++    }
++
++    // The peer can acknowledge only bytes we have sent. Protect XNU's
++    // unsigned credit calculation if the peer shrinks its receive window.
++    if (packet.forwarded - flow->peerForwarded > flow->sent - flow->peerForwarded ||
++        (packet.operation == Data && ((flow->peerShutdown & Send) ||
++         packet.length > credit(flow->localBuffer, flow->received, flow->localForwarded)))) {
++        sf_replyReset(packet);
++        flow->state = State::None;
++        sf_deliver(packet, VSOCK_RESET, nullptr);
++        return true;
++    }
++
++    mbuf_t data = nullptr;
++    if (packet.operation == Data && packet.length) {
++        if (mbuf_allocpacket(MBUF_DONTWAIT, packet.length, nullptr, &data) != 0)
++            return false; // Keep the descriptor until the work loop can allocate an mbuf.
++        if (mbuf_copyback(data, 0, packet.length, bytes + HeaderSize, MBUF_DONTWAIT) != 0) {
++            mbuf_freem(data);
++            return false;
++        }
++        mbuf_pkthdr_setlen(data, packet.length);
++        flow->received += packet.length;
++    }
++
++    flow->peerBuffer = packet.buffer;
++    flow->peerForwarded = packet.forwarded;
++    Packet message = packet;
++    const uint32_t outstanding = flow->sent - packet.forwarded;
++    if (message.buffer < outstanding)
++        message.buffer = outstanding;
++
++    vsock_operation operation;
++    switch (packet.operation) {
++    case Response:
++        flow->state = State::Established;
++        operation = VSOCK_RESPONSE;
++        break;
++    case Shutdown:
++        flow->peerShutdown |= packet.flags;
++        if (flow->peerShutdown == Both) {
++            sf_replyReset(packet);
++            flow->state = State::None;
++            operation = VSOCK_SHUTDOWN;
++        } else {
++            operation = packet.flags == Send ? VSOCK_SHUTDOWN_SEND : VSOCK_SHUTDOWN_RECEIVE;
++        }
++        break;
++    case Data:
++        operation = data ? VSOCK_PAYLOAD : VSOCK_CREDIT_UPDATE;
++        break;
++    case CreditRequest:
++        operation = VSOCK_CREDIT_REQUEST;
++        break;
++    default:
++        operation = VSOCK_CREDIT_UPDATE;
++        break;
++    }
++    sf_deliver(message, operation, data);
++    return true;
++}
++
++bool IOVirtIOSocket::sf_receive()
++{
++    // A delivered operation can generate a reply through the transport callback.
++    // Leave room even when the device has not returned any TX descriptors.
++    if (fControlCount >= ControlCount - 2)
++        return false;
++    VirtQueue &queue = fQueue[Rx];
++    if (!fRxHeld) {
++        if (!fPCITransport.pollForCompletion(&queue, 0, &fRxLength, &fRxId))
++            return false;
++        if (fRxId >= sf_bufferCount(queue))
++            return true;
++        fRxHeld = true;
++    }
++
++    const auto *bytes = static_cast<const uint8_t *>(fBuffers[Rx][fRxId]->getBytesNoCopy());
++    Packet packet = {};
++    if (sf_decodeRx(bytes, packet) && !sf_processRx(packet, bytes))
++        return false;
++
++    fPCITransport.freeDescChain(&queue, fRxId);
++    sf_postWritable(Rx, fRxId);
++    fPCITransport.notify(&queue);
++    fRxHeld = false;
++    return true;
++}
++
++bool IOVirtIOSocket::sf_resetEvent()
++{
++    VirtQueue &queue = fQueue[Event];
++    bool reset = false;
++    uint32_t length;
++    uint16_t slot;
++    for (unsigned i = 0; i < sf_bufferCount(queue) && fPCITransport.pollForCompletion(&queue, 0, &length, &slot); ++i) {
++        if (slot >= sf_bufferCount(queue))
++            continue;
++        const auto *bytes = static_cast<const uint8_t *>(fBuffers[Event][slot]->getBytesNoCopy());
++        reset |= length == sizeof(uint32_t) && read32(bytes) == 0;
++        fPCITransport.freeDescChain(&queue, slot);
++        sf_postWritable(Event, slot);
++        fPCITransport.notify(&queue);
++    }
++    if (!reset)
++        return true;
++
++    fOnline = false;
++    fControlStart = fControlCount = 0;
++    bzero(fFlows, sizeof(fFlows));
++    const bool valid = sf_readCID(fCID);
++    IOLockUnlock(fLock);
++    vsock_reset_transport(&fTransport);
++    IOLockLock(fLock);
++    fOnline = valid && !fStopping;
++    IOLog("IOVirtIOSocket: transport reset guest_cid=%u ready=%d\n", fCID, fOnline);
++    return fOnline;
++}
++
++void IOVirtIOSocket::sf_expire()
++{
++    const uint64_t now = mach_absolute_time();
++    for (auto &flow : fFlows) {
++        if (fControlCount >= ControlCount - 1)
++            break;
++        const State state = flow.state;
++        if (state == State::None || state == State::Established || now < flow.deadline)
++            continue;
++
++        Packet packet = {fCID, flow.peer.cid, flow.local.port, flow.peer.port, 0, Stream, Reset, 0,
++                         flow.localBuffer, flow.localForwarded};
++        if (!sf_control(packet))
++            break;
++        flow.state = State::None;
++        if (state == State::RequestSent) {
++            Packet incoming = {packet.dstCID, packet.srcCID, packet.dstPort, packet.srcPort, 0,
++                               Stream, Reset, 0, flow.peerBuffer, flow.peerForwarded};
++            sf_deliver(incoming, VSOCK_RESET, nullptr);
++        }
++    }
++}
++
++void IOVirtIOSocket::sf_poll()
++{
++    IOLockLock(fLock);
++    if (!fOnline && !fStopping)
++        fOnline = sf_readCID(fCID);
++    if (fOnline && sf_resetEvent()) {
++        sf_drainTx();
++        for (unsigned i = 0; i < BufferCount && fOnline && sf_receive(); ++i) {}
++        if (fOnline)
++            sf_expire();
++    }
++    IOLockUnlock(fLock);
++}
++
++void IOVirtIOSocket::sf_timer(OSObject *owner, IOTimerEventSource *timer)
++{
++    auto *self = static_cast<IOVirtIOSocket *>(owner);
++    self->sf_poll();
++    timer->setTimeoutMS(5);
++}
++
++int IOVirtIOSocket::sf_getCID(void *provider, uint32_t *cid)
++{
++    auto *self = static_cast<IOVirtIOSocket *>(provider);
++    IOLockLock(self->fLock);
++    const bool online = self->fOnline;
++    if (online)
++        *cid = self->fCID;
++    IOLockUnlock(self->fLock);
++    return online ? 0 : ENODEV;
++}
++
++int IOVirtIOSocket::sf_attachSocket(void *provider)
++{
++    auto *self = static_cast<IOVirtIOSocket *>(provider);
++    IOLockLock(self->fLock);
++    const bool online = self->fOnline;
++    if (online)
++        ++self->fSocketCount;
++    IOLockUnlock(self->fLock);
++    return online ? 0 : ENODEV;
++}
++
++int IOVirtIOSocket::sf_detachSocket(void *provider)
++{
++    auto *self = static_cast<IOVirtIOSocket *>(provider);
++    IOLockLock(self->fLock);
++    const bool attached = self->fSocketCount != 0;
++    if (attached)
++        --self->fSocketCount;
++    IOLockUnlock(self->fLock);
++    return attached ? 0 : EINVAL;
++}
++
++int IOVirtIOSocket::sf_putMessage(void *provider, vsock_address src, vsock_address dst,
++                                 vsock_operation op, uint32_t buffer, uint32_t forwarded, mbuf_t data)
++{
++    auto *self = static_cast<IOVirtIOSocket *>(provider);
++    IOLockLock(self->fLock);
++    const int error = self->sf_send(src, dst, op, buffer, forwarded, data);
++    IOLockUnlock(self->fLock);
++    if (data)
++        mbuf_freem(data);
++    return error;
++}
+diff --git a/src/Kernel/Extensions/IOVirtIOSocket/IOVirtIOSocket.h b/src/Kernel/Extensions/IOVirtIOSocket/IOVirtIOSocket.h
+new file mode 100644
+index 0000000..adb051b
+--- /dev/null
++++ b/src/Kernel/Extensions/IOVirtIOSocket/IOVirtIOSocket.h
+@@ -0,0 +1,83 @@
++// SPDX-License-Identifier: MIT
++// Copyright (c) 2026 SiliconForest contributors
++#pragma once
++
++#include <IOKit/IOService.h>
++#include <IOKit/IOTimerEventSource.h>
++#include <IOKit/IOWorkLoop.h>
++#include <sys/kpi_mbuf.h>
++#include <sys/vsock_transport.h>
++
++#include "IOVirtIOTransport.h"
++#include "SFVirtioSocketProtocol.h"
++
++class IOVirtIOSocket : public IOService
++{
++    OSDeclareDefaultStructors(IOVirtIOSocket);
++
++public:
++    bool start(IOService *provider) override;
++    void stop(IOService *provider) override;
++
++private:
++    using Packet = SFVirtioSocket::Packet;
++    using State = SFVirtioSocket::State;
++
++    enum : unsigned { Rx, Tx, Event, QueueCount };
++    enum : unsigned { BufferCount = 16, ControlCount = 32, FlowCount = 128 };
++    enum : uint32_t { BufferSize = SFVirtioSocket::HeaderSize + VSOCK_MAX_PACKET_SIZE };
++
++    struct Flow {
++        vsock_address local, peer;
++        State state;
++        uint32_t sent, received;
++        uint32_t localBuffer, localForwarded, peerBuffer, peerForwarded;
++        uint32_t localShutdown, peerShutdown;
++        uint64_t deadline;
++    };
++
++    IOPCIDevice *fPCI = nullptr;
++    IOLock *fLock = nullptr;
++    IOWorkLoop *fWorkLoop = nullptr;
++    IOTimerEventSource *fTimer = nullptr;
++    IOVirtIOTransport fPCITransport;
++    vsock_transport fTransport = {};
++    VirtQueue fQueue[QueueCount] = {};
++    IOBufferMemoryDescriptor *fBuffers[QueueCount][BufferCount] = {};
++    bool fTxInFlight[BufferCount] = {};
++    Packet fControls[ControlCount] = {};
++    Flow fFlows[FlowCount] = {};
++    unsigned fControlStart = 0, fControlCount = 0, fSocketCount = 0;
++    uint16_t fRxId = 0;
++    uint32_t fRxLength = 0, fCID = 0;
++    bool fRxHeld = false, fOnline = false, fRegistered = false;
++    bool fPCIOpen = false, fTimerAdded = false, fStopping = false;
++
++    void sf_releaseHardware();
++    bool sf_readCID(uint32_t &cid);
++    static unsigned sf_bufferCount(const VirtQueue &queue);
++    bool sf_initQueue(unsigned index);
++    void sf_postWritable(unsigned index, unsigned slot);
++    bool sf_submit(const Packet &packet, mbuf_t data);
++    bool sf_control(const Packet &packet);
++    void sf_drainTx();
++    void sf_poll();
++    void sf_expire();
++    bool sf_resetEvent();
++    bool sf_receive();
++    bool sf_decodeRx(const uint8_t *bytes, Packet &packet);
++    bool sf_processRx(const Packet &packet, const uint8_t *bytes);
++    void sf_replyReset(const Packet &packet);
++    void sf_deliver(const Packet &packet, vsock_operation operation, mbuf_t data);
++    Flow *sf_findFlow(vsock_address local, vsock_address peer);
++    Flow *sf_newFlow(vsock_address local, vsock_address peer, State state);
++    int sf_send(vsock_address src, vsock_address dst, vsock_operation op,
++                uint32_t buffer, uint32_t forwarded, mbuf_t data);
++
++    static void sf_timer(OSObject *owner, IOTimerEventSource *timer);
++    static int sf_getCID(void *provider, uint32_t *cid);
++    static int sf_attachSocket(void *provider);
++    static int sf_detachSocket(void *provider);
++    static int sf_putMessage(void *provider, vsock_address src, vsock_address dst,
++                             vsock_operation op, uint32_t buffer, uint32_t forwarded, mbuf_t data);
++};
+diff --git a/src/Kernel/Extensions/IOVirtIOSocket/Info.plist b/src/Kernel/Extensions/IOVirtIOSocket/Info.plist
+new file mode 100644
+index 0000000..c4dde38
+--- /dev/null
++++ b/src/Kernel/Extensions/IOVirtIOSocket/Info.plist
+@@ -0,0 +1,53 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- SPDX-License-Identifier: MIT
++     Copyright (c) 2026 SiliconForest contributors -->
++<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
++<plist version="1.0">
++<dict>
++    <key>CFBundleExecutable</key>
++    <string>IOVirtIOSocket</string>
++    <key>CFBundleIdentifier</key>
++    <string>org.siliconforest.driver.IOVirtIOSocket</string>
++    <key>CFBundleInfoDictionaryVersion</key>
++    <string>6.0</string>
++    <key>CFBundleName</key>
++    <string>IOVirtIOSocket</string>
++    <key>CFBundlePackageType</key>
++    <string>KEXT</string>
++    <key>CFBundleVersion</key>
++    <string>1.0.0</string>
++    <key>IOKitPersonalities</key>
++    <dict>
++        <key>IOVirtIOSocket</key>
++        <dict>
++            <key>CFBundleIdentifier</key>
++            <string>org.siliconforest.driver.IOVirtIOSocket</string>
++            <key>IOClass</key>
++            <string>IOVirtIOSocket</string>
++            <key>IOPCIPrimaryMatch</key>
++            <string>0x10531af4</string>
++            <key>IOProviderClass</key>
++            <string>IOPCIDevice</string>
++            <key>IOResourceMatch</key>
++            <string>IOBSD</string>
++        </dict>
++    </dict>
++    <key>OSBundleLibraries</key>
++    <dict>
++        <key>com.apple.iokit.IOPCIFamily</key>
++        <string>2.9</string>
++        <key>org.siliconforest.iokit.IOVirtIOFamily</key>
++        <string>1.0.0</string>
++        <key>com.apple.kpi.iokit</key>
++        <string>10.0.0d1</string>
++        <key>com.apple.kpi.libkern</key>
++        <string>10.0.0d1</string>
++        <key>com.apple.kpi.mach</key>
++        <string>10.0.0d1</string>
++        <key>com.apple.kpi.bsd</key>
++        <string>10.0.0d1</string>
++    </dict>
++    <key>OSBundleRequired</key>
++    <string>Local-Root</string>
++</dict>
++</plist>
+diff --git a/src/Kernel/Extensions/IOVirtIOSocket/SFVirtioSocketProtocol.h b/src/Kernel/Extensions/IOVirtIOSocket/SFVirtioSocketProtocol.h
+new file mode 100644
+index 0000000..c2770a4
+--- /dev/null
++++ b/src/Kernel/Extensions/IOVirtIOSocket/SFVirtioSocketProtocol.h
+@@ -0,0 +1,103 @@
++// SPDX-License-Identifier: MIT
++// Copyright (c) 2026 SiliconForest contributors
++#pragma once
++
++#include <stddef.h>
++#include <stdint.h>
++
++namespace SFVirtioSocket {
++
++constexpr size_t HeaderSize = 44;
++constexpr uint16_t Stream = 1;
++constexpr uint32_t Receive = 1;
++constexpr uint32_t Send = 2;
++constexpr uint32_t Both = Receive | Send;
++
++enum Operation : uint16_t {
++    Request = 1, Response, Reset, Shutdown, Data, CreditUpdate, CreditRequest
++};
++
++struct Packet {
++    uint32_t srcCID, dstCID, srcPort, dstPort, length;
++    uint16_t type, operation;
++    uint32_t flags, buffer, forwarded;
++};
++
++inline uint32_t read32(const uint8_t *p)
++{
++    return p[0] | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
++}
++
++inline void write32(uint8_t *p, uint32_t value)
++{
++    for (unsigned i = 0; i < 4; ++i)
++        p[i] = uint8_t(value >> (8 * i));
++}
++
++inline bool validGuestCID(uint32_t cid)
++{
++    return cid > 2 && cid != UINT32_MAX;
++}
++
++inline void encode(uint8_t *p, const Packet &packet)
++{
++    write32(p, packet.srcCID);
++    write32(p + 4, 0);
++    write32(p + 8, packet.dstCID);
++    write32(p + 12, 0);
++    write32(p + 16, packet.srcPort);
++    write32(p + 20, packet.dstPort);
++    write32(p + 24, packet.length);
++    write32(p + 28, packet.type | (uint32_t(packet.operation) << 16));
++    write32(p + 32, packet.flags);
++    write32(p + 36, packet.buffer);
++    write32(p + 40, packet.forwarded);
++}
++
++inline bool decode(const uint8_t *p, size_t length, Packet &packet)
++{
++    if (length < HeaderSize || read32(p + 4) || read32(p + 12))
++        return false;
++
++    const uint32_t typeAndOp = read32(p + 28);
++    packet = {read32(p), read32(p + 8), read32(p + 16), read32(p + 20), read32(p + 24),
++              uint16_t(typeAndOp), uint16_t(typeAndOp >> 16), read32(p + 32),
++              read32(p + 36), read32(p + 40)};
++    return packet.length == length - HeaderSize;
++}
++
++// Unsigned subtraction handles counter wrap. Reject a window smaller than
++// the flight size instead of wrapping the remaining credit.
++inline uint32_t credit(uint32_t allocation, uint32_t transmitted, uint32_t forwarded)
++{
++    const uint32_t outstanding = transmitted - forwarded;
++    return outstanding <= allocation ? allocation - outstanding : 0;
++}
++
++enum class State : uint8_t { None, RequestSent, RequestReceived, Established, Closing };
++enum class Action : uint8_t { Ignore, Reject, Accept, Establish, Refuse, Disconnect, Finish, Deliver };
++
++inline Action receive(State state, uint16_t operation)
++{
++    switch (state) {
++    case State::None:
++        if (operation == Request) return Action::Accept;
++        if (operation == Reset) return Action::Ignore;
++        return Action::Reject;
++    case State::RequestSent:
++        if (operation == Response) return Action::Establish;
++        if (operation == Reset) return Action::Refuse;
++        return Action::Reject;
++    case State::RequestReceived:
++        return operation == Reset ? Action::Disconnect : Action::Reject;
++    case State::Established:
++        if (operation == Reset) return Action::Disconnect;
++        if (operation >= Shutdown && operation <= CreditRequest) return Action::Deliver;
++        return Action::Reject;
++    case State::Closing:
++        return operation == Reset ? Action::Finish : Action::Ignore;
++    }
++    return Action::Ignore;
++}
++
++} // namespace SFVirtioSocket
+diff --git a/src/Kernel/Extensions/IOVirtIOSocket/tests/protocol.cpp b/src/Kernel/Extensions/IOVirtIOSocket/tests/protocol.cpp
+new file mode 100644
+index 0000000..9986f0e
+--- /dev/null
++++ b/src/Kernel/Extensions/IOVirtIOSocket/tests/protocol.cpp
+@@ -0,0 +1,53 @@
++// SPDX-License-Identifier: MIT
++// Copyright (c) 2026 SiliconForest contributors
++#include "../SFVirtioSocketProtocol.h"
++
++#include <assert.h>
++#include <stdio.h>
++#include <string.h>
++
++int main()
++{
++    using namespace SFVirtioSocket;
++
++    const Packet packet = {0xc0000001, 2, 0x12345678, 0x5678, 0, Stream, Shutdown, Both, 65536, 0xffffffff};
++    const uint8_t expected[HeaderSize] = {
++        1, 0, 0, 0xc0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0,
++        0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0, 0, 0, 0, 0, 0,
++        1, 0, 4, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0xff, 0xff, 0xff, 0xff
++    };
++    uint8_t bytes[HeaderSize + 1] = {};
++    encode(bytes + 1, packet);
++    assert(memcmp(bytes + 1, expected, HeaderSize) == 0);
++
++    Packet decoded = {};
++    assert(decode(bytes + 1, HeaderSize, decoded));
++    assert(decoded.srcCID == packet.srcCID && decoded.dstPort == packet.dstPort);
++    assert(decoded.flags == Both && decoded.forwarded == 0xffffffff);
++    assert(!decode(bytes + 1, HeaderSize - 1, decoded));
++    bytes[5] = 1;
++    assert(!decode(bytes + 1, HeaderSize, decoded));
++    bytes[5] = 0;
++    bytes[25] = 1;
++    assert(!decode(bytes + 1, HeaderSize, decoded));
++    assert(validGuestCID(0xc0000001) && !validGuestCID(2) && !validGuestCID(UINT32_MAX));
++
++    assert(credit(128, 32, 0xfffffff0) == 80);
++    assert(credit(128, 0xfffffff0, 32) == 0);
++    assert(credit(16, 32, 0) == 0);
++    assert(credit(128, 32, 32) == 128);
++
++    assert(receive(State::RequestSent, Response) == Action::Establish);
++    assert(receive(State::RequestSent, Reset) == Action::Refuse);
++    assert(receive(State::RequestSent, Data) == Action::Reject);
++    assert(receive(State::Established, Data) == Action::Deliver);
++    assert(receive(State::Established, Shutdown) == Action::Deliver);
++    assert(receive(State::Established, Reset) == Action::Disconnect);
++    assert(receive(State::Closing, Reset) == Action::Finish);
++    assert(receive(State::Closing, Data) == Action::Ignore);
++    assert(receive(State::None, Request) == Action::Accept);
++    assert(receive(State::None, Reset) == Action::Ignore);
++    assert(receive(State::None, Data) == Action::Reject);
++
++    puts("PASS header layout, CID and length validation, wrapped credit, stream state transitions");
++}
