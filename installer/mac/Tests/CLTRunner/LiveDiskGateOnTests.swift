@@ -1,0 +1,1 @@
+../SFInstallKitTests/LiveDiskGateOnTests.swift

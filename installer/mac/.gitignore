@@ -9,3 +9,4 @@ snapshots-out/
 
 # Disk images for the image-backed engine tests (never committed).
 .build-images/
+.build-gate/
