@@ -250,5 +250,5 @@ It is a rehearsal of the tooling only. **It has not been booted, and its boot fi
 | `SFFirmware` (Swift) for the installer itself | Port of `extract_firmware.py` | 3–4 days | No |
 | Rebuild the release root from the current integration line (DESIGN section 16, item 1) and the J313 boot files | Builder | 1–2 days of builder time | No |
 | Channel file, rollback protection, two public keys in the app | Code | 2 days | No |
-| **The offline release signing key** | Chris makes it, keeps it offline, gives us the public key | | **Yes. Only Chris** |
-| Distribution terms for the kernel collection and root (RELEASE_CHECKLIST blocker 4) | Legal question | | **Yes, before any public release** |
+| **The offline release signing key** | **Done 24 Nov 2026:** made offline on the M3; fingerprint in `sfrelease.RELEASE_KEY_FINGERPRINTS`, line in `release/allowed_signers` | | Done |
+| Distribution terms for the kernel collection and root (RELEASE_CHECKLIST blocker 4) | **Decided by Chris, 24 Nov 2026:** free to download and open source before any public release (DESIGN D13) | | Done; the GPL/APSL presentation detail stays open in RELEASE_CHECKLIST 4 |

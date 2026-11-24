@@ -69,6 +69,7 @@ macOS. The same app removes SiliconForest and gives the space back.
 | **D10** | **Deployment target macOS 13.5** | Do not force a macOS update, which also changes system firmware. The visual design does not need newer APIs ([`VISUAL-DESIGN.md`](VISUAL-DESIGN.md) section 7) | A wider test matrix |
 | **D11** | **macOS 27 is a required target, gated on a real resize test** (spike S11). Later majors are refused until added | Chris's Pro is believed to run 27, and a resize failure was reported on 27.0.1 | Release builds refuse 27 until S11 passes |
 | **D12** | **We never modify an install we did not create** | The development M1's hand-made layout, and any Asahi or Omarchy install, must be safe | Those users see a clear refusal instead of adoption |
+| **D13** | **Decided by Chris (24 Nov 2026): the kernel and root image are free to download and open source before any public release** | Releases publish the images with all sources alongside, each under its own licence. Apple firmware and Apple-licensed parts are never shipped (D7) | Closes RELEASE_CHECKLIST blocker 4's main question; the GPL/APSL presentation detail stays open there |
 
 ## 4. Architecture
 

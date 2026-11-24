@@ -82,8 +82,13 @@ the sources side by side, each under its own licence with notices intact, is com
 - Related: about 77 files are dual-licensed (GPL-2.0 OR MIT / BSD) and could be taken under
   the permissive option, the Rust GPU driver among them; the desktop (GPL-3.0-only) links
   the APSL libSystem.
-- Decision needed before any binary is published: source only, or images too; and if images,
-  with which firmware and Apple-licensed parts left out.
+- **Decided by Chris, 24 November 2026:** the kernel and the root image will be free to download
+  and open source before any public release. Images are published, not source only, with all
+  sources published alongside them, each under its own licence with notices intact. Apple
+  firmware and other Apple-licensed parts are never in a release; the installer extracts them
+  from Apple's restore image on the user's Mac (installer DESIGN D7, D13).
+- Still open under this decision: how the GPL-2.0 / APSL 2.0 combination in the built kernel
+  collection is presented (take advice if wanted), and the per-file notices in item 6.
 - Effort: the decision; advice if wanted.
 
 ## High
