@@ -140,7 +140,7 @@ public final class ResizeSupervisor: @unchecked Sendable {
         public static let tests = Timing(poll: 0.05, sample: 0.2, stall: 0.6)
     }
 
-    let backend: DiskImageBackend
+    let backend: any EngineBackend
     let launcher: ResizeLauncher
     public var timing: Timing
     public var onEvent: (@Sendable (ResizeEvent) -> Void)?
@@ -148,7 +148,7 @@ public final class ResizeSupervisor: @unchecked Sendable {
     /// resize running, as when the helper crashes mid-resize.
     public var dieAfter: Double?
 
-    public init(backend: DiskImageBackend, launcher: ResizeLauncher = SpawnLauncher(), timing: Timing = Timing()) {
+    public init(backend: any EngineBackend, launcher: ResizeLauncher = SpawnLauncher(), timing: Timing = Timing()) {
         self.backend = backend; self.launcher = launcher; self.timing = timing
     }
 
@@ -158,8 +158,7 @@ public final class ResizeSupervisor: @unchecked Sendable {
     public func start(store uuid: String, to bytes: Int64, log: URL) throws -> (Started, ResizeProcess) {
         let id = try backend.identifier(uuid)
         let argv = ["/usr/sbin/diskutil", "apfs", "resizeContainer", id, bytes == 0 ? "0" : "\(bytes)B"]
-        try backend.chokepoint.authorizeAll(argv)
-        backend.chokepoint.invalidate()
+        try backend.authorizeResize(argv)
         let p = try launcher.launch(argv, log: log)
         onEvent?(.started(pid: p.pid))
         return (Started(pid: p.pid, log: log), p)

@@ -143,7 +143,7 @@ public enum EngineEvent: Sendable {
 /// Runs an approved plan against a disk image, journaling intent before and evidence after every
 /// change. `run` starts or resumes; `rollback` undoes everything up to the recovery handoff.
 public final class InstallEngine: @unchecked Sendable {
-    public let backend: DiskImageBackend
+    public let backend: any EngineBackend
     public let journal: ChainJournal
     public let profile: DeviceProfile
     public let release: ReleaseManifest?
@@ -162,7 +162,7 @@ public final class InstallEngine: @unchecked Sendable {
     /// The operation in progress, for error reports.
     var breadcrumb: String?
 
-    public init(backend: DiskImageBackend, journal: ChainJournal, profile: DeviceProfile, release: ReleaseManifest?, releaseSource: URL?,
+    public init(backend: any EngineBackend, journal: ChainJournal, profile: DeviceProfile, release: ReleaseManifest?, releaseSource: URL?,
                 workDir: URL, faults: FaultPlan = FaultPlan(), launcher: ResizeLauncher = SpawnLauncher(),
                 resizeTiming: ResizeSupervisor.Timing = .init()) {
         self.backend = backend; self.journal = journal; self.profile = profile; self.release = release
@@ -186,7 +186,7 @@ public final class InstallEngine: @unchecked Sendable {
         let planJSON = String(decoding: try Canonical.data(approved), as: UTF8.self)
         let originalJSON = String(decoding: try Canonical.data(t), as: UTF8.self)
         try journal.append(.begin, args: ["plan": .s(planJSON), "plan_digest": .s(approved.digest), "original": .s(originalJSON),
-                                          "layout_digest": .s(t.layoutDigest), "image": .s(backend.imagePath)])
+                                          "layout_digest": .s(t.layoutDigest), "image": .s(backend.targetLabel)])
     }
 
     // MARK: run / resume
@@ -196,6 +196,10 @@ public final class InstallEngine: @unchecked Sendable {
         let st = state
         guard let plan = st.plan, let original = st.original else { throw EngineError(.internalError, "job has not begun") }
         if let end = st.end { return end }
+        // A protecting backend derives its protection receipt from exactly the plan and the original
+        // partition table the journal saved, so it is the same after a crash and a restart.
+        try backend.arm(plan: plan, original: original)
+        if plan.operation == .install { backend.expectRelease(release, in: workDir) }
         var gate = Gate(plan: plan, original: original, created: st.created)
         let order = plan.operation == .install ? StepCode.install : StepCode.removal
         for code in order {
@@ -259,6 +263,7 @@ public final class InstallEngine: @unchecked Sendable {
         if st.end == .rolledBack { return .rolledBack }
         guard plan.operation == .install else { throw EngineError(.blocked, "a removal can't be rolled back; it can only finish") }
         guard st.end == nil else { throw EngineError(.blocked, "this job ended (\(st.end!.rawValue)); use Remove") }
+        try backend.arm(plan: plan, original: original)
         var gate = Gate(plan: plan, original: original, created: st.created)
         for code in StepCode.install.reversed() {
             st = state

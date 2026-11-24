@@ -2,12 +2,14 @@ import Foundation
 import SFIdentity
 import SFInstallKit
 import SFEngine
+import SFLiveDisk
 
-/// What the helper works on. In this build the only target is a disk image (rehearsal); the real
-/// internal disk needs a `LiveDiskBackend`, which does not exist yet and is never linked into
-/// test or simulator builds (ENGINE §12).
+/// What the helper works on. The shipped helper's target is `.none`. `.image` rehearses on a disk image
+/// with the image-only backend. `.live` runs the `LiveDiskBackend` against a `TargetAuthority`: an
+/// attached disk image in tests, and only in a build with `SF_REAL_DISK_WRITES` plus a valid runtime
+/// authorization (RealDiskGate), the internal disk (ENGINE §12).
 public struct HelperConfig: Sendable {
-    public enum Target: Sendable { case none, image(URL) }
+    public enum Target: Sendable { case none, image(URL), live(any TargetAuthority) }
     public var target: Target
     public var allowedImageRoot: URL
     /// Root-only in production (`/var/db/org.siliconforest.installer/journal`). The helper owns it;
@@ -72,11 +74,12 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
 
     // MARK: plumbing
 
-    func backend() throws -> DiskImageBackend {
-        guard case .image(let url) = config.target else {
-            throw HelperError.make(.noTarget, "This build of the helper has no disk backend; it rehearses on disk images only.")
+    func backend() throws -> any EngineBackend {
+        switch config.target {
+        case .image(let url): return DiskImageBackend(imagePath: url, allowedRoot: config.allowedImageRoot)
+        case .live(let authority): return LiveDiskBackend(authority: authority)
+        case .none: throw HelperError.make(.noTarget, "This build of the helper has no disk target; nothing is written.")
         }
-        return DiskImageBackend(imagePath: url, allowedRoot: config.allowedImageRoot)
     }
 
     func profile() throws -> DeviceProfile {
@@ -117,7 +120,11 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
     public func helperInfo(reply: @escaping (Data?, NSError?) -> Void) {
         self.reply(reply) {
             let target: String
-            if case .image(let u) = config.target { target = "image \(u.lastPathComponent)" } else { target = "none" }
+            switch config.target {
+            case .image(let u): target = "image \(u.lastPathComponent)"
+            case .live(let a): target = "live \(a.label)"
+            case .none: target = "none"
+            }
             let unfinished = ChainJournal.unfinished(in: config.journalDirectory).map { $0.deletingPathExtension().lastPathComponent }
             return try Canonical.data(HelperInfo(identifier: SigningIdentity.helperIdentifier, build: config.helperBuild,
                                                  minimumClientBuild: config.policy.minimumClientBuild, target: target, unfinishedJobs: unfinished))

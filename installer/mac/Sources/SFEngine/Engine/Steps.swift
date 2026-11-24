@@ -131,7 +131,7 @@ extension InstallEngine {
             guard let release, let root = gate.created["root"] else { throw EngineError(.inconsistent, "no root partition") }
             try gate.admit(.writeRaw(partition: root, offset: 0, bytes: release.rootImageBytes), now: try backend.topology())
             try journal.append(.intent, step: c, args: ["image": .s(release.rootImage), "bytes": .i(release.rootImageBytes)])
-            let w = try backend.writeImage(root, source: work(release.rootImage), compressed: release.rootImageCompressed)
+            let w = try backend.writeImage(root, source: work(release.rootImage), compressed: release.rootImageCompressed, progress: nil)
             guard w.bytes == release.rootImageBytes, w.sha256 == release.rootImageSHA256 else {
                 throw EngineError(.inconsistent, "the decompressed image isn't the release's (\(w.bytes) B)")
             }

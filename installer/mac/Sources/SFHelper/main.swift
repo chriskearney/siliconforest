@@ -7,8 +7,9 @@ import SFHelperKit
 // SFHelper: the privileged half of the installer (DESIGN §6), started by launchd through
 // SMAppService when the app connects to its Mach service.
 //
-// This build has no disk backend for a real Mac (no LiveDiskBackend): every verb that would touch
-// a disk answers `noTarget`. The full verb set runs against disk images in-process in the tests
+// This build's target is `.none`: every verb that would touch a disk answers `noTarget`. The
+// LiveDiskBackend is linked (SFLiveDisk) but can only be pointed at a disk image; the internal-disk
+// authority is not compiled in (no SF_REAL_DISK_WRITES), and nothing here selects `.live`. The full verb set runs against disk images in-process in the tests
 // (anonymous XPC listener) and through `sfinstallctl rehearse-image`.
 //
 //   SFHelper                      listen on the Mach service (launchd)

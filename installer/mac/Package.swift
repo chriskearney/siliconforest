@@ -9,12 +9,15 @@ import Foundation
 //   SFFlow        the screen state machine (one observable session)
 //   SFInstaller   the app: AppKit shell, screens, snapshot renderer
 //   SFEngine      the acting half: chokepoint, gate, journal, step machine, resize supervisor, image backend
+//   SFLiveDisk    LiveDiskBackend: protection receipt, target authority, release checks (real disk only behind the two-key gate)
 //   SFHelperKit   the helper's verb-only XPC protocol and service; SFHelper is its launchd executable
 //   SFRecovery    recoveryOS app (AppKit only) over SFRecoveryKit (gate, steps, PTY driver)
 //   SFStub        restore-image range reader, zip, stub builder (port of Asahi v0.9.2, MIT); sfstubctl drives it on images
 //
-// Safety: real-disk writes are compiled out. `SF_REAL_DISK_WRITES` is never defined here, and even
-// with it the only executor in this phase refuses every mutating operation (see RealDiskBackend).
+// Safety: real-disk writes are compiled out. `SF_REAL_DISK_WRITES` is never defined here. Without it the
+// only disk SFLiveDisk can write to is an attached disk image; with it, the internal disk still needs a
+// root-owned, plan- and disk-bound runtime authorization (RealDiskGate) and the protection receipt.
+// `RefusingExecutor` stays the default executor everywhere else.
 
 // Command Line Tools ship Swift Testing outside the default framework search path; Xcode doesn't
 // need this. Only added when that directory exists.
@@ -51,8 +54,11 @@ let package = Package(
         .target(name: "SFDesign", dependencies: ["SFInstallKit", "SFCopy"], swiftSettings: ui),
         .target(name: "SFFlow", dependencies: ["SFInstallKit", "SFCopy", "SFDesign"], swiftSettings: ui),
         .executableTarget(name: "SFInstaller", dependencies: ["SFInstallKit", "SFCopy", "SFDesign", "SFFlow"], swiftSettings: ui),
+        // The live disk backend (ENGINE §12): protection receipt, target authority, pre-write release checks and the
+        // two-key real-disk gate. Without `SF_REAL_DISK_WRITES` its only target is a disk image.
+        .target(name: "SFLiveDisk", dependencies: ["SFInstallKit", "SFEngine"]),
         // The helper's verb-only NSXPC protocol, service, trust checks, lifecycle and bundle layout.
-        .target(name: "SFHelperKit", dependencies: ["SFIdentity", "SFInstallKit", "SFEngine"]),
+        .target(name: "SFHelperKit", dependencies: ["SFIdentity", "SFInstallKit", "SFEngine", "SFLiveDisk"]),
         .executableTarget(name: "SFHelper", dependencies: ["SFHelperKit", "SFEngine", "SFInstallKit", "SFIdentity"],
                           linkerSettings: [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
                                                          "-Xlinker", helperInfoPlist])]),
@@ -65,9 +71,9 @@ let package = Package(
         .target(name: "SFStub"),
         .executableTarget(name: "sfstubctl", dependencies: ["SFStub", "SFEngine"]),
         // Same tests as an executable, for Command Line Tools-only Macs (see scripts/test.sh).
-        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit", "SFRecoveryKit", "SFStub"], path: "Tests/CLTRunner",
+        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub"], path: "Tests/CLTRunner",
                           swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
-        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit", "SFRecoveryKit", "SFStub"],
+        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub"],
                     swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
     ]
 )

@@ -28,7 +28,7 @@ public struct ImageGuard: Sendable {
     /// Default allowed directory: `installer/mac/.build-images` in the source tree.
     public static var defaultRoot: URL { SFEnginePaths.imagesDirectory }
 
-    static func resolve(_ path: String) -> String {
+    public static func resolve(_ path: String) -> String {
         var buf = [CChar](repeating: 0, count: Int(PATH_MAX))
         guard realpath(path, &buf) != nil else { return (path as NSString).standardizingPath }
         return String(decoding: buf.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)

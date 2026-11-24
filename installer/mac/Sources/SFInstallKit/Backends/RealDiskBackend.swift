@@ -125,8 +125,8 @@ public actor RealDiskBackend: DiskBackend {
         let commands = operation.commands(resolve: resolve).map { $0.map { $0.replacingOccurrences(of: "<new>", with: created ?? "<new>") } }
 
         #if SF_REAL_DISK_WRITES
-        // Compile-time gate (never set by Package.swift) AND a runtime gate. Even when both are open,
-        // the executor in this phase refuses: writes need the signed privileged helper.
+        // Compile-time gate (never set by Package.swift) AND a runtime gate, which for this app-side planner
+        // is permanently closed: writes belong to the signed privileged helper (`LiveDiskBackend`).
         if operation.isMutating && RealDiskWriteGate.runtimeAllowed {
             try await executor.run(commands)
             projected = model
@@ -228,9 +228,9 @@ public actor RealDiskBackend: DiskBackend {
 
 #if SF_REAL_DISK_WRITES
 enum RealDiskWriteGate {
-    /// Requires an explicit environment opt-in *and* root. The app is never root; only a helper is.
-    static var runtimeAllowed: Bool {
-        ProcessInfo.processInfo.environment["SF_ALLOW_REAL_DISK_WRITES"] == "I-have-a-backup" && getuid() == 0
-    }
+    /// This app-side planner never writes. The real-disk path is the helper's `LiveDiskBackend`, behind
+    /// `RealDiskGate` (compile key plus a root-owned, plan- and disk-bound authorization). An app-side
+    /// executor stays closed even when the compile key is on.
+    static var runtimeAllowed: Bool { false }
 }
 #endif
