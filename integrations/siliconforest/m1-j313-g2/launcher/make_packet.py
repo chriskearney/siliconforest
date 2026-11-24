@@ -23,6 +23,8 @@ import sys
 import tarfile
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import protection_receipt  # noqa: E402
 KC_SHA = 'ef49aa0a376ed1b25054247e708467c020d5c8c95855186a166a5c8f616018c8'
 KC_BYTES = 34637870
 TIP_COMMIT = 'cd001928e0223fd77a7850f09e43580b51bde239'
@@ -177,6 +179,9 @@ def main():
         'ramdisk': {'sha256': sha(args.out / 'ramdisk.img'),
                     'payload_record_sha256': sha(args.out / 'ramdisk.record.json'),
                     'guest_script_sha256': sha(guest)},
+        # The launcher refuses a kernel without this receipt (configure_kernel_text_policy).
+        'components': {'native_kernel': {
+            'development_protection_configuration': protection_receipt.derive(output)}},
         'hardware_gate': 'NOT_BOOTED_WAITING_FOR_OWNER_APPROVAL',
         'not_claimed': ['any boot on J313', 'display, keyboard, trackpad, Wi-Fi or thermal behaviour'],
     }

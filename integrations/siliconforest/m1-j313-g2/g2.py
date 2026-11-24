@@ -17,7 +17,9 @@ There is never a second reset: if Linux does not return, this stops and prints t
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -28,6 +30,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / 'esp'))
@@ -117,6 +120,42 @@ def inputs(config):
                 packet=root / PINS['packet_dir'], lab=root / PINS['lab_dir'], inventory=root / 'inventory.json')
 
 
+LAUNCHER_POLICY = 'integrations/puredarwin/m1-bringup/host_progress.py'
+LAUNCHER_IMAGE = 'integrations/puredarwin/m1-bringup/normal_image.py'
+
+
+def launcher_text_policy(lab, build_record):
+    """Run the launcher's own configure_kernel_text_policy on the packet's build record, offline.
+
+    The function is taken from the delivered launcher tree (not a copy), so the plan refuses exactly
+    what the M5 would refuse after the Air had already been rebooted. Returns its report.
+    """
+    source = (lab / LAUNCHER_POLICY).read_text()
+    node = next((n for n in ast.parse(source).body
+                 if isinstance(n, ast.FunctionDef) and n.name == 'configure_kernel_text_policy'), None)
+    if node is None:
+        raise Stop('the launcher has no configure_kernel_text_policy')
+    spec = importlib.util.spec_from_file_location('g2_launcher_image', lab / LAUNCHER_IMAGE)
+    image = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(image)
+    scope = dict(json=json, struct=__import__('struct'), image=image)
+    exec(compile(ast.Module(body=[node], type_ignores=[]), str(lab / LAUNCHER_POLICY), 'exec'), scope)
+
+    class Chosen:
+        def __init__(self):
+            self._types = {}
+    chosen = Chosen()
+    hv = types.SimpleNamespace(adt={'chosen': chosen})
+    try:
+        report = scope['configure_kernel_text_policy'](
+            hv, types.SimpleNamespace(contents={'build_record': build_record}))
+    except ValueError as error:
+        raise Stop('input check failed: launcher kernel text policy: ' + str(error))
+    if getattr(chosen, 'kernel_ctrr_to_be_enabled', None) != b'\0\0\0\0':
+        raise Stop('input check failed: launcher kernel text policy did not set kernel-ctrr-to-be-enabled to 0')
+    return report
+
+
 def verify_local(config):
     paths = inputs(config)
     checks = []
@@ -135,6 +174,13 @@ def verify_local(config):
         check(f'packet {name}', sha(paths['packet'] / item['path']) == item['sha256'])
     check('kernel is the G1 RAM-boot collection', manifest['artifacts']['kernel']['sha256'] == PINS['kernel_sha256'])
     check('launcher tree hash', tree_hash(paths['lab']) == PINS['lab_tree_sha256'])
+    record = (paths['packet'] / manifest['artifacts']['build_record']['path']).read_bytes()
+    receipt = json.loads(record).get('components', {}).get('native_kernel', {}).get(
+        'development_protection_configuration', {}).get('derived_from_build', {})
+    check('kernel protection receipt was derived from the build',
+          receipt.get('kernel_config') == 'DEVELOPMENT' and bool(receipt.get('kernel_binary_sha256')))
+    launcher_text_policy(paths['lab'], record)
+    check('launcher kernel text policy accepts the build record', True)
     extra = (paths['lab'] / 'integrations/puredarwin/m1-bringup/extra_bootargs.txt').read_text().strip()
     check('boot arguments are the reviewed ones', extra == PINS['extra_bootargs'])
     for word in ('sfsound=0', 'sftouchbar=0', 'sfm1tpmt=0'):

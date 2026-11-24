@@ -352,5 +352,69 @@ class M5Cycle(unittest.TestCase):
                 call()
 
 
+class KernelTextPolicy(unittest.TestCase):
+    """The plan runs the launcher's own policy check on the build record before anything touches the Air."""
+    RECEIPT = dict(implementation_selectors_omitted=['KERNEL_INTEGRITY_CTRR', 'XNU_MONITOR', 'PMAP_CS', 'PMAP_CS_ENABLE'],
+                   kernel_text_hardware_locked=False, PPL_protection_claimed=False)
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.lab = Path(self.tmp.name)
+        target = self.lab / 'integrations/puredarwin/m1-bringup'
+        target.mkdir(parents=True)
+        source = HERE.parent / 'm1-bringup'
+        for name in ('host_progress.py', 'normal_image.py'):
+            (target / name).write_bytes((source / name).read_bytes())
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def record(self, policy):
+        return json.dumps(dict(components=dict(native_kernel=dict(development_protection_configuration=policy)))).encode()
+
+    def test_the_first_packet_is_refused(self):
+        with self.assertRaisesRegex(g2.Stop, 'unprotected development build receipt'):
+            g2.launcher_text_policy(self.lab, json.dumps(dict(status='BUILT_NOT_BOOTED')).encode())
+
+    def test_a_receipt_is_accepted_and_sets_the_property_to_zero(self):
+        report = g2.launcher_text_policy(self.lab, self.record(self.RECEIPT))
+        self.assertEqual(report['value'], 0)
+        self.assertIs(report['kernel_text_hardware_locked'], False)
+
+    def test_any_claim_of_protection_is_refused(self):
+        for bad in ({**self.RECEIPT, 'kernel_text_hardware_locked': True}, {**self.RECEIPT, 'PPL_protection_claimed': 0},
+                    {**self.RECEIPT, 'implementation_selectors_omitted': ['XNU_MONITOR']}, {}):
+            with self.subTest(bad=bad), self.assertRaises(g2.Stop):
+                g2.launcher_text_policy(self.lab, self.record(bad))
+
+
+class ProtectionReceipt(unittest.TestCase):
+    """The receipt is read from the bring-up patch the kernel was built with, never typed in."""
+    def setUp(self):
+        sys.path.insert(0, str(HERE / 'launcher'))
+        import protection_receipt
+        self.receipt = protection_receipt
+        self.text = protection_receipt.BRINGUP_PATCH.read_text()
+
+    def test_the_real_patch_selects_the_unprotected_build(self):
+        self.assertIn('!DARWIN_LAB_M1_BRINGUP', self.receipt.patch_selects_unprotected(self.text))
+
+    def test_a_patch_that_keeps_any_selector_is_refused(self):
+        for old, new in (('+#undef KERNEL_INTEGRITY_CTRR\n', ''), (' && !DARWIN_LAB_M1_BRINGUP\n', '\n'),
+                         ('-DDARWIN_LAB_M1_BRINGUP=1', '')):
+            with self.subTest(old=old), self.assertRaises(SystemExit):
+                self.receipt.patch_selects_unprotected(self.text.replace(old, new, 1))
+
+    def test_protection_symbols(self):
+        match = self.receipt.FORBIDDEN_SYMBOLS.match
+        for name in ('_rorgn_lockdown', '_rorgn_stash_range', '_ppl_handler_table', '_pmap_ppl_disable',
+                     '_pmap_cs_associate', '_ppl_trampoline_start'):
+            self.assertTrue(match(name), name)
+        for name in ('_ml_unsafe_kernel_text', '_pmap_claim_reserved_ppl_page', '_sysctl__machdep_ctrr_type',
+                     '_lockdown_mode_init'):
+            self.assertFalse(match(name), name)
+
+
 if __name__ == '__main__':
     unittest.main()
