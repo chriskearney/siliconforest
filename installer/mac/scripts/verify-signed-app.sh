@@ -53,11 +53,13 @@ if [[ -f "$PLIST" ]]; then
   label="$(plutil -extract Label raw "$PLIST" 2>/dev/null || true)"
   prog="$(plutil -extract BundleProgram raw "$PLIST" 2>/dev/null || true)"
   associated="$(plutil -extract AssociatedBundleIdentifiers.0 raw "$PLIST" 2>/dev/null || true)"
-  mach="$(plutil -extract "MachServices.${HELPER_ID}" raw "$PLIST" 2>/dev/null || true)"
+  # plutil -extract treats dots as a nested path, so the Mach service name
+  # (org.siliconforest.installer.helper) has to be read via plistlib.
+  mach="$(python3 -c 'import plistlib,sys; v=plistlib.load(open(sys.argv[1],"rb")).get("MachServices",{}).get(sys.argv[2]); print("true" if v in (True,1,"true","1") else "")' "$PLIST" "$HELPER_ID")"
   [[ "$label" == "$HELPER_ID" ]] || err "LaunchDaemon Label is '${label}', expected ${HELPER_ID}"
   [[ "$prog" == "Contents/MacOS/SFHelper" ]] || err "LaunchDaemon BundleProgram is '${prog}'"
   [[ "$associated" == "$APP_ID" ]] || err "LaunchDaemon AssociatedBundleIdentifiers[0] is '${associated}'"
-  [[ "$mach" == "true" || "$mach" == "1" ]] || err "LaunchDaemon MachServices.${HELPER_ID} is missing"
+  [[ "$mach" == "true" ]] || err "LaunchDaemon MachServices.${HELPER_ID} is missing"
 fi
 
 info_of() { codesign -dvv "$1" 2>&1; }
