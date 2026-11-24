@@ -1,0 +1,67 @@
+name: Installer macOS tests
+
+# Image-backed engine, helper XPC, and recovery-link tests. Nothing here writes
+# to a real disk, and the real-disk write compile-time gate stays unset.
+on:
+  push:
+    paths:
+      - "installer/mac/**"
+      - "installer/profiles/**"
+      - ".github/workflows/installer-mac.yml"
+  pull_request:
+    paths:
+      - "installer/mac/**"
+      - "installer/profiles/**"
+      - ".github/workflows/installer-mac.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installer-mac-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: SFInstallKit tests (image-backed only)
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm the Apple-silicon macOS runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(uname -s)" == Darwin ]]
+          [[ "$(uname -m)" == arm64 ]]
+          xcodebuild -version
+          swift --version
+
+      - name: Run installer tests
+        working-directory: installer/mac
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset SF_REAL_DISK_WRITES || true
+          unset SF_ALLOW_REAL_DISK_WRITES || true
+          if [[ -n "${SF_REAL_DISK_WRITES:-}" || -n "${SF_ALLOW_REAL_DISK_WRITES:-}" ]]; then
+            echo "Real-disk write gates must stay unset in CI." >&2
+            exit 1
+          fi
+          scripts/test.sh
+
+      - name: Build an ad-hoc app and verify helper and recovery layout
+        working-directory: installer/mac
+        shell: bash
+        env:
+          VERSION: 0.0.0-ci
+          BUILD_NUMBER: ${{ github.run_number }}
+          SIGN_IDENTITY: "-"
+        run: |
+          set -euo pipefail
+          unset SF_REAL_DISK_WRITES || true
+          unset SF_ALLOW_REAL_DISK_WRITES || true
+          scripts/make-app.sh
+          scripts/verify-signed-app.sh "build/SiliconForest Installer.app"

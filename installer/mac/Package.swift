@@ -26,6 +26,11 @@ let testLinkerSettings: [LinkerSetting] = hasCLTTesting
     : []
 let ui: [SwiftSetting] = [.swiftLanguageMode(.v5)]
 
+// Prefer a version-stamped helper Info.plist written by scripts/make-app.sh before the release build.
+let helperInfoPlist = FileManager.default.fileExists(atPath: "build/SFHelper-Info.plist")
+    ? "build/SFHelper-Info.plist"
+    : "Support/SFHelper-Info.plist"
+
 let package = Package(
     name: "SiliconForestInstaller",
     platforms: [.macOS(.v13)],   // D10: deployment target 13.5 (LSMinimumSystemVersion in the app)
@@ -49,7 +54,7 @@ let package = Package(
         .target(name: "SFHelperKit", dependencies: ["SFIdentity", "SFInstallKit", "SFEngine"]),
         .executableTarget(name: "SFHelper", dependencies: ["SFHelperKit", "SFEngine", "SFInstallKit", "SFIdentity"],
                           linkerSettings: [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
-                                                         "-Xlinker", "Support/SFHelper-Info.plist"])]),
+                                                         "-Xlinker", helperInfoPlist])]),
         // recoveryOS (DESIGN §7): Foundation-only core (gate, steps, PTY driver) and the AppKit app.
         // scripts/check-recovery-links.sh fails the build if SFRecovery links anything §7.3 forbids.
         .target(name: "SFRecoveryKit", swiftSettings: ui),

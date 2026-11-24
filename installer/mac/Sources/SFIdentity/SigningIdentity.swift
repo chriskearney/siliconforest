@@ -3,9 +3,10 @@ import Foundation
 /// Who signs what (DESIGN §6.1, §6.2, §11). The ONE place the team ID lives: the app, the helper
 /// and the recovery binary all pin each other through these strings.
 ///
-/// Developer ID signing is pending Chris's go. Every build so far is ad hoc (`codesign -s -`), which
-/// does not satisfy these requirements; the in-process XPC tests pin the test binary's own ad hoc
-/// requirement instead, and prove the Developer ID requirement rejects it.
+/// Developer ID signing and notarization run in `.github/workflows/installer-release.yml`.
+/// Local and test builds stay ad hoc (`codesign -s -`), which does not satisfy these requirements;
+/// the in-process XPC tests pin the test binary's own ad hoc requirement instead, and prove the
+/// Developer ID requirement rejects it.
 public enum SigningIdentity {
     /// Chris Kearney's Developer ID team.
     public static let teamID = "Z642ZK8JK4"

@@ -12,7 +12,7 @@ on:
       version:
         description: "Version to stamp (no installer-v prefix)"
         required: true
-        default: "0.1.0-preview1"
+        default: "0.1.0-preview2"
         type: string
 
 permissions:
@@ -54,6 +54,7 @@ jobs:
     name: Signed and notarized dry-run DMG (Apple silicon)
     needs: validate
     runs-on: macos-15
+    timeout-minutes: 90
     env:
       INSTALLER_VERSION: ${{ needs.validate.outputs.version }}
       INSTALLER_TAG: ${{ needs.validate.outputs.tag }}
@@ -78,6 +79,19 @@ jobs:
           xcodebuild -version
           swift --version
           xcrun notarytool --version
+
+      - name: Run installer tests (image-backed only)
+        working-directory: installer/mac
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset SF_REAL_DISK_WRITES || true
+          unset SF_ALLOW_REAL_DISK_WRITES || true
+          if [[ -n "${SF_REAL_DISK_WRITES:-}" || -n "${SF_ALLOW_REAL_DISK_WRITES:-}" ]]; then
+            echo "Real-disk write gates must stay unset in CI." >&2
+            exit 1
+          fi
+          scripts/test.sh
 
       - name: Preserve the runner keychain configuration
         shell: bash
@@ -190,8 +204,13 @@ jobs:
           scripts/make-app.sh
           app="build/SiliconForest Installer.app"
           test -d "$app"
-          codesign --verify --strict --verbose=2 "$app"
-          codesign -dvv "$app" 2>&1 | grep -F 'Authority=Developer ID Application:'
+          scripts/verify-signed-app.sh --developer-id "$app"
+          echo "---- app ----"
+          codesign -dvv "$app"
+          echo "---- helper ----"
+          codesign -dvv "$app/Contents/MacOS/SFHelper"
+          echo "---- recovery ----"
+          codesign -dvv "$app/Contents/Helpers/SFRecovery"
 
       - name: Package, sign, notarize and staple the DMG
         shell: bash
@@ -318,9 +337,15 @@ jobs:
           cat > "$notes" <<EOF
           **Dry-run preview only — this will not install SiliconForest or change a real disk.**
 
-          Disk writes are compiled out of this build. Use it to look at the installer UI and flow, not to resize, partition, or write any volume.
+          This preview ships the privileged helper (\`org.siliconforest.installer.helper\`) and the recovery-mode component (\`org.siliconforest.recovery\`), both Developer ID signed with the hardened runtime and notarized with the app via the DMG. There is no pkg and no Developer ID Installer certificate.
 
-          Team: \`Z642ZK8JK4\`. The application and DMG are Developer ID signed, notarized, and stapled.
+          The helper is an SMAppService daemon (LaunchDaemon plist in \`Contents/Library/LaunchDaemons\`, binary in \`Contents/MacOS/SFHelper\`). XPC connections are accepted only from the signed app on team \`Z642ZK8JK4\`. It wraps the install engine, but this preview still refuses real-disk destructive operations: the compile-time write gate is off, the production helper has no live-disk backend, and image-backed targets are for tests only.
+
+          The recovery-mode AppKit binary, launcher, and Terminal fallback script are inside the app. They have not been run in recoveryOS.
+
+          Use this build to look at the installer UI and flow, not to resize, partition, or write any volume.
+
+          Team: \`Z642ZK8JK4\`. The application, helper, recovery binary, and DMG are Developer ID signed, notarized, and stapled.
 
           - \`SiliconForest-Installer-${version}-dryrun-preview.dmg\`
           EOF

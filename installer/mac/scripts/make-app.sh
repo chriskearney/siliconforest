@@ -1,16 +1,21 @@
 #!/bin/bash
 # Builds "SiliconForest Installer.app" into installer/mac/build/ (git-ignored).
 #
-# Signing here is ad hoc only (`codesign -s -`): enough to run locally, not to distribute.
-# Developer ID signing (team Z642ZK8JK4, SFIdentity) is pending Chris's go.
-# Developer ID signing + notarization happen on a machine with the identity (see README.md):
-#   SIGN_IDENTITY="Developer ID Application: …" scripts/make-app.sh   (hardened runtime, timestamp)
+# Signing defaults to ad hoc (`codesign -s -`): enough to run locally, not to distribute.
+# Developer ID signing + notarization happen in CI (.github/workflows/installer-release.yml):
+#   SIGN_IDENTITY="Developer ID Application: Chris Kearney (Z642ZK8JK4)" scripts/make-app.sh
+# Signs the app, helper, and recovery binary inside-out with --options runtime --timestamp.
+# Do not use --deep to sign. Do not ship a pkg or a Developer ID Installer certificate.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 VERSION="${VERSION:-0.9.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)}"
 IDENTITY="${SIGN_IDENTITY:--}"
+
+mkdir -p "$ROOT/build"
+# Stamp the helper Info.plist before linking so CFBundleVersion matches this build.
+scripts/write-helper-info-plist.sh "$VERSION" "$BUILD_NUMBER" "$ROOT/build/SFHelper-Info.plist"
 
 echo "▸ swift build (release)"
 swift build -c release --product SFInstaller
@@ -35,7 +40,10 @@ cp "$ROOT/build/helper-plists/org.siliconforest.installer.helper.plist" "$APP/Co
 # The recoveryOS pieces the helper assembles onto the stub (DESIGN §7.1).
 scripts/check-recovery-links.sh "$BIN/SFRecovery"
 cp "$BIN/SFRecovery" "$APP/Contents/Helpers/SFRecovery"
+# Copy as resources, not executable nested code, so codesign --verify --deep stays clean.
+# The helper marks them executable when it assembles SiliconForest Setup.app on a stub.
 cp Recovery/sf-launcher Recovery/sf-step2.sh "$APP/Contents/Resources/RecoveryPayload/"
+chmod a-x "$APP/Contents/Resources/RecoveryPayload/sf-launcher" "$APP/Contents/Resources/RecoveryPayload/sf-step2.sh"
 
 # Device profiles: the canonical installer/profiles (with their schema).
 cp "$ROOT"/../profiles/*.json "$APP/Contents/Resources/Profiles/"
@@ -79,12 +87,15 @@ plutil -lint "$APP/Contents/Info.plist" > /dev/null
 echo "▸ codesign ($([ "$IDENTITY" = "-" ] && echo "ad hoc" || echo "$IDENTITY"))"
 SIGN_ARGS=(--force --sign "$IDENTITY")
 if [ "$IDENTITY" != "-" ]; then SIGN_ARGS+=(--options runtime --timestamp); fi
+# Sign inside-out, never --deep (DESIGN §11).
 codesign "${SIGN_ARGS[@]}" "$APP/Contents/MacOS/sfinstallctl"
-# Frozen identifiers (SFIdentity): the helper and the recovery binary are signed as themselves.
 codesign "${SIGN_ARGS[@]}" --identifier org.siliconforest.installer.helper "$APP/Contents/MacOS/SFHelper"
 codesign "${SIGN_ARGS[@]}" --identifier org.siliconforest.recovery "$APP/Contents/Helpers/SFRecovery"
-codesign "${SIGN_ARGS[@]}" "$APP"
-codesign --verify --strict --verbose=2 "$APP"
+codesign "${SIGN_ARGS[@]}" --identifier org.siliconforest.installer "$APP"
+
+VERIFY=(scripts/verify-signed-app.sh)
+if [ "$IDENTITY" != "-" ]; then VERIFY+=(--developer-id); fi
+"${VERIFY[@]}" "$APP"
 
 echo "✓ $APP"
 echo "  open \"$APP\"                     # full-screen dry run"
