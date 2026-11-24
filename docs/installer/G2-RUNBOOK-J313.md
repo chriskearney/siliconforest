@@ -16,6 +16,12 @@ Written 22 November 2026 and updated 23 November for CHL-27, gate G2 of [`FIRST-
 > the default boot entry and partition table are unchanged, and no `boot.bin.pre-g2` exists. Of the 76 ESP files, only `limine.conf`
 > and `limine_history/snapshots.json` differ, and both were rewritten by the Air's own hourly snapshot timer. The Linux root is
 > still full (about 1.3 MB free). `g2.py plan` at `8341c4eab` passes 16 of 16 input checks.
+>
+> **First G2 run, 23 November 17:33 PST: `NO_SHELL_LINUX_RESTORED`.** The window build booted on the Air under stage 1 v1.5.2,
+> the M5 took the proxy and started the hypervisor, and then the launcher refused the packet before the kernel ran: its build
+> record had no kernel protection receipt. Linux came back, stage 2 was restored and verified, and the latch was cleared.
+> `packet-002` is `packet-001` with that receipt, derived from the build by `launcher/protection_receipt.py`; the kernel and
+> RAM root are unchanged. `g2.py plan` now runs the launcher's own `configure_kernel_text_policy` on the packet before any Air step.
 
 ## 1. What is on the Air
 

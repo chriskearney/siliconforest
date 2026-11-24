@@ -10,9 +10,9 @@
     "bytes": 10238674,
     "sha256": "c688793a85af45b1a71254798da10f56c4f861584b1dc1e606b559f964f5664c"
   },
-  "packet_dir": "packet-001",
+  "packet_dir": "packet-002",
   "lab_dir": "lab-001",
-  "manifest_sha256": "1804a1c447bd305bdef52a61fbdfd36147021ccaae648dc9dea7398a058eff21",
+  "manifest_sha256": "733f7f2bc0a3c503b9fee145653e68ef513cb77e491000eeb2a98412883e8dc1",
   "kernel_sha256": "ef49aa0a376ed1b25054247e708467c020d5c8c95855186a166a5c8f616018c8",
   "ramdisk_sha256": "41abdbdf18a411a6fd9e905d9e6171e1790347e2ffaecbe4487a8fb020a1f762",
   "lab_tree_sha256": "c8fb1bea55748bca6418871d405979b416997d190db9dabdfb5a852f4bd8fcbf",
