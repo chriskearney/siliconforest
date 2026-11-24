@@ -15,9 +15,11 @@ SIG = "SHA256SUMS.sig"
 TEST_MARK = "TEST-ONLY"
 PART_LIMIT = 1_900_000_000          # GitHub release assets stay under 2 GiB
 NAME = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._+-]{0,127}\Z")
-# Release keys Chris has made, by their SHA256 fingerprint as ssh-keygen -l prints it. Empty until
-# he makes the offline key: no non-rehearsal release can be signed or accepted before then.
-RELEASE_KEY_FINGERPRINTS = frozenset()
+# Release keys Chris has made, by their SHA256 fingerprint as ssh-keygen -l prints it. The matching
+# allowed_signers line is in release/allowed_signers. The private key stays offline, never in git.
+RELEASE_KEY_FINGERPRINTS = frozenset({
+    "SHA256:y5XAQCFbvtrcB7JG73cXZajUSTrIOewSASbcoVKspQc",  # siliconforest-release offline 2026-11-24 (Ed25519)
+})
 
 
 class ReleaseError(Exception):

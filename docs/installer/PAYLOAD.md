@@ -146,8 +146,9 @@ As DESIGN section 10, made concrete:
   4. install.json agrees with `SHA256SUMS` on every artifact's size and hash.
   5. Slots are inside the image, aligned and not overlapping, and the growth limit is above the image.
   6. The root parts decompress to exactly `image_sha256`.
-- **The release key does not exist.** `sfrelease.RELEASE_KEY_FINGERPRINTS` is empty, so no non-rehearsal release can be
-  signed by these tools.
+- **The release key.** Chris made the offline Ed25519 release key on 24 November 2026. Its fingerprint
+  (`SHA256:y5XAQCFbvtrcB7JG73cXZajUSTrIOewSASbcoVKspQc`) is in `sfrelease.RELEASE_KEY_FINGERPRINTS`, and its
+  `allowed_signers` line is `installer/payload/release/allowed_signers`. The private key stays offline and is never committed.
 - `make_test_key.sh` makes a throwaway key whose comment says `TEST-ONLY`. A rehearsal must be signed by such a key, and such
   a key can sign nothing else. install.json records `rehearsal: true`, and the verifier refuses a rehearsal unless asked
   with `--allow-rehearsal`. Test keys are made in a temporary directory and never committed.

@@ -17,8 +17,8 @@ signature, namespace siliconforest-release, SHA256SUMS.sig):
                                       (never the firmware itself) and the slot offsets
 
 A rehearsal must be signed with a TEST-ONLY key (make_test_key.sh) and says so in install.json.
-Anything else needs a key in sfrelease.RELEASE_KEY_FINGERPRINTS, which is empty until Chris makes
-the offline release key. Nothing here publishes anything.
+Anything else needs a key in sfrelease.RELEASE_KEY_FINGERPRINTS (the offline release key Chris
+made on 24 Nov 2026; its allowed_signers line is release/allowed_signers). Nothing here publishes anything.
 """
 
 import argparse
