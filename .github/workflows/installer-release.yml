@@ -209,6 +209,7 @@ jobs:
           app="build/SiliconForest Installer.app"
           test -d "$app"
           scripts/verify-signed-app.sh --developer-id "$app"
+          scripts/check-real-disk-gate.sh "$app"
           echo "---- app ----"
           codesign -dvv "$app"
           echo "---- helper ----"
