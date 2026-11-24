@@ -280,7 +280,7 @@ Summary here. Full detail, including every state and its rollback, is in [`ENGIN
 - **Execution** is a checkpointed state machine with an append-only, hash-chained journal. Every step is idempotent: it first checks whether its effect already exists.
 - **Every change** passes one gate, which refuses anything the approved plan does not name and stops if any existing partition moves.
 - **Rollback** is available from every state until the recovery step, and removal is available after it.
-- **Dry run** runs the same engine against a plist-described fake disk or an image-backed sparse disk. Real-disk execution is compiled out of the test builds, and test builds refuse any device that is not image-backed.
+- **Dry run** runs the same engine against a plist-described fake disk or an image-backed sparse disk. Real-disk execution is behind two keys, both off in every test, CI and shipped build (ENGINE §12.1), and test builds refuse any device that is not image-backed.
 
 ### 8.3 First boot and the boot receipt
 

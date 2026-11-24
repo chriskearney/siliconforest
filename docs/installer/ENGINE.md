@@ -275,7 +275,7 @@ From SF-AJ's checklist, extended. **Runs first on the M1 Air (J313), with Chris'
 |---|---|---|
 | `FakeDiskBackend` | Loads a plist-described disk, applies commands to the model. Port of `fakemac.py` | Memory |
 | `ImageDiskBackend` | Real `diskutil` and `hdiutil` on an attached sparse image | The image only |
-| `LiveDiskBackend` | Real disk | The real disk, **release builds only** |
+| `LiveDiskBackend` (`SFLiveDisk`) | The same real tools, behind three independent checks, aimed by a `TargetAuthority` | An image today (`ImageTargetAuthority`). The internal disk only in a build with the compile key, and only with the runtime key ([§12.1](#121-the-live-backend-and-the-real-disk-gate)) |
 
 ```sh
 sfinstallctl plan     --fake fixtures/m1-stock --size 80G
@@ -284,7 +284,32 @@ sfinstallctl rehearse --image /tmp/sf-test.sparseimage --size 256G
 ```
 
 `ImageDiskBackend` checks **on every call** that the device's `diskutil info -plist` reports a disk image, and aborts otherwise.
-`LiveDiskBackend` is not linked into test or simulator builds.
+`LiveDiskBackend` is linked into every build, but **inert on a real disk**: the only type that can aim it at an internal disk (`InternalDiskAuthority`) is compiled in only when `SF_REAL_DISK_WRITES` is defined, and no shipped, CI or test build defines it.
+
+### 12.1 The live backend and the real-disk gate
+
+`InstallEngine` and `ResizeSupervisor` run over `EngineBackend`, which `DiskImageBackend` and `LiveDiskBackend` both implement. The live backend runs the same S00–S70 and U10–U40, so everything the fork sweep proves on images holds for it.
+
+**Every mutation passes three independent checks**, each of which can refuse alone:
+
+1. **Target authority.** `TargetAuthority.authorize(device)` says which disk this process may touch. `ImageTargetAuthority` wraps `ImageGuard` (the same attached image, every call). `InternalDiskAuthority` (compile key only) finds the one internal physical disk whose GPT UUID matches the runtime authorization, and refuses a disk image, an external disk, a second claimant, and any APFS volume disk not synthesised from it.
+2. **Protection receipt.** Derived from the sealed plan and the journal's original topology, so a crash-resume or rollback re-derives the same one. It classifies every original partition (Apple system, macOS, Linux stub, Linux ESP, Linux root, other). Everything not macOS and not owned by this job is *protected*. A command is refused if it names a protected partition, touches anything outside the one span the plan may change (macOS's tail through the next original partition; on removal, macOS's end through the first protected one), or leaves macOS at a size other than the plan's. After each mutation the backend re-reads the table and compares protected geometry and a 1 MiB head hash of each protected Linux/other partition; any change **trips** the chokepoint, which then refuses everything until a new process.
+3. **The engine's gate** (§6): typed verbs, plan digest, journal order.
+
+`LiveMutation` is a strict parser: `resizeContainer`, `addPartition` (APFS, or the EFI/Linux GUIDs with `%noformat%`), `eraseVolume free`, `apfs deleteContainer`, `apfs addVolume`, `newfs_msdos -F 32`, `mount nobrowse`, `unmount` and `hdiutil detach` (images only). Everything else is refused, as is any forbidden tool (`bputil`, `bless`, `kmutil`, `csrutil`, `dd`, …) before parsing. Raw device opens and mount points are guarded the same way.
+
+**Image write.** `writeImage` verifies the root image against the release manifest immediately before opening the raw device: the file's SHA-256 as shipped, then its decompressed length and SHA-256, and it must sit inside the verified release directory. A damaged, swapped or mismatched image is refused before a byte is written. The engine then reads back and compares, as on images.
+
+**Two keys, both default off.**
+
+| Key | What | Default |
+|---|---|---|
+| Compile | `SF_REAL_DISK_WRITES` defined at build time. Never in `Package.swift`; the installer-mac and installer-release workflows run `scripts/check-real-disk-gate.sh` to fail on the symbol, the define or the env var. | Off |
+| Runtime | A root-owned JSON authorization file (not group- or world-writable, in a root-only directory), bound to the plan digest and the disk's GPT UUID, valid for ≤ 2 hours, with the printed statement; re-read before every mutation, so removing it or letting it expire stops a job mid-way. | Absent |
+
+`RefusingExecutor` and `RealDiskWriteGate.runtimeAllowed` (permanently `false`) are unchanged, so the shipped helper still answers `noTarget`. `scripts/test-gate-compiled.sh` builds once with the key into a scratch directory and runs `InternalDiskAuthorityTests` against fake runners and canned plists only. It is verification, never shipped.
+
+**Proven on images** (`LiveBackendImageTests`, `LiveBackendFaultTests`, `ProtectionReceiptTests`, `ReleaseCheckTests`, `RealDiskGateTests`): install and removal on J293 and J313 with the J313 Linux partitions byte-identical throughout; refusal of every protected, non-target, malformed and forbidden command with the specific reason; a protected partition changed behind the backend's back; a release or root image damaged after the engine verified it; failing `diskutil`, a write that fails half-way or flips a bit, power loss after each disk step, a failed resize, and the journal fork sweep with a way forward and back from every sampled state.
 
 In the app, **Show What Would Happen** on the Review screen is a dry run against the real, read-only topology.
 

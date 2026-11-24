@@ -24,7 +24,7 @@ Module names follow [`docs/installer/DESIGN.md`](../../docs/installer/DESIGN.md)
 | `SFInstallKit` | The read-only half: profile loading (canonical `installer/profiles/*.json`), disk model and classification, ENGINE §4 sizing, compatibility, the simulator's planner and runner, read-only disk backends. No UI. |
 | `SFEngine` | **The acting half (M3).** `ImageGuard` + `ImageChokepoint` (the image-only door for every change), typed verbs and the `Gate` (ENGINE §6), the hash-chained journal (§9), plan and binding (§5), the step machine S00–S70 / U10–U40 with idempotent checks, resume and rollback (§7), the resize supervisor (§8), `DiskImageBackend`, J293/J313 image fixtures, a rehearsal release, diagnostics redaction. |
 | `SFHelperKit` | The helper's verb-only NSXPC protocol (`SFHelperXPC`), `HelperService` (owns the journal, runs jobs, short-lived), connection trust (signing requirement + minimum client build), `SecureBytes`, the LaunchDaemon layout and the SMAppService registration path (not called in this build). |
-| `SFHelper` | The launchd executable over SFHelperKit. Its Info.plist is linked in (`org.siliconforest.installer.helper`). This build has no live-disk backend, so its disk verbs answer `noTarget`. |
+| `SFHelper` | The launchd executable over SFHelperKit. Its Info.plist is linked in (`org.siliconforest.installer.helper`). Its target is `.none` (the real-disk gate is closed), so its disk verbs answer `noTarget`. |
 | `SFRecoveryKit` | recoveryOS logic, Foundation only: the fail-closed gate (R10), `bputil -nc` and `kmutil configure-boot` through `PTYDriver` with password redaction (R20, R30), markers (R40), next-start-only `bless` (R50). It shares state markers with `sf-step2.sh`. |
 | `SFRecovery` | The recoveryOS app: AppKit and Core Graphics only, minimum macOS 13.0. It exits 0 when finished and 75 on Shut Down; any other exit makes `sf-launcher` open Terminal. `--snapshot` renders offscreen. |
 | `Recovery/` | `sf-launcher` (DESIGN §7.1) and `sf-step2.sh` (the Terminal fallback). |
@@ -202,7 +202,7 @@ Nothing below has been attempted. Each item is recorded instead of being worked 
 | Registering `SFHelper` with SMAppService | Would prompt at the console. Needs a signed app | The helper as a real LaunchDaemon |
 | SFRecovery in recoveryOS | Needs the Air, the power-button step and Chris's go. `bputil` and `kmutil` are never run here | Spikes S3 (AppKit launch via `.IAPhysicalMedia`, full screen), S6 (PTY `bputil`/`kmutil`) |
 | The Apple_Boot booter on the internal disk | Seen on images only | Confirm S45/S46 at G5 with a read-only dry run on the Air |
-| A `LiveDiskBackend` for the internal disk | Deliberately not built. Release builds only, after review | M5, the first real install |
+| Aiming `LiveDiskBackend` at the internal disk | Built (`SFLiveDisk`) and proven on images. The compile key `SF_REAL_DISK_WRITES` is never defined and the runtime authorization file doesn't exist. `InternalDiskAuthority` is verified only against fake runners | M5, the first real install: Chris's go, a one-off flagged build, the authorization file made with someone at the Air |
 | SFStub | M1 done: `Sources/SFStub` and `sfstubctl` build the stub's content tree from the 13.5 image by range reads, on disk images; differential test against Asahi v0.9.2 passes (`scripts/stub-differential.sh`, PAYLOAD §9). Not yet called by the engine | M2–M4: production payload, S30/S35 wiring. No Asahi fallback (DESIGN §6.4) |
 | Firmware extraction, downloads | Not built in M3. The rehearsal release stands in | M3's remaining half |
 
@@ -234,7 +234,7 @@ Sizing (ENGINE §4): macOS keeps `used + 38 GB (1 GB under 150 GiB) + downloads 
 | Disk changes in the app's flow | **Simulated** (`SimulatedDiskBackend`: diskutil's refusals, realistic timing, failure injection). `--real` records them as *not executed*. The app is not yet wired to `SFEngine` |
 | The engine (`SFEngine`): chokepoint, gate, hash-chained journal, plan binding, S00–S70 and U10–U40, resume, rollback, resize supervisor | **Real, on disk images only** (real `diskutil`, `newfs_msdos`, raw writes and read-back), with fault-injection tests |
 | `updatePreboot` (S20), `bless` (S65, U10) | **Simulated on images** and journaled as needing approval: they need root and a real Mac |
-| Writing to a real disk | **Not built.** There is no `LiveDiskBackend`; the chokepoint refuses every non-image device |
+| Writing to a real disk | **Closed.** `LiveDiskBackend` exists and runs the whole engine on images through three independent checks (target authority, protection receipt, engine gate). Aiming it at an internal disk needs a compile key and a runtime authorization file, both absent in every build. See ENGINE §12.1 |
 | Privileged helper (`SFHelper`, `SFHelperKit`) | **Real code, tested in-process** over an anonymous XPC listener against images. The launchd daemon is laid out in the app but never registered: that needs a Developer ID-signed app |
 | recoveryOS app (`SFRecovery`, `sf-launcher`, `sf-step2.sh`) | **Real code, tested only with fake tools.** It has never run in recoveryOS (spikes S3, S5, S6) |
 | Downloads, the stub builder (SFStub), firmware extraction, the boot receipt reader | Not built. The rehearsal release stands in, made of placeholder bytes with real hashes and offsets |
