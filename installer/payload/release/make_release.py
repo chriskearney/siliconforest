@@ -138,6 +138,11 @@ def build(a):
         src = a.boot_dir / name
         if not src.is_file():
             raise R.ReleaseError(f"boot file {name} missing from {a.boot_dir}")
+        if role == "stage1":
+            # A release carries our real stage 1 (boot/build_stage1.sh); only a rehearsal may use a placeholder.
+            data = src.read_bytes()
+            if not a.rehearsal or R.STAGE1_MARK in data:
+                R.check_stage1(data, *R.profile_stage1(a.profiles))
         shutil.copyfile(src, out / name)
         add(out / name, f"boot-{role}")
         boot[role] = name

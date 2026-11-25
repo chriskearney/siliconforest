@@ -10,12 +10,14 @@ on:
       - "installer/payload/**"
       - "installer/profiles/**"
       - "tests/test_installer_payload.py"
+      - "integrations/siliconforest/m1-native-boot/install/**"
       - ".github/workflows/installer-payload.yml"
   pull_request:
     paths:
       - "installer/payload/**"
       - "installer/profiles/**"
       - "tests/test_installer_payload.py"
+      - "integrations/siliconforest/m1-native-boot/install/**"
       - ".github/workflows/installer-payload.yml"
   workflow_dispatch:
 

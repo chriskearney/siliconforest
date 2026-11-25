@@ -88,6 +88,9 @@ def verify(d, allowed_signers, allow_rehearsal=False, shallow=False):
     for role in ("stage1", "stage2", "bootargs"):
         if inst["boot"].get(role) not in listed:
             raise R.ReleaseError(f"boot {role} is not a listed artifact")
+    if not rehearsal:
+        # a release's stage 1 is our m1n1 (boot/build_stage1.sh), from the profiles' revision
+        R.check_stage1((Path(d) / inst["boot"]["stage1"]).read_bytes(), *R.profile_stage1(Path(__file__).resolve().parents[2] / "profiles"))
     if "kernel" in inst["boot"]:
         raise R.ReleaseError("a prelinked kernel collection is not part of format 3")
     kc = inst["kernel_collection"]

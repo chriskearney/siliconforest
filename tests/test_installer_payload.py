@@ -200,6 +200,57 @@ class FirmwareTests(unittest.TestCase):
                 rz.read('090-1.dmg')
 
 
+class Stage1Tests(unittest.TestCase):
+    """The release's sf-stage1.bin (installer/payload/boot/build_stage1.sh; PAYLOAD.md section 12)."""
+    PIN = '121fcbf35d4501814b58ca5347926a4173b6a512'
+
+    def image(self, tag=None, stopped=True, size=600_000):
+        tag = tag if tag is not None else self.PIN + '-siliconforest-stage1-v1'
+        body = b'\x1f' * 4096 + b'##m1n1_ver##' + tag.encode() + b'\0' + (b'SF_STOPPED\0' if stopped else b'')
+        return body + b'\0' * (size - len(body))
+
+    def test_our_stage_1_is_accepted(self):
+        self.assertEqual(sfrelease.check_stage1(self.image(), self.PIN, 4325376), self.PIN + '-siliconforest-stage1-v1')
+
+    def test_anything_else_is_refused(self):
+        bad = {
+            'empty': b'',
+            'too large for the footprint': self.image(size=4325377),
+            "Asahi's stage 1": self.image(tag='v1.5.2'),
+            'another m1n1 revision': self.image(tag='5e3a756398bf0000000000000000000000000000-siliconforest-stage1-v1'),
+            'a stage 2 tag': self.image(tag=self.PIN + '-siliconforest-boot-v2'),
+            'the proxy-fallback variant': self.image(stopped=False),
+            'a placeholder': b'SF-REHEARSAL placeholder sf-stage1.bin\n',
+        }
+        for why, data in bad.items():
+            with self.subTest(why), self.assertRaises(sfrelease.ReleaseError):
+                sfrelease.check_stage1(data, self.PIN, 4325376)
+
+    def test_profiles_agree_with_the_g2_window(self):
+        rev, footprint = sfrelease.profile_stage1(ROOT / 'installer/profiles')
+        self.assertEqual((rev, footprint), (self.PIN, 4325376))
+        pins = json.loads((ROOT / 'integrations/siliconforest/m1-j313-g2/g2-pins.json').read_text())
+        self.assertTrue(pins['window_tag'].startswith(rev))
+        self.assertEqual(pins['window_raw']['bytes'], footprint)
+
+    def test_the_release_build_is_the_installed_machines_stage_1_recipe(self):
+        # build_stage1.sh must build what install/build.sh's "sf-stage1" built (the stage 1 in the stub of the
+        # installed machine): same make variables, tag, patch set and expected SHA-256. A drift fails here.
+        rel = (P / 'boot/build_stage1.sh').read_text()
+        kit = (ROOT / 'integrations/siliconforest/m1-native-boot/install/build.sh').read_text()
+        for v in ('USE_CLANG=1', 'RELEASE=1', 'SF_INSTALLED=1', 'BUILTIN_LOGO=siliconforest', 'CHAINLOADING=1'):
+            self.assertIn(v, rel)
+            self.assertIn(v, kit)
+        self.assertIn('m1n1 sf-stage1 "$PIN-siliconforest-stage1-v1" 0 CHAINLOADING=1', kit)
+        self.assertIn('TAG="$PIN-siliconforest-stage1-v1"', rel)
+        installed = '44c1ef0bda96224f5fe8c6228cc12ec1966b7781f38844cea960b21b47654318'
+        self.assertIn('STAGE1_INSTALLED=' + installed, rel)
+        self.assertIn('STAGE1_INSTALLED=' + installed, kit)
+        # stage 1 takes the top-level patches only; the stage 2 ones are never applied to it
+        self.assertIn('"$PATCHES"/*.patch', rel)
+        self.assertIn('PATCHES=$ROOT/integrations/siliconforest/m1-native-boot/install/patches\n', rel)
+
+
 @unittest.skipUnless(E2FS and have('xz', 'ssh-keygen', 'perl'), 'needs e2fsprogs, xz, ssh-keygen')
 class ReleaseTests(unittest.TestCase):
     @classmethod
@@ -296,6 +347,15 @@ class ReleaseTests(unittest.TestCase):
         args = [a if a != str(self.keys / 'TEST-ONLY-release-key') else str(k / 'key') for a in self.args]
         self.assertEqual(self.make_release.main(args + ['--out', str(self.t / 'real2')]), 1)
         self.assertEqual(self.make_release.main(args + ['--out', str(self.t / 'real3'), '--rehearsal']), 1)
+
+    def test_a_tagged_stage_1_is_checked_even_in_a_rehearsal(self):
+        boot = self.t / 'boot-wrong-stage1'
+        shutil.copytree(self.t / 'boot', boot)
+        (boot / 'sf-stage1.bin').write_bytes(Stage1Tests().image(tag='0' * 40 + '-siliconforest-stage1-v1'))
+        args = [a if a != str(self.t / 'boot') else str(boot) for a in self.args]
+        self.assertEqual(self.make_release.main(args + ['--out', str(self.t / 'wrong-s1'), '--rehearsal']), 1)
+        (boot / 'sf-stage1.bin').write_bytes(Stage1Tests().image())
+        self.assertEqual(self.make_release.main(args + ['--out', str(self.t / 'right-s1'), '--rehearsal']), 0)
 
     # The kernel collection as separate files (PAYLOAD.md section 13; release/kc_release.py)
 

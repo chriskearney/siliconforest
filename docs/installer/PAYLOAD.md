@@ -43,6 +43,18 @@ profiles ───┘                        │
 
 `rehearse.sh OUT` runs all of it on a synthetic root, or on a real one with `--base`.
 
+**Stage 1** (`sf-stage1.bin`, one of the boot files) is built from source by `boot/build_stage1.sh OUT`: Omacom m1n1 at the profiles'
+`boot.stage1.source_revision` (`121fcbf`), our patch `m1-native-boot/install/patches/0001` (an installed machine stops with a message
+instead of falling back to the USB proxy or restarting), `RELEASE=1 CHAINLOADING=1 SF_INSTALLED=1`, our boot logo, version tag
+`121fcbf…-siliconforest-stage1-v1`. It is the recipe of the stage 1 already in the stub of the installed machine (13 November 2026):
+on the i9 (clang/ld.lld 22.1.8, rustc 1.98.1 with `aarch64-unknown-none-softfloat`) it rebuilds **byte-identical**, 4,325,376 bytes,
+`44c1ef0bda96224f…` (25 Nov 2026), and a build with another hash stops unless `SF_NEW_STAGE1=1`. `sf-stage1.json` records pin, patch
+hashes and tools. With the variables for a PARTUUID that does not exist and four NULs it is byte-for-byte the kit's `sf-stage1-test.bin`,
+the boot object that stopped by itself on the bench ([SF-R-storage](../roadmap/issues/SF-R-storage.md) step 6). `make_release.py` refuses a
+release whose stage 1 lacks our tag for the profiles' revision, the installed variant (`SF_STOPPED`) or fits not in the 4,325,376-byte
+footprint (`sfrelease.check_stage1`); a rehearsal may carry a placeholder, but a tagged stage 1 is checked there too, and
+`verify_release.py` repeats the check for a real release. `rehearse.sh --stage1 FILE` rehearses with the real one. The binary is never committed.
+
 ## 3. The installer root
 
 `prepare_root.py BASE OUT` copies the release root (`siliconforest-root.ext4` + `root.manifest.tsv`, the output of
@@ -305,7 +317,7 @@ boot object, a changed volume or container, a leaked Asahi path or a new normali
   `deb848ec…` identical to Asahi's. **0 differences beyond the declared delta**; volumes, roles, group, `bootable`, container size
   (2,499,805,184) equal. Commands: equal apart from the 8 app-tree `os.chflags` lines, and equal to `sf-payload-commands.txt`.
 - The run uses a synthetic icon, a synthetic stage 1 and SFRecovery stand-in (`SF_RECOVERY_BIN` carries a real one) and a synthetic `plan.json`; no Apple
-  or release binary is committed. The release's real `sf-stage1.bin` has not been built or run here.
+  or release binary is committed. The release's real `sf-stage1.bin` is built since 25 Nov (section 2); the differential keeps the synthetic one.
 
 Not yet done (SFStub M2b–M5): the engine's S30/S35 calling SFStub through the image chokepoint and helper verbs, with journal and resume (the live backend lacks the
 `changeVolumeRole` and `rename` shapes; S55 writes its boot object in another format than `m1n1.build`, see [`STUB-ONLY-RUN-J313.md`](STUB-ONLY-RUN-J313.md) section 8);

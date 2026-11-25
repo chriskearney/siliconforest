@@ -12,6 +12,7 @@ Files and images only; nothing here opens a device or publishes anything.
 | `image/synthetic_base.py` | A small stand-in root for tests and CI |
 | `image/sf-installer-firstboot`, `sf-boot-receipt`, `sf-unpack-firmware` | Installed into the root |
 | `release/make_release.py`, `verify_release.py`, `sfrelease.py` | `install.json` (`siliconforest-install/2`), `SHA256SUMS` and its SSH signature, and verification |
+| `boot/build_stage1.sh` | The release's `sf-stage1.bin` from Omacom m1n1 `121fcbf` + our stage 1 patch; byte-identical to the installed stage 1 with the lab toolchain |
 | `release/make_test_key.sh` | A throwaway **TEST-ONLY** key for rehearsals. Not the release key, which only Chris makes |
 | `release/receipt.py` | The boot receipt as macOS reads it (reference for the Swift reader) |
 | `firmware/extract_firmware.py`, `remote_zip.py`, `wifi.py` | On a Mac: firmware from the 13.5 restore image (Wi-Fi collector ported from Asahi v0.9.2, MIT) |

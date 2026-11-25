@@ -75,3 +75,57 @@ def canonical(obj):
 
 def load_json(path):
     return json.loads(Path(path).read_text())
+
+
+STAGE1_MARK = b"##m1n1_ver##"
+STAGE1_TAG = "-siliconforest-stage1-v"
+
+
+def check_stage1(data, revision, footprint):
+    """A release's sf-stage1.bin must be our m1n1 stage 1 (boot/build_stage1.sh): built from the
+    profile's m1n1 revision with our stage 1 tag, the installed variant (stops, never falls back to the
+    USB proxy) and no larger than the footprint the profile fits stage 2 into. Returns the tag."""
+    if not data:
+        raise ReleaseError("sf-stage1.bin is empty")
+    if len(data) > footprint:
+        raise ReleaseError(f"sf-stage1.bin is {len(data)} bytes, more than stage 1's {footprint}")
+    m = re.search(re.escape(STAGE1_MARK) + rb"([0-9a-f]{40}" + re.escape(STAGE1_TAG.encode()) + rb"[0-9]+)", data)
+    if not m:
+        raise ReleaseError("sf-stage1.bin is not a SiliconForest stage 1 (no version tag)")
+    tag = m.group(1).decode()
+    if not tag.startswith(revision + STAGE1_TAG):
+        raise ReleaseError(f"sf-stage1.bin was built from {tag[:40]}, not the profile's {revision}")
+    if b"SF_STOPPED" not in data:
+        raise ReleaseError("sf-stage1.bin is not the installed variant (it could fall back to the USB proxy)")
+    return tag
+
+
+def profile_stage1(profiles_dir):
+    """(revision, footprint) of stage 1, the same in every profile."""
+    seen = set()
+    for p in sorted(Path(profiles_dir).glob("*.json")):
+        if p.name.endswith(".schema.json"):
+            continue
+        s1 = load_json(p).get("boot", {}).get("stage1")
+        if s1:
+            seen.add((s1["source_revision"], int(s1["max_stage2_span_bytes"])))
+    if len(seen) != 1:
+        raise ReleaseError(f"the profiles disagree on stage 1: {sorted(seen)}")
+    return seen.pop()
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+    ap = argparse.ArgumentParser(description="checks for release files")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    c = sub.add_parser("check-stage1")
+    c.add_argument("file")
+    c.add_argument("--revision", required=True)
+    c.add_argument("--footprint", type=int, required=True)
+    a = ap.parse_args()
+    try:
+        print(check_stage1(Path(a.file).read_bytes(), a.revision, a.footprint))
+    except ReleaseError as e:
+        print(f"refused: {e}", file=sys.stderr)
+        sys.exit(1)

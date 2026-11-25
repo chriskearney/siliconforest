@@ -2,14 +2,15 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
 #
-# rehearse.sh OUT [--base ROOTFS_DIR] [--boot BOOT_DIR] [--names NAMES.tsv] [--grow BYTES]
+# rehearse.sh OUT [--base ROOTFS_DIR] [--boot BOOT_DIR | --stage1 SF_STAGE1_BIN] [--names NAMES.tsv] [--grow BYTES]
 #                  [--kc KC_INPUTS --kc-builder TOOL [--kc-link-tool HOST_TOOL] [--kc-expect SHA256]]
 #
 # One rehearsal release, end to end, on ordinary files (docs/installer/PAYLOAD.md section 10):
 #   base root -> prepare_root.py -> grow_check.py -> throwaway TEST-ONLY key -> make_release.py
 #   -> verify_release.py (deep) -> a tampered copy must be refused.
 # Without --base a synthetic root stands in (synthetic_base.py), and without --boot the boot files
-# are labelled placeholders. Without --kc the kernel collection is synthetic inputs linked by the
+# are labelled placeholders; --stage1 puts a real stage 1 (boot/build_stage1.sh) among them, and make_release
+# then checks it as a release would. Without --kc the kernel collection is synthetic inputs linked by the
 # rehearsal stand-in (release/rehearsal_kc_builder.py); with --kc, a release-inputs directory
 # (integrations/siliconforest/kc-builder/release-inputs.nix) and the macOS kc-builder (build-macos.sh,
 # shipped as ad-hoc in a rehearsal) with a host kc-builder for the expected hash. Nothing is published and no device is opened. The key is made in OUT
@@ -17,11 +18,11 @@
 set -euo pipefail
 here=$(cd -- "$(dirname -- "$0")" && pwd)
 out=${1:?usage: rehearse.sh OUT [--base DIR] [--boot DIR] [--names TSV] [--grow BYTES]}; shift
-base= boot= names="$here/firmware/names/13.5-22G74-J313.tsv" grow=$((8 << 30)) version=0.0.0-rehearsal
+base= boot= stage1= names="$here/firmware/names/13.5-22G74-J313.tsv" grow=$((8 << 30)) version=0.0.0-rehearsal
 kc= kcb= kclink= kcexpect=
 while [ $# -gt 0 ]; do
     case $1 in
-        --base) base=$2; shift 2;; --boot) boot=$2; shift 2;; --names) names=$2; shift 2;;
+        --base) base=$2; shift 2;; --boot) boot=$2; shift 2;; --stage1) stage1=$2; shift 2;; --names) names=$2; shift 2;;
         --grow) grow=$2; shift 2;; --version) version=$2; shift 2;;
         --kc) kc=$2; shift 2;; --kc-builder) kcb=$2; shift 2;; --kc-link-tool) kclink=$2; shift 2;;
         --kc-expect) kcexpect=$2; shift 2;; *) echo "unknown $1" >&2; exit 2;;
@@ -37,6 +38,7 @@ fi
 if [ -z "$boot" ]; then
     boot=$out/boot; mkdir -p "$boot"
     for f in sf-stage1.bin boot.bin; do printf 'SF-REHEARSAL placeholder %s\n' "$f" > "$boot/$f"; done
+    [ -z "$stage1" ] || cp "$stage1" "$boot/sf-stage1.bin"
     printf 'rd=uuid boot-uuid=@SF_FSUUID@ sfnvme_part=@SF_PARTUUID@ sfnvme_part_lba=@SF_PART_LBA@\n' > "$boot/bootargs.template"
 fi
 if [ -z "$kc" ]; then
