@@ -69,5 +69,10 @@ public struct ImageTargetAuthority: TargetAuthority {
         guard imageGuard.isUnderAllowedRoot(imagePath) else { throw SafetyRefusal("image outside the allowed directory") }
         let r = try ProcessToolRunner().run(["/usr/bin/hdiutil", "attach", "-nomount", "-nobrowse", "-noverify", "-noautofsck", imagePath])
         guard r.ok else { throw EngineError(.appleTool, "hdiutil attach failed", detail: r.err) }
+        // hdiutil can return before Disk Arbitration (and so diskutil) knows the new disk. Wait for it,
+        // so the first question after a reattach doesn't see a half-attached image.
+        let deadline = Date().addingTimeInterval(10)
+        while (try? wholeDisk()) == nil, Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
+        _ = try wholeDisk()
     }
 }
