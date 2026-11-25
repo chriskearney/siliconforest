@@ -1,0 +1,55 @@
+{
+  "schema": "siliconforest-update/1",
+  "channel": "stable",
+  "release": "0.1.0",
+  "sequence": 1,
+  "issued": "2026-11-25T20:17:42Z",
+  "expires": "2026-12-25T20:17:42Z",
+  "min_sap": null,
+  "critical": [],
+  "base": {
+    "release": "0.1.0",
+    "sums_sha256": null
+  },
+  "signing_key": null,
+  "allowed_prefixes": [
+    "/"
+  ],
+  "packages": [
+    {
+      "name": "sf-base",
+      "version": "0.1.0-1",
+      "kind": "base",
+      "depends": [],
+      "activate": "none",
+      "bytes": 291587784,
+      "record": {
+        "url": "pool/sf-base_0.1.0-1.record.json",
+        "sha256": "1fcd4cedaa08dd52fe975894ce959a00c30a719d0c89f5003554b0bf6199308e"
+      },
+      "payload": {
+        "url": "pool/sf-base_0.1.0-1.sappkg",
+        "sha256": "f13526976b11cc8e95910f9800dfabb457f9f4dbf69dffe996f43c595a448c14"
+      }
+    },
+    {
+      "name": "sap",
+      "version": "0.1.0-1",
+      "kind": "files",
+      "depends": [],
+      "activate": "none",
+      "bytes": 468508,
+      "record": {
+        "url": "pool/sap_0.1.0-1.record.json",
+        "sha256": "144bbfadc7627a99ba089afb9f13325a8b16ac16e8252df2b195f476512643c8"
+      },
+      "payload": {
+        "url": "pool/sap_0.1.0-1.sappkg",
+        "sha256": "6f88258aeb8e3f3bb65e654fd9e3137f733de75ee1513ba71cb90325f3c8a859"
+      }
+    }
+  ],
+  "removed": [],
+  "rollout": null,
+  "delta": null
+}

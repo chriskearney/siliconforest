@@ -1,0 +1,27 @@
+{
+  "schema": "siliconforest-package/1",
+  "name": "sf-base",
+  "version": "0.1.0-1",
+  "kind": "base",
+  "summary": "SiliconForest base system",
+  "arch": "arm64",
+  "depends": [],
+  "conflicts": [],
+  "replaces": [],
+  "files": {
+    "name": "sf-base_0.1.0-1.files.tsv",
+    "count": 72462,
+    "bytes": 1473937984,
+    "sha256": "7529349fc89eda3203861dc43a23773938fbd7d1021eda85b8a9a57fd24ebfe2"
+  },
+  "config_files": [],
+  "services": [],
+  "activate": "none",
+  "payload": {
+    "name": "sf-base_0.1.0-1.sappkg",
+    "format": "xz-bodies/1",
+    "bytes": 291587784,
+    "sha256": "f13526976b11cc8e95910f9800dfabb457f9f4dbf69dffe996f43c595a448c14"
+  },
+  "target": "root"
+}

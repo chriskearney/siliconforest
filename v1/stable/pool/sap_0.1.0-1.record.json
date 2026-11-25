@@ -1,0 +1,29 @@
+{
+  "schema": "siliconforest-package/1",
+  "name": "sap",
+  "version": "0.1.0-1",
+  "kind": "files",
+  "summary": "SAP, the SiliconForest system updater",
+  "arch": "arm64",
+  "depends": [],
+  "conflicts": [],
+  "replaces": [],
+  "files": {
+    "name": "sap_0.1.0-1.files.tsv",
+    "count": 12,
+    "bytes": 1700868,
+    "sha256": "468a9452fede2dc8743e33ec3eaf7dff9fd602a220be6a7138f87bcedd516fe2"
+  },
+  "config_files": [
+    "/etc/sap.conf"
+  ],
+  "services": [],
+  "activate": "none",
+  "payload": {
+    "name": "sap_0.1.0-1.sappkg",
+    "format": "xz-bodies/1",
+    "bytes": 468508,
+    "sha256": "6f88258aeb8e3f3bb65e654fd9e3137f733de75ee1513ba71cb90325f3c8a859"
+  },
+  "target": "root"
+}

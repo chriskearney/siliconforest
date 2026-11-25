@@ -1,0 +1,13 @@
+# path	type	mode	uid	gid	size	sha256 or link target
+/System/Library/LaunchDaemons/org.siliconforest.sap-boot.plist	f	0644	0	0	576	a1aaefbf7e2bf4e23c0aea71a10e4b6468aa97b6191714a9fc9959468f86cb3d
+/System/Library/LaunchDaemons/org.siliconforest.sap-mark-good.plist	f	0644	0	0	586	cff43d172ea20d7894f115100f4399c0022a44ec2a693144fcbc01ae865d9d6c
+/etc/sap.conf	f	0644	0	0	434	ad49a1ba8776cac18c3e6b4afb25ee939e3f89e07552329c168e0d98d4338ed4
+/usr/bin/sap	f	0755	0	0	1125344	61918f95d690449f4baa258d5f4fdccceaee975f3811a174e85a1da6d741a360
+/usr/bin/sf	f	0755	0	0	411936	67cf41c77d3c468f572d6e0370b6baaa87b325cf46db3d0da6c159ade2d48ea2
+/usr/libexec/sap	d	0755	0	0	0	-
+/usr/libexec/sap/LICENSE.kc-tools	f	0644	0	0	1495	f4bd21af51ef06b69b41396beebcc95a5fa888706ae2092d873ccc9b08a53467
+/usr/libexec/sap/kc-builder	f	0755	0	0	87879	f4309e581f9c350fcae85f782ce257d1afe42d7a6412e91dce845db3f708dc75
+/usr/libexec/sap/sap-boot	f	0755	0	0	1513	2192501e44770d50b6e44cbe36909ae864e6e2d4c2a4a2ac2f76d53e04adc504
+/usr/libexec/sap/sap-mark-good	f	0755	0	0	1069	e8795d7dba300c346343490feab8d87a4e00d1d5b6d3f1a5115ccc169545a3f9
+/usr/libexec/sap/sf-mount-sfboot	f	0755	0	0	34412	6b60df07ef2d523eb510e16fc663e80a7bded9387d2187a5931b6d1ce7d965f9
+/usr/libexec/sf-bootslot	f	0755	0	0	35624	1d6c2e0a7b6236d58a322768f2034f27bfc7536e968c6cf8427d5a4a43257251
