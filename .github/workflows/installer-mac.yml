@@ -6,11 +6,13 @@ on:
   push:
     paths:
       - "installer/mac/**"
+      - "!installer/mac/SFExt4Grow/**"
       - "installer/profiles/**"
       - ".github/workflows/installer-mac.yml"
   pull_request:
     paths:
       - "installer/mac/**"
+      - "!installer/mac/SFExt4Grow/**"
       - "installer/profiles/**"
       - ".github/workflows/installer-mac.yml"
   workflow_dispatch:

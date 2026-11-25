@@ -136,6 +136,11 @@ extent at the same offsets with the same bytes, UUID unchanged. Not yet proven: 
 grown this way. resize2fs leaves new groups `INODE_UNINIT` and `BLOCK_UNINIT`, which the driver's code handles but no boot
 has exercised. That needs a QEMU or G6 boot.
 
+**Swift grower (Chris, 24 November 2026, voice 3:25 PM PT):** no GPL binary in the dmg. S48 will use `sf-ext4grow`, a
+clean-room Swift offline ext4 grower, instead of a macOS `resize2fs` build; `resize2fs` and `grow_check.py` stay the test
+reference. The target is the ext4 root on its raw partition, not an APFS volume. Milestone M1 (library, CLI, tests, CI) is in
+[`EXT4GROW.md`](EXT4GROW.md).
+
 ## 7. Release trust
 
 As DESIGN section 10, made concrete:
@@ -293,6 +298,7 @@ It is a rehearsal of the tooling only. **It has not been booted, and its boot fi
 |---|---|---|---|
 | Swift `SFRelease`: sshsig Ed25519 verify (CryptoKit), install.json → `ReleaseManifest`, wired in before S10 | Code + tests against this verifier | 2–3 days | No |
 | S48 root-grow in the engine, and the macOS `resize2fs` build | Code, image tests on the M5 | 2–3 days | **Yes: GPL binary in the dmg, or a Swift grower** |
+| S48 with `sf-ext4grow` (Chris chose the Swift grower, 24 Nov): M2 engine wiring, M3 wider proof, M4 QEMU boot ([EXT4GROW.md](EXT4GROW.md) section 9) | Code, image tests on the M5 | 1–1.5 weeks | No |
 | Swift receipt reader and firmware-slot writer, matched to `receipt.py` and the slot format | Code + tests | 2 days | No |
 | Boot the installer root, grown, in QEMU virt: receipt stages, firmware install, fsck afterwards | Builder + QEMU | 2–4 days | No |
 | First-boot account (section 5) | System work in the desktop, session and console | 1–2 weeks | **Yes: the design of the account screen** |

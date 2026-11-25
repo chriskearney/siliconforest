@@ -1,0 +1,63 @@
+name: Installer ext4 grower
+
+# sf-ext4grow (installer/mac/SFExt4Grow, docs/installer/EXT4GROW.md): the Swift offline ext4 root
+# grower for S48. Runs on plain files and disk images it attaches itself, never a real disk.
+# e2fsprogs is installed here only as the external test oracle; it is never linked or shipped,
+# and the last step checks that the built tool does not link it.
+on:
+  push:
+    paths:
+      - "installer/mac/SFExt4Grow/**"
+      - ".github/workflows/installer-ext4grow.yml"
+  pull_request:
+    paths:
+      - "installer/mac/SFExt4Grow/**"
+      - ".github/workflows/installer-ext4grow.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installer-ext4grow-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: sf-ext4grow (images only, e2fsprogs as oracle)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm the Apple-silicon macOS runner and the gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]]
+          if [[ -n "${SF_REAL_DISK_WRITES:-}" || -n "${SF_ALLOW_REAL_DISK_WRITES:-}" ]]; then
+            echo "Real-disk write gates must stay unset in CI." >&2; exit 1
+          fi
+          swift --version
+
+      - name: e2fsprogs (test oracle only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install e2fsprogs
+          echo "E2FSPROGS_SBIN=$(brew --prefix e2fsprogs)/sbin" >> "$GITHUB_ENV"
+
+      - name: Self-test and image tests against e2fsprogs
+        working-directory: installer/mac/SFExt4Grow
+        shell: bash
+        run: scripts/oracle-test.sh "$RUNNER_TEMP/ext4grow"
+
+      - name: The tool links no e2fsprogs code
+        working-directory: installer/mac/SFExt4Grow
+        shell: bash
+        run: |
+          set -euo pipefail
+          otool -L .build/release/sf-ext4grow
+          if otool -L .build/release/sf-ext4grow | grep -Eiq 'ext2fs|libe2p|com_err|e2fsprogs|blkid'; then
+            echo "sf-ext4grow links e2fsprogs" >&2; exit 1
+          fi
