@@ -121,12 +121,12 @@ private directory `~/chl27-g2`. Sources are in [`integrations/siliconforest/m1-j
 | Window stage 2, code only | 4,325,376 | `a5bbd1430acc0fa0c44f9ff1ebed79f3ca5af12c0af7fee117d79f5df8b7c5e9` |
 | **Window `boot.bin`** (code + the Air's payloads) | 10,238,674 | `c688793a85af45b1a71254798da10f56c4f861584b1dc1e606b559f964f5664c` |
 | Original `boot.bin` (restored afterwards) | 10,107,602 | `54fa07e4f5cbeecd90e67e335657c40b33c25aede7015a84afb1427333b4f923` |
-| G1 RAM-boot collection | 34,637,870 | `ef49aa0a376ed1b25054247e708467c020d5c8c95855186a166a5c8f616018c8` |
+| G1 RAM-boot collection | 34,637,870 | `ff0238cc345bbf33e90c39e7a909eef002c85113394b67fb5137d4857499812c` |
 | RAM root (holds the Air's Wi-Fi firmware) | 402,653,184 | `41abdbdf18a411a6fd9e905d9e6171e1790347e2ffaecbe4487a8fb020a1f762` |
 | Packet manifest | | `1804a1c447bd305bdef52a61fbdfd36147021ccaae648dc9dea7398a058eff21` |
 | Generated launcher tree | 26 files | `c8fb1bea55748bca6418871d405979b416997d190db9dabdfb5a852f4bd8fcbf` |
 
-[`g2-pins.json`](../../integrations/siliconforest/m1-j313-g2/g2-pins.json) holds these pins. The RAM root is not byte-reproducible, so
+[`g2-pins.json`](../../integrations/siliconforest/m1-j313-g2/g2-pins.json) holds these pins. The kernel pin is the first-definition collection (`ff0238cc…`); the private `packet-002` still holds the earlier `ef49aa0a…` bytes until a new packet is built. The RAM root is not byte-reproducible, so
 its pin binds this copy. If the packet is rebuilt, the pins must be reviewed again.
 
 ### The window build and how it differs

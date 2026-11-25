@@ -25,7 +25,7 @@ import tarfile
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import protection_receipt  # noqa: E402
-KC_SHA = 'ef49aa0a376ed1b25054247e708467c020d5c8c95855186a166a5c8f616018c8'
+KC_SHA = 'ff0238cc345bbf33e90c39e7a909eef002c85113394b67fb5137d4857499812c'
 KC_BYTES = 34637870
 TIP_COMMIT = 'cd001928e0223fd77a7850f09e43580b51bde239'
 CORECRYPTO = 'ea8e6afec1a8666a077c110fc4148fb1ac293ae8'

@@ -107,7 +107,7 @@ nix-build --extra-experimental-features 'nix-command flakes' integrations/silico
 
 | Use | Path (ignored by Git) | Bytes | SHA-256 |
 |---|---|---|---|
-| **G2 RAM boot.** No NVMe driver | `artifacts/j313-g1/kc-default-ram/kernel` | 34,637,870 | `ef49aa0a376ed1b25054247e708467c020d5c8c95855186a166a5c8f616018c8` |
+| **G2 RAM boot.** No NVMe driver | `artifacts/j313-g1/kc-default-ram/kernel` | 34,637,870 | `ff0238cc345bbf33e90c39e7a909eef002c85113394b67fb5137d4857499812c` |
 | **Installed system only (G6).** Contains `SFAppleNVMeRW`. Never use it for G2 | `artifacts/j313-g1/kc/kernel` | 33,842,862 | `b3115d93b1932c3ef86d2ca39bf638ddddb29872421c297ced960f7f653a6a99` |
 
 Both builds passed the collection overlap check (19 segments, no overlaps).
