@@ -6,7 +6,7 @@ release vouches for. This directory holds the kc-tools build that does that, its
 
 | File | What it is |
 |---|---|
-| `kc-tools-sym-order.patch` | a stable sort for kc-builder's symbol table (below) |
+| `kc-tools-sym-order.patch` | a stable sort for kc-builder's symbol table and a first-definition lookup (below) |
 | `build-tools.nix` | `../m1-bringup/kc-tools-fixed.nix` + the patch; `../rebase/build-kc.nix` links with it |
 | `prepare_source.py` | the same patched source without Nix: locked revision, commit id checked, same patches, same order |
 | `build-macos.sh` | the installer's kc-builder for Apple silicon, Developer ID signed (hardened runtime) or ad-hoc |
@@ -33,11 +33,12 @@ every collection linked with it on glibc is byte-identical to before; it only ma
 An address tie-break was tried and rejected: the kexts sit *below* the kernel in the collection, so
 address order is not the order added, and it changed the collection.
 
-What it does not fix: which copy the bisection lands on still depends on the size of the table. In the
-G2 RAM-boot collection SFBwfm binds IO80211Family's four `m_*`; in the G6 installed-system collection it
-binds the kernel's. Each is now the same on every host, but they differ from each other. A rule that
-does not depend on the table (first definition wins, or `../m1-kc-bind/`'s declared-library rule) changes
-one of the two collections by four pointers, so it waits for a decision (below).
+The sort alone left which copy the bisection landed on depending on the size of the table: the G2
+RAM-boot collection bound SFBwfm's four `m_*` to IO80211Family's copies, the G6 installed-system collection
+to the kernel's. Chris chose (24 November 2026, 17:58 PT) a fixed rule: **first definition wins**.
+`symtab_lookup` returns the lowest index holding the name, which after the stable sort is the copy added
+first: the kernel's, else the earliest kext in link order. G6 binds as before (`b3115d93…`, unchanged); G2
+now binds the kernel's `m_*` too, so its collection changes from `ef49aa0a…` to `ff0238cc…`.
 
 ## Proof (24 November 2026)
 
@@ -48,11 +49,16 @@ Linux: i9, `nix-build`, glibc, `build-tools.nix`. macOS: M5 (macOS 26.5.2, arm64
 | Collection | Recipe | Before (kc-tools-fixed) | Linux, patched | macOS, unpatched | macOS, patched |
 |---|---|---|---|---|---|
 | G6 installed system (54 kexts) | `m1-storage/build-kc-native-rw-halt.nix` | `b3115d93…` | `b3115d93…` | `910a4df0…` | `b3115d93…` |
-| G2 RAM boot (59 kexts) | `rebase/build-kc.nix` | `ef49aa0a…` | `ef49aa0a…` | `0ee596d1…` | `ef49aa0a…` |
+| G2 RAM boot (59 kexts) | `rebase/build-kc.nix` | `ef49aa0a…` | `ff0238cc…` | `0ee596d1…` | `ff0238cc…` |
+
+Full hashes with the first-definition patch: G6 `b3115d93b1932c3ef86d2ca39bf638ddddb29872421c297ced960f7f653a6a99`,
+G2 `ff0238cc345bbf33e90c39e7a909eef002c85113394b67fb5137d4857499812c` (i9 `nix-build`, and the M5's
+`build-macos.sh` kc-builder linking from `release-inputs.nix`'s files; no kext skipped on either).
 
 `release-inputs.nix` itself links from its copies, so its `kernel` equals the recipe's (`b3115d93…`,
-`ef49aa0a…`). Harness digest `c00ce981b7966302` on both hosts; replacing the merge sort with `qsort`
-fails it on macOS (2733 failures), and making the merge unstable fails it on Linux.
+`ff0238cc…`). Harness digest `0892d7d86ab47e7d` on both hosts (`c00ce981b7966302` before the lookup
+change). Replacing the merge sort with `qsort` fails it on macOS, making the merge unstable fails it on
+Linux, and the old bisecting lookup fails it everywhere (43,609 failures).
 
 Rerun:
 
@@ -64,10 +70,11 @@ Rerun:
 No collection, kernel or kext is committed: they are built from Apple open-source parts and the
 collection is never published (PAYLOAD.md).
 
-## Needs a decision
+## Decisions and open points
 
-- **Duplicate names.** Keep the table-size-dependent bisection (G2 and G6 as built and as tested), or
-  adopt a fixed rule for the release collection, which moves four SFBwfm pointers in one of them.
+- **Duplicate names.** Decided: first definition wins (above). The J313 G2 packet pinned in
+  `../m1-j313-g2/g2-pins.json` was built and tested with the old `ef49aa0a…` collection and keeps that pin;
+  a rebuilt packet links `ff0238cc…` and must be re-pinned (and re-reviewed) then.
 - **Signing.** The M5 has no Developer ID Application identity in its keychain, so the local build is
   ad-hoc. CI already holds one (`MAC_SIGNING_IDENTITY`, `installer-release.yml`); the release build signs
   kc-builder with it. No new certificate is needed.

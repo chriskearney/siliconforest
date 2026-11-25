@@ -12,8 +12,8 @@ compiler has them.
 Cases: every table of 0..1500 entries drawn from a small name pool (so most names repeat) sorts
 to name order with equal names in the order added; the merge pattern kc-builder uses (a sorted
 table, a kext's names appended, sorted again) keeps the kernel's copy before every kext's and
-earlier kexts before later ones; and symtab_lookup() returns the same copy for the same table on
-every run. Exit status 0 only if every case passes.
+earlier kexts before later ones; and symtab_lookup() returns a name's first definition (the
+copy added first) for every name, present or not, at every table size. Exit status 0 only if every case passes.
 """
 import os, shutil, subprocess, sys, tempfile
 from pathlib import Path
@@ -60,6 +60,21 @@ int main(int argc, char **argv) {
     CHECK(st.count == n && ordered(&st), "single sort, n=%zu", n);
     symtab_free(&st);
   }
+  /* 1b: first definition at every size, including names absent from the table */
+  for (size_t n = 0; n <= 600; n++) {
+    SymTable st = {0};
+    fill(&st, n, 1 + n / 5, 0x100);
+    sym_sort(&st);
+    char nm[32];
+    for (unsigned q = 0; q < 2 + n / 5; q++) {
+      snprintf(nm, sizeof(nm), "_s%03u", q);
+      uint64_t a = symtab_lookup(&st, nm), first = 0;
+      for (size_t i = 0; i < st.count; i++)
+        if (!strcmp(st.syms[i].name, nm) && (!first || st.syms[i].addr < first)) first = st.syms[i].addr;
+      CHECK(a == first, "first definition, n=%zu %s", n, nm);
+    }
+    symtab_free(&st);
+  }
   /* 2: kc-builder's merge: kernel table, then kexts appended and the whole table sorted again */
   for (int round = 0; round < 40; round++) {
     SymTable st = {0};
@@ -75,8 +90,10 @@ int main(int argc, char **argv) {
     char nm[32];
     for (unsigned q = 0; q < 400; q++) {
       snprintf(nm, sizeof(nm), "_s%03u", q);
-      uint64_t a = symtab_lookup(&st, nm), b = symtab_lookup(&st, nm);
-      CHECK(a == b, "lookup %s not repeatable", nm);
+      uint64_t a = symtab_lookup(&st, nm), first = 0;
+      for (size_t i = 0; i < st.count; i++)
+        if (!strcmp(st.syms[i].name, nm) && (!first || st.syms[i].addr < first)) first = st.syms[i].addr;
+      CHECK(a == first, "lookup %s gave %llx, first definition %llx", nm, (unsigned long long)a, (unsigned long long)first);
       mix(&a, 8);
     }
     symtab_free(&st);

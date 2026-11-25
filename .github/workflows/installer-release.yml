@@ -239,7 +239,7 @@ jobs:
           lipo -archs "$out/kc-builder" | grep -qx arm64
           # Same source and patches as the Linux build: the cross-platform digest must agree.
           python3 integrations/siliconforest/kc-builder/test_sym_order.py --digest | tee "$out/sym-order-digest.txt"
-          grep -qx 'sym-order-digest c00ce981b7966302' "$out/sym-order-digest.txt"
+          grep -qx 'sym-order-digest 0892d7d86ab47e7d' "$out/sym-order-digest.txt"
 
       - name: Package, sign, notarize and staple the DMG
         shell: bash

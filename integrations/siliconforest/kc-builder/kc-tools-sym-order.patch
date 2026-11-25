@@ -12,8 +12,8 @@
 + * order, Apple's libc does not), and symtab_lookup bisects, so a duplicated name bound
 + * to a different definition depending on the host the collection was linked on. This
 + * merge sort gives glibc's order on every host. Addresses cannot stand in for the order:
-+ * the kexts sit below the kernel in the collection. Which copy symtab_lookup's bisection
-+ * then finds still depends on the size of the table; this keeps it the same on every host. */
++ * the kexts sit below the kernel in the collection. symtab_lookup returns the first of
++ * them, so a name defined twice binds to its first definition. */
 +static void sym_sort_run(Sym *a, Sym *tmp, size_t n) {
 +  if (n < 2)
 +    return;
@@ -64,3 +64,28 @@
  
    fprintf(stderr,
        " merged %zu symbols from %s\n",
+@@ -910,17 +939,18 @@
+   return 0;
+ }
+ 
++/* The first definition of a name: the lowest index holding it. sym_sort keeps equal names in the
++ * order they were added, so that is the kernel's copy, else the first kext's in link order, on
++ * every host and for every table size (a plain bisection stopped at whichever copy it met first,
++ * which depended on the size of the table). */
+ uint64_t symtab_lookup(const SymTable *st, const char *name) {
+   size_t lo = 0, hi = st->count;
+   while (lo < hi) {
+-    size_t mid = (lo + hi) / 2;
+-    int c = strcmp(st->syms[mid].name, name);
+-    if (!c)
+-      return st->syms[mid].addr;
+-    if (c < 0)
++    size_t mid = lo + (hi - lo) / 2;
++    if (strcmp(st->syms[mid].name, name) < 0)
+       lo = mid + 1; else hi = mid;
+   }
+-  return 0;
++  return lo < st->count && !strcmp(st->syms[lo].name, name) ? st->syms[lo].addr : 0;
+ }
+ 
+ static uint64_t find_defined_kmod_info(

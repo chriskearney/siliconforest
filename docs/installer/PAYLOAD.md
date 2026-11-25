@@ -379,7 +379,9 @@ write: it re-hashes the accepted collection, fills in `bootargs.template` (`@SF_
 END; the same records `pdsf_pack.py` reads). Only then does it write the boot partition, through whichever
 backend the engine was given, so the gated live-disk path takes it unchanged.
 
-**Still open:** the release workflow building and signing kc-builder with the Developer ID identity (today:
-ad-hoc on the M5, `signing: ad-hoc`, rehearsals only), and the decision on duplicate symbols (kc-builder
-README, "Needs a decision").
+**Duplicate names:** first definition wins (Chris, 24 Nov 2026; kc-builder README). The J313 installed-system
+collection is unchanged (`b3115d93…`); the G2 RAM-boot collection is now `ff0238cc…` on Linux and macOS.
+
+**Still open:** a first run of the release workflow's Developer ID-signed kc-builder step (`installer-release.yml`,
+tag or dispatch only; until then the M5 build is ad-hoc, `signing: ad-hoc`, rehearsals only).
 
