@@ -122,3 +122,24 @@ Both builds passed the collection overlap check (19 segments, no overlaps).
 - **Wi-Fi.** The `apple,shikoku` firmware has not been loaded by the Darwin driver.
 - **Thermal.** Sustained temperatures with no fan, against the 92 °C and 102 °C limits.
 - **Names.** Some J313 logs and the HID product strings still say "J293". This is cosmetic.
+
+## 6. Preview5: running the first real install (`sfinstrun`)
+
+Chris waived the stub-only Air run on 25 November 2026 (the stage 1 file is the same byte-for-byte). Preview5 is a **real-disk** prerelease and has **not** been run on a real Mac. **Back up first.** Nothing in this section has been run on the Air.
+
+The installer app UI is still a flow preview. The first real install is the lab tool `sfinstrun` (in the DMG, `Lab tools/sfinstrun`), built with `SF_REAL_DISK_WRITES`. It never writes the authorization file, never runs `bless` / `bputil` / `kmutil` / DFU, and refuses before any change without the compile key, root, a verified signed release, and Chris's authorization for this plan and disk.
+
+**Preconditions** (same spirit as [STUB-ONLY-RUN-J313.md](STUB-ONLY-RUN-J313.md) §1): Omarchy / the Linux stub already removed by Chris if that is the plan, macOS grown back, `diskutil list internal` recorded off the repository, macOS 13.5 or newer, Time Machine or other backup **confirmed by Chris**, on power, battery above 50%, Wi-Fi on. A person at the Air.
+
+1. Copy the signed payload (every file listed in `SHA256SUMS`, plus `SHA256SUMS` and `SHA256SUMS.sig`) to `~/sf-run/rel/` on the Air. In a directory that contains **only** those files, run `python3 verify_release.py ~/sf-run/rel --allowed-signers allowed_signers` (the `allowed_signers` file is also in the DMG). Confirm `sf-stage1.bin` is `44c1ef0b…`.
+2. Copy `sfinstrun`, `allowed_signers`, the signed `SFRecovery` (`SiliconForest Installer.app/Contents/Helpers/SFRecovery`) and `AppIcon.icns` off the DMG. Copy macOS's own `AdminUserRecoveryInfo.plist` from the Preboot volume group.
+3. `DISK=` the internal disk's `DiskUUID` from `diskutil info -plist disk0`.
+   `R="--release-dir ~/sf-run/rel"`, `J="--journal /var/db/org.siliconforest.installer/journal --work /var/db/org.siliconforest.installer/work"`,
+   `A="--icon <AppIcon.icns> --admin-users <AdminUserRecoveryInfo.plist> --recovery-binary <signed SFRecovery>"`.
+4. **Plan (read-only):** `sfinstrun plan --target disk:$DISK $R --out ~/sf-run/plan.json` (add `--size 80G` or similar; the default is the profile's recommended footprint). It verifies the signed release, prints the plan digest, the macOS shrink, the new stub / boot / root partitions, and the authorization JSON. `diskutil list` is unchanged.
+5. Chris checks the plan, writes the authorization (root-owned, 0600, `RealDiskGate.authorizationPath`, at most 2 hours, this digest and this disk UUID) and records his approval words.
+6. **Dry check of the gate:** the same `sudo sfinstrun run --target disk:$DISK $R $J $A --plan ~/sf-run/plan.json` **without** the file, or with another digest, must be refused (`the real-disk gate is closed`); the journal shows no changes.
+7. **Install:** the same command with the file in place. On a stop: fix the cause, then the same command with `--job <id>` resumes; `sfinstrun rollback … --job <id>` undoes everything it can. S65's `bless` is simulated; Chris runs the printed `bless` himself.
+8. **Remove:** `sudo sfinstrun remove --target disk:$DISK $J --job <id>` prints a new plan and a new authorization JSON; Chris writes a new file for that digest, then the same command runs U10–U40.
+
+The 13.5 restore-image members and the Wi-Fi firmware the installer extracts are read at run time from Apple's CDN / this Mac, never from the release.

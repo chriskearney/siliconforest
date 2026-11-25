@@ -451,17 +451,13 @@ tag or dispatch only; until then the M5 build is ad-hoc, `signing: ad-hoc`, rehe
 
 ## 14. What the GitHub prerelease carries (installer-release.yml, 25 Nov 2026)
 
-A push of an `installer-v*` tag builds and publishes a **prerelease**; a manual dispatch builds, signs and notarizes only and keeps
-everything as Actions artifacts (it never publishes). The release notes are generated from the build, not fixed text.
+A push of an `installer-v*` tag builds and publishes a **prerelease**; a manual dispatch builds, signs and notarizes only and keeps everything as Actions artifacts (it never publishes). From preview5 the lab tools in the DMG (`sfinstrun`, `sfstubrun`) are built with the compile key `SF_REAL_DISK_WRITES`. The app UI stays a flow preview; the helper in the app stays aimed at no disk. Real writes are done with `sfinstrun` (or `sfstubrun` for a stub-only run), as root, with Chris's runtime authorization file (ENGINE §12.1). The private release key is never in CI.
 
 | Asset | Built by | Notes |
 |---|---|---|
-| `SiliconForest-Installer-<v>-dryrun-preview.dmg` and `.sha256` | `macos` job | Developer ID signed, notarized, stapled. The app is still a dry run (the real-disk write gate is compiled out; `check-real-disk-gate.sh` fails the job otherwise), so the name keeps `dryrun-preview`. DMG only |
-| `sf-stage1.bin`, `sf-stage1.json`, `sf-stage1.bin.sha256` | `stage1` job (ubuntu) | `boot/build_stage1.sh` from source: Omacom m1n1 at the profile's pin (`121fcbf`) + our stage 1 patch, LLVM 22, rustc 1.98.1. The job **fails unless the result is byte-identical to the installed stage 1** (`44c1ef0b…`). rustc embeds crate source paths, so the job puts the toolchain and cargo home at the lab's paths (`/home/chrisk/.rustup`, `/home/chrisk/.cargo`, rust-src installed); without that the build works but has another hash |
-| `RELEASE-SHA256SUMS` | `macos` job | Hashes of the DMG, `sf-stage1.bin` and `sf-stage1.json`. Not the signed payload `SHA256SUMS` |
+| `SiliconForest-Installer-<v>.dmg` and `.sha256` | `macos` job | Developer ID signed, notarized, stapled. Contains the app, `Lab tools/sfinstrun`, `Lab tools/sfstubrun` and `allowed_signers`. DMG only; the name no longer says `dryrun-preview` |
+| `sf-stage1.bin`, `sf-stage1.json`, `sf-stage1.bin.sha256` | `stage1` job (ubuntu) | `boot/build_stage1.sh` from source. The job **fails unless the result is byte-identical to the installed stage 1** (`44c1ef0b…`) |
+| `RELEASE-SHA256SUMS` | `macos` job | Hashes of the DMG, `sf-stage1.bin` and `sf-stage1.json` |
+| The signed payload (`install.json`, `boot.bin`, `bootargs.template`, the root parts, `kc-builder` and the `kc.*` inputs, `SHA256SUMS`, `SHA256SUMS.sig`) | Offline: `make_release.py --unsigned --public-key` on the i9, then `ssh-keygen -Y sign` on the M3 (only `SHA256SUMS` is copied to the M3; only the signature comes back). Uploaded to the same GitHub release after the tag job | `verify_release.py` against `release/allowed_signers`. Run it in a directory that contains only the payload files, not the DMG. No Apple binaries are in the payload; firmware names and hashes are |
 
-**Not in the prerelease:** the signed `install.json` and the files `make_release.py` assembles around it (`boot.bin`, `bootargs.template`, the root parts, the
-kernel-collection files, `SHA256SUMS.sig`). They need the offline release key (made on the M3, never in CI or on a runner) and the root built on the i9, so the
-payload release is made and signed offline (`rehearse.sh` / `make_release.py`, `verify_release.py`) and its files can be added to the same GitHub release afterwards.
-Until then `sf-stage1.bin`'s hash is covered only by the release notes and `RELEASE-SHA256SUMS`, not by a signature. Nothing Apple-sourced is in the release; the stub's
-13.5 files are read from Apple's CDN on the Mac at run time (section 1).
+`make_release.py --unsigned` writes `SHA256SUMS` and `install.json` (including the release key's fingerprint) without the private key.
