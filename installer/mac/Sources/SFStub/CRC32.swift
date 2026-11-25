@@ -9,36 +9,53 @@ public struct CRC32: Sendable {
 
     public init() {}
 
-    static let tables: [[UInt32]] = {
-        var t = [[UInt32]](repeating: [UInt32](repeating: 0, count: 256), count: 8)
+    /// Eight 256-entry tables, flat: entry `k * 256 + i` is table k.
+    static let table: [UInt32] = {
+        var t = [UInt32](repeating: 0, count: 8 * 256)
         for i in 0..<256 {
             var c = UInt32(i)
             for _ in 0..<8 { c = (c & 1) != 0 ? 0xEDB8_8320 ^ (c >> 1) : c >> 1 }
-            t[0][i] = c
+            t[i] = c
         }
-        for i in 0..<256 {
-            for k in 1..<8 { t[k][i] = (t[k - 1][i] >> 8) ^ t[0][Int(t[k - 1][i] & 0xFF)] }
+        for k in 1..<8 {
+            for i in 0..<256 {
+                let prev: UInt32 = t[(k - 1) * 256 + i]
+                t[k * 256 + i] = (prev >> 8) ^ t[Int(prev & 0xFF)]
+            }
         }
         return t
     }()
 
     public mutating func update(_ buf: UnsafeRawBufferPointer) {
-        var c = ~value
-        let t = Self.tables
-        var n = buf.count
         guard var q = buf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-        t[0].withUnsafeBufferPointer { t0 in t[1].withUnsafeBufferPointer { t1 in t[2].withUnsafeBufferPointer { t2 in
-        t[3].withUnsafeBufferPointer { t3 in t[4].withUnsafeBufferPointer { t4 in t[5].withUnsafeBufferPointer { t5 in
-        t[6].withUnsafeBufferPointer { t6 in t[7].withUnsafeBufferPointer { t7 in
+        var c: UInt32 = ~value
+        var n = buf.count
+        Self.table.withUnsafeBufferPointer { t in
+            // Small steps with explicit types: one long XOR chain times out the type checker on some toolchains.
+            @inline(__always) func at(_ k: Int, _ x: UInt32) -> UInt32 { t[k &* 256 &+ Int(x & 0xFF)] }
             while n >= 8 {
-                let a = c ^ (UInt32(q[0]) | UInt32(q[1]) << 8 | UInt32(q[2]) << 16 | UInt32(q[3]) << 24)
-                let b = UInt32(q[4]) | UInt32(q[5]) << 8 | UInt32(q[6]) << 16 | UInt32(q[7]) << 24
-                c = t7[Int(a & 0xFF)] ^ t6[Int((a >> 8) & 0xFF)] ^ t5[Int((a >> 16) & 0xFF)] ^ t4[Int(a >> 24)]
-                  ^ t3[Int(b & 0xFF)] ^ t2[Int((b >> 8) & 0xFF)] ^ t1[Int((b >> 16) & 0xFF)] ^ t0[Int(b >> 24)]
+                var a: UInt32 = UInt32(q[0])
+                a |= UInt32(q[1]) << 8
+                a |= UInt32(q[2]) << 16
+                a |= UInt32(q[3]) << 24
+                a ^= c
+                var b: UInt32 = UInt32(q[4])
+                b |= UInt32(q[5]) << 8
+                b |= UInt32(q[6]) << 16
+                b |= UInt32(q[7]) << 24
+                var r: UInt32 = at(7, a)
+                r ^= at(6, a >> 8)
+                r ^= at(5, a >> 16)
+                r ^= at(4, a >> 24)
+                r ^= at(3, b)
+                r ^= at(2, b >> 8)
+                r ^= at(1, b >> 16)
+                r ^= at(0, b >> 24)
+                c = r
                 q += 8; n -= 8
             }
-            while n > 0 { c = t0[Int((c ^ UInt32(q[0])) & 0xFF)] ^ (c >> 8); q += 1; n -= 1 }
-        }}}}}}}}
+            while n > 0 { c = at(0, c ^ UInt32(q[0])) ^ (c >> 8); q += 1; n -= 1 }
+        }
         value = ~c
     }
 
