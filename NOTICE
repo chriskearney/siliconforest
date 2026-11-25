@@ -138,6 +138,15 @@ Licence: MIT (read from integrations/siliconforest/m1-sound/safetyd/LICENSE).
 What we take: the speaker protection model and daemon, ported to Darwin
 (integrations/siliconforest/m1-sound/safetyd, and the kernel model derived from it).
 
+Asahi Linux installer
+---------------------
+The Asahi Linux contributors, https://github.com/AsahiLinux/asahi-installer, tag v0.9.2 (dffbb38e)
+Licence: MIT, "Copyright (c) 2021 The Asahi Linux contributors" (LICENSES/third-party/asahi-installer-LICENSE.txt,
+copied from the pinned checkout's LICENSE).
+What we take: the stub builder logic (stub.py, urlcache.py, parts of osinstall.py, util.py and m1n1.py), ported to
+Swift in installer/mac/Sources/SFStub, and firmware-extraction logic in installer/payload/firmware. No Asahi code
+or Python runtime is shipped; v0.9.2 runs only as the reference oracle in tests. Only v0.9.2 is used.
+
 Finch
 -----
 The Finch Project contributors, https://github.com/calebtrueman/finch (local clone at 2d9b1bb1)

@@ -33,6 +33,7 @@ copyright lines, as those projects publish them:
 | `third-party/Finch-LICENSE-MIT.txt`, `third-party/Finch-LICENSE-APACHE.txt` | Finch ("Copyright (c) 2026 The Finch Project contributors") | the local clone at `2d9b1bb` |
 | `third-party/m1n1-LICENSE.txt` | m1n1 (MIT, "Copyright The Asahi Linux Contributors") | the local clone at `121fcbf`; m1n1's bundled third-party parts have further licence files in its own tree |
 | `third-party/Indium-LICENSE-0BSD.txt` | Indium and Iridium (0BSD) | the local clone at `e3a1f22`; only one patch to Indium is in this repository |
+| `third-party/asahi-installer-LICENSE.txt` | Asahi Linux installer v0.9.2 (MIT, "Copyright (c) 2021 The Asahi Linux contributors"): ported into `installer/mac/Sources/SFStub` and `installer/payload/firmware/wifi.py` | `LICENSE` of the pinned reference checkout at tag `v0.9.2`, commit `dffbb38e` |
 
 Licence files that were already in the tree stay where they are: `integrations/siliconforest/m1-ave/tools/upstream/COPYING`
 (GPL-2.0, the AVE driver's), `integrations/siliconforest/m1-sound/safetyd/LICENSE` (MIT, speakersafetyd's),
