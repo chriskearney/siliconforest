@@ -9,7 +9,11 @@ public enum LiveMutation: Sendable, Equatable {
     case addPartition(after: String, format: NewFormat, bytes: Int64)
     case eraseToFree(String)
     case deleteContainer(String)
-    case addVolume(container: String)
+    /// `groupWith` is the Data volume a new System volume joins (SFStub, as upstream stub.py).
+    case addVolume(container: String, groupWith: String? = nil)
+    /// SFStub makes the empty container's default volume its Data volume (upstream prepare_volume).
+    case changeVolumeRole(volume: String)
+    case renameVolume(String)
     case formatFAT32(device: String)
     case mount(String)
     case unmount(String)
@@ -57,10 +61,21 @@ public enum LiveMutation: Sendable, Equatable {
                     guard argv.count == 4, let id = partitionID(argv[3]) else { throw bad() }
                     return .deleteContainer(id)
                 case "addVolume":
-                    // addVolume <container ref> APFS <name> -role <role> -nomount
-                    guard argv.count == 9, let ref = device(argv[3]), argv[4] == "APFS", plainLabel(argv[5]), argv[6] == "-role",
-                          argv[7].range(of: #"^[A-Za-z]{1,3}$"#, options: .regularExpression) != nil, argv[8] == "-nomount" else { throw bad() }
-                    return .addVolume(container: ref)
+                    // engine:  addVolume <container ref> APFS <name> -role <role> -nomount
+                    // SFStub:  addVolume <container ref> apfs <name> -role B|R|D
+                    //          addVolume <container ref> apfs <name> -role S -groupWith <Data volume>
+                    guard argv.count >= 8, let ref = device(argv[3]), plainLabel(argv[5]), argv[6] == "-role" else { throw bad() }
+                    let role = argv[7]
+                    if argv[4] == "APFS", argv.count == 9, argv[8] == "-nomount",
+                       role.range(of: #"^[A-Za-z]{1,3}$"#, options: .regularExpression) != nil { return .addVolume(container: ref) }
+                    guard argv[4] == "apfs" else { throw bad() }
+                    if argv.count == 8, ["B", "R", "D"].contains(role) { return .addVolume(container: ref) }
+                    guard argv.count == 10, role == "S", argv[8] == "-groupWith", let g = partitionID(argv[9]) else { throw bad() }
+                    return .addVolume(container: ref, groupWith: g)
+                case "changeVolumeRole":
+                    // changeVolumeRole <volume> D: only ever to Data
+                    guard argv.count == 5, let id = partitionID(argv[3]), argv[4] == "D" else { throw bad() }
+                    return .changeVolumeRole(volume: id)
                 default: throw bad()
                 }
             case "addPartition":
@@ -79,6 +94,10 @@ public enum LiveMutation: Sendable, Equatable {
             case "unmount":
                 guard argv.count == 3, let id = partitionID(argv[2]) else { throw bad() }
                 return .unmount(id)
+            case "rename":
+                // rename <volume> <name>: SFStub names the Data volume "<label> - Data"
+                guard argv.count == 4, let id = partitionID(argv[2]), plainLabel(argv[3]) else { throw bad() }
+                return .renameVolume(id)
             default: throw bad()   // partitionDisk, eraseDisk, unmountDisk, eject, …
             }
         case "/sbin/newfs_msdos":
@@ -97,7 +116,8 @@ public enum LiveMutation: Sendable, Equatable {
         case .resize(let c, _): return [c]
         case .addPartition(let a, _, _): return [a]
         case .eraseToFree(let d), .deleteContainer(let d), .mount(let d), .unmount(let d): return [d]
-        case .addVolume(let c): return [c]
+        case .changeVolumeRole(let d), .renameVolume(let d): return [d]
+        case .addVolume(let c, let g): return g.map { [c, $0] } ?? [c]
         case .formatFAT32(let d): return [d]
         case .detachImage: return []
         }
@@ -178,9 +198,10 @@ public final class LiveChokepoint: @unchecked Sendable {
             }
             guard p.end >= r.spanStart, p.end + bytes <= r.spanEnd else { throw refuse("the new partition would leave the allowed span") }
             guard bytes % t.blockSize == 0 || bytes % 512 == 0 else { throw refuse("unaligned size") }
-        case .eraseToFree, .deleteContainer, .addVolume, .formatFAT32, .mount, .unmount:
-            guard p.uuid != r.macOSStore else { throw refuse("the macOS container is never erased, formatted or mounted by this build (\(dev))") }
+        case .eraseToFree, .deleteContainer, .addVolume, .changeVolumeRole, .renameVolume, .formatFAT32, .mount, .unmount:
+            guard p.uuid != r.macOSStore else { throw refuse("the macOS container is never erased, formatted, renamed or mounted by this build (\(dev))") }
             guard r.isWritable(p) else { throw refuse("\(dev) is outside the span this job may use") }
+            if case .addVolume(_, let g?) = m, owner(of: g, in: t)?.uuid != p.uuid { throw refuse("\(g) is not a volume of the same container") }
         case .detachImage: break
         }
     }

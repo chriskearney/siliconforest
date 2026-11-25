@@ -235,6 +235,44 @@ struct ProtectionReceiptTests {
         for a in bad { #expect(throws: SafetyRefusal.self, "\(a)") { try M.parse(a) } }
     }
 
+    @Test func theStubsVolumeCommandsAreAllowedOnlyOnTheNewStub() throws {
+        // SFStub's shapes (Tests/StubDifferential/fixtures/sf-payload-commands.txt): changeVolumeRole, rename and the
+        // apfs addVolume forms, on the container this job created and nowhere else.
+        let r = try Self.receipt(), d = "/usr/sbin/diskutil"
+        var t = Synth.table
+        t.partitions[1].size = Synth.plan().macOS.to
+        let stub = Synth.part("NEW-STUB", "disk5s7", "Apple_APFS", t.partitions[1].end, 2 * Synth.gib, volumes: ["Untitled"])
+        t.partitions.insert(stub, at: 2)
+        let ok: [[String]] = [
+            [d, "apfs", "changeVolumeRole", "disk97s1", "D"], [d, "rename", "disk97s1", "SiliconForest - Data"],
+            [d, "apfs", "addVolume", "disk97", "apfs", "SiliconForest", "-role", "S", "-groupWith", "disk97s1"],
+            [d, "apfs", "addVolume", "disk97", "apfs", "Preboot", "-role", "B"], [d, "apfs", "addVolume", "disk97", "apfs", "Recovery", "-role", "R"],
+        ]
+        for a in ok { try LiveChokepoint.check(try M.parse(a), on: t, receipt: r) }
+        #expect(try M.parse(ok[0]) == .changeVolumeRole(volume: "disk97s1") && M.parse(ok[1]) == .renameVolume("disk97s1"))
+        #expect(try M.parse(ok[2]).devices == ["disk97", "disk97s1"])
+        // macOS's volume, the protected Linux stub's, or a group with another container's volume: refused
+        let refused: [[String]] = [
+            [d, "apfs", "changeVolumeRole", "disk92s1", "D"], [d, "rename", "disk92s1", "X"],
+            [d, "apfs", "changeVolumeRole", "disk93s1", "D"], [d, "rename", "disk93s1", "X"],
+            [d, "apfs", "addVolume", "disk97", "apfs", "X", "-role", "S", "-groupWith", "disk92s1"],
+            [d, "apfs", "addVolume", "disk92", "apfs", "Preboot", "-role", "B"],
+        ]
+        for a in refused {
+            let m = try M.parse(a)
+            #expect(throws: SafetyRefusal.self, "\(a.joined(separator: " "))") { try LiveChokepoint.check(m, on: t, receipt: r) }
+        }
+        // shapes that don't parse at all
+        let bad: [[String]] = [
+            [d, "apfs", "changeVolumeRole", "disk97s1", "S"], [d, "apfs", "changeVolumeRole", "disk97s1"], [d, "apfs", "changeVolumeRole", "disk97", "D"],
+            [d, "rename", "disk97s1", "-x"], [d, "rename", "disk97s1", "a/b"], [d, "rename", "disk5", "X"], [d, "rename", "disk97s1"],
+            [d, "apfs", "addVolume", "disk97", "apfs", "X", "-role", "S"], [d, "apfs", "addVolume", "disk97", "apfs", "X", "-role", "B", "-groupWith", "disk97s1"],
+            [d, "apfs", "addVolume", "disk97", "apfs", "X", "-role", "S", "-groupWith", "disk97"], [d, "apfs", "addVolume", "disk97", "hfs", "X", "-role", "B"],
+            [d, "apfs", "addVolume", "disk97", "apfs", "X", "-role", "B", "-nomount"],
+        ]
+        for a in bad { #expect(throws: SafetyRefusal.self, "\(a)") { try M.parse(a) } }
+    }
+
     @Test func aDriftedDiskIsCaught() throws {
         let r = try Self.receipt()
         #expect(r.violation(in: Synth.table) == nil)
