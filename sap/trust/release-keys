@@ -1,0 +1,6 @@
+# SAP's compiled-in copy of the SiliconForest release public keys (design section 8.2, option A).
+# Used only as a consistency check against the boot-chain anchor, and as a clearly-warned fallback while
+# no installer writes the anchor yet (docs/sap/OPERATOR.md, "Trust anchor"). Must equal
+# installer/payload/release/allowed_signers; sap/tests/test_trust.py checks that.
+# version 1
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJRLKxtf0vYCpa0lrhEzzx+6pKl5JvBlFcFor3YNjERZ siliconforest-release offline 2026-11-24

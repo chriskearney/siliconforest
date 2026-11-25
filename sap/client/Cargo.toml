@@ -1,0 +1,34 @@
+[package]
+name = "sap"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+description = "SAP, the SiliconForest system updater (docs/sap/README.md)"
+publish = false
+
+[[bin]]
+name = "sap"
+path = "src/main.rs"
+
+[[bin]]
+name = "sf"
+path = "src/bin/sf.rs"
+
+[features]
+default = []
+# Test hooks: SAP_FAULT (abort at a journal step), SAP_NOW (clock), SAP_ALLOW_NONROOT (fake roots
+# without root), SAP_LAUNCHCTL. Never enabled in the SiliconForest build (integrations/siliconforest/sap).
+testing = []
+
+[dependencies]
+sha2 = "0.10"
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+lzma-rs = "0.3"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+libc = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
