@@ -256,10 +256,58 @@ test, with no Apple bits, in CI (`installer-mac.yml`, job `stub`). The real-imag
 with its reason; run it on the M5 with `installer/mac/scripts/stub-differential.sh` (needs root, the staged image
 members and the pinned Asahi checkout).
 
-Not yet done (SFStub M2–M5): the production SiliconForest payload (Setup app, `sf-launcher`, `SFRecovery`, plan.json,
-stub_info) in place of Asahi's step2 app; the engine's S30/S35 calling SFStub through the image chokepoint and helper
-verbs, with journal and resume; progress and fault injection; and a real-hardware run (G5/G6, with Chris). Boot
-personalization and Recovery pairing cannot be proven on images.
+### 9.1 The SiliconForest payload in the stub (Chris approved the swap, 24 Nov 2026, 11:06 PM PT)
+
+`SFPayload` (`Sources/SFStub/SFPayload.swift`) puts SiliconForest's files where Asahi's `Finish Installation.app`, `step2.sh`,
+logo and boot object went. Our own code. Nothing else in the stub changes (same plan, same order, same Apple content):
+
+| Where (System volume) | What | From |
+|---|---|---|
+| `SiliconForest Setup.app/Contents/Info.plist` | `CFBundleExecutable sf-launcher`, the same bytes as the engine's S60 | `SFPayload.infoPlist` (a test keeps it equal to `RecoveryPayload`) |
+| `…/MacOS/sf-launcher`, `…/Resources/sf-step2.sh` | The committed launcher and Terminal fallback, 0755, byte for byte | `installer/mac/Recovery/` |
+| `…/MacOS/SFRecovery` | The signed AppKit recovery app, 0755 | the app bundle's `Contents/Helpers/SFRecovery` |
+| `…/Resources/boot.bin` | **Stage 1 + the profile's variables + 4 NULs** (`m1n1.build`'s format): `chosen.asahi,efi-system-partition=<SFBOOT PARTUUID>` and `chainload=<SFBOOT PARTUUID>;sf/boot.bin` | the release's `sf-stage1.bin` (Omacom m1n1 `121fcbf` plus our patches; SHA-256 from the signed `install.json`), `boot.stage1.variables` in the profile |
+| `SFInstall/plan.json`, `SFInstall/state/` | The engine's recovery plan (job, install ID, stub, boot, root, plan digest) and the empty recovery journal directory | the engine; `boot` must equal the PARTUUID in the variables |
+| `.IAPhysicalMedia` | `AppName = SiliconForest Setup.app`, the same bytes as the engine's S68 marker | `SFPayload.physicalMedia` |
+| `.VolumeIcon.icns` | The SiliconForest icon | the app bundle |
+
+It refuses: a profile whose variables do not chainload `sf/boot.bin` on the SFBOOT PARTUUID or carry an unknown `@SF_` token; a PARTUUID that is not
+a UUID; a stage 1 whose SHA-256 is not the release's; a `plan.json` that lacks a key or names another boot partition; launcher or fallback that is not
+a `/bin/sh` script; a release that is not `siliconforest-install/3` with a `siliconforest-kc/1` collection (`checkRelease`); and a release whose
+collection is the **G2 RAM-boot one (`ff0238cc…`, no storage driver)**. The stub carries no kernel: the installed-system collection is
+`b3115d93…` (S17/S42, section 13). Tests assert the constants against `g2-pins.json`, the profile's stage 1 revision against the G2 window tag, and the two format
+strings against `sfrelease.py` and `kc_release.py` (`SFPayloadTests`).
+
+**The differential test with this payload.** `scripts/stub-differential.sh` builds the stub with SFStub three ways from the same 13.5 image: Asahi's payload
+(must equal the oracle: 0 differences, as in M1), and the SiliconForest payload, which must differ from Asahi's tree by exactly the delta in
+`Tests/StubDifferential/fixtures/sf-payload-delta.json` and nothing else (`stubtree.py` docstring D1–D5):
+
+| | Allowed difference |
+|---|---|
+| D1 | `Finish Installation.app/**` is absent and `SiliconForest Setup.app/**` and `SFInstall/**` are present, and nowhere else |
+| D2 | `.VolumeIcon.icns` and `.IAPhysicalMedia` differ in content and size only (type, mode, owner, flags, xattrs equal) |
+| D3 | The SF-owned entries equal the payload manifest (`sfstubctl --payload-manifest`): paths, types, modes, sizes, SHA-256, nothing extra or missing |
+| D4 | The boot object is byte-identical to Asahi's (same synthetic stage 1, same two variables) |
+| D5 | In the command sequence only the app tree's `os.chflags` lines differ; the sequence equals `sf-payload-commands.txt` |
+
+Volumes, roles, group, bootable flag, container size and every other entry in all four volumes are equal. `test_stubtree.py` runs the delta check against
+synthetic trees in CI and proves it rejects each undeclared difference (a stray file, a changed Apple file or mode, a payload file that differs from its manifest, a different
+boot object, a changed volume or container, a leaked Asahi path or a new normalisation).
+
+**Result (M5, macOS 26.5, 24 Nov 2026, run `stubdiff-20261124-234106`, a fresh Asahi oracle and three builds of the 13.5 j313ap image):**
+
+- SFStub with Asahi's payload equals the oracle: 115 vs 115 entries, 0 differences, 23 equal commands (unchanged from M1).
+- SFStub with the SiliconForest payload: 117 entries. D1: 10 Asahi entries absent, 12 SiliconForest entries present (`SiliconForest Setup.app` 9, `SFInstall` 3;
+  nothing elsewhere). D2: `.VolumeIcon.icns` and `.IAPhysicalMedia` differ in content only. D3: all 14 manifest entries match. D4: boot object
+  `deb848ec…` identical to Asahi's. **0 differences beyond the declared delta**; volumes, roles, group, `bootable`, container size
+  (2,499,805,184) equal. Commands: equal apart from the 8 app-tree `os.chflags` lines, and equal to `sf-payload-commands.txt`.
+- The run uses a synthetic icon, a synthetic stage 1 and SFRecovery stand-in (`SF_RECOVERY_BIN` carries a real one) and a synthetic `plan.json`; no Apple
+  or release binary is committed. The release's real `sf-stage1.bin` has not been built or run here.
+
+Not yet done (SFStub M2b–M5): the engine's S30/S35 calling SFStub through the image chokepoint and helper verbs, with journal and resume (the live backend lacks the
+`changeVolumeRole` and `rename` shapes; S55 writes its boot object in another format than `m1n1.build`, see [`STUB-ONLY-RUN-J313.md`](STUB-ONLY-RUN-J313.md) section 8);
+the release's real `sf-stage1.bin`; progress and fault injection; and a real-hardware run (G5/G6, with Chris), whose checklist is
+[`STUB-ONLY-RUN-J313.md`](STUB-ONLY-RUN-J313.md). Boot personalization and Recovery pairing cannot be proven on images.
 
 The supported IPSW range is the profiles' single entry, 13.5 (22G74).
 

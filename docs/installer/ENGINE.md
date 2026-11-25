@@ -258,6 +258,10 @@ Differences must be listed and justified one by one. Boot personalisation is not
 normalisations N1–N6 listed in [`PAYLOAD.md`](PAYLOAD.md) section 9. Run it with `installer/mac/scripts/stub-differential.sh`.
 There is no Asahi fallback (DESIGN section 6.4): Asahi's code runs only as this test's oracle.
 
+**With the SiliconForest payload (24 November 2026):** SFStub carrying `SiliconForest Setup.app`, `SFInstall/` and our stage 1 boot object is
+compared against the same oracle and must differ by exactly the declared delta (D1–D5, [`PAYLOAD.md`](PAYLOAD.md) section 9.1), with the
+command sequence equal to `sf-payload-commands.txt`. The first real-disk stub is the checklist in [`STUB-ONLY-RUN-J313.md`](STUB-ONLY-RUN-J313.md).
+
 ## 11. Real-hardware acceptance
 
 From SF-AJ's checklist, extended. **Runs first on the M1 Air (J313), with Chris's go. Stop at any unexpected output. Never use DFU.**
