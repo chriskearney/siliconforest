@@ -13,6 +13,12 @@
 //                        --physical-media F [--boot-object-path P --stage1 F --var V ...] [--ops F] [--ipsw URL|PATH]
 //                        [--images-root DIR]
 //   sfstubctl detach     --path IMG.sparseimage
+//
+// The SiliconForest payload (instead of --app/--script/--physical-media/--stage1/--var, which are the Asahi
+// reference payload, used by the differential test's baseline):
+//   --sf-launcher F --sf-step2 F --sf-recovery F --sf-stage1 F --sf-boot-partuuid U --sf-plan F --icon F
+//   [--sf-install-json F] [--sf-stage1-sha256 H] [--sf-resource NAME=FILE ...] [--payload-manifest OUT.json]
+//   sfstubctl payload    --profile P --work DIR  (the same --sf-* options; assembles and prints the manifest, no disk)
 
 import Foundation
 import SFEngine
@@ -26,7 +32,7 @@ struct Args {
     var single: [String: String] = [:]
     var multi: [String: [String]] = [:]
     init(_ argv: [String]) throws {
-        guard argv.count >= 2 else { throw StubError("usage: sfstubctl <inventory|stage|make-image|build|detach> ...") }
+        guard argv.count >= 2 else { throw StubError("usage: sfstubctl <inventory|stage|make-image|build|payload|detach> ...") }
         cmd = argv[1]
         var i = 2
         while i < argv.count {
@@ -51,6 +57,33 @@ func openImage(_ a: Args, _ profile: StubProfile) throws -> ZipReader {
 
 func json(_ o: Any) -> String {
     String(decoding: try! JSONSerialization.data(withJSONObject: o, options: [.sortedKeys, .prettyPrinted]), as: UTF8.self)
+}
+
+/// The SiliconForest payload from the --sf-* options.
+func sfPayload(_ a: Args, work: URL) throws -> SFPayload.Assembled {
+    func url(_ k: String) throws -> URL { URL(fileURLWithPath: try a.req(k)) }
+    var sha = a.single["sf-stage1-sha256"]
+    if let ij = a.single["sf-install-json"] {
+        let facts = try SFPayload.checkRelease(installJSON: Data(contentsOf: URL(fileURLWithPath: ij)))
+        if let s = sha, s != facts.stage1SHA256 { throw StubError("--sf-stage1-sha256 is not install.json's") }
+        sha = facts.stage1SHA256
+    }
+    var res: [(String, URL)] = []
+    for r in a.multi["sf-resource"] ?? [] {
+        let kv = r.split(separator: "=", maxSplits: 1).map(String.init)
+        guard kv.count == 2 else { throw StubError("bad --sf-resource \(r)") }
+        res.append((kv[0], URL(fileURLWithPath: kv[1])))
+    }
+    let inputs = SFPayload.Inputs(profile: try url("profile"), launcher: try url("sf-launcher"), step2: try url("sf-step2"),
+                                  recoveryBinary: try url("sf-recovery"), stage1: try url("sf-stage1"), stage1SHA256: sha,
+                                  bootPartUUID: try a.req("sf-boot-partuuid"), planJSON: try Data(contentsOf: try url("sf-plan")),
+                                  volumeIcon: try url("icon"), resources: res)
+    let built = try SFPayload.assemble(inputs, into: work.appendingPathComponent("sf-payload"))
+    if let out = a.single["payload-manifest"] {
+        let m = built.manifest.map { ["path": $0.path, "type": $0.type, "mode": $0.mode, "size": $0.size, "sha256": $0.sha256] as [String: Any] }
+        try json(["variables": built.variables, "entries": m]).write(toFile: out, atomically: true, encoding: .utf8)
+    }
+    return built
 }
 
 /// diskutil through ImageGuard, recording each command with devices replaced by names the caller gives.
@@ -214,6 +247,11 @@ func run() throws {
         _ = try checked(d.run(["apfs", "resizeContainer", s, "\(bytes)"]))
         let info = try d.query(["info", "-plist", s])
         print(json(["store": s, "container": info["APFSContainerReference"] as? String ?? "", "bytes": info["Size"] as? Int ?? 0, "image": path]))
+    case "payload":
+        let work = URL(fileURLWithPath: try a.req("work"))
+        let b = try sfPayload(a, work: work)
+        print("payload assembled: \(b.manifest.count) entries; boot object \(b.bootObject.count) bytes; variables:")
+        for v in b.variables { print("  \(v)") }
     case "detach":
         let path = try a.req("path")
         let d = GuardedDiskutil(root: imagesRoot)
@@ -237,11 +275,16 @@ func run() throws {
                 : kv[1].hasPrefix("literal:") ? .literal(String(kv[1].dropFirst(8))) : nil
             guard tokens[kv[0]] != nil else { throw StubError("bad --token \(t)") }
         }
-        let payload = StubPayload(
-            volumeIcon: try url("icon"), appSource: try url("app"), appName: try a.req("app-name"),
-            script: a.single["script"] != nil ? (try a.req("script-path"), try url("script"), tokens) : nil,
-            physicalMedia: try url("physical-media"),
-            bootObject: a.single["stage1"] != nil ? (try a.req("boot-object-path"), try url("stage1"), a.multi["var"] ?? []) : nil)
+        let payload: StubPayload
+        if a.single["sf-launcher"] != nil {
+            payload = try sfPayload(a, work: work).payload
+        } else {
+            payload = StubPayload(
+                volumeIcon: try url("icon"), appSource: try url("app"), appName: try a.req("app-name"),
+                script: a.single["script"] != nil ? (try a.req("script-path"), try url("script"), tokens) : nil,
+                physicalMedia: try url("physical-media"),
+                bootObject: a.single["stage1"] != nil ? (try a.req("boot-object-path"), try url("stage1"), a.multi["var"] ?? []) : nil)
+        }
 
         // 1. Plan with a placeholder VGID to learn the members, and stage them all (no disk writes yet).
         let pre = try StubPlanner.plan(image: image, target: "VGID", payload: payload, adminUsers: try url("admin-users"))

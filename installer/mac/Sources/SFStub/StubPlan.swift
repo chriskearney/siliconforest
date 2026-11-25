@@ -38,6 +38,13 @@ public enum StubToken: Sendable, Equatable {
     case literal(String)
 }
 
+/// A file (bytes) or directory (nil) at a path relative to the System volume's root.
+public struct StubExtra: Sendable, Equatable {
+    public var path: String
+    public var data: Data?
+    public init(_ path: String, _ data: Data?) { self.path = path; self.data = data }
+}
+
 /// The non-Apple files the stub carries. Upstream's came from its own package directory.
 public struct StubPayload: Sendable {
     /// `.VolumeIcon.icns` (upstream: `logo.icns`, copied with its mode).
@@ -51,11 +58,14 @@ public struct StubPayload: Sendable {
     public var physicalMedia: URL
     /// The boot object (m1n1 stage 1) and its variables, written into the app (upstream: osinstall's m1n1.build).
     public var bootObject: (pathInApp: String, stage1: URL, variables: [String])?
+    /// Files and directories written into the System volume after the app is copied and before the boot object
+    /// (SiliconForest: `SFInstall/plan.json`). Upstream has none.
+    public var systemExtras: [StubExtra]
 
     public init(volumeIcon: URL, appSource: URL, appName: String, script: (pathInApp: String, template: URL, tokens: [String: StubToken])?,
-                physicalMedia: URL, bootObject: (pathInApp: String, stage1: URL, variables: [String])?) {
+                physicalMedia: URL, bootObject: (pathInApp: String, stage1: URL, variables: [String])?, systemExtras: [StubExtra] = []) {
         self.volumeIcon = volumeIcon; self.appSource = appSource; self.appName = appName; self.script = script
-        self.physicalMedia = physicalMedia; self.bootObject = bootObject
+        self.physicalMedia = physicalMedia; self.bootObject = bootObject; self.systemExtras = systemExtras
     }
 }
 
@@ -207,6 +217,14 @@ public enum StubPlanner {
         if let s = payload.script { a.append(.script(s.template, s.tokens, app.appending(s.pathInApp))) }
         a.append(.copyFile(payload.physicalMedia, sys.appending(".IAPhysicalMedia")))
         a.append(.removeIfExists(sys.appending("IAPhysicalMedia-disabled.plist")))
+        for x in payload.systemExtras {
+            guard !x.path.isEmpty, !x.path.hasPrefix("/"), !x.path.split(separator: "/").contains("..") else { throw StubError("bad extra path \(x.path)") }
+            if let d = x.data {
+                let parent = (x.path as NSString).deletingLastPathComponent
+                if !parent.isEmpty { a.append(.mkdir(sys.appending(parent))) }
+                a.append(.bytes(d, sys.appending(x.path), label: x.path))
+            } else { a.append(.mkdir(sys.appending(x.path))) }
+        }
         if let b = payload.bootObject { a.append(.bootObject(b.stage1, b.variables, app.appending(b.pathInApp))) }
         return a
     }
