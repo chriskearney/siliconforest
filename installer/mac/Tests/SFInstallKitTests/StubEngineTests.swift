@@ -81,6 +81,8 @@ struct StubVolumePlanTests {
         for v in refused { #expect(throws: SafetyRefusal.self, "\(v.summary)") { try g.admit(v, now: t) } }
     }
 
+    static func table80() -> ImageTopology { table([]) }
+
     static func plan() throws -> EnginePlan {
         EnginePlan(operation: .install, profile: ProfileRef(id: "J313", sha256: "x"), release: "r", releaseVersion: "v",
                    request: InstallRequest(siliconForestBytes: 20 << 30, installID: "a1b2c3d4"), layoutDigest: "L",
@@ -176,7 +178,7 @@ struct StubBuildEngineImageTests {
         }
         // S55's and S60's own checks pass on the finished stub.
         var gate = Gate(plan: st.plan!, original: st.original!, created: st.created); gate.created = st.created
-        #expect(e.checkStubTail(src, stub: stub, actions: [try e.stubBootAction(gate: gate)]) != .notDone)
+        #expect(e.checkStubTail(src, stub: stub, actions: [try e.stubBootAction(plan: st.plan!, gate: gate)]) != .notDone)
         #expect(e.checkStubTail(src, stub: stub, actions: try e.stubInstallActions(plan: st.plan!, gate: gate)) != .notDone)
     }
 
@@ -205,5 +207,123 @@ struct StubBuildEngineImageTests {
         try Self.expectSFStub(c, jj, src)
         // S35 was resumed by its check, not trusted from the journal
         #expect(jj.records.contains { $0.step == "S35" && $0.kind == .check })
+    }
+}
+
+@Suite("Engine: the stub-only plan (STUB-ONLY-RUN-J313)")
+struct StubOnlyPlanTests {
+    static func plan(_ id: String = "a1b2c3d4") -> EnginePlan {
+        var p = try! StubVolumePlanTests.plan()
+        p.request = InstallRequest(siliconForestBytes: 2 << 30, installID: id, stubOnly: true)
+        return p.sealed()
+    }
+
+    @Test func stepsAndTheAbsentStage2Partition() throws {
+        let p = Self.plan()
+        let full = try StubVolumePlanTests.plan()
+        #expect(p.isStubOnly && !full.isStubOnly)
+        #expect(StepCode.order(p) == [.S00, .S05, .S08, .S10, .S15, .S20, .S25, .S30, .S32, .S35, .S55, .S60, .S65, .S68, .S70])
+        #expect(!StepCode.order(p).contains { [.S17, .S40, .S42, .S45, .S46, .S47, .S50, .S52].contains($0) })
+        // The PARTUUID stage 1 names: a v4-shaped UUID, the same for the same install, different for another
+        let u = p.absentBootPartUUID
+        #expect(u.range(of: #"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"#, options: .regularExpression) != nil, "\(u)")
+        #expect(u == Self.plan().absentBootPartUUID && u != Self.plan("other").absentBootPartUUID)
+        // and the profile's variables accept it (SFPayload checks they chainload sf/boot.bin on that partition)
+        let profile = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("profiles/J313.json")
+        #expect(try SFPayload.variables(profile: profile, bootPartUUID: u) == InstallEngine.bootVariables(bootPartUUID: u))
+    }
+
+    @Test func theGateLetsAStubOnlyJobCreateOnlyTheStub() throws {
+        let p = Self.plan()
+        let g = Gate(plan: p, original: StubVolumePlanTests.table80(), created: ["stub": "STUB"])
+        #expect(throws: SafetyRefusal.self) { try g.admit(.addPartition(role: "boot", after: "STUB", content: "EFI", label: "SFBOOT", bytes: 500 << 20), now: StubVolumePlanTests.table80()) }
+        #expect(throws: SafetyRefusal.self) { try g.admit(.addPartition(role: "root", after: "STUB", content: "Linux Filesystem", label: "SF root", bytes: 10 << 30), now: StubVolumePlanTests.table80()) }
+    }
+}
+
+@Suite("Engine: a stub-only run on an Air with Omarchy removed (ISC, macOS, Recovery)", .serialized, .enabled(if: ImageLab.enabled), .enabled(if: ImageLab.long))
+struct StubOnlyImageTests {
+    @Test(.timeLimit(.minutes(30))) func aStubOnlyRunMakesOnlyTheStubResumesAndIsRemovedCleanly() throws {
+        // The run's precondition is Omarchy removed and macOS full size: the j293 layout's shape, with J313's profile.
+        let c = try ImageLab.fresh(.j293); defer { c.finish() }
+        let profile = try ImageLab.profile("J313")
+        let src = try fixtureStubSource(c.dir.appendingPathComponent("stub-src"))
+        let original = try c.backend.topology()
+        let (release, _) = try ImageLab.release()
+        let mac = try #require(original.macOS)
+        let request = InstallRequest(siliconForestBytes: profile.partitioning.stubContainerBytes, installName: "SiliconForest", installID: "a1b2c3d4", stubOnly: true)
+        let plan = try EnginePlanner.installPlan(topology: original, limits: try c.backend.limits(store: mac.uuid), profile: profile, release: release, request: request)
+        #expect(plan.partitions.map(\.role) == ["stub"] && plan.macOS.to == plan.macOS.from - profile.partitioning.stubContainerBytes)
+        // the wrong size is refused
+        var wrong = request; wrong.siliconForestBytes += 1 << 20
+        #expect(throws: PlanRefusal.self) { _ = try EnginePlanner.installPlan(topology: original, limits: try c.backend.limits(store: mac.uuid), profile: profile, release: release, request: wrong) }
+        let j = try ChainJournal(directory: c.journalDir)
+        func engine(_ f: FaultPlan = FaultPlan()) throws -> InstallEngine {
+            let e = try ImageLab.engine(c, journal: try ChainJournal(directory: c.journalDir, jobID: j.jobID), profile: profile, faults: f)
+            e.stubSource = src
+            return e
+        }
+        let first = try ImageLab.engine(c, journal: j, profile: profile)
+        try first.begin(plan)
+        #expect(throws: EngineError.self) { try first.run() }              // no stubSource: refused, nothing written
+        #expect(try c.backend.freshTopology().digestForm == original.digestForm)
+        for (f, power) in [(FaultPlan(powerLossAfterCommand: .S30), true), (FaultPlan(killAtPoint: "S32/system"), false),
+                           (FaultPlan(killAtPoint: "S35/action-30"), false), (FaultPlan(powerLossAfterCommand: .S55), true)] {
+            #expect(throws: SimulatedKill.self) { try engine(f).run() }
+            if power { #expect(!c.backend.isAttached()); try c.backend.attach() }
+        }
+        #expect(try engine().run() == .handedOff)
+        let jj = try ChainJournal(directory: c.journalDir, jobID: j.jobID)
+        let st = JobState(jj.records)
+        #expect(st.created.keys.sorted() == ["stub"])
+        #expect(!jj.records.contains { ["S17", "S40", "S42", "S45", "S46", "S47", "S50", "S52"].contains($0.step ?? "") })
+        // Only the stub was added, directly after macOS; Linux's partitions untouched.
+        let t = try c.backend.topology()
+        let stubUUID = try #require(st.created["stub"])
+        let stub = try #require(t.partition(uuid: stubUUID))
+        #expect(t.partitions.count == original.partitions.count + 1 && stub.offset == t.partition(uuid: mac.uuid)!.end)
+        for p in original.partitions where p.uuid != mac.uuid {
+            #expect(t.partition(uuid: p.uuid).map { [$0.offset, $0.size] } == [p.offset, p.size], "\(p.identifier) moved")
+        }
+        expectAsahiStubVolumes(stub.apfs?.volumes ?? [])
+        // Stage 1 chainloads a partition that is on no disk: it will start, name it, and find no stage 2.
+        let sys = try c.backend.volumeURL(store: stub.uuid, role: "System")
+        let s1 = try Data(contentsOf: c.workDir.appendingPathComponent(release.stage1))
+        let absent = plan.absentBootPartUUID
+        #expect(try Data(contentsOf: sys.appendingPathComponent("SiliconForest Setup.app/Contents/Resources/boot.bin")) == InstallEngine.bootObject(stage1: s1, bootPartUUID: absent))
+        #expect(!t.partitions.contains { $0.uuid.lowercased() == absent })
+        let pj = try JSONSerialization.jsonObject(with: Data(contentsOf: sys.appendingPathComponent("SFInstall/plan.json"))) as? [String: Any]
+        #expect(pj?["boot"] as? String == absent && pj?["root"] as? String == "none")
+        // Removal deletes the stub container and grows macOS back: the original table.
+        let proof = try InstallProofReader.proof(from: jj)
+        #expect(proof.owned.all == [stub.uuid])
+        let removal = try EnginePlanner.removalPlan(topology: t, profile: profile, proof: proof)
+        let rj = try ChainJournal(directory: c.journalDir)
+        let re = try ImageLab.engine(c, journal: rj, profile: profile)
+        re.proof = proof
+        try re.begin(removal)
+        #expect(try re.run() == .committed)
+        #expect(try c.backend.freshTopology().digestForm == original.digestForm)
+    }
+
+    @Test(.timeLimit(.minutes(20))) func aStubOnlyRunRollsBackFromTheMiddle() throws {
+        let c = try ImageLab.fresh(.j293); defer { c.finish() }
+        let profile = try ImageLab.profile("J313")
+        let src = try fixtureStubSource(c.dir.appendingPathComponent("stub-src"))
+        let original = try c.backend.topology()
+        let (release, _) = try ImageLab.release()
+        let mac = try #require(original.macOS)
+        let request = InstallRequest(siliconForestBytes: profile.partitioning.stubContainerBytes, installID: "a1b2c3d4", stubOnly: true)
+        let plan = try EnginePlanner.installPlan(topology: original, limits: try c.backend.limits(store: mac.uuid), profile: profile, release: release, request: request)
+        let j = try ChainJournal(directory: c.journalDir)
+        let e = try ImageLab.engine(c, journal: j, profile: profile, faults: FaultPlan(killAtPoint: "S35/action-20"))
+        e.stubSource = src
+        try e.begin(plan)
+        #expect(throws: SimulatedKill.self) { try e.run() }
+        let r = try ImageLab.engine(c, journal: try ChainJournal(directory: c.journalDir, jobID: j.jobID), profile: profile)
+        r.stubSource = src
+        #expect(try r.rollback() == .rolledBack)
+        #expect(try c.backend.freshTopology().digestForm == original.digestForm)
     }
 }

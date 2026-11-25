@@ -224,7 +224,7 @@ extension InstallEngine {
             // SFStub: the boot object into the app (m1n1.build's format), then SFInstall/, as StubPlanner orders them.
             guard let stub = gate.created["stub"], let src = stubSource else { throw EngineError(.inconsistent, "no stub") }
             try gate.admit(.writeFiles(partition: stub, volumeRole: "System", files: []), now: try backend.topology())
-            let acts = code == .S55 ? [try stubBootAction(gate: gate)] : try stubInstallActions(plan: plan, gate: gate)
+            let acts = code == .S55 ? [try stubBootAction(plan: plan, gate: gate)] : try stubInstallActions(plan: plan, gate: gate)
             try journal.append(.intent, step: c, args: ["actions": .i(Int64(acts.count))])
             try performStubTail(src, stub: stub, actions: acts, code: code)
             try afterCommand(code)
@@ -349,7 +349,7 @@ extension InstallEngine {
             return try checkStubContent(src, stub: stub)
         case .S55 where stubSource != nil, .S60 where stubSource != nil:
             guard let stub = gate.created["stub"], let src = stubSource else { return .notDone }
-            let acts = code == .S55 ? [try stubBootAction(gate: gate)] : try stubInstallActions(plan: plan, gate: gate)
+            let acts = code == .S55 ? [try stubBootAction(plan: plan, gate: gate)] : try stubInstallActions(plan: plan, gate: gate)
             return checkStubTail(src, stub: stub, actions: acts)
         case .S35:
             guard let release, let stub = gate.created["stub"], let vol = try? backend.volumeURL(store: stub, role: "System") else { return .notDone }
@@ -622,8 +622,11 @@ extension InstallEngine {
     /// SFInstall/plan.json (what SFRecovery and sf-step2.sh read).
     func recoveryPlanJSON(plan: EnginePlan, gate: Gate) throws -> Data {
         struct RecoveryPlan: Codable { var job: String; var installID: String; var stub: String; var boot: String; var root: String; var planDigest: String }
+        // A stub-only run has no SFBOOT or root: boot is the absent PARTUUID stage 1 names, root "none".
+        let boot = gate.created["boot"] ?? (plan.isStubOnly ? plan.absentBootPartUUID : "")
+        let root = gate.created["root"] ?? (plan.isStubOnly ? "none" : "")
         let rp = RecoveryPlan(job: journal.jobID.uuidString, installID: plan.request?.installID ?? "", stub: gate.created["stub"] ?? "",
-                              boot: gate.created["boot"] ?? "", root: gate.created["root"] ?? "", planDigest: plan.digest)
+                              boot: boot, root: root, planDigest: plan.digest)
         return try Canonical.data(rp)
     }
 
@@ -660,8 +663,11 @@ public enum InstallProofReader {
         let st = JobState(journal.records)
         guard let plan = st.plan, plan.operation == .install, let original = st.original else { throw PlanRefusal(reason: "not an install journal") }
         guard st.end == .handedOff || st.end == .committed else { throw PlanRefusal(reason: "the install didn't finish (\(st.end?.rawValue ?? "unfinished"))") }
-        guard let stub = st.created["stub"], let boot = st.created["boot"], let root = st.created["root"] else {
-            throw PlanRefusal(reason: "the journal doesn't name all three partitions")
+        guard let stub = st.created["stub"] else { throw PlanRefusal(reason: "the journal doesn't name the stub") }
+        let boot = st.created["boot"], root = st.created["root"]
+        // A stub-only run made only the stub; a full install must name all three.
+        guard plan.isStubOnly ? (boot == nil && root == nil) : (boot != nil && root != nil) else {
+            throw PlanRefusal(reason: plan.isStubOnly ? "a stub-only journal names more than the stub" : "the journal doesn't name all three partitions")
         }
         return InstallProof(job: journal.jobID, installID: plan.request?.installID ?? "", releaseVersion: plan.releaseVersion,
                             macOSStore: plan.macOS.store, macOSOriginalSize: plan.macOS.from, originalLayoutDigest: original.layoutDigest,

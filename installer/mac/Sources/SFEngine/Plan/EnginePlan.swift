@@ -8,8 +8,11 @@ public struct InstallRequest: Codable, Sendable, Hashable {
     public var installName: String
     /// Random, made by the app; also written into the receipt slot and every marker.
     public var installID: String
-    public init(siliconForestBytes: Int64, installName: String = "SiliconForest", installID: String) {
-        self.siliconForestBytes = siliconForestBytes; self.installName = installName; self.installID = installID
+    /// The supervised first run on the Air (docs/installer/STUB-ONLY-RUN-J313.md): only the stub container, no SFBOOT
+    /// and no root. `siliconForestBytes` must then be exactly the profile's stub size. Nil: a full install.
+    public var stubOnly: Bool?
+    public init(siliconForestBytes: Int64, installName: String = "SiliconForest", installID: String, stubOnly: Bool? = nil) {
+        self.siliconForestBytes = siliconForestBytes; self.installName = installName; self.installID = installID; self.stubOnly = stubOnly
     }
 }
 
@@ -109,6 +112,21 @@ public struct EnginePlan: Codable, Sendable, Hashable {
     public var isSealed: Bool { !digest.isEmpty && digest == computeDigest() }
 
     public func partition(_ role: String) -> NewPartition? { partitions.first { $0.role == role } }
+
+    public var isStubOnly: Bool { request?.stubOnly == true }
+
+    /// A stub-only run's stage 1 still needs variables, so they name a PARTUUID that is on no disk: stage 1 starts,
+    /// names it, and stops because it can't find stage 2 (Chris, 25 November 2026). Derived from the install ID so a
+    /// rebuilt plan and a resumed job agree; never a real partition's.
+    public var absentBootPartUUID: String {
+        let h = Array(SHA256Hasher.hex("siliconforest-stub-only-boot:" + (request?.installID ?? "")).prefix(32))
+        var c = h
+        c[12] = "4"                                              // version 4 layout
+        c[16] = ["8", "9", "a", "b"][Int(String(h[16]), radix: 16)! % 4]   // RFC 4122 variant
+        let s = String(c)
+        func part(_ a: Int, _ b: Int) -> String { String(s.dropFirst(a).prefix(b - a)) }
+        return [part(0, 8), part(8, 12), part(12, 16), part(16, 20), part(20, 32)].joined(separator: "-")
+    }
 }
 
 public struct PlanRefusal: Error, LocalizedError, Equatable {
@@ -145,6 +163,17 @@ public enum EnginePlanner {
         if let problem = InstallOptions.validate(name: request.installName) { throw PlanRefusal(reason: "invalid name (\(problem))") }
         let stub = profile.partitioning.stubContainerBytes, boot = profile.partitioning.bootPartition.bytes
         let macMin = macOSMinimum(c, limits: limits)
+        if request.stubOnly == true {
+            // Only the stub: macOS gives up exactly its size, nothing else is created.
+            guard request.siliconForestBytes == stub else { throw PlanRefusal(reason: "a stub-only run frees exactly the stub's \(Bytes.format(stub))") }
+            let to = ((mac.size - stub) / align) * align
+            guard to >= macMin else { throw PlanRefusal(reason: "macOS keeps \(Bytes.format(macMin)); the stub doesn't fit") }
+            return EnginePlan(operation: .install, profile: profileRef(profile), release: release.digest, releaseVersion: release.version,
+                              request: request, layoutDigest: topology.layoutDigest, macOS: .init(store: mac.uuid, from: mac.size, to: to),
+                              partitions: [.init(role: "stub", after: "@macos", bytes: stub, content: "Apple_APFS", label: request.installName)],
+                              owned: nil, installJob: nil, originalLayoutDigest: topology.layoutDigest,
+                              humanSteps: ["enterOneTrueRecovery", "authenticateMachineOwner"]).sealed()
+        }
         let pool = mac.size + topology.freeAfter(uuid: mac.uuid)
         let diskMax = ((pool - macMin) / align) * align
         let growMax = ((stub + boot + c.rootMaxBytes) / align) * align

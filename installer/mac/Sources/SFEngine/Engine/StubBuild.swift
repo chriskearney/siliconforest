@@ -134,14 +134,20 @@ extension InstallEngine {
 
     static let appBootObjectPath = StubPath(.system, SFPayload.appName + "/" + SFPayload.bootObjectPath)
 
-    func stubBootAction(gate: Gate) throws -> StubAction {
-        guard let release, let boot = gate.created["boot"] else { throw EngineError(.inconsistent, "no SFBOOT") }
-        return .bootObject(work(release.stage1), Self.bootVariables(bootPartUUID: boot), Self.appBootObjectPath)
+    /// The PARTUUID stage 1 chainloads: SFBOOT's, or in a stub-only run one that is on no disk.
+    func stage2PartUUID(plan: EnginePlan, gate: Gate) throws -> String {
+        if let boot = gate.created["boot"] { return boot }
+        if plan.isStubOnly { return plan.absentBootPartUUID }
+        throw EngineError(.inconsistent, "no SFBOOT")
+    }
+
+    func stubBootAction(plan: EnginePlan, gate: Gate) throws -> StubAction {
+        guard let release else { throw EngineError(.internalError, "no release") }
+        return .bootObject(work(release.stage1), Self.bootVariables(bootPartUUID: try stage2PartUUID(plan: plan, gate: gate)), Self.appBootObjectPath)
     }
 
     func stubInstallActions(plan: EnginePlan, gate: Gate) throws -> [StubAction] {
-        guard let boot = gate.created["boot"] else { throw EngineError(.inconsistent, "no SFBOOT") }
-        return try SFPayload.installActions(planJSON: try recoveryPlanJSON(plan: plan, gate: gate), bootPartUUID: boot)
+        try SFPayload.installActions(planJSON: try recoveryPlanJSON(plan: plan, gate: gate), bootPartUUID: try stage2PartUUID(plan: plan, gate: gate))
     }
 
     /// Writes S55's or S60's actions onto the stub's System volume.

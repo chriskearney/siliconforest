@@ -10,6 +10,12 @@ public enum StepCode: String, Codable, Sendable, CaseIterable {
     public static let install: [StepCode] = [.S00, .S05, .S08, .S10, .S15, .S17, .S20, .S25, .S30, .S32, .S35, .S40, .S45, .S46, .S47, .S42,
                                              .S50, .S52, .S55, .S60, .S65, .S68, .S70]
     public static let removal: [StepCode] = [.U10, .U20, .U30, .U40]
+    /// The stub-only run: the stub and its startup files, no SFBOOT (S40), root (S45-S52) or kernel (S17, S42).
+    public static let stubOnly: [StepCode] = [.S00, .S05, .S08, .S10, .S15, .S20, .S25, .S30, .S32, .S35, .S55, .S60, .S65, .S68, .S70]
+
+    public static func order(_ plan: EnginePlan) -> [StepCode] {
+        plan.operation == .remove ? removal : plan.isStubOnly ? stubOnly : install
+    }
 
     /// Steps at or past S20 write to the disk (ENGINE §7 "first disk write below this line").
     public var writesDisk: Bool {
@@ -211,7 +217,8 @@ public final class InstallEngine: @unchecked Sendable {
         try backend.arm(plan: plan, original: original)
         if plan.operation == .install { backend.expectRelease(release, in: workDir) }
         var gate = Gate(plan: plan, original: original, created: st.created)
-        let order = plan.operation == .install ? StepCode.install : StepCode.removal
+        if plan.isStubOnly && stubSource == nil { throw EngineError(.internalError, "a stub-only run builds the stub with SFStub (stubSource)") }
+        let order = StepCode.order(plan)
         for code in order {
             var s = state
             if s.done(code) || s.status[code] == .rolledBack { continue }
