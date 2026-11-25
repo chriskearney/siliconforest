@@ -40,8 +40,8 @@ kernel, root, firmware slot or SFBOOT. Those are G6.
 
 ## 2. Stage A: the stub, up to the picker (everything is deletable)
 
-On the i9: `installer/payload/boot/build_stage1.sh OUT` (prints `44c1ef0b…  (the installed stage 1)`), copy `OUT/sf-stage1.bin` to the Air
-(`~/sf-run/rel/`). On the Air, in macOS, with the gated build of `sfstubrun` (`swift build -c release --product sfstubrun -Xswiftc -DSF_REAL_DISK_WRITES`,
+Get `sf-stage1.bin` either from the GitHub prerelease (built from source by the `stage1` job, which fails unless it is `44c1ef0b…`; check its SHA-256 against `RELEASE-SHA256SUMS`, PAYLOAD 14) or on the i9: `installer/payload/boot/build_stage1.sh OUT` (prints `44c1ef0b…  (the installed stage 1)`). Put it on the Air
+(`~/sf-run/rel/`). The prerelease has no signed `install.json` yet (the offline key signs it), so `--stage1-sha256` is the hash you checked, not one read from a signature. The signed `SFRecovery` (`Contents/Helpers/SFRecovery`) and `AppIcon.icns` for `$A` are inside the app in the release's DMG. On the Air, in macOS, with the gated build of `sfstubrun` (`swift build -c release --product sfstubrun -Xswiftc -DSF_REAL_DISK_WRITES`,
 built by Chris; never committed, never shipped) and `DISK=` the internal disk's `DiskUUID` from `diskutil info -plist disk0`. Common options:
 `R="--release-dir ~/sf-run/rel --stage1-sha256 44c1ef0bda96224f5fe8c6228cc12ec1966b7781f38844cea960b21b47654318"`,
 `J="--journal /var/db/org.siliconforest.installer/journal --work /var/db/org.siliconforest.installer/work"`,
