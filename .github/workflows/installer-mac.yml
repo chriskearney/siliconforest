@@ -52,6 +52,10 @@ jobs:
           # The live backend's repeats of the power-loss test and the fork sweep add ~15 min on the
           # M5 (more here); they run on the M5. Every other live-backend suite runs here.
           SF_LIVE_HEAVY: "0"
+          # everyJournalState + everyRollbackState: ~1.6 h on macos-15 even with SF_SWEEP_RECORDS
+          # (run 45504226352). The M5 runs them (~5 min). Left on, the job hits timeout-minutes: 180
+          # before the later live-backend and kernel-collection image tests finish (run 45524414605).
+          SF_FAULT_SWEEP: "0"
         run: |
           set -euo pipefail
           unset SF_REAL_DISK_WRITES || true

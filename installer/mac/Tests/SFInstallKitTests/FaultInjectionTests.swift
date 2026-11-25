@@ -69,7 +69,7 @@ struct FaultInjectionTests {
     /// journal exactly as a crash at that record would leave them — and on the fork a fresh engine
     /// must (a) resume to the end and (b), on a second fork, roll back to the original partition
     /// table. Every record with SF_FULL_SWEEP=1; a fixed sample otherwise.
-    @Test func everyJournalStateHasAWayForwardAndBack() throws {
+    @Test(.enabled(if: ImageLab.faultSweep), .timeLimit(.minutes(60))) func everyJournalStateHasAWayForwardAndBack() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let original = try c.backend.topology()
@@ -114,7 +114,7 @@ struct FaultInjectionTests {
 
     /// The same for a rollback: fork after each rollback record; each fork's rollback, resumed by a
     /// fresh engine, must finish and restore the table (J313, so Linux must also be untouched).
-    @Test func everyRollbackStateFinishes() throws {
+    @Test(.enabled(if: ImageLab.faultSweep), .timeLimit(.minutes(60))) func everyRollbackStateFinishes() throws {
         let c = try ImageLab.fresh(.j313); defer { c.finish() }
         let profile = try ImageLab.profile("J313")
         let original = try c.backend.topology()

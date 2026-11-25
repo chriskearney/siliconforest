@@ -21,6 +21,10 @@ enum ImageLab {
     static var sweepRecords: Set<UInt64>? {
         ProcessInfo.processInfo.environment["SF_SWEEP_RECORDS"].map { Set($0.split(separator: ",").compactMap { UInt64($0) }) }
     }
+    /// The journal fork-sweep tests (everyJournalState, everyRollbackState). On by default; installer-mac.yml
+    /// sets SF_FAULT_SWEEP=0 because on macos-15 they take ~1.6 hours even with the reduced sample
+    /// (run 45504226352: 2451 s and 3498 s) and the job then hits its 180-minute limit. The M5 runs them.
+    static var faultSweep: Bool { ProcessInfo.processInfo.environment["SF_FAULT_SWEEP"] != "0" }
 
     static func template(_ layout: ImageFixtures.Layout) throws -> URL {
         lock.lock(); defer { lock.unlock() }
