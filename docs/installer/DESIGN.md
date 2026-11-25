@@ -57,7 +57,7 @@ macOS. The same app removes SiliconForest and gives the space back.
 
 | # | Decision | Why | Cost or risk |
 |---|---|---|---|
-| **D1** | **Decided by Chris: native Swift engine.** A port of the Asahi v0.9.2 engine, proven by differential tests against the real thing | A root helper with no interpreter and no relaxed entitlements. Byte-level progress. Fixes the known upstream hazards. v0.9.2 is MIT; upstream's next core may be GPL | The stub is the most field-tested code we would be rewriting. Fallback in [section 6.4](#64-fallback-for-d1) |
+| **D1** | **Decided by Chris: native Swift engine.** A port of the Asahi v0.9.2 engine, proven by differential tests against the real thing | A root helper with no interpreter and no relaxed entitlements. Byte-level progress. Fixes the known upstream hazards. v0.9.2 is MIT; upstream's next core may be GPL | The stub is the most field-tested code we would be rewriting. No fallback: [section 6.4](#64-no-fallback-for-d1) |
 | **D2** | **SMAppService daemon, registered only while needed** | The supported API. Short life avoids its weakest area, upgrades | Requires Login Items approval. 13.x is the riskiest range (spikes S1, S2) |
 | **D3** | **Recovery step is a small AppKit app started by a shell launcher**, which falls back to Terminal and our script if the app cannot start | SwiftUI and Python are absent from the 13.5 recoveryOS. The script launch path is the one Asahi ships | Fullscreen in recoveryOS is unproven (spike S3) |
 | **D4** | **"Installed" means a boot receipt exists** | Omacom's J293 boot loop shows that enrollment is not success | Needs a small first-boot job and a reserved slot in the root image |
@@ -176,12 +176,21 @@ protocol SFHelperProtocol {
 There is **no "run this command"** call. The helper rebuilds the plan from its own read of the disk, the verified release
 and the profile, and refuses if the digest differs from what the user approved.
 
-### 6.4 Fallback for D1
+### 6.4 No fallback for D1
 
-The Swift stub builder must pass the differential test in [`ENGINE.md`](ENGINE.md) section 10. If it has not passed by the end of
-milestone M3, we ship the pinned Asahi v0.9.2 stub code behind the same helper API for the first release, with the Python runtime
-signed by us and as few entitlements as it will run with, and replace it later. The app, plan, gate, journal and Recovery are
-unaffected either way.
+**Decided by Chris on 24 November 2026, 3:27 PM PT: full Swift port, with no Asahi fallback.** The stub builder is
+`SFStub`, a Swift port of Asahi installer v0.9.2's `stub.py`, `urlcache.py` and the stub parts of `osinstall.py` (MIT,
+tag `v0.9.2`, commit `dffbb38e`). We do not ship, bundle or integrate the Python 0.9.2 code or any Python runtime, in
+the app, the helper or Recovery. The earlier plan (ship the pinned Python stub behind the helper API if the port slipped
+past M3) is withdrawn.
+
+- Asahi's code runs only as the **reference oracle inside tests**, on test machines (the M5 or the i9), against disk
+  images: `installer/mac/Tests/StubDifferential/` and `installer/mac/scripts/stub-differential.sh`.
+- Ported logic keeps Asahi's MIT attribution in each file header and the licence text in
+  [`LICENSES/third-party/asahi-installer-LICENSE.txt`](../../LICENSES/third-party/asahi-installer-LICENSE.txt).
+- Only v0.9.2 is used or read. Newer Asahi installer code (whose licence may be GPL) is not looked at.
+- The port must pass the differential test in [`ENGINE.md`](ENGINE.md) section 10. Progress and the list of
+  normalisations are in [`PAYLOAD.md`](PAYLOAD.md) section 9.
 
 ## 7. The recoveryOS component
 
@@ -508,7 +517,7 @@ Ported files keep the Asahi MIT notice and name their source path and revision.
 |---|---|---|
 | M1 Skeleton | Every screen in the simulator, dark and light, centred on every display | |
 | M2 Read-only | Probe, disk bar, plan and dry run against this Mac's real topology | The app is not yet wired to the M3 engine |
-| M3 Engine on images | Image-only chokepoint, gate, hash-chained journal, plan binding (layout digest and live resize minimum), S00–S70 and U10–U40 with resume and rollback, resize supervisor, `DiskImageBackend` on J293- and J313-like images. Fault injection forks at every journal record (forward and back), plus power loss, failing `diskutil`, resize hang, death and reattach, and #391. `SFHelper` verb-only XPC, tested in-process | **SFStub** and its differential test against Asahi v0.9.2 (§6.4 decides the fallback if it slips), downloads, firmware extraction. S20 `updatePreboot` and S65 `bless` are simulated on images (they need root). There is no `LiveDiskBackend` |
+| M3 Engine on images | Image-only chokepoint, gate, hash-chained journal, plan binding (layout digest and live resize minimum), S00–S70 and U10–U40 with resume and rollback, resize supervisor, `DiskImageBackend` on J293- and J313-like images. Fault injection forks at every journal record (forward and back), plus power loss, failing `diskutil`, resize hang, death and reattach, and #391. `SFHelper` verb-only XPC, tested in-process | **SFStub** past its milestone M1 (content tree from the 13.5 image by range reads, differential test against Asahi v0.9.2 passing on images; no fallback, §6.4): the production payload and S30/S35 wiring are open. Downloads, firmware extraction. S20 `updatePreboot` and S65 `bless` are simulated on images (they need root). There is no `LiveDiskBackend` |
 | M4 Recovery | `SFRecovery` (AppKit), `sf-launcher` and `sf-step2.sh`, with the PTY driver tested against fake `bputil` and `kmutil` | Never run in recoveryOS (S3, S5, S6) |
 | M6 Release | Requirement strings for team `Z642ZK8JK4`, the bundle layout, the SMAppService registration path | Developer ID signing is pending Chris's go. Notarization. Registration never exercised (S1, S2, S7) |
 

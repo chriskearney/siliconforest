@@ -188,19 +188,67 @@ Not done: J293's Touch Bar firmware (`multitouch.py` and its img4 and ASN.1 pars
 extraction stops with "no extractor yet". The Swift port for the installer (`SFFirmware`, DESIGN section 17) is also not
 done; the Python tool is its reference.
 
-## 9. SFStub (not started in P1)
+## 9. SFStub (milestone M1 done)
 
-The stub builder is the Swift port of Asahi v0.9.2's `stub.py`, `urlcache.py` and parts of `osinstall.py`, proven by the
-differential test in ENGINE section 10 on two image-backed disks. P1 built the shared pieces it needs:
+**Decision, Chris, 24 November 2026, 3:27 PM PT: full Swift port, NO Asahi fallback** (DESIGN section 6.4). The Python
+0.9.2 code and any Python runtime are never shipped, bundled or integrated. Asahi v0.9.2 runs only as the reference
+oracle in tests on the M5 or the i9, against disk images. Ported files carry Asahi's MIT attribution
+([`LICENSES/third-party/asahi-installer-LICENSE.txt`](../../LICENSES/third-party/asahi-installer-LICENSE.txt)). No
+newer Asahi code (possibly GPL) is used or read.
 
-- The range reader with the 206 and Content-Range rule.
-- Identity selection from the profile.
-- A pinned Asahi v0.9.2 checkout used as the reference: tag `v0.9.2`, commit `dffbb38e`.
+`installer/mac/Sources/SFStub` is the Swift port of Asahi v0.9.2's `stub.py`, `urlcache.py` and the stub parts of
+`osinstall.py` and `util.py` (tag `v0.9.2`, commit `dffbb38e`). `sfstubctl` drives it on disk images only (every
+`diskutil` target goes through `ImageGuard`). The pieces:
+
+- `RangeSource`: https range reads with the 206 and exact `Content-Range` rule, the profile's size checked against
+  HEAD, a bounded block cache. `ZipReader`: zip64, raw DEFLATE through Apple's Compression, CRC-32 and size checks.
+- `RestoreImage`: version and build check, exactly one identity from the profile, the trimmed `BuildManifest.plist`
+  written byte for byte as Python's `plistlib` writes it.
+- `StubPlanner`: upstream's actions in upstream's order, as data. `StubStager`: downloads and checks every member the
+  plan needs **before the first disk write** (DESIGN D6): 57 members (1,881,234,156 bytes unpacked), 710,035,591 of the
+  image's 12,893,195,726 bytes fetched (the rest is never read).
+- `StubWriter`: the plan written with Python's file semantics (`makedirs`, `copy`, `copytree`/`copy2`), the
+  Recovery `arm64eBaseSystem.dmg` as a decmpfs LZFSE resource fork, the System volume's FinderInfo and bootable
+  flag, `schg` on the admin-user plist, and the m1n1 boot object with its variables.
+
+**M1 result (M5, macOS 26.5, 24 November 2026, runs `stubdiff-20261124-160316` and `-160821`):** on the 13.5 (22G74)
+j313ap image, Asahi v0.9.2 and SFStub each built the 2,499,805,184-byte `SiliconForest` container on its own sparse
+disk image. `scripts/stub-differential.sh` dumped both: 115 entries vs 115 (65 files, 1,881,590,626 bytes as read),
+**0 differences** in paths, types, modes, owners, BSD flags, every xattr (decmpfs header and compressed resource fork
+byte for byte), SHA-256 of contents, symlink targets, volume names, roles, volume group, encryption, bootable flag
+and container size. The 23-command sequences (diskutil, xattr, fsctl, chflags, m1n1 build) are equal and match the
+committed `Tests/StubDifferential/fixtures/asahi-v0.9.2-commands.txt`. Both sides got Asahi's own step2 payload and
+a synthetic icon and stage 1, so the trees are comparable.
+
+The normalisations, the complete list (anything else that differs fails):
+
+| | What | Why |
+|---|---|---|
+| N1 | The volume group UUID → `<VGID>` in paths, symlink targets and file contents | Random per container |
+| N2 | The Preboot volume UUID → `<PREBOOT_UUID>` in file contents (step2.sh) | Random per container |
+| N3 | Mount points → `<System>`, `<Data>`, `<Preboot>`, `<Recovery>` in symlinks and commands | Chosen by macOS |
+| N4 | Timestamps and inode numbers are not compared | Wall clock |
+| N5 | `.fseventsd`, `.Spotlight-V100`, `.Trashes`, `.TemporaryItems`, `.DocumentRevisions-V100` at a volume root are listed, not compared | Created by macOS on mount |
+| N6 | Disk identifiers in the command sequence → the volume's role | Chosen by macOS |
+
+In the M1 runs only `step2.sh` needed N1/N2, and only `.fseventsd` (Data, System) was excluded by N5.
+
+Deliberate differences from upstream, none visible in the tree: the range and size rules above; staging before any
+write; upstream's "Multiple volumes" check (which compared string keys against tuple keys, so never fired) and its
+`rstrip(" - Data")` (which strips characters, not the suffix) fixed; full IPSW (Erase) only, no OTA paths; firmware
+collection left to `SFFirmware`; the step2 app, logo and m1n1 object come in as a payload.
+
+Tests: `StubReaderTests` and `StubBuildTests` (in `SFInstallKitTests`) run on a synthetic restore image built in the
+test, with no Apple bits, in CI (`installer-mac.yml`, job `stub`). The real-image differential test is skipped there
+with its reason; run it on the M5 with `installer/mac/scripts/stub-differential.sh` (needs root, the staged image
+members and the pinned Asahi checkout).
+
+Not yet done (SFStub M2–M5): the production SiliconForest payload (Setup app, `sf-launcher`, `SFRecovery`, plan.json,
+stub_info) in place of Asahi's step2 app; the engine's S30/S35 calling SFStub through the image chokepoint and helper
+verbs, with journal and resume; progress and fault injection; and a real-hardware run (G5/G6, with Chris). Boot
+personalization and Recovery pairing cannot be proven on images.
 
 The supported IPSW range is the profiles' single entry, 13.5 (22G74).
-
-DESIGN section 6.4's fallback applies if the Swift port has not passed its differential test by the time everything else is
-ready: ship the pinned v0.9.2 stub code behind the same helper API. Estimates are in section 12.
 
 ## 10. Rehearsal releases in CI
 
@@ -234,7 +282,8 @@ It is a rehearsal of the tooling only. **It has not been booted, and its boot fi
 | The receipt writer appends once, in place, fsynced, and leaves non-installer roots alone | Tests run the perl writer and the Python classifier |
 | Firmware extraction from Apple's 13.5 image is correct for J313 | Same hashes as the Air's Asahi `vendorfw`. 276/276 differential against Asahi v0.9.2. Unpacked by macOS perl |
 | A release is signed and every artifact verified before use, and tampering, unlisted files, another key, a swapped install.json, or a test key on a real release are refused | Tests. CI rehearsal |
-| Not proven | Any boot of the installer root. Darwin mounting a grown root. The receipt written by a real first start. The Swift verifier and reader. SFStub |
+| SFStub builds the same stub content as Asahi v0.9.2 from the 13.5 image by range reads | Differential test on disk images on the M5: 0 differences, equal command sequence (section 9) |
+| Not proven | Any boot of the installer root. Darwin mounting a grown root. The receipt written by a real first start. The Swift verifier and reader. A stub built by SFStub booting on hardware |
 
 ## 12. What is left
 
@@ -245,7 +294,7 @@ It is a rehearsal of the tooling only. **It has not been booted, and its boot fi
 | Swift receipt reader and firmware-slot writer, matched to `receipt.py` and the slot format | Code + tests | 2 days | No |
 | Boot the installer root, grown, in QEMU virt: receipt stages, firmware install, fsck afterwards | Builder + QEMU | 2–4 days | No |
 | First-boot account (section 5) | System work in the desktop, session and console | 1–2 weeks | **Yes: the design of the account screen** |
-| SFStub Swift port + differential test | Port, image runs on the M5 | 2–3 weeks; or the §6.4 fallback, about 1 week | **Yes: whether to take the fallback** |
+| SFStub M2–M4: production payload, S30/S35 engine wiring with journal and resume, progress, fault injection (M1 done, section 9; no fallback, DESIGN §6.4) | Code, image runs on the M5 | 1.5–2.5 weeks | **Yes: sign-off on the normalisations; G5/G6 hardware go for the real run** |
 | J293 Touch Bar firmware extraction (`multitouch.py`) | Port + check | 2–3 days | No |
 | `SFFirmware` (Swift) for the installer itself | Port of `extract_firmware.py` | 3–4 days | No |
 | Rebuild the release root from the current integration line (DESIGN section 16, item 1) and the J313 boot files | Builder | 1–2 days of builder time | No |

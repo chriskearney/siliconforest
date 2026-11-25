@@ -244,6 +244,10 @@ Changes from upstream, all deliberate:
 
 Differences must be listed and justified one by one. Boot personalisation is not comparable on an image and is covered in real-hardware testing.
 
+**Status, 24 November 2026:** passed on the M5 for the content tree (all four volumes) and the command sequence, with the
+normalisations N1–N6 listed in [`PAYLOAD.md`](PAYLOAD.md) section 9. Run it with `installer/mac/scripts/stub-differential.sh`.
+There is no Asahi fallback (DESIGN section 6.4): Asahi's code runs only as this test's oracle.
+
 ## 11. Real-hardware acceptance
 
 From SF-AJ's checklist, extended. **Runs first on the M1 Air (J313), with Chris's go. Stop at any unexpected output. Never use DFU.**

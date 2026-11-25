@@ -203,7 +203,8 @@ Nothing below has been attempted. Each item is recorded instead of being worked 
 | SFRecovery in recoveryOS | Needs the Air, the power-button step and Chris's go. `bputil` and `kmutil` are never run here | Spikes S3 (AppKit launch via `.IAPhysicalMedia`, full screen), S6 (PTY `bputil`/`kmutil`) |
 | The Apple_Boot booter on the internal disk | Seen on images only | Confirm S45/S46 at G5 with a read-only dry run on the Air |
 | A `LiveDiskBackend` for the internal disk | Deliberately not built. Release builds only, after review | M5, the first real install |
-| SFStub, the differential test against Asahi v0.9.2, firmware extraction, downloads | Not built in M3. The rehearsal release stands in | M3's remaining half (DESIGN §6.4 fallback if it slips) |
+| SFStub | M1 done: `Sources/SFStub` and `sfstubctl` build the stub's content tree from the 13.5 image by range reads, on disk images; differential test against Asahi v0.9.2 passes (`scripts/stub-differential.sh`, PAYLOAD §9). Not yet called by the engine | M2–M4: production payload, S30/S35 wiring. No Asahi fallback (DESIGN §6.4) |
+| Firmware extraction, downloads | Not built in M3. The rehearsal release stands in | M3's remaining half |
 
 ## How an install works (dry run)
 
