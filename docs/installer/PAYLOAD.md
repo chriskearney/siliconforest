@@ -246,6 +246,9 @@ The normalisations, the complete list (anything else that differs fails):
 
 In the M1 runs only `step2.sh` needed N1/N2, and only `.fseventsd` (Data, System) was excluded by N5.
 
+Listed difference outside the differential (engine only, Chris 25 November 2026): when the engine builds the stub (S32 onward) it mounts
+volumes with `diskutil mount nobrowse`, not upstream's `diskutil mount`; the live chokepoint refuses the plain form. ENGINE section 10.
+
 Deliberate differences from upstream, none visible in the tree: the range and size rules above; staging before any
 write; upstream's "Multiple volumes" check (which compared string keys against tuple keys, so never fired) and its
 `rstrip(" - Data")` (which strips characters, not the suffix) fixed; full IPSW (Erase) only, no OTA paths; firmware

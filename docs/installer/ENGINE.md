@@ -152,23 +152,23 @@ Numbering leaves gaps for later insertions. **Recorded in the journal; the journ
 | `S00 preflight` | Read only | Report | Rerun | Nothing to do |
 | `S05 approved` | User approved | Plan digest | | Nothing to do |
 | `S08 helper` | Register daemon | Status `.enabled` | Status | Unregister |
-| `S10 fetched` | Download to work directory | Sizes | Resume by range | Delete work files |
+| `S10 fetched` | Download to work directory; with SFStub also every restore-image member the stub needs (StubStager, CRC-checked) | Sizes, member CRCs | Resume by range; staged members reused | Delete work files |
 | `S15 verified` | Hash everything | SHA-256 match | Rehash | Delete work files |
 | `S17 kernel-collection` | Link the kernel collection from the verified inputs ([PAYLOAD.md §13](PAYLOAD.md)) | Output SHA-256 = the release's `collection_sha256` | Rehash `work/kc/collection` | Delete `work/kc` |
 | — | **First disk write below this line** | | | |
 | `S20 preboot` | `updatePreboot` if planned | Admin list current | Compare | Harmless; left alone |
 | `S25 resized` | Shrink container | Topology shows the planned size | Size already right | Grow back |
 | `S30 stub-part` | `addPartition` APFS | Partition with expected span | Find by span + marker | Delete it |
-| `S32 stub-vols` | System, Data, Preboot, Recovery | Volume roles | List roles | Delete container |
-| `S35 stub-files` | IPSW files, Preboot, Recovery image | Hashes, manifest | Per-file hash | Delete container |
+| `S32 stub-vols` | Upstream `prepare_volume`: default volume → Data, renamed "<name> - Data"; System (grouped with Data), Preboot, Recovery added. Each command chosen from a fresh read; kill/power-cut points `S32/data-role`, `data-name`, `system`, `preboot`, `recovery` | Exactly those four volumes | Next upstream command is none | Delete container |
+| `S35 stub-files` | SFStub: StubPlanner/StubWriter (upstream install_files, the SiliconForest app, icon, media marker; no boot object, no SFInstall yet). Kill/power-cut points `S35/action-N` | StubVerifier: every path as the plan leaves it | StubVerifier; rerun replaces a half-copied app or BaseSystem | Delete container |
 | `S40 boot-part` | `addPartition`, `newfs_msdos` | FAT with label | Probe | Erase to free |
 | `S42 boot-files` | Personalised `sf/boot.bin`, `sf/kernel.bin` (PDSF, packed before the first write) | Read-back hash | Hash | Erase to free |
 | `S45 root-part` | `addPartition` raw | Span | Probe | Erase to free |
 | `S47 root-image` | Stream xz to `/dev/rdisk` | **Full read-back** against `image_sha256` | Hash | Erase to free |
 | `S50 firmware` | Extract, write the firmware slot | Slot header + digest | Compare | Covered by root erase |
 | `S52 receipt-slot` | Write header and install ID | Read back | Compare | Covered by root erase |
-| `S55 boot-object` | Stage 1 + variables into the app, in `m1n1.build`'s format (stage 1, each variable + newline, four NULs: the bytes SFStub stages) | Hash, size limit | Hash | Covered by stub delete |
-| `S60 recovery-stage` | Copy app, plan, marker | Hashes | Hash | Covered by stub delete |
+| `S55 boot-object` | Stage 1 + variables into the app (`SiliconForest Setup.app/Contents/Resources/boot.bin`), in `m1n1.build`'s format (stage 1, each variable + newline, four NULs: the bytes SFStub stages) | Bytes equal | StubVerifier | Covered by stub delete |
+| `S60 recovery-stage` | SFStub: `SFInstall/`, `plan.json`, `state/` (StubPlanner's extras). Older rehearsal path: copy app, plan, marker | Bytes equal | StubVerifier | Covered by stub delete |
 | `S65 blessed` | `bless --setBoot` on stub (needs password) | **Read back** default volume | Read | Restore previous default, verify |
 | `S68 handoff` | Hide `SystemVersion.plist`, enable marker | Files | Check | Restore |
 | `S70 awaiting-recovery` | The Mac shuts down | | | Restore previous default, then full rollback |
@@ -261,6 +261,16 @@ There is no Asahi fallback (DESIGN section 6.4): Asahi's code runs only as this 
 **With the SiliconForest payload (24 November 2026):** SFStub carrying `SiliconForest Setup.app`, `SFInstall/` and our stage 1 boot object is
 compared against the same oracle and must differ by exactly the declared delta (D1–D5, [`PAYLOAD.md`](PAYLOAD.md) section 9.1), with the
 command sequence equal to `sf-payload-commands.txt`. The first real-disk stub is the checklist in [`STUB-ONLY-RUN-J313.md`](STUB-ONLY-RUN-J313.md).
+
+**In the engine (25 November 2026):** S32 runs SFStub's volume commands (the first five lines of `sf-payload-commands.txt`) through the
+engine backends, so the image and live paths build the stub's volumes as Asahi does. One listed difference, by Chris's decision
+(25 November 2026): the engine mounts with `diskutil mount nobrowse <volume>` where upstream and `sfstubctl` run `diskutil mount <volume>`;
+the live chokepoint refuses the plain form. `nobrowse` only keeps the volume out of Finder; the mount point and the volume are the same.
+S10 stages the restore-image members, S35 runs StubPlanner and StubWriter with the SiliconForest app, S55 writes the boot object into
+the app and S60 writes `SFInstall/` (`InstallEngine.stubSource`; nil keeps the older rehearsal path). Each step's check reads the stub back
+against the same plan (`StubVerifier`), so a resumed job decides from the disk; a rerun replaces a half-copied app tree or BaseSystem.
+Without root (image tests) the schg and APFS bootable flags are journaled as simulated with the command they stand for; the helper sets them.
+Open: S68 still moves `SystemVersion.plist` aside, which upstream's stub does not do; the stub-only run keeps it until Chris decides.
 
 ## 11. Real-hardware acceptance
 
