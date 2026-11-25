@@ -1,0 +1,20 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+#
+# /usr/libexec/sap/sap-mark-good: launchd job org.siliconforest.sap-mark-good, at every start.
+# Waits for sap-boot (SFBOOT mounted, `early` done), then runs `sap mark-good --wait 600`: an
+# updated slot that is being tried becomes the default only once every service the installed
+# packages name (and health_services in /etc/sap.conf) is running. Nothing to confirm: no change.
+# If the services never come up, nothing is marked and the next start falls back by itself.
+PATH=/bin:/sbin:/usr/bin:/usr/sbin; export PATH
+log=/var/log/sap-boot.log
+n=0
+while [ ! -f /var/run/sap-boot.done ] && [ "$n" -lt 300 ]; do sleep 1; n=$((n + 1)); done
+case "$(cat /var/run/sap-boot.done 2>/dev/null)" in
+    early-ok) ;;
+    *) echo "sap-mark-good: nothing to confirm ($(cat /var/run/sap-boot.done 2>/dev/null || echo 'sap-boot did not finish'))" >> "$log"; exit 0;;
+esac
+/usr/bin/sap mark-good --wait 600 >> "$log" 2>&1
+echo "sap-mark-good: exit $?" >> "$log"
+exit 0

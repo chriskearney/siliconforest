@@ -1,0 +1,35 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
+#
+# /usr/libexec/sap/sap-boot: launchd job org.siliconforest.sap-boot, at every start (RunAtLoad).
+#   1. mounts SFBOOT read-write at /Volumes/SFBOOT (sf-mount-sfboot; sfboot in /etc/sap.conf)
+#   2. runs `sf-bootslot early` when SFBOOT holds the A/B record (stage 1 v2): an ARMED trial that
+#      is running now becomes TRIED (its one try is used up), a trial stage 1 skipped is recorded
+#      FAILED. Without the record (stage 1 v1) there is nothing to do.
+#   3. leaves /var/run/sap-boot.done (with the outcome) for org.siliconforest.sap-mark-good
+# It never fails the boot; everything goes to /var/log/sap-boot.log.
+PATH=/bin:/sbin:/usr/bin:/usr/sbin; export PATH
+SFBOOT=/Volumes/SFBOOT
+TOOL=/usr/libexec/sf-bootslot
+log=/var/log/sap-boot.log
+mkdir -p /var/log /var/run
+rm -f /var/run/sap-boot.done
+mkdir -p "$SFBOOT"
+{
+    echo "sap-boot $(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"
+    outcome=no-sfboot
+    if /usr/libexec/sap/sf-mount-sfboot "$SFBOOT"; then
+        outcome=mounted
+        if [ -f "$SFBOOT/sf/bootstate.bin" ]; then
+            "$TOOL" --boot "$SFBOOT" early; rc=$?
+            case $rc in 0) outcome=early-ok;; 1) outcome=early-refused;; *) outcome=early-failed-$rc;; esac
+            "$TOOL" --boot "$SFBOOT" status
+        else
+            outcome=no-record
+        fi
+    fi
+    echo "outcome=$outcome"
+    echo "$outcome" > /var/run/sap-boot.done
+} >> "$log" 2>&1
+exit 0
