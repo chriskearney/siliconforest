@@ -461,8 +461,16 @@ extension InstallEngine {
 
     func bootObject(gate: Gate) throws -> Data {
         guard let release, let boot = gate.created["boot"] else { throw EngineError(.inconsistent, "no SFBOOT") }
-        var d = try Data(contentsOf: work(release.stage1))
-        d.append(Data("\nchosen.asahi,efi-system-partition=\(boot.lowercased())\nchainload=\(boot.lowercased());sf/boot.bin\n".utf8))
+        return Self.bootObject(stage1: try Data(contentsOf: work(release.stage1)), bootPartUUID: boot)
+    }
+
+    /// m1n1.build's format, the one SFStub writes (SFPayload.bootObject): stage 1, then each variable and a
+    /// newline, then four NULs. The variables are the profile's `boot.stage1.variables` with the SFBOOT PARTUUID.
+    public static func bootObject(stage1: Data, bootPartUUID: String) -> Data {
+        let u = bootPartUUID.lowercased()
+        var d = stage1
+        for v in ["chosen.asahi,efi-system-partition=\(u)", "chainload=\(u);sf/boot.bin"] { d.append(Data((v + "\n").utf8)) }
+        d.append(Data(count: 4))
         return d
     }
 

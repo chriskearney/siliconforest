@@ -120,6 +120,21 @@ struct SFPayloadTests {
         #expect(m["AppName"] as? String == SFPayload.appName)
     }
 
+    @Test func theEngineWritesTheSameBootObjectAsTheStub() throws {
+        // S55 and SFStub must stage the same bytes: m1n1.build's format (stage 1, each variable + "\n", four NULs)
+        // with the profile's variables. The old S55 had a newline after stage 1 and no terminator.
+        let s1 = bytes("stage1", 8192)
+        for p in ["J313", "J293"] {
+            let url = repoDir.appendingPathComponent("installer/profiles/\(p).json")
+            let vars = try SFPayload.variables(profile: url, bootPartUUID: bootUUID)
+            let stub = SFPayload.bootObject(stage1: s1, variables: vars)
+            #expect(InstallEngine.bootObject(stage1: s1, bootPartUUID: bootUUID.uppercased()) == stub)
+        }
+        let e = InstallEngine.bootObject(stage1: s1, bootPartUUID: bootUUID)
+        #expect(e.prefix(s1.count) == s1 && e.suffix(4) == Data([0, 0, 0, 0]))
+        #expect(e[s1.count] == UInt8(ascii: "c"))
+    }
+
     @Test func refusals() throws {
         let dir = tempDir("sfp-refuse")
         func out(_ n: String) -> URL { dir.appendingPathComponent("o-\(n)") }
