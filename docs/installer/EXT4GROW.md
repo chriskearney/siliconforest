@@ -6,7 +6,8 @@
 Companion to [`PAYLOAD.md`](PAYLOAD.md) section 6. Code: [`installer/mac/SFExt4Grow/`](../../installer/mac/SFExt4Grow/).
 CI: `.github/workflows/installer-ext4grow.yml`. Started 24 November 2026 with Chris's go (voice, 3:25 PM PT): a Swift grower
 with no GPL dependency instead of shipping a macOS build of `resize2fs` in the dmg. **The real-disk write switch stays off.**
-The `resize2fs` path in PAYLOAD.md and `grow_check.py` is left as it was; it stays the reference.
+`resize2fs` and `grow_check.py` stay the test reference; they are not what S48 will run. PAYLOAD.md section 6 is the
+current plan; the resize2fs-in-the-dmg text is retired (Chris, 24 November 2026).
 
 > **Status, milestone M1.** Library + CLI + tests. Everything ran on plain files and disk images on the M5. Nothing has
 > written to a real disk, touched the Air or the Pro, or booted. Not yet wired into the engine's S48 step.
@@ -67,7 +68,7 @@ All in memory first (`GrowPlanner`), then written in order (`Grower`):
 New groups are `INODE_UNINIT`, and `BLOCK_UNINIT` when nothing is in them (never the last group). **By default their inode
 tables are zeroed and marked `ITABLE_ZEROED`**, like every group of the 0.1.0 root, because the partition's old bytes are
 arbitrary and the Darwin driver is not known to zero tables lazily. About 1.2 GiB is written for 96 GiB. `--lazy-itables`
-skips that and gives Linux `resize2fs`'s layout.
+skips that and gives Linux `resize2fs`'s layout. **Decided by Chris, 24 November 2026: keep zeroing as the default.**
 
 ## 5. Write order and recovery
 
@@ -118,8 +119,10 @@ All with e2fsprogs 1.47.3 as the oracle (a user-local build on the M5).
 
 - **flex_bg.** Placement follows the layout mke2fs and resize2fs use, and matches resize2fs on every tested size. The fallback
   (first free run, when a flex slot is taken) is valid ext4 but has no test image yet.
-- **resize_inode / meta_bg.** Growth is limited to what the reserved GDT blocks describe: 16,640 groups, **2.03 TiB** for the
-  0.1.0 root. A bigger root partition is refused (`beyond-limit`). meta_bg is refused, not supported.
+- **resize_inode / meta_bg.** Growth is limited to what the reserved GDT blocks describe: 16,640 groups,
+  **2,233,382,993,920 bytes** (exactly 2,080 GiB) for the 0.1.0 root. **Decided by Chris, 24 November 2026:** the
+  installer plan and size handle clamp the root partition to that cap (`ReleaseInfo.rootGrowCapBytes`, ENGINE.md §4).
+  The grower still refuses a larger target (`beyond-limit`). meta_bg is refused, not supported.
 - **metadata_csum.** Every checksum is verified before planning and after writing; the CRC32C seed comes from
   `metadata_csum_seed`. Verified against the real root and by e2fsck on every result.
 - **Journal.** Only checked (clean, no errors), never written. A fresh root from the image is always clean; a root that has been

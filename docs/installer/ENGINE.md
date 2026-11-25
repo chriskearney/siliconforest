@@ -72,6 +72,9 @@ ALIGN        = 1 MiB
 STUB         = 2,499,805,184 B          (profile)
 BOOT         =   524,288,000 B          (profile)
 ROOT_MIN     = release.root.min_bytes
+ROOT_MAX     = release.root.max_bytes
+             = 2,233,382,993,920 for the 0.1.0 root
+               ((1 + reserved GDT blocks) × 64 × blocks_per_group × 4,096)
 ROOT_DEFAULT = max(ROOT_MIN, profile default)
 
 used         = CapacityCeiling - CapacityFree
@@ -81,7 +84,7 @@ drift        = min(8 GiB, 5% of the resizable span)
 
 macos_floor  = align_up(used + reserve + downloads + drift, ALIGN)
 macos_min    = max(macos_floor, limits.MinimumSizePreferred)
-sf_max       = container_size + adjacent_free - macos_min
+sf_max       = min(container_size + adjacent_free - macos_min, STUB + BOOT + ROOT_MAX)
 sf_min       = STUB + BOOT + ROOT_MIN
 ```
 
@@ -98,6 +101,12 @@ snapshot and re-read the limits.
 The default size is the larger of the profile's default and 25% of the disk, capped by `sf_max`. It is never the minimum.
 
 If the release declares `root.sizing = "fixed"`, the root partition equals the image size, and the handle is locked with an explanation.
+
+On a disk large enough that `STUB + BOOT + ROOT_MAX` is smaller than the space macOS can give up, `sf_max` is the grow
+cap, not the macOS reserve. The size handle stops there (Chris, 24 November 2026). `sf-ext4grow` still refuses a target
+above `ROOT_MAX` ([EXT4GROW.md](EXT4GROW.md)). The constant is `ReleaseInfo.rootGrowCapBytes` in `Sizing.swift`; the
+engine plan (`EnginePlanner.installPlan`) applies the same clamp.
+
 
 ## 5. The plan
 

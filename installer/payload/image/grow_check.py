@@ -6,10 +6,11 @@
     grow_check.py INSTALLER_ROOT_DIR PARTITION_BYTES [--keep]
 
 Copies the installer root into a sparse file of PARTITION_BYTES (standing in for the raw root
-partition after S47), runs the same offline grow the helper will run (resize2fs, then e2fsck -fn),
-and checks: the filesystem fills the partition to the block, e2fsck is clean, both slots are still
-one initialised extent at the offsets root.json records, and their bytes are unchanged. Works on
-an ordinary file only.
+partition after S47), runs resize2fs then e2fsck -fn (the test oracle; S48 will run sf-ext4grow,
+see EXT4GROW.md), and checks: the filesystem fills the partition to the block, e2fsck is clean,
+both slots are still one initialised extent at the offsets root.json records, and their bytes are
+unchanged. Works on an ordinary file only. This script is unchanged as a tool; only this wording
+was updated when the resize2fs-in-the-dmg plan was retired.
 """
 
 import argparse

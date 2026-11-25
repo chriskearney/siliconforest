@@ -113,33 +113,39 @@ first), and it is the largest piece of open work here (section 12).
 
 ## 6. Root growth
 
-Decision for P1: **the helper grows the filesystem offline, from macOS, before the first start**. This is new step **S48
-root-grow**, after S47's full read-back and before S50 and S52.
+The helper grows the ext4 root **offline, from macOS, before the first start**. This is step **S48 root-grow**, after
+S47's full read-back and before S50 and S52. S48 uses [`sf-ext4grow`](EXT4GROW.md), a clean-room Swift grower with no GPL
+dependency (**decided by Chris, 24 November 2026**; the earlier plan of shipping a macOS `resize2fs` in the dmg is
+retired — short historical note at the end of this section). The target is the ext4 root on its raw partition, not an
+APFS volume.
 
 - The release root is built at its content size plus slack. `install.json` declares `sizing: "grow"` with `min_bytes` set
   to the image size and `grow.max_bytes` set to the reserved GDT blocks' limit.
-- S48 runs `resize2fs` on the unmounted raw root partition (the job's own partition, so the gate already allows it), then
-  `e2fsck -fn`. The idempotent check is "the superblock's block count equals the partition's".
-- Growing into reserved GDT blocks moves no existing block. That is why the slot offsets in install.json stay valid. It is
-  proven below and rechecked by `grow_check.py`.
+- S48 runs `sf-ext4grow` on the unmounted raw root partition (the job's own partition, so the gate already allows it).
+  The idempotent check is "the superblock's block count equals the partition's". Wiring into the engine is milestone M2
+  ([EXT4GROW.md](EXT4GROW.md) section 9). `resize2fs` and `grow_check.py` stay the test reference; they are not what S48
+  will run.
+- Growing into reserved GDT blocks moves no existing block. That is why the slot offsets in install.json stay valid.
+- **Root partition cap (Chris, 24 November 2026):** the installer plan and the size handle clamp the root partition to
+  the 0.1.0 grower's limit, **2,233,382,993,920 bytes** (exactly 2,080 GiB): (1 GDT block + 259 reserved) × 64
+  descriptors per 4 KiB block × 32,768 blocks per group × 4,096 bytes. The grower still refuses a larger target.
+  Enforced in `ReleaseInfo.rootGrowCapBytes`, `SizingConstraints` and `EnginePlanner.installPlan`.
+- **Inode tables (Chris, 24 November 2026):** `sf-ext4grow` zeroes new groups' inode tables by default and marks them
+  `ITABLE_ZEROED`, matching macOS `resize2fs`. `--lazy-itables` is for the differential test only.
 
 Why not at first start: the Darwin ext4 driver has no online resize, and the root cannot be resized offline while it is
-the root. Why not a Swift grower: it would be new filesystem code on the riskiest path, whereas `resize2fs` is the
-reference implementation.
+the root.
 
-Cost, for Chris to decide: `resize2fs` is GPL-2.0 (e2fsprogs). Shipping a macOS build of it inside the dmg means a GPL
-binary in our release, with its source offer. The alternative is a restricted Swift grower, tested differentially against
-`resize2fs`, at about 1 to 2 weeks.
+Proven: the real 0.1.0 installer root grown to **96 GiB** (25,165,824 blocks) with `sf-ext4grow`, `e2fsck -fn` clean,
+every file identical, both slots one extent at the same offsets with the same bytes, UUID unchanged, `dumpe2fs` equal to
+`resize2fs` except for timestamps ([EXT4GROW.md](EXT4GROW.md) section 7). Not yet proven: that the Darwin ext4 driver
+mounts a root grown this way. New groups use `INODE_UNINIT`, `BLOCK_UNINIT` and `ITABLE_ZEROED`, which the driver's code
+handles but no boot has exercised. That needs a QEMU or G6 boot.
 
-Proven on files: the real 0.1.0 installer root grown to **96 GiB** (25,165,824 blocks), `e2fsck -fn` clean, both slots one
-extent at the same offsets with the same bytes, UUID unchanged. Not yet proven: that the Darwin ext4 driver mounts a root
-grown this way. resize2fs leaves new groups `INODE_UNINIT` and `BLOCK_UNINIT`, which the driver's code handles but no boot
-has exercised. That needs a QEMU or G6 boot.
-
-**Swift grower (Chris, 24 November 2026, voice 3:25 PM PT):** no GPL binary in the dmg. S48 will use `sf-ext4grow`, a
-clean-room Swift offline ext4 grower, instead of a macOS `resize2fs` build; `resize2fs` and `grow_check.py` stay the test
-reference. The target is the ext4 root on its raw partition, not an APFS volume. Milestone M1 (library, CLI, tests, CI) is in
-[`EXT4GROW.md`](EXT4GROW.md).
+**Historical.** P1 (24 November, before the Swift grower was chosen) proved the same 96 GiB grow with `resize2fs` as the
+implementation, and left a choice between shipping a GPL-2.0 `resize2fs` in the dmg (with a source offer) or writing a
+restricted Swift grower, tested against it, at about 1 to 2 weeks. Chris chose the Swift grower the same day. The
+`resize2fs` code path (`grow_check.py`, `prepare_root.py`) is unchanged and remains the test oracle.
 
 ## 7. Release trust
 
@@ -297,8 +303,7 @@ It is a rehearsal of the tooling only. **It has not been booted, and its boot fi
 | Item | Work | Estimate | Needs Chris? |
 |---|---|---|---|
 | Swift `SFRelease`: sshsig Ed25519 verify (CryptoKit), install.json → `ReleaseManifest`, wired in before S10 | Code + tests against this verifier | 2–3 days | No |
-| S48 root-grow in the engine, and the macOS `resize2fs` build | Code, image tests on the M5 | 2–3 days | **Yes: GPL binary in the dmg, or a Swift grower** |
-| S48 with `sf-ext4grow` (Chris chose the Swift grower, 24 Nov): M2 engine wiring, M3 wider proof, M4 QEMU boot ([EXT4GROW.md](EXT4GROW.md) section 9) | Code, image tests on the M5 | 1–1.5 weeks | No |
+| S48 with `sf-ext4grow` (Chris chose the Swift grower, 24 Nov; resize2fs-in-the-dmg plan retired): M2 engine wiring, M3 wider proof, M4 QEMU boot. Root cap and inode-table default decided ([EXT4GROW.md](EXT4GROW.md) section 9) | Code, image tests on the M5 | 1–1.5 weeks | No |
 | Swift receipt reader and firmware-slot writer, matched to `receipt.py` and the slot format | Code + tests | 2 days | No |
 | Boot the installer root, grown, in QEMU virt: receipt stages, firmware install, fsck afterwards | Builder + QEMU | 2–4 days | No |
 | First-boot account (section 5) | System work in the desktop, session and console | 1–2 weeks | **Yes: the design of the account screen** |

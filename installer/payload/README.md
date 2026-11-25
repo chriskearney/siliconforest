@@ -8,7 +8,7 @@ Files and images only; nothing here opens a device or publishes anything.
 | Path | What |
 |---|---|
 | `image/prepare_root.py` | Release root → installer root: firmware and receipt slots, first-start job, `root.json` |
-| `image/grow_check.py` | Proves the offline grow (S48) keeps the slots in place |
+| `image/grow_check.py` | Proves, with resize2fs as the test oracle, that an offline grow keeps the slots in place |
 | `image/synthetic_base.py` | A small stand-in root for tests and CI |
 | `image/sf-installer-firstboot`, `sf-boot-receipt`, `sf-unpack-firmware` | Installed into the root |
 | `release/make_release.py`, `verify_release.py`, `sfrelease.py` | `install.json` (`siliconforest-install/2`), `SHA256SUMS` and its SSH signature, and verification |
