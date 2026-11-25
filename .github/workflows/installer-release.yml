@@ -366,6 +366,9 @@ jobs:
           retention-days: 30
 
       - name: Publish GitHub prerelease
+        # Manual workflow_dispatch only builds, signs, notarizes and uploads Actions artifacts.
+        # A GitHub prerelease (and its installer-v* tag) is created or updated only from a tag push.
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/installer-v')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
