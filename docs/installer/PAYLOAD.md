@@ -18,11 +18,13 @@ One directory, the assets of one GitHub release. Every file is listed in `SHA256
 |---|---|
 | `siliconforest-V-root.ext4.xz.NN` | The installer root (section 3), xz, split below 2 GiB. The parts concatenate to one stream |
 | `siliconforest-V-root.manifest.tsv` | Every entry of that root: path, type, mode, owner, size, SHA-256 |
-| `sf-stage1.bin`, `boot.bin`, `kernel.kc`, `bootargs.template` | Stage 1, stage 2, the kernel collection and the boot-argument template, as built |
-| `install.json` | `siliconforest-install/2`: sizes, hashes, slot offsets, growth limit, profiles, and the **names, sizes and SHA-256 of the Apple firmware the installer must extract on the Mac** |
+| `sf-stage1.bin`, `boot.bin`, `bootargs.template` | Stage 1, stage 2 and the boot-argument template, as built |
+| `kc-builder`, `LICENSE.kc-tools`, `kc.kernel`, `kc.<kind>.<Bundle>.kext.<path>` | The kernel collection as separate files, linked on the Mac (section 13): the signed macOS linker and its BSD-3-Clause licence, the kernel, and every file of every driver bundle. **The collection itself is not in a release** |
+| `install.json` | `siliconforest-install/3`: sizes, hashes, slot offsets, growth limit, profiles, and the **names, sizes and SHA-256 of the Apple firmware the installer must extract on the Mac** |
 | `SHA256SUMS`, `SHA256SUMS.sig` | Every file's hash, and an SSH Ed25519 signature over it, namespace `siliconforest-release` |
 
-No Apple file is in a release. Firmware and the stub's files come from Apple's 13.5 restore image on the user's Mac (D7).
+No Apple file is in a release. (The kernel and the kexts are built from open source, some of it Apple's; they are the
+separate inputs of section 13, published under the distribution decision, DESIGN D13.) Firmware and the stub's files come from Apple's 13.5 restore image on the user's Mac (D7).
 Their digests are in the release so the extraction is checked before the first write.
 
 ## 2. Build pipeline
@@ -301,3 +303,60 @@ It is a rehearsal of the tooling only. **It has not been booted, and its boot fi
 | Channel file, rollback protection, two public keys in the app | Code | 2 days | No |
 | **The offline release signing key** | **Done 24 Nov 2026:** made offline on the M3; fingerprint in `sfrelease.RELEASE_KEY_FINGERPRINTS`, line in `release/allowed_signers` | | Done |
 | Distribution terms for the kernel collection and root (RELEASE_CHECKLIST blocker 4) | **Decided by Chris, 24 Nov 2026:** free to download and open source before any public release (DESIGN D13) | | Done; the GPL/APSL presentation detail stays open in RELEASE_CHECKLIST 4 |
+
+## 13. Kernel collection: linked on the Mac
+
+Started 24 November 2026 (Chris, voice 3:54 PM PT). A release no longer ships one prelinked collection (`kernel.kc`).
+It ships the collection's inputs as separate hashed files and the exact link options, and the installer links them
+on the user's Mac. Code: [`installer/payload/release/kc_release.py`](../../installer/payload/release/kc_release.py) (the
+reference the Swift engine is tested against), the tool: [`integrations/siliconforest/kc-builder/`](../../integrations/siliconforest/kc-builder/README.md).
+
+**Same bytes on both hosts.** kc-builder sorted its symbol table with `qsort`, which orders equal names differently
+on glibc and Apple's libc, so a duplicated symbol bound differently on macOS. `kc-tools-sym-order.patch` makes the sort
+stable; the J313 installed-system collection is `b3115d93…` from Linux `nix-build` and from the macOS kc-builder alike
+(the kc-builder README has the proof, and the G2 collection too).
+
+**In the release** (`make_release.py --kc-inputs --kc-builder [--kc-link-tool] [--kc-expect]`):
+
+| Artifact | Role | What |
+|---|---|---|
+| `kc-builder` | `kc-tool` | `build-macos.sh`'s binary: Developer ID signed with hardened runtime in a release; ad-hoc in a rehearsal |
+| `LICENSE.kc-tools` | `kc-tool-license` | kc-tools' BSD-3-Clause licence, shipped with the binary |
+| `kc.kernel` | `kc-kernel` | the kernel |
+| `kc.kexts.<Name>.kext.<path>`, `kc.codeless.<Name>.kext.<path>` | `kc-bundle-file` | every regular file of every bundle (Info.plist, executable, NOTICE…), one artifact each, `/` written `.` |
+
+`install.json` → `kernel_collection` (`siliconforest-kc/1`): `tool` (artifact, signing, licence), `kernel`, `bundles`
+(in link order: directory, and each file's path, artifact and mode), `link_args` (kc-builder's options exactly: inputs as
+relative paths, the output as `@OUTPUT@`; only `-kc-base`, `-kernel`, `-kext`, `-codeless`, `-o` are allowed),
+`kc_base`, and **`collection_sha256` / `collection_bytes`**: what the linked collection must be. `make_release.py` computes
+them by linking the same files with the same options on the builder (`--kc-link-tool`, the Linux kc-builder of
+`build-tools.nix`); `--kc-expect` cross-checks against the recipe's own collection. The collection is never written into
+the release directory; its hash is signed with everything else.
+
+**Verification** (`verify_release.py`, `kc_release.check_section`): every kc artifact listed with its role and none
+unused; the bundles exactly `link_args`' bundles, in order; artifact names derived from paths; no `..` or unusual path;
+no option outside the format; a release (not a rehearsal) must ship a Developer ID signed kc-builder.
+
+**Assembly on the Mac** (engine S17, before the first disk write; `kc_release.assemble`): copy each input from the
+verified download into a fresh private directory, re-hashing each against the signed hash as it is copied; the tool too;
+run kc-builder with exactly `link_args` (fixed `PATH`, no other environment, a timeout); accept the output only if it has
+exactly `collection_sha256` and `collection_bytes`, else delete it and stop. kc-builder's "link_kext failed (skipping)"
+does not exit non-zero, so this hash is the check that catches a skipped kext. **S42** packs the accepted collection into
+PDSF records (CONFIG with the personalised boot arguments, KERNEL gzip, END: `pdsf_pack.py`'s format) as `sf/kernel.bin`,
+and only then writes it to SFBOOT, through the gate and the disk backend like every other write.
+
+**Rehearsals.** Without real inputs, `rehearse.sh` makes synthetic ones and links them with
+`release/rehearsal_kc_builder.py`, a stand-in that hashes its inputs (signing `rehearsal-stand-in`, refused outside
+rehearsals). On the builder, with real inputs (24 November 2026, i9, `~/sf-payload-work/kc-rehearsal/g6`, TEST-ONLY key):
+
+    nix-build integrations/siliconforest/kc-builder/release-inputs.nix          # G6 inputs, 54 kexts + 13 codeless
+    installer/payload/rehearse.sh OUT --kc <out>/inputs --kc-builder <build-macos.sh>/kc-builder \
+        --kc-link-tool <build-tools.nix>/bin/kc-builder --kc-expect b3115d93…
+
+Result: 130 artifacts (67 bundles), `collection_sha256` `b3115d93…` (33,842,862 bytes) computed by the Linux tool and equal to
+`--kc-expect`; deep verification passed. `kc_release.assemble` on the M5 with the release's ad-hoc macOS kc-builder: `b3115d93…`
+in 0.43 s.
+
+**Still open:** the engine step in Swift (S17/S42), the release workflow building and signing kc-builder with the
+Developer ID identity, and the decision on duplicate symbols (kc-builder README, "Needs a decision").
+

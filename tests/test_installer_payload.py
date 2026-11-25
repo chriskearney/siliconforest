@@ -212,8 +212,10 @@ class ReleaseTests(unittest.TestCase):
         prepare_root.prepare(t / 'base', t / 'root')
         boot = t / 'boot'
         boot.mkdir()
-        for n in ('sf-stage1.bin', 'boot.bin', 'kernel.kc', 'bootargs.template'):
+        for n in ('sf-stage1.bin', 'boot.bin', 'bootargs.template'):
             (boot / n).write_bytes(b'SF-REHEARSAL ' + n.encode() + b'\n')
+        import rehearsal_kc_builder
+        kc = rehearsal_kc_builder.synthetic(t / 'kc-inputs')
         keys = t / 'keys'
         subprocess.run(['sh', str(P / 'release/make_test_key.sh'), str(keys)], check=True, capture_output=True)
         names = t / 'names.tsv'
@@ -221,7 +223,9 @@ class ReleaseTests(unittest.TestCase):
         cls.t, cls.keys = t, keys
         cls.args = ['--root-dir', str(t / 'root'), '--boot-dir', str(boot), '--firmware-names', str(names),
                     '--profiles', str(ROOT / 'installer/profiles'), '--version', '0.0.1-rehearsal', '--sequence', '1',
-                    '--key', str(keys / 'TEST-ONLY-release-key'), '--xz-level', '1']
+                    '--key', str(keys / 'TEST-ONLY-release-key'), '--xz-level', '1',
+                    '--kc-inputs', str(kc), '--kc-builder', str(P / 'release/rehearsal_kc_builder.py'),
+                    '--kc-builder-signing', 'rehearsal-stand-in']
         import make_release
         cls.make_release = make_release
         assert make_release.main(cls.args + ['--out', str(t / 'rel'), '--rehearsal']) == 0
@@ -292,6 +296,105 @@ class ReleaseTests(unittest.TestCase):
         args = [a if a != str(self.keys / 'TEST-ONLY-release-key') else str(k / 'key') for a in self.args]
         self.assertEqual(self.make_release.main(args + ['--out', str(self.t / 'real2')]), 1)
         self.assertEqual(self.make_release.main(args + ['--out', str(self.t / 'real3'), '--rehearsal']), 1)
+
+    # The kernel collection as separate files (PAYLOAD.md section 13; release/kc_release.py)
+
+    def kc(self, d=None):
+        return json.loads(((d or self.t / 'rel') / 'install.json').read_text())['kernel_collection']
+
+    def kc_files(self, d=None):
+        d = d or self.t / 'rel'
+        inst = json.loads((d / 'install.json').read_text())
+        return {a['name']: (d / a['name'], a['sha256']) for a in inst['artifacts']}
+
+    def test_kc_release_carries_inputs_not_the_collection(self):
+        import kc_release
+        inst = json.loads((self.t / 'rel/install.json').read_text())
+        roles = {a['name']: a['role'] for a in inst['artifacts']}
+        self.assertNotIn('kernel', inst['boot'])
+        self.assertEqual(roles['kc-builder'], 'kc-tool')
+        self.assertEqual(roles['kc.kernel'], 'kc-kernel')
+        self.assertEqual(sum(r == 'kc-bundle-file' for r in roles.values()), 8)   # 3 kexts (2+2+3 files) + 1 codeless
+        self.assertIn('kc.kexts.SFRehearsalC.kext.Contents.NOTICE', roles)
+        kc = inst['kernel_collection']
+        self.assertEqual(kc['link_args'][-2:], ['-o', '@OUTPUT@'])
+        self.assertNotIn(kc['collection_sha256'], {a['sha256'] for a in inst['artifacts']})
+        self.assertFalse(any(n.endswith(('.kc', 'collection')) for n in roles))
+        kc_release.check_section(kc, {a['name']: a for a in inst['artifacts']})
+
+    def test_kc_assembles_to_the_expected_hash(self):
+        import kc_release
+        out = kc_release.assemble(self.kc(), self.kc_files(), self.t / 'asm-good')
+        self.assertEqual(sfrelease.sha256_file(out)[0], self.kc()['collection_sha256'])
+        self.assertFalse((self.t / 'asm-good/inputs').exists())
+
+    def test_kc_tampered_input_refused_before_linking(self):
+        import kc_release
+        d = self.copy()
+        with (d / 'kc.kexts.SFRehearsalB.kext.Contents.MacOS.SFRehearsalB').open('ab') as f:
+            f.write(b'x')
+        with self.assertRaises(sfrelease.ReleaseError):
+            self.verify(d, allow_rehearsal=True)
+        with self.assertRaisesRegex(sfrelease.ReleaseError, 'signed hash'):
+            kc_release.assemble(self.kc(), self.kc_files(self.t / 'rel') | {
+                'kc.kexts.SFRehearsalB.kext.Contents.MacOS.SFRehearsalB':
+                (d / 'kc.kexts.SFRehearsalB.kext.Contents.MacOS.SFRehearsalB', self.kc_files()['kc.kexts.SFRehearsalB.kext.Contents.MacOS.SFRehearsalB'][1])},
+                self.t / 'asm-tamper')
+        self.assertFalse((self.t / 'asm-tamper/collection').exists())
+
+    def test_kc_wrong_expected_hash_leaves_no_collection(self):
+        import kc_release
+        kc = self.kc()
+        kc['collection_sha256'] = '0' * 64
+        with self.assertRaisesRegex(sfrelease.ReleaseError, 'not the release'):
+            kc_release.assemble(kc, self.kc_files(), self.t / 'asm-wrong')
+        self.assertFalse((self.t / 'asm-wrong/collection').exists())
+
+    def test_kc_changed_options_change_the_collection(self):
+        import kc_release
+        kc = self.kc()
+        i = kc['link_args'].index('-kc-base')
+        kc['link_args'][i + 1] = 'fffffe0007000000'
+        kc['kc_base'] = 'fffffe0007000000'
+        with self.assertRaises(sfrelease.ReleaseError):
+            kc_release.assemble(kc, self.kc_files(), self.t / 'asm-opts')
+
+    def test_kc_section_rules(self):
+        import kc_release
+        inst = json.loads((self.t / 'rel/install.json').read_text())
+        listed = {a['name']: a for a in inst['artifacts']}
+        for mutate, why in [
+            (lambda k: k['link_args'].insert(0, '-classic'), 'option'),
+            (lambda k: k['link_args'].extend(['-aux-o', 'x']), 'option'),
+            (lambda k: k['bundles'].reverse(), 'in order'),
+            (lambda k: k['bundles'][0]['files'][0].update(artifact='kc.kernel'), 'bad file entry'),
+            (lambda k: k['bundles'][0]['files'][0].update(path='../x'), 'bad file entry'),
+            (lambda k: k['bundles'][0]['files'].pop(), 'not used'),
+            (lambda k: k['tool'].update(signing='none'), 'signing'),
+            (lambda k: k.pop('collection_sha256'), 'expected'),
+            (lambda k: k['link_args'].__setitem__(k['link_args'].index('-kernel') + 1, '/etc/passwd'), 'kernel'),
+            (lambda k: k['link_args'].__setitem__(k['link_args'].index('-kext') + 1, 'kexts/../../x.kext'), 'bundle'),
+        ]:
+            kc = json.loads(json.dumps(inst['kernel_collection']))
+            mutate(kc)
+            with self.assertRaisesRegex(sfrelease.ReleaseError, why):
+                kc_release.check_section(kc, listed)
+
+    def test_kc_expect_mismatch_refused(self):
+        self.assertEqual(self.make_release.main(self.args + ['--out', str(self.t / 'kcexp'), '--rehearsal', '--kc-expect', '0' * 64]), 1)
+
+    def test_kc_real_release_needs_developer_id_tool(self):
+        args = [a if a != 'rehearsal-stand-in' else 'ad-hoc' for a in self.args]
+        self.assertEqual(self.make_release.main(args + ['--out', str(self.t / 'adhoc')]), 1)
+
+    def test_kc_failing_tool_refused(self):
+        import kc_release
+        files = self.kc_files()
+        bad = self.t / 'false-kc-builder'
+        bad.write_text('#!/bin/sh\nexit 3\n')
+        files['kc-builder'] = (bad, sfrelease.sha256_file(bad)[0])
+        with self.assertRaisesRegex(sfrelease.ReleaseError, 'failed'):
+            kc_release.assemble(self.kc(), files, self.t / 'asm-fail')
 
 
 if __name__ == '__main__':

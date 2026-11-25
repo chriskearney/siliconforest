@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import sfrelease as R  # noqa: E402
+import kc_release as KC  # noqa: E402
 
 
 def verify(d, allowed_signers, allow_rehearsal=False, shallow=False):
@@ -84,9 +85,15 @@ def verify(d, allowed_signers, allow_rehearsal=False, shallow=False):
     spans.sort()
     if spans[0][1] > spans[1][0]:
         raise R.ReleaseError("slots overlap")
-    for role in ("stage1", "stage2", "kernel"):
+    for role in ("stage1", "stage2", "bootargs"):
         if inst["boot"].get(role) not in listed:
             raise R.ReleaseError(f"boot {role} is not a listed artifact")
+    if "kernel" in inst["boot"]:
+        raise R.ReleaseError("a prelinked kernel collection is not part of format 3")
+    kc = inst["kernel_collection"]
+    KC.check_section(kc, listed)
+    if not rehearsal and kc["tool"]["signing"] != "developer-id":
+        raise R.ReleaseError("a release's kc-builder must be Developer ID signed")
     for part in root["parts"]:
         if part not in listed or listed[part]["role"] != "root-part":
             raise R.ReleaseError(f"root part {part} is not a listed root part")

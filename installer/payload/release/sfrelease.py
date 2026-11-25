@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 NAMESPACE = "siliconforest-release"
-INSTALL_FORMAT = "siliconforest-install/2"
+INSTALL_FORMAT = "siliconforest-install/3"   # 3: kernel_collection replaces boot.kernel
 SUMS = "SHA256SUMS"
 SIG = "SHA256SUMS.sig"
 TEST_MARK = "TEST-ONLY"

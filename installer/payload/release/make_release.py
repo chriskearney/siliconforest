@@ -4,6 +4,7 @@
 """Assemble and sign a SiliconForest installer release (docs/installer/PAYLOAD.md section 7).
 
     make_release.py --root-dir R --boot-dir B --firmware-names F.tsv --profiles DIR \\
+                    --kc-inputs KC --kc-builder TOOL [--kc-builder-signing S] [--kc-link-tool T] [--kc-expect SHA] \\
                     --version V --sequence N --key KEY --out OUT [--rehearsal]
 
 OUT receives the files of one release, all listed in SHA256SUMS, which KEY signs (SSH Ed25519
@@ -11,7 +12,13 @@ signature, namespace siliconforest-release, SHA256SUMS.sig):
 
     siliconforest-V-root.ext4.xz.NN   the installer root (prepare_root.py), xz, parts below 2 GiB
     siliconforest-V-root.manifest.tsv every entry of that root
-    sf-stage1.bin, boot.bin, kernel.kc, bootargs.template   the boot files, as built
+    sf-stage1.bin, boot.bin, bootargs.template   stage 1, stage 2 and the boot-argument template, as built
+    kc-builder, LICENSE.kc-tools, kc.kernel, kc.<kind>.<Bundle>.kext.<path>
+                                      the kernel collection as separate files, linked on the Mac
+                                      (kc_release.py; PAYLOAD.md section 13). The collection itself is
+                                      never in a release: install.json carries the SHA-256 and size it
+                                      must have, computed here by linking the same files (--kc-link-tool,
+                                      a kc-builder for this host; default --kc-builder)
     install.json                      what the installer needs, including the names, sizes and
                                       SHA-256 of the Apple firmware it must extract on the Mac
                                       (never the firmware itself) and the slot offsets
@@ -30,8 +37,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import sfrelease as R  # noqa: E402
+import kc_release as KC  # noqa: E402
+import tempfile  # noqa: E402
 
-BOOT_ROLES = {"stage1": "sf-stage1.bin", "stage2": "boot.bin", "kernel": "kernel.kc", "bootargs": "bootargs.template"}
+BOOT_ROLES = {"stage1": "sf-stage1.bin", "stage2": "boot.bin", "bootargs": "bootargs.template"}
 
 
 def read_firmware_names(path):
@@ -50,6 +59,31 @@ def read_firmware_names(path):
             raise R.ReleaseError(f"bad firmware name {name}")
         boards.setdefault(board, []).append({"name": name, "bytes": int(size), "sha256": digest})
     return meta, boards
+
+
+def kernel_collection(a, out, add):
+    signing = a.kc_builder_signing
+    if signing == "rehearsal-stand-in" and not a.rehearsal:
+        raise R.ReleaseError("the rehearsal stand-in for kc-builder is for rehearsals only")
+    if not a.rehearsal and signing != "developer-id":
+        raise R.ReleaseError("a release ships a Developer ID signed kc-builder")
+    kc = KC.stage(a.kc_inputs, out, add)
+    shutil.copyfile(a.kc_builder, out / KC.TOOL)
+    add(out / KC.TOOL, "kc-tool")
+    kc["tool"] = {"artifact": KC.TOOL, "signing": signing}
+    lic = a.kc_builder.parent / KC.TOOL_LICENSE
+    if lic.is_file():
+        shutil.copyfile(lic, out / KC.TOOL_LICENSE)
+        add(out / KC.TOOL_LICENSE, "kc-tool-license")
+        kc["tool"]["license_artifact"] = KC.TOOL_LICENSE
+    elif signing != "rehearsal-stand-in":
+        raise R.ReleaseError(f"{KC.TOOL_LICENSE} must sit next to kc-builder (build-macos.sh puts it there)")
+    with tempfile.TemporaryDirectory() as td:
+        digest, n = KC.link_reference(a.kc_inputs, a.kc_link_tool or a.kc_builder, Path(td) / "collection")
+    if a.kc_expect and a.kc_expect != digest:
+        raise R.ReleaseError(f"the collection linked here is {digest}, not --kc-expect {a.kc_expect}")
+    kc["collection_sha256"], kc["collection_bytes"] = digest, n
+    return kc
 
 
 def build(a):
@@ -108,6 +142,8 @@ def build(a):
         add(out / name, f"boot-{role}")
         boot[role] = name
 
+    kc = kernel_collection(a, out, add)
+
     fw_meta, fw_boards = read_firmware_names(a.firmware_names)
     profiles = {}
     for p in sorted(a.profiles.glob("*.json")):
@@ -143,6 +179,7 @@ def build(a):
         "firmware_slot": root["firmware_slot"],
         "receipt_slot": root["receipt_slot"],
         "boot": boot,
+        "kernel_collection": kc,
         "firmware": {"policy": "extract-on-this-mac-never-redistribute", "source": "apple-restore-image",
                      "build": fw_meta.get("build", ""), "boards": fw_boards},
         "artifacts": sorted(artifacts.values(), key=lambda x: x["name"]),
@@ -168,6 +205,11 @@ def main(argv=None):
     ap.add_argument("--sequence", type=int, required=True)
     ap.add_argument("--key", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--kc-inputs", type=Path, required=True, help="release-inputs directory (kernel, kexts/, codeless/, link-args.txt)")
+    ap.add_argument("--kc-builder", type=Path, required=True, help="the kc-builder the Mac runs (build-macos.sh output)")
+    ap.add_argument("--kc-builder-signing", choices=KC.TOOL_SIGNING, default="developer-id")
+    ap.add_argument("--kc-link-tool", type=Path, help="a kc-builder that runs on this host, for the expected hash")
+    ap.add_argument("--kc-expect", help="the SHA-256 the collection must have (e.g. release-inputs.nix's kernel)")
     ap.add_argument("--rehearsal", action="store_true")
     ap.add_argument("--xz-level", type=int, default=6)
     ap.add_argument("--threads", type=int, default=0)
