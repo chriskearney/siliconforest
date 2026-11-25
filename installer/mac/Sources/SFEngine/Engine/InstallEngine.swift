@@ -4,17 +4,17 @@ import SFInstallKit
 /// ENGINE §7 state codes, in execution order. S42 runs after S47 because the kernel is personalised
 /// with the root partition's UUID and LBA, which exist only once S45 has created it.
 public enum StepCode: String, Codable, Sendable, CaseIterable {
-    case S00, S05, S08, S10, S15, S20, S25, S30, S32, S35, S40, S45, S46, S47, S42, S50, S52, S55, S60, S65, S68, S70
+    case S00, S05, S08, S10, S15, S17, S20, S25, S30, S32, S35, S40, S45, S46, S47, S42, S50, S52, S55, S60, S65, S68, S70
     case U10, U20, U30, U40
 
-    public static let install: [StepCode] = [.S00, .S05, .S08, .S10, .S15, .S20, .S25, .S30, .S32, .S35, .S40, .S45, .S46, .S47, .S42,
+    public static let install: [StepCode] = [.S00, .S05, .S08, .S10, .S15, .S17, .S20, .S25, .S30, .S32, .S35, .S40, .S45, .S46, .S47, .S42,
                                              .S50, .S52, .S55, .S60, .S65, .S68, .S70]
     public static let removal: [StepCode] = [.U10, .U20, .U30, .U40]
 
     /// Steps at or past S20 write to the disk (ENGINE §7 "first disk write below this line").
     public var writesDisk: Bool {
         switch self {
-        case .S00, .S05, .S08, .S10, .S15: return false
+        case .S00, .S05, .S08, .S10, .S15, .S17: return false
         default: return true
         }
     }
@@ -26,6 +26,7 @@ public enum StepCode: String, Codable, Sendable, CaseIterable {
         case .S08: return "Helper"
         case .S10: return "Fetch the release"
         case .S15: return "Verify every file"
+        case .S17: return "Link the kernel collection and check it"
         case .S20: return "Update macOS's admin list (updatePreboot)"
         case .S25: return "Shrink macOS"
         case .S30: return "Create the stub container"
@@ -283,6 +284,8 @@ public final class InstallEngine: @unchecked Sendable {
             switch code {
             case .S10, .S15:
                 try? FileManager.default.removeItem(at: workDir)
+            case .S17:
+                try? FileManager.default.removeItem(at: work("kc"))
             case .S25:
                 let mac = try backend.topology().partition(uuid: plan.macOS.store)
                 if mac?.size != plan.macOS.from {

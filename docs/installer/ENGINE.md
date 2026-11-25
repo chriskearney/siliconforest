@@ -154,6 +154,7 @@ Numbering leaves gaps for later insertions. **Recorded in the journal; the journ
 | `S08 helper` | Register daemon | Status `.enabled` | Status | Unregister |
 | `S10 fetched` | Download to work directory | Sizes | Resume by range | Delete work files |
 | `S15 verified` | Hash everything | SHA-256 match | Rehash | Delete work files |
+| `S17 kernel-collection` | Link the kernel collection from the verified inputs ([PAYLOAD.md §13](PAYLOAD.md)) | Output SHA-256 = the release's `collection_sha256` | Rehash `work/kc/collection` | Delete `work/kc` |
 | — | **First disk write below this line** | | | |
 | `S20 preboot` | `updatePreboot` if planned | Admin list current | Compare | Harmless; left alone |
 | `S25 resized` | Shrink container | Topology shows the planned size | Size already right | Grow back |
@@ -161,7 +162,7 @@ Numbering leaves gaps for later insertions. **Recorded in the journal; the journ
 | `S32 stub-vols` | System, Data, Preboot, Recovery | Volume roles | List roles | Delete container |
 | `S35 stub-files` | IPSW files, Preboot, Recovery image | Hashes, manifest | Per-file hash | Delete container |
 | `S40 boot-part` | `addPartition`, `newfs_msdos` | FAT with label | Probe | Erase to free |
-| `S42 boot-files` | Personalised `sf/boot.bin`, `sf/kernel.bin` | Read-back hash | Hash | Erase to free |
+| `S42 boot-files` | Personalised `sf/boot.bin`, `sf/kernel.bin` (PDSF, packed before the first write) | Read-back hash | Hash | Erase to free |
 | `S45 root-part` | `addPartition` raw | Span | Probe | Erase to free |
 | `S47 root-image` | Stream xz to `/dev/rdisk` | **Full read-back** against `image_sha256` | Hash | Erase to free |
 | `S50 firmware` | Extract, write the firmware slot | Slot header + digest | Compare | Covered by root erase |

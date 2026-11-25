@@ -37,8 +37,11 @@ struct ImageEngineTests {
         let fw = try c.backend.readRaw(root.uuid, offset: release.firmwareSlotOffset, count: 10)
         #expect(String(decoding: fw, as: UTF8.self) == "SFFWSLOT1\n")
         let fat = try c.backend.fatURL(boot.uuid)
-        let kernel = try String(contentsOf: fat.appendingPathComponent("sf/kernel.bin"), encoding: .utf8)
-        #expect(kernel.contains("sfnvme_part=\(root.uuid.lowercased())") && !kernel.contains("@SF_PARTUUID@"))
+        // sf/kernel.bin: PDSF records, the collection S17 linked and checked, personalised for this root.
+        let recs = try PDSF.records(try Data(contentsOf: fat.appendingPathComponent("sf/kernel.bin")))
+        let config = String(decoding: recs[0].1, as: UTF8.self)
+        #expect(config.contains("sfnvme_part=\(root.uuid.lowercased())") && !config.contains("@SF_PARTUUID@"))
+        #expect(SHA256Hasher.hex(recs[1].1) == release.kernelCollection?.collectionSHA256)
         let sys = try c.backend.volumeURL(store: stub.uuid, role: "System")
         let app = sys.appendingPathComponent("SiliconForest Setup.app/Contents")
         for f in ["MacOS/sf-launcher", "MacOS/SFRecovery", "Resources/sf-step2.sh", "Resources/boot.bin", "Info.plist"] {

@@ -46,6 +46,21 @@ extension InstallEngine {
             }
             try journal.append(.evidence, step: c, result: ["verified": .i(Int64(release.artifacts.count))])
 
+        case .S17:
+            // Before the first disk write: a collection that doesn't link to the release's hash stops the job
+            // with nothing changed (PAYLOAD.md §13).
+            guard let release else { throw EngineError(.internalError, "no release") }
+            guard let kc = release.kernelCollection else {
+                try journal.append(.intent, step: c)
+                try journal.append(.evidence, step: c, result: ["collection": .s("prepared kernel.bin (no kernel_collection)")])
+                break
+            }
+            try journal.append(.intent, step: c, args: ["bundles": .i(Int64(kc.bundles.count)), "expect": .s(kc.collectionSHA256)])
+            let r = try KernelCollectionAssembler.assemble(kc, release: release, source: { self.work($0) }, into: work("kc"))
+            try afterCommand(code)
+            try journal.append(.evidence, step: c, result: ["sha256": .s(r.sha256), "bytes": .i(r.bytes),
+                                                            "ms": .i(Int64(r.seconds * 1000))])
+
         case .S20:
             // `diskutil apfs updatePreboot` writes macOS's Preboot: needs root and a live macOS volume
             // group. Recorded for Chris's approval and simulated; it is never run on an image.
@@ -143,12 +158,14 @@ extension InstallEngine {
 
         case .S42:
             guard let release, let boot = gate.created["boot"], let root = gate.created["root"] else { throw EngineError(.inconsistent, "no SFBOOT or root") }
+            // kernel.bin is made (from the collection S17 accepted, re-hashed) before anything is written.
+            let kernelBin = try personalisedKernel(root: root)
             try gate.admit(.writeFiles(partition: boot, volumeRole: nil, files: [release.stage2, release.kernel]), now: try backend.topology())
-            try journal.append(.intent, step: c)
+            try journal.append(.intent, step: c, args: ["kernel_sha256": .s(SHA256Hasher.hex(kernelBin))])
             let dir = try backend.fatURL(boot).appendingPathComponent("sf", isDirectory: true)
             try FileManager.default.ensureDirectory(dir)
             try copy(work(release.stage2), to: dir.appendingPathComponent("boot.bin"))
-            try atomicWrite(try personalisedKernel(root: root), to: dir.appendingPathComponent("kernel.bin"))
+            try atomicWrite(kernelBin, to: dir.appendingPathComponent("kernel.bin"))
             try atomicWrite(try installJSON(plan: plan, gate: gate), to: dir.appendingPathComponent("install.json"))
             try afterCommand(code)
             guard case .done(let ev) = try check(code, plan: plan, gate: gate) else { throw EngineError(.appleTool, "read-back of SFBOOT failed") }
@@ -238,6 +255,9 @@ extension InstallEngine {
             return ok ? .done(["bytes": .i(release.artifacts.reduce(0) { $0 + $1.bytes })]) : .notDone
         case .S15:
             return .notDone
+        case .S17:
+            guard let kc = release?.kernelCollection, KernelCollectionAssembler.accepted(kc, in: work("kc")) != nil else { return .notDone }
+            return .done(["sha256": .s(kc.collectionSHA256), "bytes": .i(kc.collectionBytes)])
         case .S25:
             guard let mac = t.partition(uuid: plan.macOS.store) else { return .cannotTell("the macOS container is missing") }
             let c = mac.apfs?.capacityCeiling ?? mac.size
@@ -406,6 +426,26 @@ extension InstallEngine {
         guard let release else { throw EngineError(.internalError, "no release") }
         let t = try backend.topology()
         guard let p = t.partition(uuid: root) else { throw EngineError(.inconsistent, "root partition missing") }
+        if let kc = release.kernelCollection {
+            guard let collection = KernelCollectionAssembler.accepted(kc, in: work("kc")) else {
+                throw EngineError(.inconsistent, "the kernel collection isn't linked and checked (S17)")
+            }
+            let template = work(kc.bootargsTemplate)
+            guard try SHA256Hasher.file(template) == release.artifact(kc.bootargsTemplate)?.sha256 else {
+                throw EngineError(.inconsistent, "the boot-argument template doesn't match its signed hash")
+            }
+            var args = String(decoding: try Data(contentsOf: template), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            if args.contains("@SF_FSUUID@") {
+                guard let fs = release.rootFilesystemUUID, UUID(uuidString: fs) != nil else {
+                    throw EngineError(.inconsistent, "the release doesn't give the root filesystem's UUID")
+                }
+                args = args.replacingOccurrences(of: "@SF_FSUUID@", with: fs.lowercased())
+            }
+            args = args.replacingOccurrences(of: "@SF_PARTUUID@", with: root.lowercased())
+                .replacingOccurrences(of: "@SF_PART_LBA@", with: String(p.offset / t.blockSize))
+            guard !args.contains("@SF_") else { throw EngineError(.inconsistent, "the boot-argument template has an unknown placeholder") }
+            return try PDSF.kernelBin(bootargs: args, collection: try Data(contentsOf: collection))
+        }
         var s = String(decoding: try Data(contentsOf: work(release.kernel)), as: UTF8.self)
         s = s.replacingOccurrences(of: "@SF_PARTUUID@", with: root.lowercased())
             .replacingOccurrences(of: "@SF_PART_LBA@", with: String(p.offset / t.blockSize))

@@ -39,6 +39,11 @@ public struct ReleaseManifest: Codable, Sendable, Hashable {
     public var stage2: String
     public var kernel: String
     public var firmware: String
+    /// Format 3: the collection's inputs, linked on this Mac at S17 (PAYLOAD.md §13). Nil: `kernel` is a
+    /// prepared kernel.bin (older rehearsals).
+    public var kernelCollection: KernelCollection? = nil
+    /// install.json root.fs_uuid: the root filesystem's UUID, for the boot arguments' @SF_FSUUID@.
+    public var rootFilesystemUUID: String? = nil
 
     public func artifact(_ name: String) -> Artifact? { artifacts.first { $0.name == name } }
     public var digest: String { (try? Canonical.digest(self)) ?? "" }

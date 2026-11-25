@@ -368,6 +368,18 @@ Result: 130 artifacts (67 bundles), `collection_sha256` `b3115d93…` (33,842,86
 `--kc-expect`; deep verification passed. `kc_release.assemble` on the M5 with the release's ad-hoc macOS kc-builder: `b3115d93…`
 in 0.43 s.
 
-**Still open:** the engine step in Swift (S17/S42), the release workflow building and signing kc-builder with the
-Developer ID identity, and the decision on duplicate symbols (kc-builder README, "Needs a decision").
+**In the helper (SFEngine):** S17 "Link the kernel collection and check it" runs after S15 and before S20, and
+writes nothing to a disk. It checks `kernel_collection` against the rules above (`KernelCollection.validate`),
+copies every input from the verified release into a private `work/kc/inputs` (mode 0700), hashes each copy
+again, runs kc-builder there (PATH=/usr/bin:/bin, LC_ALL=C, a timeout, its log in `work/kc/kc-builder.log`)
+and keeps the output only if its SHA-256 and size are `collection_sha256`/`collection_bytes`; anything else
+deletes it and stops the job with nothing changed. S42 builds `sf/kernel.bin` before the gate admits any
+write: it re-hashes the accepted collection, fills in `bootargs.template` (`@SF_FSUUID@` = `root.fs_uuid`,
+`@SF_PARTUUID@`, `@SF_PART_LBA@`; any other `@SF_` refuses) and packs PDSF records (CONFIG, gzip KERNEL,
+END; the same records `pdsf_pack.py` reads). Only then does it write the boot partition, through whichever
+backend the engine was given, so the gated live-disk path takes it unchanged.
+
+**Still open:** the release workflow building and signing kc-builder with the Developer ID identity (today:
+ad-hoc on the M5, `signing: ad-hoc`, rehearsals only), and the decision on duplicate symbols (kc-builder
+README, "Needs a decision").
 
