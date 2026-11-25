@@ -15,7 +15,7 @@ kernel, root, firmware slot or SFBOOT. Those are G6.
 
 | Needed | Today |
 |---|---|
-| The engine builds the stub with SFStub (S30 `addPartition`, S32 volumes, S35 files, S55, S60), through the live backend | **Not wired.** SFStub runs only through `sfstubctl`, which refuses anything but disk images. `LiveMutation` has no `apfs changeVolumeRole` or `diskutil rename` shape yet, and S55 writes `.sf/boot.bin` in its own format (section 8, open question 3) |
+| The engine builds the stub with SFStub (S30 `addPartition`, S32 volumes, S35 files, S55, S60), through the live backend | **Not wired.** SFStub runs only through `sfstubctl`, which refuses anything but disk images. `LiveMutation` now parses SFStub's `apfs changeVolumeRole <vol> D`, `rename <vol> <name>` and `apfs addVolume … -role B|R|D` / `-role S -groupWith <Data>` shapes, allowed only on the container this job created; S55 is aligned (section 8) |
 | A build with the compile key (`SF_REAL_DISK_WRITES`) and a runtime authorization file for the Air's disk, bound to the plan digest (ENGINE 12.1), both made by Chris | Both off. Never in a shipped, CI or test build |
 | A stub-only plan: S00–S35, S55–S70, then R10–R50, with no S40–S52 (no SFBOOT, no root) | Not defined in the engine |
 | A signed `SFRecovery` and the release's `sf-stage1.bin` (Omacom m1n1 `121fcbf` plus our patches), its SHA-256 from the signed `install.json` (`siliconforest-install/3`) | The stage 1 binary has not been built into a release; PAYLOAD 12 lists it |
@@ -97,8 +97,8 @@ resize `-69606` or `-69850`; recovery pairing error 17; no picker entry after A6
 The stub this builds equals Asahi v0.9.2's, except the declared SiliconForest payload, on a disk image: PAYLOAD 9, `installer/mac/scripts/stub-differential.sh`
 (`SF_PAYLOAD=sf`), delta in `Tests/StubDifferential/fixtures/sf-payload-delta.json`. Boot personalisation and recovery pairing are not comparable on images; this run is where they are first tried.
 
-## 8. Open questions for Chris
+## 8. Decisions (Chris, 25 Nov 2026 12:21 AM PT)
 
-1. Is **stage 1 with no SFBOOT** an acceptable end for the stub-only run (section 3, B4), or should the run include a minimal SFBOOT with the J313 window `boot.bin` so stage 1 can chainload?
-2. Is crossing **R20/R30** (a one-way LocalPolicy change for the stub's group) in the first real run acceptable, or should the first run stop at stage A?
-3. S55 today writes `.sf/boot.bin` as `stage1 + "\n" + variables + "\n"` with no NUL terminator, while Asahi's `m1n1.build` and the SFStub payload write `stage1 + variable lines + 4 NULs`. Which does `121fcbf` expect? SFStub follows `m1n1.build`; the engine's S55 should be aligned in M3.
+1. The first stub-only run **ends at stage 1 reporting it can't find stage 2**. No SFBOOT in that run; a minimal SFBOOT comes in a later run.
+2. **Stage B (R20/R30, the LocalPolicy change for the stub's own volume group) is part of the first real run.**
+3. S55 writes `.sf/boot.bin` in `m1n1.build`'s format, the same bytes SFStub stages: stage 1, each variable and a newline, four NULs (done: `InstallEngine.bootObject`, test `theEngineWritesTheSameBootObjectAsTheStub`).

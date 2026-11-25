@@ -167,7 +167,7 @@ Numbering leaves gaps for later insertions. **Recorded in the journal; the journ
 | `S47 root-image` | Stream xz to `/dev/rdisk` | **Full read-back** against `image_sha256` | Hash | Erase to free |
 | `S50 firmware` | Extract, write the firmware slot | Slot header + digest | Compare | Covered by root erase |
 | `S52 receipt-slot` | Write header and install ID | Read back | Compare | Covered by root erase |
-| `S55 boot-object` | Stage 1 + variables into the app | Hash, size limit | Hash | Covered by stub delete |
+| `S55 boot-object` | Stage 1 + variables into the app, in `m1n1.build`'s format (stage 1, each variable + newline, four NULs: the bytes SFStub stages) | Hash, size limit | Hash | Covered by stub delete |
 | `S60 recovery-stage` | Copy app, plan, marker | Hashes | Hash | Covered by stub delete |
 | `S65 blessed` | `bless --setBoot` on stub (needs password) | **Read back** default volume | Read | Restore previous default, verify |
 | `S68 handoff` | Hide `SystemVersion.plist`, enable marker | Files | Check | Restore |
