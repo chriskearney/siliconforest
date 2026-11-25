@@ -29,14 +29,14 @@ if [[ -n "${SWIFT_DEFINES:-}" ]]; then
 fi
 
 echo "▸ swift build (release)${SWIFT_DEFINES:+  defines: $SWIFT_DEFINES}"
-swift build -c release --product SFInstaller "${SWIFT_EXTRA[@]}"
-swift build -c release --product sfinstallctl "${SWIFT_EXTRA[@]}"
-swift build -c release --product SFHelper "${SWIFT_EXTRA[@]}"
-swift build -c release --product SFRecovery "${SWIFT_EXTRA[@]}"
+swift build -c release --product SFInstaller ${SWIFT_EXTRA[@]+"${SWIFT_EXTRA[@]}"}
+swift build -c release --product sfinstallctl ${SWIFT_EXTRA[@]+"${SWIFT_EXTRA[@]}"}
+swift build -c release --product SFHelper ${SWIFT_EXTRA[@]+"${SWIFT_EXTRA[@]}"}
+swift build -c release --product SFRecovery ${SWIFT_EXTRA[@]+"${SWIFT_EXTRA[@]}"}
 # Lab tools: not inside the app (DESIGN / STUB-ONLY-RUN). Built and signed into build/ for the DMG.
-swift build -c release --product sfstubrun "${SWIFT_EXTRA[@]}"
-swift build -c release --product sfinstrun "${SWIFT_EXTRA[@]}"
-BIN="$(swift build -c release --show-bin-path "${SWIFT_EXTRA[@]}")"
+swift build -c release --product sfstubrun ${SWIFT_EXTRA[@]+"${SWIFT_EXTRA[@]}"}
+swift build -c release --product sfinstrun ${SWIFT_EXTRA[@]+"${SWIFT_EXTRA[@]}"}
+BIN="$(swift build -c release --show-bin-path ${SWIFT_EXTRA[@]+"${SWIFT_EXTRA[@]}"})"
 [ -f build/fonts/Inter-Regular.ttf ] && [ -f build/fonts/SourceCodePro-OFL.txt ] || scripts/fetch-fonts.sh
 
 APP="$ROOT/build/SiliconForest Installer.app"
