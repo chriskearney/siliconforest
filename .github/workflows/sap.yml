@@ -1,0 +1,59 @@
+name: SAP updater
+# The SiliconForest system updater (sap/, docs/sap/): Rust client unit tests, lints, and the
+# end-to-end suite (publish channels into temp dirs, install and upgrade fake roots, attack every
+# check). Fake roots and TEST-ONLY keys made inside the tests only: no secrets, no disks, no boot.
+on:
+  push:
+    paths:
+      - "sap/**"
+      - "docs/sap/**"
+      - "installer/payload/release/**"
+      - "integrations/siliconforest/m1-native-boot/install/abboot/**"
+      - ".github/workflows/sap.yml"
+  pull_request:
+    paths:
+      - "sap/**"
+      - "docs/sap/**"
+      - "installer/payload/release/**"
+      - "integrations/siliconforest/m1-native-boot/install/abboot/**"
+      - ".github/workflows/sap.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sap:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      CARGO_TERM_COLOR: never
+      CARGO_NET_RETRY: "5"
+    steps:
+      - name: Check out project
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          rustc --version && cargo --version && python3 --version && ssh -V
+      - name: Format and lints
+        working-directory: sap/client
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --features testing --all-targets -- -D warnings
+      - name: Unit tests (release build features, then testing hooks)
+        working-directory: sap/client
+        run: |
+          cargo test --locked
+          cargo test --locked --features testing
+      - name: The shipped binary has no test hooks
+        working-directory: sap/client
+        run: |
+          cargo build --locked --release
+          if strings target/release/sap | grep -q 'SAP_FAULT'; then echo "SAP_FAULT in a release build" >&2; exit 1; fi
+      - name: End-to-end tests
+        working-directory: sap/tests
+        run: python3 -m unittest discover -s . -v
