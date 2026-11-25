@@ -4,10 +4,15 @@ import SFInstallKit
 import SFCopy
 import SFDesign
 import SFFlow
+import SFAppEngine
+import SFHelperKit
 
 // SiliconForest Installer
 //
-//   SFInstaller                       native full screen, dry run on the simulated J293 disk
+//   SFInstaller                       a build with SF_REAL_DISK_WRITES (the release): the REAL install of this Mac
+//                                     through the helper (preview6). Any other build: dry run on the simulated J293 disk
+//   SFInstaller --dry-run             the simulated flow, in any build
+//   SFInstaller --release-folder DIR  the real install from a local copy of the signed release instead of GitHub
 //   SFInstaller --windowed            stay in a window (tests, development)
 //   SFInstaller --real                read-only analysis of this Mac (never writes)
 //   SFInstaller --fixture NAME        another simulated disk (see Fixtures/disks)
@@ -33,8 +38,20 @@ struct LaunchOptions {
     var has: (String) -> Bool { { args[$0] != nil } }
 }
 
+#if SF_REAL_DISK_WRITES
+let realInstallBuild = true
+#else
+let realInstallBuild = false
+#endif
+
 @MainActor
 func makeSession(_ o: LaunchOptions) -> Session {
+    if (realInstallBuild || o.has("live")) && !o.has("dry-run") && !o.has("real") && !o.has("fixture") {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+        let origin: ReleaseOrigin = o["release-folder"].map { .folder(URL(fileURLWithPath: $0)) } ?? .github(tag: ReleaseOrigin.tag(forAppVersion: version))
+        return Session(live: LiveInstallController { HelperClient() }, origin: origin, backend: RealDiskBackend(),
+                       register: { HelperRegistrar.register() })
+    }
     if o.has("real") {
         return Session(mode: .readOnly, backend: RealDiskBackend())
     }

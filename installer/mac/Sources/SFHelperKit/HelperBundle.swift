@@ -21,7 +21,7 @@ import SFIdentity
 /// 3. `.enabled`: the app connects to the Mach service with `HelperClient()`; launchd starts the helper.
 /// 4. When the job ends, `unregister()`. The journal stays in `/var/db/org.siliconforest.installer/`.
 /// SMAppService accepts only a properly signed app (Developer ID, same team as the helper).
-/// This dry-run preview ships the signed helper but still does not call register().
+/// Preview6 (the real install) calls register() after Review; the dry run never does.
 public enum HelperBundle {
     public static func launchdPlist() -> [String: Any] {
         [
@@ -56,7 +56,7 @@ public enum HelperBundle {
 }
 
 /// Registers the helper with SMAppService, refusing up front unless this process is the app,
-/// running from /Applications, signed with our Developer ID. Nothing in this build calls it.
+/// running from /Applications, signed with our Developer ID. Only the real-install mode calls it.
 public enum HelperRegistration {
     public enum Refusal: Error, Equatable { case notInApplications, notDeveloperIDSigned }
 
@@ -78,6 +78,15 @@ public enum HelperRegistration {
         try service.register()
         return service.status
     }
+
+    @available(macOS 13.0, *)
+    public static func status() -> SMAppService.Status {
+        SMAppService.daemon(plistName: SigningIdentity.helperLaunchdPlist).status
+    }
+
+    /// System Settings → General → Login Items, where the person turns the helper on.
+    @available(macOS 13.0, *)
+    public static func openLoginItems() { SMAppService.openSystemSettingsLoginItems() }
 
     @available(macOS 13.0, *)
     public static func unregister() throws {

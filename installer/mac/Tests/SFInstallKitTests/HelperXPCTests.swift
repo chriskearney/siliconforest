@@ -26,11 +26,15 @@ final class InProcessHelper: @unchecked Sendable {
 
 private func tempDir() -> URL { FileManager.default.temporaryDirectory.appendingPathComponent("sf-helper-\(UUID().uuidString)") }
 
+/// These suites test the pre-preview6 verbs directly; the typed + administrator confirmation that `begin`
+/// now requires is HelperInstallVerbTests' and sfappimage's.
 private func config(target: HelperConfig.Target = .none, journal: URL = tempDir(), policy: ConnectionPolicy? = nil) -> HelperConfig {
-    HelperConfig(target: target, journalDirectory: journal, workDirectory: journal.appendingPathComponent("work"), profileID: "J293",
+    var c = HelperConfig(target: target, journalDirectory: journal, workDirectory: journal.appendingPathComponent("work"), profileID: "J293",
                  release: nil, releaseSource: nil,
                  policy: policy ?? ConnectionPolicy(clientRequirement: CodeIdentity.ownDesignatedRequirement() ?? "", minimumClientBuild: 0),
                  idleTimeout: 0.3, resizeTiming: .tests)
+    c.requireConfirmation = false
+    return c
 }
 
 @Suite("Helper: XPC trust and verbs")

@@ -8,8 +8,11 @@ import Foundation
 ///     shipped binary contains the real-disk authority. Without it `evaluate` is closed before it even
 ///     looks for the authorization file, and the type that can name an internal disk does not exist.
 ///  2. **Runtime key.** A root-owned authorization file that names this exact plan, this exact disk
-///     (its GPT UUID), and a short validity window. Chris puts it there for one install; it is never
-///     shipped, never created by the app, and expires on its own.
+///     (its GPT UUID), and a short validity window, at most 2 hours. It is never shipped and expires on
+///     its own. Two ways to put it there: the root helper writes it (`AuthorizationFile`, preview6) only
+///     after the person typed the disk's name and the erase phrase for that plan in the app and an
+///     administrator approved, and only for this Mac's startup disk; or, for the lab tools (`sfinstrun`,
+///     `sfstubrun`), the person writes it by hand. The app process itself never writes it.
 ///
 /// `RefusingExecutor` stays the default privileged executor, and a gate that is open only lets the
 /// helper's `LiveDiskBackend` try: every command still passes the protection receipt.

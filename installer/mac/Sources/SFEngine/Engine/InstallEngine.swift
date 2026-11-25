@@ -152,6 +152,8 @@ public enum EngineEvent: Sendable {
     case simulated(ApprovalNeeded)
     /// Within a step: what it is doing now ("12/57 extract …"), for the progress bar and the log.
     case progress(StepCode, String)
+    /// Byte-level progress of one of our own writes (S47's root image) or read-backs.
+    case bytes(StepCode, done: Int64, total: Int64, phase: String)
 }
 
 /// Runs an approved plan against a disk image, journaling intent before and evidence after every

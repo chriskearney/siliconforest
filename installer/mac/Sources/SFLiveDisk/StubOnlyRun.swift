@@ -28,7 +28,7 @@ public enum StubOnlyRun {
             guard let id = e["DeviceIdentifier"] as? String, e["Content"] as? String == "GUID_partition_scheme",
                   id.range(of: #"^disk[0-9]+$"#, options: .regularExpression) != nil else { continue }
             let info = try Query.dict(query, ["/usr/sbin/diskutil", "info", "-plist", id])
-            guard (info["DiskUUID"] as? String)?.uppercased() == want else { continue }
+            guard (try? WholeDiskIdentity.uuid(id, info: info)) == want else { continue }
             guard info["WholeDisk"] as? Bool == true, info["Internal"] as? Bool == true,
                   info["VirtualOrPhysical"] as? String != "Virtual", info["BusProtocol"] as? String != "Disk Image" else {
                 throw SafetyRefusal("\(id) has that UUID but isn't an internal physical whole disk")

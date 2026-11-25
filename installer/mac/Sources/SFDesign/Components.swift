@@ -228,15 +228,16 @@ public struct Panel<Content: View>: View {
 /// The unmistakable-but-elegant dry-run badge.
 public struct ModeBadge: View {
     var dryRun: Bool
+    var live: Bool
     @Environment(\.theme) private var theme
-    public init(dryRun: Bool) { self.dryRun = dryRun }
+    public init(dryRun: Bool, live: Bool = false) { self.dryRun = dryRun; self.live = live }
     public var body: some View {
-        let tone = dryRun ? theme.caution : theme.textSecondary
+        let tone = live ? theme.critical : (dryRun ? theme.caution : theme.textSecondary)
         HStack(spacing: 9) {
-            Image(systemName: dryRun ? "testtube.2" : "eye").font(.system(size: 11, weight: .semibold)).foregroundStyle(tone)
+            Image(systemName: live ? "exclamationmark.triangle.fill" : (dryRun ? "testtube.2" : "eye")).font(.system(size: 11, weight: .semibold)).foregroundStyle(tone)
             VStack(alignment: .leading, spacing: 0) {
-                Text((dryRun ? Copy.Common.dryRun : Copy.Common.readOnly).uppercased()).font(SFType.micro).tracking(1.4).foregroundStyle(tone)
-                Text(dryRun ? Copy.Common.dryRunDetail : Copy.Common.readOnlyDetail).font(SFType.caption).foregroundStyle(theme.textSecondary)
+                Text((live ? Copy.Common.live : (dryRun ? Copy.Common.dryRun : Copy.Common.readOnly)).uppercased()).font(SFType.micro).tracking(1.4).foregroundStyle(tone)
+                Text(live ? Copy.Common.liveDetail : (dryRun ? Copy.Common.dryRunDetail : Copy.Common.readOnlyDetail)).font(SFType.caption).foregroundStyle(theme.textSecondary)
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 6)

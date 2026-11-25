@@ -52,13 +52,13 @@ let package = Package(
         .target(name: "SFEngine", dependencies: ["SFInstallKit", "SFStub"]),
         .target(name: "SFCopy", dependencies: ["SFInstallKit"], swiftSettings: ui),
         .target(name: "SFDesign", dependencies: ["SFInstallKit", "SFCopy"], swiftSettings: ui),
-        .target(name: "SFFlow", dependencies: ["SFInstallKit", "SFCopy", "SFDesign"], swiftSettings: ui),
-        .executableTarget(name: "SFInstaller", dependencies: ["SFInstallKit", "SFCopy", "SFDesign", "SFFlow"], swiftSettings: ui),
+        .target(name: "SFFlow", dependencies: ["SFInstallKit", "SFCopy", "SFDesign", "SFAppEngine", "SFHelperKit", "SFEngine", "SFLiveDisk"], swiftSettings: ui),
+        .executableTarget(name: "SFInstaller", dependencies: ["SFInstallKit", "SFCopy", "SFDesign", "SFFlow", "SFAppEngine", "SFHelperKit"], swiftSettings: ui),
         // The live disk backend (ENGINE §12): protection receipt, target authority, pre-write release checks and the
         // two-key real-disk gate. Without `SF_REAL_DISK_WRITES` its only target is a disk image.
         .target(name: "SFLiveDisk", dependencies: ["SFInstallKit", "SFEngine"]),
         // The helper's verb-only NSXPC protocol, service, trust checks, lifecycle and bundle layout.
-        .target(name: "SFHelperKit", dependencies: ["SFIdentity", "SFInstallKit", "SFEngine", "SFLiveDisk"]),
+        .target(name: "SFHelperKit", dependencies: ["SFIdentity", "SFInstallKit", "SFEngine", "SFLiveDisk", "SFStub"]),
         .executableTarget(name: "SFHelper", dependencies: ["SFHelperKit", "SFEngine", "SFInstallKit", "SFIdentity"],
                           linkerSettings: [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
                                                          "-Xlinker", helperInfoPlist])]),
@@ -74,10 +74,14 @@ let package = Package(
         .executableTarget(name: "sfstubrun", dependencies: ["SFStub", "SFEngine", "SFLiveDisk", "SFInstallKit"]),
         // The supervised full install (docs/installer/FIRST-INSTALL-J313.md). A lab tool, not in the app bundle.
         .executableTarget(name: "sfinstrun", dependencies: ["SFStub", "SFEngine", "SFLiveDisk", "SFInstallKit"]),
+        // The app's real install path without UI (preview6): release fetch + verify, and the controller the Session drives.
+        .target(name: "SFAppEngine", dependencies: ["SFEngine", "SFHelperKit", "SFLiveDisk"]),
+        // The app's install path end to end against a disk image, with a kill and resume (lab tool, not in the app).
+        .executableTarget(name: "sfappimage", dependencies: ["SFAppEngine", "SFHelperKit", "SFEngine", "SFLiveDisk", "SFInstallKit", "SFStub"]),
         // Same tests as an executable, for Command Line Tools-only Macs (see scripts/test.sh).
-        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub"], path: "Tests/CLTRunner",
+        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub", "SFAppEngine"], path: "Tests/CLTRunner",
                           swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
-        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub"],
+        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub", "SFAppEngine"],
                     swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
     ]
 )

@@ -36,7 +36,7 @@ public struct InternalDiskAuthority: TargetAuthority {
             guard let id = e["DeviceIdentifier"] as? String, e["Content"] as? String == "GUID_partition_scheme",
                   id.range(of: #"^disk[0-9]+$"#, options: .regularExpression) != nil else { continue }
             let info = try Query.dict(query, ["/usr/sbin/diskutil", "info", "-plist", id])
-            guard (info["DiskUUID"] as? String)?.uppercased() == diskUUID else { continue }
+            guard (try? WholeDiskIdentity.uuid(id, info: info)) == diskUUID.uppercased() else { continue }
             guard info["WholeDisk"] as? Bool == true, info["Internal"] as? Bool == true,
                   info["VirtualOrPhysical"] as? String != "Virtual", info["BusProtocol"] as? String != "Disk Image",
                   info["RemovableMediaOrExternalDevice"] as? Bool != true, info["Removable"] as? Bool != true else {

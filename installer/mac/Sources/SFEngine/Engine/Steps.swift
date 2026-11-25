@@ -185,13 +185,22 @@ extension InstallEngine {
             guard let release, let root = gate.created["root"] else { throw EngineError(.inconsistent, "no root partition") }
             try gate.admit(.writeRaw(partition: root, offset: 0, bytes: release.rootImageBytes), now: try backend.topology())
             try journal.append(.intent, step: c, args: ["image": .s(release.rootImage), "bytes": .i(release.rootImageBytes)])
-            let w = try backend.writeImage(root, source: work(release.rootImage), compressed: release.rootImageCompressed, progress: nil)
+            let total = release.rootImageBytes
+            var lastTick = Date.distantPast
+            let report: (Int64) -> Void = { [weak self] n in
+                guard let self, n == total || Date().timeIntervalSince(lastTick) >= 0.5 else { return }
+                lastTick = Date()
+                self.onEvent?(.bytes(.S47, done: n, total: total, phase: "write"))
+            }
+            let w = try backend.writeImage(root, source: work(release.rootImage), compressed: release.rootImageCompressed, progress: report)
             guard w.bytes == release.rootImageBytes, w.sha256 == release.rootImageSHA256 else {
                 throw EngineError(.inconsistent, "the decompressed image isn't the release's (\(w.bytes) B)")
             }
             try afterCommand(code)
             // Full read-back: no partial is trusted.
+            onEvent?(.bytes(.S47, done: 0, total: total, phase: "read-back"))
             let back = try backend.hashRaw(root, bytes: release.rootImageBytes)
+            onEvent?(.bytes(.S47, done: total, total: total, phase: "read-back"))
             guard back == release.rootImageSHA256 else { throw EngineError(.appleTool, "read-back of the root image doesn't match") }
             try journal.append(.evidence, step: c, result: ["sha256": .s(back)])
 
@@ -493,16 +502,9 @@ extension InstallEngine {
             guard try SHA256Hasher.file(template) == release.artifact(kc.bootargsTemplate)?.sha256 else {
                 throw EngineError(.inconsistent, "the boot-argument template doesn't match its signed hash")
             }
-            var args = String(decoding: try Data(contentsOf: template), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-            if args.contains("@SF_FSUUID@") {
-                guard let fs = release.rootFilesystemUUID, UUID(uuidString: fs) != nil else {
-                    throw EngineError(.inconsistent, "the release doesn't give the root filesystem's UUID")
-                }
-                args = args.replacingOccurrences(of: "@SF_FSUUID@", with: fs.lowercased())
-            }
-            args = args.replacingOccurrences(of: "@SF_PARTUUID@", with: root.lowercased())
-                .replacingOccurrences(of: "@SF_PART_LBA@", with: String(p.offset / t.blockSize))
-            guard !args.contains("@SF_") else { throw EngineError(.inconsistent, "the boot-argument template has an unknown placeholder") }
+            let args = try Self.bootArguments(template: String(decoding: try Data(contentsOf: template), as: UTF8.self),
+                                              rootFilesystemUUID: release.rootFilesystemUUID, partUUID: root,
+                                              firstBlock: p.offset / t.blockSize, blocks: p.size / t.blockSize)
             return try PDSF.kernelBin(bootargs: args, collection: try Data(contentsOf: collection))
         }
         var s = String(decoding: try Data(contentsOf: work(release.kernel)), as: UTF8.self)
@@ -510,6 +512,28 @@ extension InstallEngine {
             .replacingOccurrences(of: "@SF_PART_LBA@", with: String(p.offset / t.blockSize))
             .replacingOccurrences(of: "@SF_FSUUID@", with: "<root filesystem UUID from the release>")
         return Data(s.utf8)
+    }
+
+    /// The kernel command line from the release's bootargs.template (install/build.sh's ARGS): lines that start with
+    /// # are comments, the others joined by single spaces; then the four fields sf_personalize.py fills: the
+    /// release's root filesystem UUID, and the root partition's PARTUUID, first block and length in blocks (the
+    /// disk's GPT block size; SFAppleNVMe checks first and last block against both GPT copies).
+    public static func bootArguments(template: String, rootFilesystemUUID: String?, partUUID: String,
+                                     firstBlock: Int64, blocks: Int64) throws -> String {
+        var args = template.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }.joined(separator: " ")
+        if args.contains("@SF_FSUUID@") {
+            guard let fs = rootFilesystemUUID, UUID(uuidString: fs) != nil else {
+                throw EngineError(.inconsistent, "the release doesn't give the root filesystem's UUID")
+            }
+            args = args.replacingOccurrences(of: "@SF_FSUUID@", with: fs.lowercased())
+        }
+        guard firstBlock > 0, blocks > 0 else { throw EngineError(.inconsistent, "the root partition has no extent") }
+        args = args.replacingOccurrences(of: "@SF_PARTUUID@", with: partUUID.lowercased())
+            .replacingOccurrences(of: "@SF_PART_LBA@", with: String(firstBlock))
+            .replacingOccurrences(of: "@SF_PART_BLOCKS@", with: String(blocks))
+        guard !args.contains("@") else { throw EngineError(.inconsistent, "the boot-argument template has an unknown placeholder") }
+        return args
     }
 
     func installJSON(plan: EnginePlan, gate: Gate) throws -> Data {
@@ -541,6 +565,12 @@ extension InstallEngine {
 
     func firmwareSlot() throws -> Data {
         guard let release else { throw EngineError(.internalError, "no release") }
+        // Format 3 ships no firmware (Apple's; DESIGN §14.13) and the Swift extractor (SFFirmware) isn't written yet:
+        // S50 then writes the slot's empty header, exactly what prepare_root.py put there (SFFWSLOT1 and zeros), so
+        // sf-unpack-firmware finds no firmware and J313's Wi-Fi stays off (J313.json: not yet loaded on Darwin).
+        if release.firmware.isEmpty {
+            var d = Data("SFFWSLOT1\n".utf8); d.append(Data(count: 4096 - d.count)); return d
+        }
         let fw = try Data(contentsOf: work(release.firmware))
         var d = Data("SFFWSLOT1\nsha256=\(SHA256Hasher.hex(fw))\nbytes=\(fw.count)\n".utf8)
         d.append(Data(count: 4096 - d.count))

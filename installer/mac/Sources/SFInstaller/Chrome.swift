@@ -118,6 +118,12 @@ struct RootView: View {
         case .removeConfirm: RemoveConfirmScreen(s: s)
         case .removed: RemovedScreen(s: s)
         case .failure: FailureScreen(s: s)
+        case .liveResume: if let l = s.live { LiveResumeScreen(s: s, live: l) }
+        case .liveFetch: if let l = s.live { LiveFetchScreen(s: s, live: l) }
+        case .liveConfirm: if let l = s.live { LiveConfirmScreen(s: s, live: l) }
+        case .liveInstalling: if let l = s.live { LiveInstallingScreen(s: s, live: l) }
+        case .liveStopped: if let l = s.live { LiveStoppedScreen(s: s, live: l) }
+        case .liveFinish: if let l = s.live { LiveFinishScreen(s: s, live: l) }
         }
     }
 
@@ -160,7 +166,9 @@ struct RootView: View {
             return Footer(leading: [details], trailing: [back, BarAction(title: Copy.Common.continue, style: .primary, enabled: s.nameError == nil, isDefault: true) { s.go(.review) }])
         case .review:
             // The point of no return: no default key; Return does nothing.
-            return Footer(leading: [details], trailing: [back, BarAction(title: Copy.Review.primary, style: .primary, enabled: s.mode == .dryRun) { s.startInstall() }])
+            // Live: Continue leads to the helper's own plan and the typed confirmation; nothing is written yet.
+            return Footer(leading: [details], trailing: [back, BarAction(title: s.isLive ? Copy.Common.continue : Copy.Review.primary, style: .primary,
+                                                                         enabled: s.mode == .dryRun || s.isLive) { s.startInstall() }])
         case .approve:
             return Footer(leading: [details], trailing: [BarAction(title: Copy.Common.cancel) { s.go(.review) }, BarAction(title: Copy.Approve.open, style: .primary) {}])
         case .preparing:
@@ -172,6 +180,32 @@ struct RootView: View {
                                       : BarAction(title: Copy.Installing.whyNoStop) { s.showWhyNoStop = true })
             }
             return Footer(leading: [details], trailing: t)
+        case .liveFetch:
+            if case .failed = s.live?.activity {
+                return Footer(leading: [details], trailing: [BarAction(title: Copy.Common.back) { s.go(.review) },
+                                                              BarAction(title: "Use a Folder…") { s.live?.chooseFolder() },
+                                                              BarAction(title: "Try Again", style: .primary) { s.startInstall() }])
+            }
+            return Footer(leading: [details])
+        case .liveConfirm:
+            // The point of no return: no default key; Return does nothing.
+            return Footer(leading: [details], trailing: [back, BarAction(title: "Install", style: .primary,
+                                                                         enabled: (s.live?.typedMatches ?? false) && !(s.live?.isWorking ?? true)) { s.live?.install() }])
+        case .liveInstalling:
+            return Footer(leading: [details], trailing: [BarAction(title: "Quit (the helper keeps going)") { s.requestQuit() }])
+        case .liveStopped:
+            guard let l = s.live else { return Footer() }
+            if l.end == "rolled-back" || l.job == nil { return Footer(leading: [details], trailing: [BarAction(title: Copy.Common.quit, style: .primary) { s.terminate() }]) }
+            let cont = l.resumeExpected != nil
+                ? BarAction(title: "Confirm and Continue", style: .primary, enabled: l.typedMatches) { l.reconfirmAndResume() }
+                : BarAction(title: "Continue", style: .primary) { if let j = l.job { l.resume(j) } }
+            return Footer(leading: [details], trailing: [BarAction(title: "Undo Everything", style: .destructive) { l.rollback() }, cont])
+        case .liveResume:
+            guard let l = s.live, let j = l.unfinished.first else { return Footer() }
+            return Footer(leading: [details], trailing: [BarAction(title: "Undo Everything", style: .destructive) { l.job = j; l.rollback() },
+                                                          BarAction(title: "Continue", style: .primary) { l.resume(j) }])
+        case .liveFinish:
+            return Footer(leading: [details], trailing: [BarAction(title: Copy.Common.quit, style: .primary) { s.terminate() }])
         case .recovery:
             return Footer(leading: [details, BarAction(title: Copy.Recovery.save) {}],
                           trailing: [BarAction(title: Copy.Recovery.notNow) { s.go(.welcome) },
@@ -228,7 +262,7 @@ struct TopBar: View {
                 Spacer()
                 if let i = s.screen.dotIndex { StepDots(index: i).transition(.opacity) }
             }
-            ModeBadge(dryRun: s.isDryRun)
+            ModeBadge(dryRun: s.isDryRun, live: s.isLive)
         }
         .padding(.horizontal, 32)
         .accessibilityElement(children: .contain)

@@ -30,6 +30,23 @@ import SFIdentity
     func jobStatus(job: String, reply: @escaping (Data?, NSError?) -> Void)
     /// Redacted diagnostics written to a handle the app opened (nothing is sent anywhere).
     func exportDiagnostics(job: String, to handle: FileHandle, reply: @escaping (NSError?) -> Void)
+
+    // Preview6: the app runs the install itself.
+
+    /// Copies the files a downloaded release's SHA256SUMS lists (and nothing else) from a folder the app
+    /// chose into the helper's own root-only store, then verifies the signature and every hash there.
+    /// Replies with a `ReleaseSummary`.
+    func importRelease(from folder: String, reply: @escaping (Data?, NSError?) -> Void)
+    /// Reads the target now and builds the install plan for an `InstallRequestBody` with the imported
+    /// release. Replies with an `InstallOffer`: the plan and what the person must type to approve it.
+    func planInstall(request: Data, reply: @escaping (Data?, NSError?) -> Void)
+    /// The person's typed `TypedConfirmation` for a plan the helper offered (or an unfinished job's plan),
+    /// plus an administrator's authorization (external form). On the internal disk the helper then writes
+    /// the runtime authorization for exactly this plan and disk, valid for at most 2 hours.
+    func confirm(planDigest: String, typed: Data, authorization: Data, reply: @escaping (Data?, NSError?) -> Void)
+    /// A job's live progress (`LiveProgress`): its state from the journal plus the in-memory step,
+    /// byte and diskutil events after `sequence`.
+    func progress(job: String, after sequence: UInt64, reply: @escaping (Data?, NSError?) -> Void)
 }
 
 public enum HelperErrorCode: Int, Sendable {
@@ -51,6 +68,8 @@ public enum HelperVerbs {
         "helperInfoWithReply:", "readTopologyWithReply:", "beginWithPlan:reply:", "resumeWithJob:reply:", "rollbackWithJob:reply:",
         "removalPlanWithInstallJob:reply:", "beginRemovalWithInstallJob:planDigest:reply:", "authorizeBlessWithJob:password:reply:",
         "eventsWithJob:after:reply:", "jobStatusWithJob:reply:", "exportDiagnosticsWithJob:to:reply:",
+        "importReleaseFrom:reply:", "planInstallWithRequest:reply:", "confirmWithPlanDigest:typed:authorization:reply:",
+        "progressWithJob:after:reply:",
     ]
 
     public static func selectors() -> Set<String> {

@@ -7,10 +7,13 @@ import SFHelperKit
 // SFHelper: the privileged half of the installer (DESIGN §6), started by launchd through
 // SMAppService when the app connects to its Mach service.
 //
-// This build's target is `.none`: every verb that would touch a disk answers `noTarget`. The
-// LiveDiskBackend is linked (SFLiveDisk) but can only be pointed at a disk image; the internal-disk
-// authority is not compiled in (no SF_REAL_DISK_WRITES), and nothing here selects `.live`. The full verb set runs against disk images in-process in the tests
-// (anonymous XPC listener) and through `sfinstallctl rehearse-image`.
+// Preview6: in a build with the compile key (SF_REAL_DISK_WRITES, set only by the release workflow) the
+// target is `.internalDisk`: this Mac's startup disk, found by identity for each plan. The app imports and
+// verifies the signed release, plans, and after the person's typed confirmation and an administrator's
+// approval the helper writes the runtime authorization for exactly that plan and disk (≤ 2 h); the
+// engine, the live backend's protection receipt and InternalDiskAuthority then do the install. Without
+// the compile key the target stays `.none` and every disk verb answers `noTarget`. The same verbs run
+// against disk images in-process in the tests and in `sfappimage` on the M5.
 //
 //   SFHelper                      listen on the Mach service (launchd)
 //   SFHelper --write-plists DIR   write the LaunchDaemon plist and the helper's Info.plist (make-app.sh)
@@ -33,11 +36,27 @@ var facts = SystemFacts()
 facts.hwModel = sysctlString("hw.model")
 facts.board = sysctlString("hw.target")
 let profileID = ProfileStore.profile(matching: facts)?.id ?? "unknown"
-let config = HelperConfig(target: .none,
+// The app bundle around this executable: Contents/MacOS/SFHelper.
+// The executable's real path (launchd's argv[0] for a BundleProgram isn't guaranteed to be absolute).
+let executable = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
+let contents = executable.resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent()
+let resources = contents.appendingPathComponent("Resources")
+#if SF_REAL_DISK_WRITES
+let target: HelperConfig.Target = .internalDisk
+#else
+let target: HelperConfig.Target = .none
+#endif
+var config = HelperConfig(target: target,
                           journalDirectory: ChainJournal.defaultDirectory,
                           workDirectory: URL(fileURLWithPath: "/var/db/org.siliconforest.installer/work"),
                           profileID: profileID, release: nil, releaseSource: nil,
-                          policy: ConnectionPolicy(clientRequirement: SigningIdentity.appRequirement, minimumClientBuild: 1))
+                          policy: ConnectionPolicy(clientRequirement: SigningIdentity.appRequirement, minimumClientBuild: 1),
+                          idleTimeout: 600)
+config.releaseStore = URL(fileURLWithPath: "/var/db/org.siliconforest.installer/releases", isDirectory: true)
+config.adminCheck = .system
+config.allowedSigners = resources.appendingPathComponent("allowed_signers")
+config.recoveryBinary = contents.appendingPathComponent("Helpers/SFRecovery")
+if let s = try? HelperResources.stubSource(profileID: profileID, resources: resources) { config.stubSource = s }
 let service = HelperService(config: config)
 let delegate = HelperListenerDelegate(service: service)
 let listener = NSXPCListener(machServiceName: SigningIdentity.helperMachService)

@@ -18,6 +18,8 @@
 //   sfinstrun rollback (the run options) --job UUID
 //   sfinstrun remove   --target T --journal DIR --work DIR --job UUID
 //   sfinstrun status   --journal DIR --job UUID
+//   sudo sfinstrun startup-disk   this Mac's startup disk and its GPT disk GUID (read-only: diskutil info
+//                      and the GPT header; diskutil doesn't report a whole disk's GUID)
 //
 // D is a verified signed release (install.json, SHA256SUMS, SHA256SUMS.sig, ...). The signature is
 // checked before the plan is made, and again by S15 and the live backend before any write.
@@ -122,6 +124,9 @@ func summary(_ plan: EnginePlan, release: ReleaseManifest) -> [String] {
 func main() throws {
     let a = try Args(CommandLine.arguments)
     switch a.cmd {
+    case "startup-disk":
+        let d = try StartupDisk.find()
+        print("startup disk \(d.whole), GPT disk GUID \(d.uuid)  (use --target disk:\(d.uuid))")
     case "plan":
         let (p, _) = try profile()
         let rel = try release(a)

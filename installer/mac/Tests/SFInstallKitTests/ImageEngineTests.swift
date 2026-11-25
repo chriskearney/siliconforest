@@ -41,7 +41,9 @@ struct ImageEngineTests {
         // sf/kernel.bin: PDSF records, the collection S17 linked and checked, personalised for this root.
         let recs = try PDSF.records(try Data(contentsOf: fat.appendingPathComponent("sf/kernel.bin")))
         let config = String(decoding: recs[0].1, as: UTF8.self)
-        #expect(config.contains("sfnvme_part=\(root.uuid.lowercased())") && !config.contains("@SF_PARTUUID@"))
+        #expect(config.contains("sfnvme_part=\(root.uuid.lowercased())") && !config.contains("@") && !config.contains("#"))
+        let bs = try c.backend.topology().blockSize
+        #expect(config.contains("sfnvme_part_lba=\(root.offset / bs) ") && config.contains("sfnvme_part_blocks=\(root.size / bs) "))
         #expect(SHA256Hasher.hex(recs[1].1) == release.kernelCollection?.collectionSHA256)
         let sys = try c.backend.volumeURL(store: stub.uuid, role: "System")
         let app = sys.appendingPathComponent("SiliconForest Setup.app/Contents")

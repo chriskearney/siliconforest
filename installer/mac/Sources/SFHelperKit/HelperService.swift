@@ -9,7 +9,10 @@ import SFLiveDisk
 /// attached disk image in tests, and only in a build with `SF_REAL_DISK_WRITES` plus a valid runtime
 /// authorization (RealDiskGate), the internal disk (ENGINE §12).
 public struct HelperConfig: Sendable {
-    public enum Target: Sendable { case none, image(URL), live(any TargetAuthority) }
+    /// `.internalDisk`: this Mac's startup disk, found by identity at each plan, through
+    /// `InternalDiskAuthority`. It exists only in a build with `SF_REAL_DISK_WRITES`; without it every
+    /// verb that would touch the disk answers `noTarget`.
+    public enum Target: Sendable { case none, image(URL), live(any TargetAuthority), internalDisk }
     public var target: Target
     public var allowedImageRoot: URL
     /// Root-only in production (`/var/db/org.siliconforest.installer/journal`). The helper owns it;
@@ -27,6 +30,18 @@ public struct HelperConfig: Sendable {
     public var recoveryBinary: URL?
     /// Set: the engine builds the stub with SFStub (needed by a stub-only plan).
     public var stubSource: StubSource?
+    /// `begin` refuses a plan the person hasn't confirmed (`confirm`) in the last 2 hours.
+    public var requireConfirmation = true
+    /// Where the helper writes the runtime authorization after a confirmation (internal disk only).
+    public var authorizationPath = RealDiskGate.authorizationPath
+    /// Where imported releases are copied (root-only in production). Nil: next to the work directory.
+    public var releaseStore: URL?
+    /// Checks the administrator's authorization sent with `confirm`. Production: `.system`.
+    public var adminCheck: AdminCheck = .never
+    /// Tests only: accept a TEST-ONLY rehearsal release on import.
+    public var allowRehearsalRelease = false
+    /// The release key's allowed_signers (nil: SFRelease's lookup, the app bundle's copy).
+    public var allowedSigners: URL?
 
     public init(target: Target, allowedImageRoot: URL = ImageGuard.defaultRoot, journalDirectory: URL = ChainJournal.defaultDirectory,
                 workDirectory: URL, profileID: String, release: ReleaseManifest?, releaseSource: URL?, policy: ConnectionPolicy = ConnectionPolicy(),
@@ -62,9 +77,18 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
     public let config: HelperConfig
     public let lifecycle: HelperLifecycle
     private let jobQueue = DispatchQueue(label: "org.siliconforest.helper.jobs")
-    private let lock = NSLock()
-    private var running: Set<UUID> = []
-    private var lastError: [UUID: String] = [:]
+    let lock = NSLock()
+    var running: Set<UUID> = []
+    var lastError: [UUID: String] = [:]
+    /// The release imported by `importRelease` (verified in the helper's own store).
+    var imported: (manifest: ReleaseManifest, dir: URL)?
+    /// Plans offered by `planInstall` / `removalPlan`, by digest, with what the person must type.
+    var offers: [String: (plan: EnginePlan, expected: TypedConfirmation, diskUUID: String?)] = [:]
+    /// Confirmed plan digests and until when.
+    var confirmed: [String: Date] = [:]
+    /// Live events per job (not journaled): step titles, SFStub progress, bytes, diskutil percentages.
+    var live: [UUID: [LiveEvent]] = [:]
+    var liveSeq: UInt64 = 0
     private var passwords: [UUID: SecureBytes] = [:]
     /// Tests look at this to prove the password was wiped.
     public private(set) var lastPassword: SecureBytes?
@@ -76,11 +100,41 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
 
     // MARK: plumbing
 
-    func backend() throws -> any EngineBackend {
+    func backend(planDigest: String? = nil) throws -> any EngineBackend {
         switch config.target {
         case .image(let url): return DiskImageBackend(imagePath: url, allowedRoot: config.allowedImageRoot)
         case .live(let authority): return LiveDiskBackend(authority: authority)
+        case .internalDisk:
+            #if SF_REAL_DISK_WRITES
+            guard let planDigest else { throw HelperError.make(.refused, "the internal disk is only opened for one confirmed plan") }
+            guard geteuid() == 0 else { throw HelperError.make(.refused, "the internal disk needs the root helper") }
+            let disk = try StartupDisk.find()
+            return LiveDiskBackend(authority: try InternalDiskAuthority(planDigest: planDigest, diskUUID: disk.uuid,
+                                                                       gate: { [path = config.authorizationPath] in
+                                                                           RealDiskGate.evaluate(planDigest: planDigest, diskUUID: disk.uuid, path: path) }))
+            #else
+            _ = planDigest
+            throw HelperError.make(.noTarget, "This build can't write to an internal disk (no SF_REAL_DISK_WRITES).")
+            #endif
         case .none: throw HelperError.make(.noTarget, "This build of the helper has no disk target; nothing is written.")
+        }
+    }
+
+    /// The target's partition table and the macOS container's resize limits, read-only (no write authority).
+    func readTarget() throws -> (topology: ImageTopology, limits: TopologyReader.ResizeLimits?, diskUUID: String?) {
+        switch config.target {
+        case .internalDisk:
+            #if SF_REAL_DISK_WRITES
+            let disk = try StartupDisk.find()
+            let (t, l) = try StubOnlyRun.read(.internalDisk(disk.uuid))
+            return (t, l, disk.uuid)
+            #else
+            throw HelperError.make(.noTarget, "This build can't read an internal disk for an install (no SF_REAL_DISK_WRITES).")
+            #endif
+        default:
+            let b = try backend()
+            let t = try b.topology()
+            return (t, try t.macOS.map { try b.limits(store: $0.uuid) }, nil)
         }
     }
 
@@ -96,11 +150,19 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
         return try ChainJournal.open(url)
     }
 
-    func engine(_ j: ChainJournal) throws -> InstallEngine {
-        let e = InstallEngine(backend: try backend(), journal: j, profile: try profile(), release: config.release, releaseSource: config.releaseSource,
+    func engine(_ j: ChainJournal, planDigest: String? = nil, operation: EnginePlan.Operation? = nil) throws -> InstallEngine {
+        let st = JobState(j.records)
+        let digest = planDigest ?? st.plan?.digest
+        let rel = try release(for: j, plan: st.plan, operation: operation)
+        let e = InstallEngine(backend: try backend(planDigest: digest), journal: j, profile: try profile(), release: rel.manifest, releaseSource: rel.dir,
                               workDir: config.workDirectory.appendingPathComponent(j.jobID.uuidString), resizeTiming: config.resizeTiming)
         e.recoveryBinary = config.recoveryBinary
         e.stubSource = config.stubSource
+        if (operation ?? st.plan?.operation ?? .install) == .install, e.stubSource == nil, case .internalDisk = config.target {
+            throw HelperError.make(.refused, "the helper can't build the stub (no profile, icon or admin list)")
+        }
+        let id = j.jobID
+        e.onEvent = { [weak self] ev in self?.record(id, ev) }
         return e
     }
 
@@ -126,6 +188,7 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
             switch config.target {
             case .image(let u): target = "image \(u.lastPathComponent)"
             case .live(let a): target = "live \(a.label)"
+            case .internalDisk: target = RealDiskGate.compiledIn ? "internal disk" : "internal disk (not compiled in)"
             case .none: target = "none"
             }
             let unfinished = ChainJournal.unfinished(in: config.journalDirectory).map { $0.deletingPathExtension().lastPathComponent }
@@ -135,15 +198,17 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
     }
 
     public func readTopology(reply: @escaping (Data?, NSError?) -> Void) {
-        self.reply(reply) { try Canonical.data(try backend().topology()) }
+        self.reply(reply) { try Canonical.data(try readTarget().topology) }
     }
 
     public func begin(plan: Data, reply: @escaping (String?, NSError?) -> Void) {
         self.reply(reply) {
             let p = try Canonical.decoder().decode(EnginePlan.self, from: plan)
             guard p.operation == .install else { throw HelperError.make(.refused, "use beginRemoval for a removal") }
+            try requireConfirmed(p.digest)
             let j = try ChainJournal(directory: config.journalDirectory)
-            do { try engine(j).begin(p) } catch {
+            do { try rememberRelease(for: j); try engine(j, planDigest: p.digest).begin(p) } catch {
+                try? FileManager.default.removeItem(at: releaseNote(j))
                 try? FileManager.default.removeItem(at: j.url)   // nothing happened: leave no job behind
                 throw error
             }
@@ -181,17 +246,21 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
     public func removalPlan(installJob: String, reply: @escaping (Data?, NSError?) -> Void) {
         self.reply(reply) {
             let proof = try InstallProofReader.proof(from: try journal(installJob))
-            return try Canonical.data(try EnginePlanner.removalPlan(topology: try backend().topology(), profile: try profile(), proof: proof))
+            let read = try readTarget()
+            let plan = try EnginePlanner.removalPlan(topology: read.topology, profile: try profile(), proof: proof)
+            offer(plan, topology: read.topology, diskUUID: read.diskUUID)
+            return try Canonical.data(plan)
         }
     }
 
     public func beginRemoval(installJob: String, planDigest: String, reply: @escaping (String?, NSError?) -> Void) {
         self.reply(reply) {
             let proof = try InstallProofReader.proof(from: try journal(installJob))
-            let plan = try EnginePlanner.removalPlan(topology: try backend().topology(), profile: try profile(), proof: proof)
+            let plan = try EnginePlanner.removalPlan(topology: try readTarget().topology, profile: try profile(), proof: proof)
             guard plan.digest == planDigest else { throw HelperError.make(.planMismatch, "the disk changed since you confirmed the removal") }
+            try requireConfirmed(plan.digest)
             let j = try ChainJournal(directory: config.journalDirectory)
-            let e = try engine(j)
+            let e = try engine(j, planDigest: plan.digest, operation: .remove)
             e.proof = proof
             do { try e.begin(plan) } catch { try? FileManager.default.removeItem(at: j.url); throw error }
             return j.jobID.uuidString

@@ -147,7 +147,7 @@ jobs:
           retention-days: 30
 
   macos:
-    name: Signed and notarized dry-run DMG (Apple silicon)
+    name: Signed and notarized installer DMG (Apple silicon)
     needs: [validate, stage1]
     runs-on: macos-15
     timeout-minutes: 90
@@ -310,7 +310,7 @@ jobs:
           test -d "$app"
           scripts/verify-signed-app.sh --developer-id "$app"
           test -x build/lab/sfinstrun && test -x build/lab/sfstubrun
-          scripts/check-real-disk-gate.sh --expect-compiled build/lab/sfinstrun build/lab/sfstubrun
+          scripts/check-real-disk-gate.sh --expect-compiled build/lab/sfinstrun build/lab/sfstubrun "$app/Contents/MacOS/SFHelper"
           echo "---- app ----"
           codesign -dvv "$app"
           echo "---- helper ----"
@@ -386,18 +386,24 @@ jobs:
           from pathlib import Path
           Path("$staging/READ ME FIRST.txt").write_text("""SiliconForest Installer ${INSTALLER_VERSION}
 
-          THIS BUILD CAN WRITE TO A REAL DISK.
+          THIS APP PERFORMS A REAL INSTALL. IT REPARTITIONS THIS MAC'S INTERNAL DISK.
 
-          It has not been run on a real Mac. Back up first. Chris's runtime authorization
-          file is required for any real write (docs/installer/FIRST-INSTALL-J313.md).
+          Back up first. It has not been run on a real Mac before this release.
 
-          The app UI is still a flow preview; the first real install is run with the lab
-          tool "Lab tools/sfinstrun", which is Developer ID signed and in this DMG.
-          sfstubrun is the stub-only tool. Both are built with the real-disk compile key.
+          1. Drag "SiliconForest Installer" to Applications and open it from there.
+          2. Allow its helper when macOS asks (System Settings > General > Login Items).
+          3. Follow the app: it checks this Mac, fetches and verifies the signed payload,
+             shows the plan, and asks you to type your disk's name, the erase phrase and
+             your administrator password before anything is written.
+          4. The last step, bless, is a command you run yourself in Terminal. The final
+             screen shows it, then how to start up from SiliconForest.
 
-          There is no pkg and no Developer ID Installer certificate. Do not run bless,
-          bputil, kmutil or DFU yourself except as the printed, simulated commands the
-          engine asks Chris to confirm.
+          If the app or the Mac stops mid-install, open the app again: it offers to
+          continue or to undo. Steps: docs/installer/FIRST-INSTALL-J313.md.
+
+          Lab tools: sfinstrun (the same engine from Terminal, with a hand-written
+          authorization file) and sfstubrun (stub only). There is no pkg and no
+          Developer ID Installer certificate. Do not run bputil, kmutil or DFU yourself.
           """.replace("${INSTALLER_VERSION}", __import__("os").environ["INSTALLER_VERSION"]))
           PY
           dmg_created=false
@@ -526,9 +532,11 @@ jobs:
           dmg_sha="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
           notes="$RUNNER_TEMP/release-notes.md"
           cat > "$notes" <<EOF
-          **This build can write to a real disk.** The lab tools (`sfinstrun`, `sfstubrun`) are built with the compile key `SF_REAL_DISK_WRITES`. Any real write still needs Chris's runtime authorization file for this plan and disk, root, and a signed payload. **It has not been run on a real Mac. Back up first.**
+          **This app performs a real install. It repartitions this Mac's internal disk: it shrinks the macOS container and writes the SiliconForest partitions. Back up first (Time Machine or another full backup), and have a way to reinstall macOS. It has not been run on a real Mac before this release.**
 
-          The app UI is still a flow preview. The first real install is `sfinstrun` (in the DMG, under Lab tools). The privileged helper in the app stays aimed at no disk (`noTarget`); it cannot install by itself.
+          What the app does: checks this Mac (supported model, macOS, FileVault off, power, free space), lets you choose the size, fetches this release's signed payload from GitHub and verifies `SHA256SUMS.sig` against the bundled `allowed_signers` before anything is written, shows the exact plan, and asks you to type your macOS disk's name and the erase phrase (for example `ERASE 60 GB`), then for an administrator's password. Its privileged helper (installed with your approval in System Settings › Login Items) then writes a runtime authorization for exactly that plan and disk, valid for at most 2 hours, and runs the install with live progress. If the app or the Mac stops, open the app again: it offers to continue or to undo. The last step, `bless`, is a command you run yourself in Terminal; the final screen shows it and the startup-options steps.
+
+          Requirements: the app in `/Applications`; FileVault off; the compile key `SF_REAL_DISK_WRITES` is in this build, and nothing writes without your typed confirmation and administrator approval. Stage 1 is pinned to v1 (`44c1ef0b…`). The lab tools (`sfinstrun`, `sfstubrun`, under Lab tools in the DMG) still work with a hand-written authorization file.
 
           Built from commit \`${GITHUB_SHA}\`. The signed payload (`install.json`, the root, `boot.bin`, the kernel-collection files, `SHA256SUMS.sig`) is assembled offline with the release key and uploaded to this GitHub release after this job; the key is never in CI. Verify the payload with `verify_release.py` in a directory that contains only those payload files (not the DMG).
 
@@ -544,11 +552,9 @@ jobs:
           ## What is not produced by this job
 
           - The signed payload (`install.json`, `boot.bin`, `bootargs.template`, the root parts, the kernel-collection files, `SHA256SUMS` / `SHA256SUMS.sig`) is assembled offline and uploaded to this release after this job. Until then, this tag's release has only the DMG and stage 1.
-          - **No Apple binaries or firmware.** The stub's 13.5 files and the Wi-Fi firmware the installer extracts at S50 are read from Apple's CDN / this Mac's restore image at run time and checked against the signed names and hashes in `install.json` before any write.
+          - **No Apple binaries or firmware.** The stub's macOS 13.5 files are read from Apple's CDN at run time and checked against the profile's names and hashes before any write. No Wi-Fi firmware is extracted yet: the firmware slot is left empty, so Wi-Fi stays off in SiliconForest.
 
-          Also needed on the Air, and not in the DMG: a copy of macOS's `AdminUserRecoveryInfo.plist`, the runtime authorization file Chris writes, and his approval words. The signed `SFRecovery` and `AppIcon.icns` are inside the app.
-
-          **Back up first. This build has had no real-hardware run.**
+          **This app writes to your Mac's internal disk. Back up first. This build has had no real-hardware run.**
           EOF
           assets=("$dist"/*.dmg "$dist/${dmg_name}.sha256" "$dist/sf-stage1.bin" "$dist/sf-stage1.json" "$dist/sf-stage1.bin.sha256" "$dist/RELEASE-SHA256SUMS")
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then

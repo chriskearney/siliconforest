@@ -125,6 +125,11 @@ Both builds passed the collection overlap check (19 segments, no overlaps).
 
 ## 6. Preview5: running the first real install (`sfinstrun`)
 
+> **Superseded by preview6 (section 7). Do not use preview5 for a real install:** its engine stops at S42 on the shipped
+> `bootargs.template` (comment lines and `@SF_PART_BLOCKS@` were not handled) and at S50 (format 3 ships no firmware
+> file). Both were found by the preview6 app run on a disk image and are fixed there. Stopping at S42 leaves the new
+> partitions written; `sfinstrun rollback` undoes them.
+
 Chris waived the stub-only Air run on 25 November 2026 (the stage 1 file is the same byte-for-byte). Preview5 is a **real-disk** prerelease and has **not** been run on a real Mac. **Back up first.** Nothing in this section has been run on the Air.
 
 The installer app UI is still a flow preview. The first real install is the lab tool `sfinstrun` (in the DMG, `Lab tools/sfinstrun`), built with `SF_REAL_DISK_WRITES`. It never writes the authorization file, never runs `bless` / `bputil` / `kmutil` / DFU, and refuses before any change without the compile key, root, a verified signed release, and Chris's authorization for this plan and disk.
@@ -133,7 +138,7 @@ The installer app UI is still a flow preview. The first real install is the lab 
 
 1. Copy the signed payload (every file listed in `SHA256SUMS`, plus `SHA256SUMS` and `SHA256SUMS.sig`) to `~/sf-run/rel/` on the Air. In a directory that contains **only** those files, run `python3 verify_release.py ~/sf-run/rel --allowed-signers allowed_signers` (the `allowed_signers` file is also in the DMG). Confirm `sf-stage1.bin` is `44c1ef0b…`.
 2. Copy `sfinstrun`, `allowed_signers`, the signed `SFRecovery` (`SiliconForest Installer.app/Contents/Helpers/SFRecovery`) and `AppIcon.icns` off the DMG. Copy macOS's own `AdminUserRecoveryInfo.plist` from the Preboot volume group.
-3. `DISK=` the internal disk's `DiskUUID` from `diskutil info -plist disk0`.
+3. `DISK=` the internal disk's GPT disk GUID: `sudo sfinstrun startup-disk` (preview6 and later; read-only). `diskutil info -plist disk0` has no `DiskUUID` for a whole disk, so preview5's instruction here could not be followed.
    `R="--release-dir ~/sf-run/rel"`, `J="--journal /var/db/org.siliconforest.installer/journal --work /var/db/org.siliconforest.installer/work"`,
    `A="--icon <AppIcon.icns> --admin-users <AdminUserRecoveryInfo.plist> --recovery-binary <signed SFRecovery>"`.
 4. **Plan (read-only):** `sfinstrun plan --target disk:$DISK $R --out ~/sf-run/plan.json` (add `--size 80G` or similar; the default is the profile's recommended footprint). It verifies the signed release, prints the plan digest, the macOS shrink, the new stub / boot / root partitions, and the authorization JSON. `diskutil list` is unchanged.
@@ -143,3 +148,39 @@ The installer app UI is still a flow preview. The first real install is the lab 
 8. **Remove:** `sudo sfinstrun remove --target disk:$DISK $J --job <id>` prints a new plan and a new authorization JSON; Chris writes a new file for that digest, then the same command runs U10–U40.
 
 The 13.5 restore-image members and the Wi-Fi firmware the installer extracts are read at run time from Apple's CDN / this Mac, never from the release.
+
+## 7. Preview6: the app does the install
+
+Preview6's app performs the real install itself, through its privileged helper (an `SMAppService` daemon). Built with
+`SF_REAL_DISK_WRITES`. **Back up first. Not yet run on a real Mac.** The preconditions of section 6 still apply.
+
+1. Open the DMG, drag **SiliconForest Installer** to `/Applications`, open it from there. Approve its helper when macOS asks
+   (System Settings › General › Login Items › Allow in the Background: "SiliconForest Installer").
+2. **Checks** (read-only): model J313, macOS, FileVault **off**, power and battery, free space. Any failure stops here.
+3. **Size and Review**: choose the size; Review shows what macOS gives up and what is created. "Continue".
+4. **Fetching the release**: the app downloads this version's signed payload from the GitHub release (or "Use a Folder…"
+   with a local copy) into `~/Library/Caches/org.siliconforest.installer/releases`, checks every file against
+   `SHA256SUMS`, and `SHA256SUMS.sig` against the bundled `allowed_signers`. The helper copies it into its root-only store
+   (`/var/db/org.siliconforest.installer/releases`) and verifies it again there, and refuses any stage 1 but v1 `44c1ef0b…`.
+5. **Confirm**: the helper reads the disk and makes the plan. The screen shows the exact plan and asks you to type
+   the macOS volume's name (for example `Macintosh HD`) and the erase phrase (`ERASE <N> GB`, N = what macOS gives up,
+   rounded up). "Install" is enabled only when both match exactly. Then macOS asks for an administrator's password.
+6. The helper checks that approval, that the plan's disk is this Mac's startup disk, and writes
+   `/var/db/org.siliconforest.installer/real-disk-authorization.json` (root, 0600) for this plan digest and disk UUID,
+   valid for 2 hours at most. Then the install runs: **Installing** shows elapsed time, overall percentage, each step with
+   its time, the macOS resize's live `diskutil` status (S25), bytes written and read back for the root (S47), and the journal.
+7. If the app is quit, the helper continues. If the Mac or the helper stops, open the app again: it finds the unfinished job
+   and offers **Continue** (asking you to confirm again if the 2 hours have passed) or **Undo Everything**.
+8. **Finish**: the app never runs `bless`. The final screen shows the command to run yourself in Terminal
+   (`sudo /usr/sbin/bless --mount "/Volumes/<name>" --setBoot --nextonly`, with "Copy the bless command"), then: shut down,
+   hold the power button until "Loading startup options", choose SiliconForest, Continue, and enter your password;
+   SiliconForest Setup finishes in recoveryOS (`bputil`, `kmutil configure-boot`) and restarts into SiliconForest.
+
+No Wi-Fi firmware is extracted yet: the firmware slot is written empty, so Wi-Fi stays off in SiliconForest. The lab tool
+`sfinstrun` (section 6) still works with a hand-written authorization file.
+
+Tested before the cut on the M5, against a **disk image** only, through the app's own code path (`sfappimage`: the
+helper's verbs over XPC, the app's `LiveInstallController`, the live backend): typed-confirmation and begin refusals; a
+full install from the published preview5 payload; a `kill -9` of helper and controller in the middle of S47's root write
+and again in S60, each resumed to "handed-off". Not tested: the real administrator prompt, `SMAppService` registration,
+the startup-disk lookup and the Preboot admin list on real hardware, and any real disk.

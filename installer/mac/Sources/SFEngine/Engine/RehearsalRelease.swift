@@ -113,7 +113,7 @@ public enum RehearsalRelease {
         try put("firmware.bin", filler("firmware", 256 << 10))
         var kc: KernelCollection?
         if withKC {
-            try put("bootargs.template", Data("rd=uuid boot-uuid=@SF_FSUUID@ sfnvme_part=@SF_PARTUUID@ sfnvme_part_lba=@SF_PART_LBA@\n".utf8))
+            try put("bootargs.template", Data("# the shipped template's shape: comments, then the line (install/build.sh ARGS)\n-v rd=uuid boot-uuid=@SF_FSUUID@ sfnvme_part=@SF_PARTUUID@ sfnvme_part_lba=@SF_PART_LBA@ sfnvme_part_blocks=@SF_PART_BLOCKS@ sfnvme_write=1\n".utf8))
             kc = try kernelCollection(put: { name, data, mode in
                 try put(name, data)
                 if let mode { try fm.setAttributes([.posixPermissions: mode], ofItemAtPath: dir.appendingPathComponent(name).path) }

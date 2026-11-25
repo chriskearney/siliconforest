@@ -277,6 +277,7 @@ struct LiveBackendImageTests {
                                policy: ConnectionPolicy(clientRequirement: CodeIdentity.ownDesignatedRequirement() ?? "", minimumClientBuild: 0),
                                idleTimeout: 0.3, resizeTiming: .tests)
         cfg.workDirectory = c.workDir
+        cfg.requireConfirmation = false   // the confirmation verbs are sfappimage's run on an image
         let h = InProcessHelper(cfg)
         let client = h.client()
         #expect(try client.info().target.hasPrefix("live "))

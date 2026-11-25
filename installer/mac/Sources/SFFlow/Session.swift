@@ -3,6 +3,8 @@ import Combine
 import SFInstallKit
 import SFCopy
 import SFDesign
+import SFAppEngine
+import SFHelperKit
 
 /// Every screen of docs/installer/UX-FLOW.md that this app shows.
 public enum Screen: Hashable, Sendable {
@@ -23,6 +25,13 @@ public enum Screen: Hashable, Sendable {
     case removing           // U3
     case removed            // U4
     case failure
+    // The real install (preview6, RunMode.live): driven by LiveRun through the helper.
+    case liveResume         // an unfinished job was found at launch
+    case liveFetch          // download, verify, hand to the helper, plan
+    case liveConfirm        // the helper's plan, the typed confirmation, administrator approval
+    case liveInstalling
+    case liveStopped
+    case liveFinish
 
     /// Step dots: Check · Prepare · Space · Review · Install · Recovery · Finish.
     public var dotIndex: Int? {
@@ -34,6 +43,9 @@ public enum Screen: Hashable, Sendable {
         case .approve, .preparing, .installing: return 4
         case .recovery, .inRecovery: return 5
         case .finish: return 6
+        case .liveFetch, .liveConfirm: return 3
+        case .liveInstalling, .liveStopped, .liveResume: return 4
+        case .liveFinish: return 5
         default: return nil
         }
     }
@@ -54,16 +66,22 @@ public enum Screen: Hashable, Sendable {
         case .removeWhat, .removeConfirm: return -0.4
         case .removing, .removed: return -0.2
         case .failure: return 0
+        case .liveResume: return 0.3
+        case .liveFetch, .liveConfirm: return 0.1
+        case .liveInstalling, .liveStopped: return 0.4
+        case .liveFinish: return 0.6
         }
     }
 
-    var isRun: Bool { self == .preparing || self == .installing || self == .removing }
+    var isRun: Bool { self == .preparing || self == .installing || self == .removing || self == .liveInstalling }
 }
 
 public enum RecoveryStage: Hashable, Sendable { case password, working, ready }
 public enum FinishOutcome: Hashable, Sendable { case verifying, installed, partial, didNotStart }
 
-public enum RunMode: Equatable, Sendable { case dryRun, readOnly }
+/// dryRun: the simulated disk. readOnly: analyse this Mac, never write. live: the real install through
+/// the helper (a build with SF_REAL_DISK_WRITES only; preview6).
+public enum RunMode: Equatable, Sendable { case dryRun, readOnly, live }
 
 /// What a failure means for the person's Mac (UX-FLOW Part 5).
 public enum FailureKind: Equatable, Sendable {
@@ -144,6 +162,9 @@ public final class Session: ObservableObject {
     public var stepPace: Double = 1
     public var quitConfirmed = false
 
+    /// The real install's state and actions (RunMode.live only).
+    public private(set) var live: LiveRun?
+
     private var runner: InstallRunner?
     public private(set) var runTask: Task<Void, Never>?
     private var stoppedCheckpoint: Checkpoint?
@@ -154,6 +175,16 @@ public final class Session: ObservableObject {
         self.backend = backend
         self.release = release
     }
+
+    /// The real install: `controller` talks to the helper; `origin` is where the release comes from.
+    public convenience init(live controller: LiveInstallController, origin: ReleaseOrigin, backend: any DiskBackend, release: ReleaseInfo = .placeholder,
+                            register: (@Sendable () throws -> HelperRegistrationState)? = nil) {
+        self.init(mode: .live, backend: backend, release: release)
+        self.live = LiveRun(controller: controller, origin: origin, register: register)
+        self.live?.session = self
+    }
+
+    public var isLive: Bool { mode == .live }
 
     // MARK: Derived
 
@@ -194,6 +225,9 @@ public final class Session: ObservableObject {
         case .finish(let o): return o == .installed ? 1 : 0.6
         case .removeWhat, .removeConfirm, .removing, .removed: return 0.04
         case .failure: return 0.05
+        case .liveResume, .liveFetch, .liveConfirm: return 0.1
+        case .liveInstalling, .liveStopped: return 0.12 + 0.48 * (live?.overall ?? 0)
+        case .liveFinish: return 0.6
         }
     }
 
@@ -264,6 +298,7 @@ public final class Session: ObservableObject {
             let f = try await backend.systemFacts()
             let s = try await backend.snapshot()
             apply(facts: f, snapshot: s)
+            live?.lookForUnfinishedJobs()
         } catch {
             loadError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
         }
@@ -273,7 +308,8 @@ public final class Session: ObservableObject {
         facts = f
         snapshot = s
         let matched = ProfileStore.profile(matching: f)
-        profile = matched ?? ProfileStore.profile(id: "J293")
+        // The real install has no fallback profile: an unsupported Mac fails the first check.
+        profile = matched ?? (isLive ? nil : ProfileStore.profile(id: "J293"))
         checks = CompatibilityChecker.run(facts: f, snapshot: s, profile: matched, release: release, allowGatedMajors: isDryRun)
         entry = CompatibilityChecker.entryState(snapshot: s, journal: nil)
         selectedInstall = ownedInstall
@@ -296,11 +332,12 @@ public final class Session: ObservableObject {
         case .review: go(.options)
         case .removeWhat: go(.welcome)
         case .removeConfirm: go(.removeWhat)
+        case .liveConfirm: go(.review)
         default: break
         }
     }
 
-    public var canGoBack: Bool { [.check, .prepare, .space, .options, .review, .removeWhat, .removeConfirm].contains(screen) }
+    public var canGoBack: Bool { [.check, .prepare, .space, .options, .review, .removeWhat, .removeConfirm, .liveConfirm].contains(screen) }
 
     public func runChecks() {
         guard !checksRunning else { return }
@@ -336,6 +373,11 @@ public final class Session: ObservableObject {
     // MARK: Install
 
     public func startInstall() {
+        if let live {
+            // The real install: the helper reads the disk itself and makes the plan the person confirms.
+            live.prepare(bytes: siliconForestSize > 0 ? siliconForestSize : nil, name: options.installName)
+            return
+        }
         guard let profile, let snapshot else { return }
         do {
             let p = try Planner.installPlan(profile: profile, snapshot: snapshot, options: options, release: release)
@@ -538,6 +580,11 @@ public final class Session: ObservableObject {
 
     public func confirmQuit() {
         showQuitConfirm = false
+        if live != nil, screen == .liveInstalling {
+            // The helper keeps going on its own; the next launch offers to reattach (Resume).
+            terminate()
+            return
+        }
         if isBusy {
             Task { await runner?.cancel() }
         } else {

@@ -103,6 +103,25 @@ struct KernelCollectionTests {
         }
     }
 
+    /// preview5's bootargs.template, byte for byte in shape: a comment block (whose text names "@...@"), then one line
+    /// with all four fields. The E2E image run caught S42 refusing it: comments were kept and @SF_PART_BLOCKS@ wasn't filled.
+    @Test func bootArgumentsFromTheShippedTemplate() throws {
+        let t = """
+        # SPDX-License-Identifier: MIT
+        # The kernel command line of an installed SiliconForest (install/build.sh, ARGS). Lines that start
+        # with # are comments; the other lines, joined by spaces, are the command line. sf_personalize.py
+        # fills in the four @...@ fields at install time: the release's root UUID and the target partition.
+        -v debug=0x14e rd=uuid boot-uuid=@SF_FSUUID@ wdt=-1 sfnvme=3 sfnvme_part=@SF_PARTUUID@ sfnvme_part_lba=@SF_PART_LBA@ sfnvme_part_blocks=@SF_PART_BLOCKS@ sfnvme_write=1
+
+        """
+        let a = try InstallEngine.bootArguments(template: t, rootFilesystemUUID: "0F5C2A47-6B9E-4D2B-9B1C-3E8A2D4F6A10",
+                                                partUUID: "AB12CD34-0000-4000-8000-00000000BEEF", firstBlock: 61_034_816, blocks: 16_035_840)
+        #expect(a == "-v debug=0x14e rd=uuid boot-uuid=0f5c2a47-6b9e-4d2b-9b1c-3e8a2d4f6a10 wdt=-1 sfnvme=3 sfnvme_part=ab12cd34-0000-4000-8000-00000000beef sfnvme_part_lba=61034816 sfnvme_part_blocks=16035840 sfnvme_write=1")
+        #expect(throws: EngineError.self) { _ = try InstallEngine.bootArguments(template: "x=@SF_NEW@", rootFilesystemUUID: nil, partUUID: "a", firstBlock: 1, blocks: 1) }
+        #expect(throws: EngineError.self) { _ = try InstallEngine.bootArguments(template: "boot-uuid=@SF_FSUUID@", rootFilesystemUUID: nil, partUUID: "a", firstBlock: 1, blocks: 1) }
+        #expect(throws: EngineError.self) { _ = try InstallEngine.bootArguments(template: "p=@SF_PART_BLOCKS@", rootFilesystemUUID: nil, partUUID: "a", firstBlock: 1, blocks: 0) }
+    }
+
     @Test func pdsfRecordsRoundTrip() throws {
         var collection = Data(count: 3 << 20)
         for i in stride(from: 0, to: collection.count, by: 4096) { collection[i] = UInt8(truncatingIfNeeded: i >> 12) }
