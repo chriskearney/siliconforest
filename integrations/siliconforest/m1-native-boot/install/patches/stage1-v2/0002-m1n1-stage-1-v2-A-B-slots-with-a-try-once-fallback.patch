@@ -1,0 +1,165 @@
+diff --git a/Makefile b/Makefile
+index f9780232..c8dfd9d5 100644
+--- a/Makefile
++++ b/Makefile
+@@ -90,6 +90,18 @@ endif
+ ifeq ($(SF_INSTALLED),1)
+ CFG += SF_INSTALLED
+ endif
++# SiliconForest stage 1 v2: A/B slots with a try-once fallback (abboot/README.md). Chooses which
++# slot's sf/.../boot.bin to chainload from sf/bootstate.bin; read-only like stage 1 v1.
++ifeq ($(SF_AB_BOOT),1)
++ifneq ($(CHAINLOADING),1)
++$(error SF_AB_BOOT requires CHAINLOADING=1)
++endif
++ifneq ($(SF_INSTALLED),1)
++$(error SF_AB_BOOT requires SF_INSTALLED=1)
++endif
++CFG += SF_AB_BOOT
++SF_AB_OBJECTS := sf_ab.o sf_ab_stage1.o
++endif
+ 
+ # Required for no_std + alloc for now
+ export RUSTC_BOOTSTRAP=1
+@@ -171,6 +183,7 @@ OBJECTS := \
+ 	asc.o \
+ 	bootlogo_48.o $(BUILTIN_LOGO)_128.o $(BUILTIN_LOGO)_256.o \
+ 	chainload.o \
++	$(SF_AB_OBJECTS) \
+ 	chainload_asm.o \
+ 	chickens.o \
+ 	clk.o \
+diff --git a/src/chainload.c b/src/chainload.c
+index 5b498516..9eb2c2a2 100644
+--- a/src/chainload.c
++++ b/src/chainload.c
+@@ -298,6 +298,84 @@ int chainload_load(const char *spec, char **vars, size_t *var_cnt, size_t var_ca
+     return ret;
+ }
+ 
++#ifdef SF_AB_BOOT
++#include "sf_ab.h"
++
++/* A small file of the boot partition (the boot state record). The controller stays up. */
++int chainload_read_file(const char *spec, void **image, size_t *size)
++{
++    if (!nvme_init()) {
++        printf("chainload: NVME init failed\n");
++        return -1;
++    }
++    return rust_load_image(spec, image, size);
++}
++
++void chainload_free_file(void *image, size_t size)
++{
++    rust_free_image(image, size);
++}
++
++/*
++ * chainload_load for one slot of stage 1 v2: with check, the image must have exactly the size and
++ * CRC-32 the boot state record names. 0: next_stage is set and the controller is stopped, as
++ * chainload_load leaves it. -2: this image cannot be used; the controller is still up, so the
++ * caller may try another slot. -1: the controller could not be stopped; try nothing else.
++ */
++int chainload_load_slot(const char *spec, char **vars, size_t *var_cnt, size_t var_capacity,
++                        bool check, u32 bytes, u32 crc32)
++{
++    static char adopt_var[] = "nvme.adopt=live-rtkit-v1";
++    void *image = NULL;
++    size_t size = 0;
++    int ret;
++
++    next_stage.entry = NULL;
++    if (!nvme_init()) {
++        printf("chainload: NVME init failed\n");
++        return -1;
++    }
++
++    if (nvme_has_live_post_m4_session()) {
++        bool present = false;
++        for (size_t i = 0; i < *var_cnt; i++) {
++            if (!strcmp(vars[i], adopt_var))
++                present = true;
++        }
++        if (!present) {
++            if (*var_cnt >= var_capacity) {
++                printf("chainload: no room for ANS adoption variable\n");
++                return -2;
++            }
++            vars[(*var_cnt)++] = adopt_var;
++        }
++    }
++
++    if (rust_load_image(spec, &image, &size))
++        return -2;
++    if (check) {
++        u32 crc = sf_ab_crc32(image, size);
++        if (size != bytes || crc != crc32) {
++            printf("chainload: %lu bytes, CRC-32 %08x; the boot state says %u bytes, %08x\n",
++                   (unsigned long)size, crc, bytes, crc32);
++            rust_free_image(image, size);
++            return -2;
++        }
++    }
++    ret = chainload_image(image, size, vars, *var_cnt);
++    rust_free_image(image, size);
++    if (ret) {
++        next_stage.entry = NULL;
++        return -2;
++    }
++    if (!nvme_shutdown()) {
++        next_stage.entry = NULL;
++        return -1;
++    }
++    return 0;
++}
++#endif
++
+ #else
+ 
+ int chainload_load(const char *spec, char **vars, size_t *var_cnt, size_t var_capacity)
+diff --git a/src/chainload.h b/src/chainload.h
+index c3fa10ea..b5aa2b41 100644
+--- a/src/chainload.h
++++ b/src/chainload.h
+@@ -21,6 +21,7 @@
+ 
+ #ifndef __ASSEMBLER__
+ 
++#include "../build/build_cfg.h"
+ #include "types.h"
+ 
+ struct chainload_header {
+@@ -34,6 +35,15 @@ struct chainload_header {
+ int chainload_image(void *base, size_t size, char **vars, size_t var_cnt);
+ int chainload_load(const char *spec, char **vars, size_t *var_cnt, size_t var_capacity);
+ 
++#ifdef SF_AB_BOOT
++/* SiliconForest stage 1 v2 (sf_ab_stage1.c) */
++int chainload_read_file(const char *spec, void **image, size_t *size);
++void chainload_free_file(void *image, size_t size);
++int chainload_load_slot(const char *spec, char **vars, size_t *var_cnt, size_t var_capacity,
++                        bool check, u32 bytes, u32 crc32);
++int sf_ab_stage1_chainload(const char *spec, char **vars, size_t *var_cnt, size_t var_capacity);
++#endif
++
+ #endif
+ 
+ #endif
+diff --git a/src/payload.c b/src/payload.c
+index 035968ba..2993f7ac 100644
+--- a/src/payload.c
++++ b/src/payload.c
+@@ -442,7 +442,12 @@ int payload_run(void)
+             chosen[chosen_cnt++] = CONFIG_LOST_VAR;
+             config_lost_passed = true;
+         }
++#ifdef SF_AB_BOOT
++        /* SiliconForest stage 1 v2: the slot to start comes from sf/bootstate.bin */
++        int ret = sf_ab_stage1_chainload(chainload_spec, chosen, &chosen_cnt, ARRAY_SIZE(chosen));
++#else
+         int ret = chainload_load(chainload_spec, chosen, &chosen_cnt, ARRAY_SIZE(chosen));
++#endif
+         if (ret) {
+             next_stage.entry = NULL;
+             nvme_shutdown();
