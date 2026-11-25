@@ -136,7 +136,7 @@ The installer app UI is still a flow preview. The first real install is the lab 
 
 **Preconditions** (same spirit as [STUB-ONLY-RUN-J313.md](STUB-ONLY-RUN-J313.md) §1): Omarchy / the Linux stub already removed by Chris if that is the plan, macOS grown back, `diskutil list internal` recorded off the repository, macOS 13.5 or newer, Time Machine or other backup **confirmed by Chris**, on power, battery above 50%, Wi-Fi on. A person at the Air.
 
-1. Copy the signed payload (every file listed in `SHA256SUMS`, plus `SHA256SUMS` and `SHA256SUMS.sig`) to `~/sf-run/rel/` on the Air. In a directory that contains **only** those files, run `python3 verify_release.py ~/sf-run/rel --allowed-signers allowed_signers` (the `allowed_signers` file is also in the DMG). Confirm `sf-stage1.bin` is `44c1ef0b…`.
+1. Copy the signed payload (every file listed in `SHA256SUMS`, plus `SHA256SUMS` and `SHA256SUMS.sig`) to `~/sf-run/rel/` on the Air. In a directory that contains **only** those files, run `python3 verify_release.py ~/sf-run/rel --allowed-signers allowed_signers` (the `allowed_signers` file is also in the DMG). Confirm `sf-stage1.bin` is `c4be3087…` (stage 1 v2; preview6 and earlier shipped v1 `44c1ef0b…`).
 2. Copy `sfinstrun`, `allowed_signers`, the signed `SFRecovery` (`SiliconForest Installer.app/Contents/Helpers/SFRecovery`) and `AppIcon.icns` off the DMG. Copy macOS's own `AdminUserRecoveryInfo.plist` from the Preboot volume group.
 3. `DISK=` the internal disk's GPT disk GUID: `sudo sfinstrun startup-disk` (preview6 and later; read-only). `diskutil info -plist disk0` has no `DiskUUID` for a whole disk, so preview5's instruction here could not be followed.
    `R="--release-dir ~/sf-run/rel"`, `J="--journal /var/db/org.siliconforest.installer/journal --work /var/db/org.siliconforest.installer/work"`,
@@ -149,9 +149,18 @@ The installer app UI is still a flow preview. The first real install is the lab 
 
 The 13.5 restore-image members and the Wi-Fi firmware the installer extracts are read at run time from Apple's CDN / this Mac, never from the release.
 
-## 7. Preview6: the app does the install
+## 7. Preview6/7: the app does the install, sets the one-time boot, and can remove it
 
-Preview6's app performs the real install itself, through its privileged helper (an `SMAppService` daemon). Built with
+**What preview7's payload adds for the SAP hardware test** (docs/sap/IMAGE.md): the root is built with SAP baked in
+(`build_darwin.sh` with `SAP_KC_BUILDER=1`, then `prepare_root.py --sap-bin … --sap-channel … --sap-manifest-url …`: `sap`, `sf`,
+`sf-bootslot`, `sf-mount-sfboot`, `kc-builder`, the two launchd jobs, `/etc/sap.conf`, and the database seeded from the image's own
+channel); **stage 1 is v2** (`abboot/build_stage1_v2.sh`, A/B try-once slots, `c4be3087…`); the release carries `boot-b.bin` (slot B's
+stage 2, written to `sf/b/boot.bin`; built by `installer/payload/boot/build_stage2.sh`), `bootstate.bin` (slot A as installed, good)
+and `sf-trust.txt` (the release key as SAP's trust anchor, written to `sf/trust` and, when it fits, into the boot arguments).
+The channel's `manifest.json` is signed on the M3 with `SHA256SUMS`. Installing a new stage 1 is the same recovery-mode step as
+before (SiliconForest Setup writes the stub's boot object).
+
+Preview6's app performs the real install itself (preview7 adds the steps marked below), through its privileged helper (an `SMAppService` daemon). Built with
 `SF_REAL_DISK_WRITES`. **Back up first. Not yet run on a real Mac.** The preconditions of section 6 still apply.
 
 1. Open the DMG, drag **SiliconForest Installer** to `/Applications`, open it from there. Approve its helper when macOS asks
@@ -161,7 +170,7 @@ Preview6's app performs the real install itself, through its privileged helper (
 4. **Fetching the release**: the app downloads this version's signed payload from the GitHub release (or "Use a Folder…"
    with a local copy) into `~/Library/Caches/org.siliconforest.installer/releases`, checks every file against
    `SHA256SUMS`, and `SHA256SUMS.sig` against the bundled `allowed_signers`. The helper copies it into its root-only store
-   (`/var/db/org.siliconforest.installer/releases`) and verifies it again there, and refuses any stage 1 but v1 `44c1ef0b…`.
+   (`/var/db/org.siliconforest.installer/releases`) and verifies it again there, and refuses any stage 1 but v2 `c4be3087…` (preview7; v1 `44c1ef0b…` of previews 1–6 is refused).
 5. **Confirm**: the helper reads the disk and makes the plan. The screen shows the exact plan and asks you to type
    the macOS volume's name (for example `Macintosh HD`) and the erase phrase (`ERASE <N> GB`, N = what macOS gives up,
    rounded up). "Install" is enabled only when both match exactly. Then macOS asks for an administrator's password.
@@ -171,10 +180,33 @@ Preview6's app performs the real install itself, through its privileged helper (
    its time, the macOS resize's live `diskutil` status (S25), bytes written and read back for the root (S47), and the journal.
 7. If the app is quit, the helper continues. If the Mac or the helper stops, open the app again: it finds the unfinished job
    and offers **Continue** (asking you to confirm again if the 2 hours have passed) or **Undo Everything**.
-8. **Finish**: the app never runs `bless`. The final screen shows the command to run yourself in Terminal
-   (`sudo /usr/sbin/bless --mount "/Volumes/<name>" --setBoot --nextonly`, with "Copy the bless command"), then: shut down,
-   hold the power button until "Loading startup options", choose SiliconForest, Continue, and enter your password;
-   SiliconForest Setup finishes in recoveryOS (`bputil`, `kmutil configure-boot`) and restarts into SiliconForest.
+8. **Size** (Space screen): SiliconForest's size is what macOS gives up, in whole GB. The minimum is the stub (2.5 GB) +
+   boot (0.5 GB) + the root the release needs; the maximum is what macOS can give while keeping what it uses plus the
+   profile's free-space reserve, the downloads and a drift margin (and never more than the root's 2,080 GiB growth cap);
+   the default is the profile's recommended root (or a fraction of the disk), clamped into that range. The helper plans
+   from its own read of the disk and refuses any size outside the range, so the screen cannot ask for more than fits.
+   macOS is shrunk to exactly what is left (S25); nothing is formatted or moved.
+9. **Finish** (preview7, the installer does the one-time bless): after S60/S68 hand off, S65 runs, inside the same confirmed
+   job and the same administrator approval, `/usr/sbin/bless --mount "/Volumes/<name>" --setBoot --nextonly`. The helper runs
+   it (as root, no shell) only if the mount point is the System volume of the stub container **this plan created** on this
+   Mac's startup disk, always with `--nextonly` (never a persistent default). It checks the exit code and then reads
+   `bless --getBoot`; if `--getBoot` doesn't name the stub (it may not report a one-time selection) the screen says so and still
+   offers the restart. The finish screen shows **Restart into SiliconForest** (the helper runs `shutdown -r now`, only for a
+   finished, not-removed install, for a day after it finished) and a fallback: shut down, hold the power button until
+   "Loading startup options", choose SiliconForest. SiliconForest Setup then finishes in recoveryOS (it asks for your password;
+   `bputil`, `kmutil configure-boot`) and restarts into SiliconForest. If `bless` fails, the install is **not** failed: the screen
+   shows the manual command (`sudo /usr/sbin/bless --mount "/Volumes/<name>" --setBoot --nextonly`, with "Copy the bless command")
+   and the startup-menu steps.
+10. **Remove SiliconForest** (preview7; Welcome, or the "already installed" Check screen, then "Remove SiliconForest…"):
+    the app lists the installs the helper's own journals prove (finished, not already removed), shows what will be deleted
+    (the stub, its boot partition and the root partition, and the recovery setup the install added with the stub), and
+    asks for the same confirmation: type the macOS volume's name and `REMOVE SILICONFOREST`, then the macOS administrator
+    prompt. The helper acts only on partitions whose UUIDs the install journal recorded, that are still on this Mac's startup
+    disk, right after the macOS container in the installer's order. Steps: **U10** reads the startup selection and, only if
+    it names SiliconForest, sets macOS back (`bless --mount <macOS System volume> --setBoot`; a selection that points elsewhere
+    is left alone); **U20** deletes the partitions; **U30** grows macOS back into the freed space; **U40** checks the partition
+    table against the one saved before the install. Same progress screen and resume (a stopped removal continues from its journal).
+    `sfinstrun remove` does the same from Terminal (with `bless` simulated, as in every lab tool). The GPL resize tool is not involved.
 
 No Wi-Fi firmware is extracted yet: the firmware slot is written empty, so Wi-Fi stays off in SiliconForest. The lab tool
 `sfinstrun` (section 6) still works with a hand-written authorization file.
@@ -182,5 +214,10 @@ No Wi-Fi firmware is extracted yet: the firmware slot is written empty, so Wi-Fi
 Tested before the cut on the M5, against a **disk image** only, through the app's own code path (`sfappimage`: the
 helper's verbs over XPC, the app's `LiveInstallController`, the live backend): typed-confirmation and begin refusals; a
 full install from the published preview5 payload; a `kill -9` of helper and controller in the middle of S47's root write
-and again in S60, each resumed to "handed-off". Not tested: the real administrator prompt, `SMAppService` registration,
-the startup-disk lookup and the Preboot admin list on real hardware, and any real disk.
+and again in S60, each resumed to "handed-off". Preview7 adds, on a disk image
+with `bless` and the restart replaced by recorders (the lab tool `sfappimage` never runs either): the one-time bless arguments
+and the `--getBoot` read-back, the bless-failure fallback, the restart verb, and a full install then Remove SiliconForest
+(layout digest and macOS size identical to before the install). Not tested: the real administrator prompt, `SMAppService`
+registration, the startup-disk lookup and the Preboot admin list on real hardware, what `bless --nextonly` does on Apple
+silicon with this stub (whether `--getBoot` reports it, whether the restart lands in SiliconForest Setup), the real restart,
+and any real disk.

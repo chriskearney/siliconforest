@@ -63,6 +63,17 @@ public final class LiveRun: ObservableObject {
     @Published public var now = Date()
     /// For a resumed job: what to type to confirm its plan again.
     @Published public var resumeExpected: TypedConfirmation?
+    // Preview7
+    /// Finished installs the helper has journals for (Remove SiliconForest).
+    @Published public var installs: [InstalledInstall] = []
+    @Published public var installsLoaded = false
+    /// The current job (or the offer being confirmed) is a removal.
+    @Published public var isRemoval = false
+    /// What S65 did (the one-time next boot), once the install has finished.
+    @Published public var blessReport: BlessReport?
+    @Published public var restarting = false
+    @Published public var restartError: String?
+    private var removalTarget: String?
 
     public let controller: LiveInstallController
     @Published public var origin: ReleaseOrigin
@@ -162,15 +173,61 @@ public final class LiveRun: ObservableObject {
                 let auth = try await background { try c.requestAdmin(prompt: "SiliconForest Installer wants to change your disk: \(offer.expected.phrase).") }
                 _ = try await background { try c.confirm(planDigest: offer.plan.digest, typed: typed, authorization: auth) }
                 activity = .starting
-                let j = try await background { try c.begin(offer.plan) }
+                let removeJob = removalTarget
+                let removing = offer.plan.operation == .remove
+                let j = try await background { removing ? try c.beginRemoval(installJob: removeJob ?? "", plan: offer.plan) : try c.begin(offer.plan) }
                 job = j
-                installName = offer.plan.request?.installName ?? "SiliconForest"
+                isRemoval = removing
+                startedAt = nil; journal = []; blessReport = nil
+                installName = offer.plan.request?.installName ?? installName
                 rows = offer.steps.map { StepRow(code: $0.code, title: $0.title, writesDisk: $0.writesDisk, state: .waiting) }
                 try await background { try c.start(j) }
                 follow(j)
             } catch {
                 fail(error)
             }
+        }
+    }
+
+    // MARK: Remove SiliconForest (preview7)
+
+    /// Welcome → "Remove SiliconForest…": the installs the helper's journals prove.
+    public func showRemoval() {
+        session?.go(.liveRemoveList)
+        lastError = nil; installsLoaded = false; installs = []
+        Task {
+            do {
+                try await ensureHelper()
+                let c = controller
+                installs = try await background { try c.installs() }
+                installsLoaded = true; activity = .idle
+            } catch { installsLoaded = true; lastError = (error as? LocalizedError)?.errorDescription ?? (error as NSError).localizedDescription; activity = .idle }
+        }
+    }
+
+    public func chooseRemoval(_ install: InstalledInstall) {
+        lastError = nil; activity = .planning
+        Task {
+            do {
+                let c = controller
+                offer = try await background { try c.offerRemoval(install.job) }
+                removalTarget = install.job
+                installName = install.name
+                isRemoval = true
+                typedName = ""; typedPhrase = ""
+                activity = .idle
+                session?.go(.liveRemoveConfirm)
+            } catch { lastError = (error as? LocalizedError)?.errorDescription ?? (error as NSError).localizedDescription; activity = .idle }
+        }
+    }
+
+    /// The finish screen's "Restart into SiliconForest": the helper restarts the Mac (it has set the one-time next boot).
+    public func restart() {
+        guard let j = job, !restarting else { return }
+        restarting = true; restartError = nil
+        Task {
+            do { let c = controller; try await background { try c.restart(j) } }
+            catch { restarting = false; restartError = (error as? LocalizedError)?.errorDescription ?? (error as NSError).localizedDescription }
         }
     }
 
@@ -262,6 +319,7 @@ public final class LiveRun: ObservableObject {
                 case .success(let p):
                     self.absorb(p, replaceRows: false)
                     if p.end == "handed-off" { self.activity = .done; self.session?.go(.liveFinish) }
+                    else if self.isRemoval, p.end == "committed" { self.activity = .done; self.session?.go(.liveRemoved) }
                     else if p.end == "rolled-back" { self.activity = .done; self.session?.go(.liveStopped) }
                     else { self.lastError = p.lastError ?? "the installer stopped"; self.activity = .failed(self.lastError!); self.session?.go(.liveStopped) }
                 case .failure(let e): self.fail(e)
@@ -279,6 +337,8 @@ public final class LiveRun: ObservableObject {
             startedAt = f.date(from: s) ?? ISO8601DateFormatter().date(from: s)
         }
         installName = p.installName ?? installName
+        if let op = p.operation { isRemoval = op == "remove" }
+        blessReport = p.bless
         end = p.end; approvals = p.approvals; noChangesMade = p.noChangesMade
         if let x = p.expected { resumeExpected = x }
         if let e = p.lastError { lastError = e }

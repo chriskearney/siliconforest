@@ -263,16 +263,20 @@ extension InstallEngine {
             try journal.append(.evidence, step: c, result: ev)
 
         case .S65:
-            try simulate(code, command: ["/usr/sbin/bless", "--mount", "<stub System volume>", "--setBoot", "--nextonly"],
-                         reason: "needs root and the owner's password; on an image there is no startup disk to change")
+            if bless != nil { try setNextBoot(plan: plan, gate: gate) } else {
+                try simulate(code, command: ["/usr/sbin/bless", "--mount", "<stub System volume>", "--setBoot", "--nextonly"],
+                             reason: "needs root and the owner's password; on an image there is no startup disk to change")
+            }
         case .S70:
             try journal.append(.intent, step: c)
             try journal.append(.evidence, step: c, result: ["awaiting": .s("recoveryOS")])
 
         // Removal (DESIGN §8.4)
         case .U10:
-            try simulate(code, command: ["/usr/sbin/bless", "--mount", "<previous startup volume>", "--setBoot"],
-                         reason: "needs root; restores the previous startup disk before anything is deleted")
+            if bless != nil { try restoreStartup(plan: plan) } else {
+                try simulate(code, command: ["/usr/sbin/bless", "--mount", "<previous startup volume>", "--setBoot"],
+                             reason: "needs root; restores the previous startup disk before anything is deleted")
+            }
         case .U20:
             guard let owned = plan.owned else { throw EngineError(.internalError, "removal without ownership") }
             try journal.append(.intent, step: c, args: ["delete": .a(owned.all.map(JValue.s))])
@@ -467,6 +471,75 @@ extension InstallEngine {
     }
 
     // MARK: simulated steps
+
+    /// S65, preview7: the one-time next boot (`--nextonly`, never a persistent default) into the stub this
+    /// job created. A failure doesn't fail the install: the evidence says so and carries the manual command,
+    /// and the app's finish screen shows it (the stub, boot partition and root are all in place either way).
+    func setNextBoot(plan: EnginePlan, gate: Gate) throws {
+        guard let bless, let stubUUID = gate.created["stub"] else { throw EngineError(.inconsistent, "no stub to start from") }
+        let c = StepCode.S65.rawValue
+        try journal.append(.intent, step: c)
+        let topo = try backend.freshTopology()
+        guard let stub = topo.partition(uuid: stubUUID), let sys = stub.apfs?.volumes.first(where: { $0.roles.contains("System") }) else {
+            throw EngineError(.inconsistent, "the stub's System volume is missing")
+        }
+        breadcrumb = "mounting the stub's System volume"
+        let vol = try backend.volumeURL(store: stubUUID, role: "System")
+        breadcrumb = nil
+        let manual = vol.path.hasPrefix("/Volumes/") ? BlessGuard.manual(mountPath: vol.path) : BlessGuard.manual(volumeName: sys.name)
+        let argv: [String]
+        do { argv = try BlessGuard.setNextBoot(mount: vol, stub: stub, mountedFrom: mountedFrom) } catch {
+            // Refusing to bless is not an install failure; nothing was run.
+            try journal.append(.evidence, step: c, result: ["blessed": .s("no"), "why": .s("\(error)"), "manual": .s(manual)])
+            return
+        }
+        try gate.admitBless(partition: stubUUID, now: topo)
+        let r = bless.execute(argv)
+        guard r.status == 0 else {
+            try journal.append(.evidence, step: c, result: ["blessed": .s("no"), "exit": .i(Int64(r.status)), "why": .s(String(r.output.prefix(300))), "manual": .s(manual)])
+            return
+        }
+        // Confirm with `bless --getBoot` where it says anything: with --nextonly it may still report the
+        // persistent selection, so "not reported" isn't a failure.
+        let g = bless.execute(BlessGuard.getBoot)
+        let named = g.status == 0 && BlessGuard.names(getBootOutput: g.output, volume: sys, mount: vol.path)
+        try journal.append(.evidence, step: c, result: ["blessed": .s("next boot only"), "exit": .i(0), "volume": .s(vol.path), "name": .s(sys.name),
+                                                         "confirmed": .s(named ? "getBoot names the stub" : "getBoot doesn't report the one-time selection"),
+                                                         "getboot": .s(String(g.output.prefix(200))), "manual": .s(manual)])
+    }
+
+    /// U10, preview7: if the startup selection points at the stub this install made, set it back to macOS.
+    /// If it can't be read or points elsewhere (Linux, macOS), nothing is changed.
+    func restoreStartup(plan: EnginePlan) throws {
+        guard let bless, let owned = plan.owned, let ownedStub = owned.stub else { throw EngineError(.inconsistent, "no install to remove") }
+        let c = StepCode.U10.rawValue
+        try journal.append(.intent, step: c)
+        let topo = try backend.freshTopology()
+        guard let stub = topo.partition(uuid: ownedStub), let mac = topo.partition(uuid: plan.macOS.store), let sys = stub.apfs?.volumes.first(where: { $0.roles.contains("System") }) else {
+            try journal.append(.evidence, step: c, result: ["reset": .s("no"), "why": .s("the stub or macOS container isn't readable")]); return
+        }
+        let g = bless.execute(BlessGuard.getBoot)
+        guard g.status == 0 else {
+            try journal.append(.evidence, step: c, result: ["reset": .s("no"), "why": .s("couldn't read the startup selection (exit \(g.status)); left as it was")]); return
+        }
+        let stubMount = (try? backend.volumeURL(store: ownedStub, role: "System").path)
+        guard BlessGuard.names(getBootOutput: g.output, volume: sys, mount: stubMount) else {
+            try journal.append(.evidence, step: c, result: ["reset": .s("no"), "why": .s("the startup selection doesn't point at SiliconForest"), "getboot": .s(String(g.output.prefix(200)))]); return
+        }
+        // macOS's System volume: "/" when this is the running startup volume, else its mount.
+        var macMount: String?
+        if let dev = mountedFrom("/"), let base = try? BlessGuard.baseVolume(mountedFrom: dev), mac.apfs?.volumes.contains(where: { $0.identifier == base && $0.roles.contains("System") }) == true { macMount = "/" }
+        if macMount == nil, let msys = mac.apfs?.volumes.first(where: { $0.roles.contains("System") }) { macMount = mountPointOfVolume(msys.identifier) }
+        guard let m = macMount else {
+            // Not mounted here (a disk that isn't the startup disk): nothing is mounted for it; say how to finish by hand.
+            try journal.append(.evidence, step: c, result: ["reset": .s("no"), "why": .s("macOS's System volume isn't mounted, so the selection couldn't be set back; choose Macintosh HD in System Settings › Startup Disk"),
+                                                             "getboot": .s(String(g.output.prefix(200)))]); return
+        }
+        let argv = try BlessGuard.restoreBoot(mount: m, macOS: mac, mountedFrom: mountedFrom)
+        let r = bless.execute(argv)
+        guard r.status == 0 else { throw EngineError(.appleTool, "bless couldn't set the startup disk back to macOS (exit \(r.status)): \(r.output.prefix(200))") }
+        try journal.append(.evidence, step: c, result: ["reset": .s("macOS"), "exit": .i(0), "mount": .s(m)])
+    }
 
     func simulate(_ code: StepCode, command: [String], reason: String) throws {
         let a = ApprovalNeeded(step: code.rawValue, command: command, reason: reason)

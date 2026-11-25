@@ -56,6 +56,11 @@ config.releaseStore = URL(fileURLWithPath: "/var/db/org.siliconforest.installer/
 config.adminCheck = .system
 config.allowedSigners = resources.appendingPathComponent("allowed_signers")
 config.recoveryBinary = contents.appendingPathComponent("Helpers/SFRecovery")
+#if SF_REAL_DISK_WRITES
+// Preview7: the shipped app sets the one-time next boot itself and can restart the Mac (never a persistent default).
+config.blessRunner = ProcessBlessRunner()
+config.restartAction = SystemRestart.action
+#endif
 if let s = try? HelperResources.stubSource(profileID: profileID, resources: resources) { config.stubSource = s }
 let service = HelperService(config: config)
 let delegate = HelperListenerDelegate(service: service)

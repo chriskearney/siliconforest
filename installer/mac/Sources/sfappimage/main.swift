@@ -48,6 +48,31 @@ struct Args {
 /// The administrator approval stand-in: images only. The shipped helper uses AdminCheck.system.
 let testApproval = Data("sfappimage: image-only approval stand-in".utf8)
 
+/// The bless stand-in: NEVER runs bless. It records every argument list it is handed (and refuses any that
+/// BlessGuard wouldn't allow, like the real runner), and keeps a pretend "startup selection" in a file so a
+/// kill-and-resume or a later removal sees what an earlier run set. `--bless fail` makes setBoot exit 1.
+struct RecordingBless: BlessRunner {
+    var dir: URL
+    var failSet: Bool
+    func execute(_ argv: [String]) -> BlessResult {
+        guard BlessGuard.isAllowed(argv) else { log("REFUSED \(argv)"); return BlessResult(status: 126, output: "refused") }
+        log(argv.joined(separator: " "))
+        let selection = dir.appendingPathComponent("bless-selection.txt")
+        if argv == BlessGuard.getBoot { return BlessResult(status: 0, output: (try? String(contentsOf: selection, encoding: .utf8)) ?? "/dev/disk0s1\n") }
+        if failSet && argv.contains("--nextonly") { return BlessResult(status: 1, output: "bless: simulated failure") }
+        // --mount P --setBoot: the pretend selection becomes P's device.
+        var fs = statfs()
+        let dev = statfs(argv[2], &fs) == 0 ? withUnsafeBytes(of: fs.f_mntfromname) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) } : "?"
+        try? (dev + "\n").write(to: selection, atomically: true, encoding: .utf8)
+        return BlessResult(status: 0, output: "")
+    }
+    func log(_ line: String) {
+        let u = dir.appendingPathComponent("bless-calls.log")
+        let h = (try? FileHandle(forWritingTo: u)) ?? { FileManager.default.createFile(atPath: u.path, contents: nil); return try! FileHandle(forWritingTo: u) }()
+        h.seekToEndOfFile(); h.write(Data((line + "\n").utf8)); try? h.close()
+    }
+}
+
 func startOfRun() -> Date { Date() }
 let t0 = startOfRun()
 func stamp() -> String { String(format: "%7.1fs", Date().timeIntervalSince(t0)) }
@@ -75,6 +100,9 @@ final class Helper {
                                idleTimeout: 3600)
         cfg.releaseStore = state.appendingPathComponent("releases")
         cfg.adminCheck = AdminCheck { $0 == testApproval }
+        cfg.blessRunner = RecordingBless(dir: state, failSet: ProcessInfo.processInfo.environment["SF_FAKE_BLESS"] == "fail")
+        cfg.restartDelay = 0.2
+        cfg.restartAction = { try? Data("restart requested\n".utf8).write(to: state.appendingPathComponent("restart-requested.txt")) }
         cfg.allowedSigners = SourceTree.installerRoot.appendingPathComponent("payload/release/allowed_signers")
         let rec = SourceTree.packageRoot.appendingPathComponent(".build-unit/debug/SFRecovery")
         if fm.fileExists(atPath: rec.path) { cfg.recoveryBinary = rec }
@@ -145,7 +173,13 @@ func report(_ p: LiveProgress) {
     for a in p.approvals { print("  waiting for the person: \(a.step) \(a.command.joined(separator: " "))") }
     if p.end == "handed-off" {
         print("Finish screen:")
-        for s in AfterHandoff.steps(installName: p.installName ?? "SiliconForest") { print("  · \(s)") }
+        if let b = p.bless, b.set {
+            print("  SiliconForest is installed. One-time next boot set for “\(b.volumeName)” (\(b.confirmed ? "bless --getBoot confirmed it" : "not reported by --getBoot")). Button: Restart into SiliconForest (enabled: \(b.canRestart))")
+            print("  · \(AfterHandoff.fallback)")
+        } else {
+            print("  The installer couldn't set the next boot (\(p.bless?.note ?? "no report")). Manual steps:")
+            for s in AfterHandoff.manualSteps(installName: p.installName ?? "SiliconForest", command: p.bless?.manualCommand) { print("  · \(s)") }
+        }
     }
 }
 
@@ -210,6 +244,46 @@ func main() async throws {
         let p = try follow(ctl, job: job, kill: parseKill(a.kv["kill-at"]))
         report(p)
         if p.end != "handed-off" { exit(1) }
+    case "restart":
+        // The finish screen's button: the helper's restart verb (a recorder here; the real one is shutdown -r now).
+        let h = try Helper(image: try a.url("image"), state: try a.url("state"), ipsw: a.kv["ipsw"])
+        let ctl = h.controller()
+        guard let job = try ctl.installs().first?.job else { throw LiveError("no finished install") }
+        let st = try a.url("state").appendingPathComponent("restart-requested.txt")
+        try? FileManager.default.removeItem(at: st)
+        do { try ctl.restart(job); try await Task.sleep(nanoseconds: 1_000_000_000) } catch { print("restart refused: \((error as NSError).localizedDescription)") }
+        print("restart recorder: \(FileManager.default.fileExists(atPath: st.path) ? "restart requested" : "NOT requested")")
+    case "remove":
+        // The Remove SiliconForest screens through the app's code path: list, plan, type, administrator, begin, follow.
+        let h = try Helper(image: try a.url("image"), state: try a.url("state"), ipsw: a.kv["ipsw"])
+        let ctl = h.controller()
+        let hc = HelperClient(endpoint: h.listener.endpoint, requirement: CodeIdentity.ownDesignatedRequirement())
+        let list = try ctl.installs()
+        print("\(stamp())  installs found: \(list.map { "\($0.name) \($0.installID) removable=\($0.removable)\($0.note.map { " (\($0))" } ?? "")" }.joined(separator: "; "))")
+        guard let target = list.first(where: \.removable) else { throw LiveError("nothing removable") }
+        let before = try hc.topology()
+        let offer = try ctl.offerRemoval(target.job)
+        print("\(stamp())  removal plan \(offer.plan.digest.prefix(16))…: macOS \(offer.plan.macOS.from) → \(offer.plan.macOS.to) B; steps \(offer.steps.map(\.code).joined(separator: " ")); type “\(offer.expected.diskName)” and “\(offer.expected.phrase)”")
+        func expectRefusal(_ what: String, _ body: () throws -> Void) {
+            do { try body(); print("NOT REFUSED: \(what)"); exit(1) } catch { print("refused as it should: \(what): \((error as NSError).localizedDescription)") }
+        }
+        expectRefusal("removal begun before any confirmation") { _ = try ctl.beginRemoval(installJob: target.job, plan: offer.plan) }
+        expectRefusal("removal with the install phrase") { _ = try ctl.confirm(planDigest: offer.plan.digest, typed: TypedConfirmation(diskName: offer.expected.diskName, phrase: "ERASE 30 GB"), authorization: testApproval) }
+        let c = try ctl.confirm(planDigest: offer.plan.digest, typed: offer.expected, authorization: testApproval)
+        print("\(stamp())  confirmed until \(c.validUntil)")
+        let job = try ctl.beginRemoval(installJob: target.job, plan: offer.plan)
+        print("\(stamp())  began removal job \(job)")
+        try ctl.start(job)
+        let p = try follow(ctl, job: job, kill: parseKill(a.kv["kill-at"]))
+        report(p)
+        guard p.end == "committed" else { exit(1) }
+        let after = try hc.topology()
+        let mb = before.partitions.first { $0.uuid == offer.plan.macOS.store }?.size ?? 0, ma = after.partitions.first { $0.uuid == offer.plan.macOS.store }?.size ?? 0
+        print("macOS container: \(mb) B before removal, \(ma) B after; plan's original size \(offer.plan.macOS.to) B")
+        print("layout digest now \(after.layoutDigest.prefix(16))…, original \((offer.plan.originalLayoutDigest ?? "").prefix(16))…: \(after.layoutDigest == (offer.plan.originalLayoutDigest ?? "") ? "IDENTICAL" : "DIFFERENT")")
+        print("partitions after: \(after.partitions.map { "\($0.content) \($0.size)" }.joined(separator: ", "))")
+        print("installs left: \(try ctl.installs().count)")
+        if after.layoutDigest != (offer.plan.originalLayoutDigest ?? "") || ma != offer.plan.macOS.to { exit(1) }
     case "resume":
         let h = try Helper(image: try a.url("image"), state: try a.url("state"), ipsw: a.kv["ipsw"])
         let ctl = h.controller()
@@ -222,7 +296,7 @@ func main() async throws {
         try ctl.start(job)
         let p = try follow(ctl, job: job, kill: parseKill(a.kv["kill-at"]))
         report(p)
-        if p.end != "handed-off" { exit(1) }
+        if p.end != "handed-off" && p.end != "committed" { exit(1) }
     default:
         throw LiveError("unknown command \(a.cmd)")
     }

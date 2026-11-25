@@ -57,7 +57,7 @@ jobs:
     name: Build sf-stage1.bin from source
     # The stub's stage 1 (Omacom m1n1 at the profile's pin plus our patch), built the way the installed
     # machine's stage 1 was (installer/payload/boot/build_stage1.sh). The script refuses any build that is
-    # not byte-identical to the installed stage 1 (a different stage 1 is a new install). Nothing here
+    # not byte-identical to the recorded stage 1 v2 (preview7; v1 was the previews 1-6 stage 1). Nothing here
     # is signed, and the file is never committed. Manual dispatch builds it and keeps it as an artifact.
     needs: validate
     runs-on: ubuntu-24.04
@@ -124,10 +124,15 @@ jobs:
           SF_CARGO_ONLINE: "1"
         run: |
           set -euo pipefail
-          installer/payload/boot/build_stage1.sh "$RUNNER_TEMP/stage1"
+          # Preview7 ships stage 1 v2 (A/B try-once slots, abboot); it must be byte-identical to the recorded v2.
+          integrations/siliconforest/m1-native-boot/install/abboot/build_stage1_v2.sh "$RUNNER_TEMP/stage1v2"
+          mkdir -p "$RUNNER_TEMP/stage1"
+          cp "$RUNNER_TEMP/stage1v2/sf-stage1-v2.bin" "$RUNNER_TEMP/stage1/sf-stage1.bin"
+          cp "$RUNNER_TEMP/stage1v2/sf-stage1-v2.json" "$RUNNER_TEMP/stage1/sf-stage1.json"
+          cp "$RUNNER_TEMP/stage1v2/sf-stage1-v2.log" "$RUNNER_TEMP/stage1/sf-stage1.log"
           cd "$RUNNER_TEMP/stage1"
           sha256sum sf-stage1.bin | tee sf-stage1.bin.sha256
-          python3 -c 'import json; r=json.load(open("sf-stage1.json")); assert r["same_as_installed_stage1"] is True, r'
+          python3 -c 'import json; r=json.load(open("sf-stage1.json")); assert r["same_as_recorded_v2"] is True, r'
 
       - name: Build log (on failure)
         if: failure()
@@ -346,7 +351,7 @@ jobs:
           python3 integrations/siliconforest/kc-builder/test_sym_order.py --digest | tee "$out/sym-order-digest.txt"
           grep -qx 'sym-order-digest 0892d7d86ab47e7d' "$out/sym-order-digest.txt"
 
-      - name: Fetch sf-stage1.bin and check it against the profile and the installed stage 1
+      - name: Fetch sf-stage1.bin and check it against the profile, the recorded stage 1 v2 and the app's pin
         uses: actions/download-artifact@v4
         with:
           name: sf-stage1
@@ -361,10 +366,12 @@ jobs:
           python3 installer/payload/release/sfrelease.py check-stage1 "$d/sf-stage1.bin" \
             --revision "${pin% *}" --footprint "${pin#* }"
           (cd "$d" && shasum -a 256 -c sf-stage1.bin.sha256)
-          want="$(grep -o 'STAGE1_INSTALLED=[0-9a-f]*' installer/payload/boot/build_stage1.sh | cut -d= -f2)"
+          want="$(grep -o 'STAGE1_V2_SHA256=[0-9a-f]*' integrations/siliconforest/m1-native-boot/install/abboot/build_stage1_v2.sh | cut -d= -f2)"
           got="$(shasum -a 256 "$d/sf-stage1.bin" | cut -d' ' -f1)"
-          [[ "$want" == "$got" ]] || { echo "sf-stage1.bin $got is not the installed stage 1 $want" >&2; exit 1; }
-          echo "sf-stage1.bin $got ($(wc -c < "$d/sf-stage1.bin") bytes) is the installed stage 1"
+          [[ "$want" == "$got" ]] || { echo "sf-stage1.bin $got is not the recorded stage 1 v2 $want" >&2; exit 1; }
+          pinned="$(grep -o 'stage1SHA256 = "[0-9a-f]*"' installer/mac/Sources/SFLiveDisk/AppInstall.swift | cut -d'"' -f2)"
+          [[ "$pinned" == "$got" ]] || { echo "the app pins $pinned, not $got" >&2; exit 1; }
+          echo "sf-stage1.bin $got ($(wc -c < "$d/sf-stage1.bin") bytes) is the recorded stage 1 v2, and the app's pin"
 
       - name: Package, sign, notarize and staple the DMG
         shell: bash
@@ -395,11 +402,23 @@ jobs:
           3. Follow the app: it checks this Mac, fetches and verifies the signed payload,
              shows the plan, and asks you to type your disk's name, the erase phrase and
              your administrator password before anything is written.
-          4. The last step, bless, is a command you run yourself in Terminal. The final
-             screen shows it, then how to start up from SiliconForest.
+          4. The last step is automatic: the app's helper sets a ONE-TIME next boot to
+             SiliconForest (bless --setBoot --nextonly, never a permanent default). The
+             final screen has a "Restart into SiliconForest" button. If it doesn't come
+             up: shut down, hold the power button until "Loading startup options" and
+             pick SiliconForest. If that step fails the screen shows the command and
+             the startup-menu steps to do by hand; the install itself is not undone.
+
+          What is in this release for the SAP hardware test: the root has SAP (the system
+          updater) baked in; stage 1 is v2 (A/B try-once slots); the boot partition gets
+          slot B's stage 2, the A/B record and SAP's trust anchor. SAP's channel is
+          https://raw.githubusercontent.com/chriskearney/siliconforest/sap-channel/v1/stable/manifest.json
 
           If the app or the Mac stops mid-install, open the app again: it offers to
-          continue or to undo. Steps: docs/installer/FIRST-INSTALL-J313.md.
+          continue or to undo. To take SiliconForest off the Mac: open the app and
+          choose "Remove SiliconForest..." (same typed confirmation and password); it
+          deletes only what the install created and gives macOS the space back.
+          Steps: docs/installer/FIRST-INSTALL-J313.md.
 
           Lab tools: sfinstrun (the same engine from Terminal, with a hand-written
           authorization file) and sfstubrun (stub only). There is no pkg and no
@@ -534,9 +553,11 @@ jobs:
           cat > "$notes" <<EOF
           **This app performs a real install. It repartitions this Mac's internal disk: it shrinks the macOS container and writes the SiliconForest partitions. Back up first (Time Machine or another full backup), and have a way to reinstall macOS. It has not been run on a real Mac before this release.**
 
-          What the app does: checks this Mac (supported model, macOS, FileVault off, power, free space), lets you choose the size, fetches this release's signed payload from GitHub and verifies `SHA256SUMS.sig` against the bundled `allowed_signers` before anything is written, shows the exact plan, and asks you to type your macOS disk's name and the erase phrase (for example `ERASE 60 GB`), then for an administrator's password. Its privileged helper (installed with your approval in System Settings › Login Items) then writes a runtime authorization for exactly that plan and disk, valid for at most 2 hours, and runs the install with live progress. If the app or the Mac stops, open the app again: it offers to continue or to undo. The last step, `bless`, is a command you run yourself in Terminal; the final screen shows it and the startup-options steps.
+          What the app does: checks this Mac (supported model, macOS, FileVault off, power, free space), lets you choose the size, fetches this release's signed payload from GitHub and verifies `SHA256SUMS.sig` against the bundled `allowed_signers` before anything is written, shows the exact plan, and asks you to type your macOS disk's name and the erase phrase (for example `ERASE 60 GB`), then for an administrator's password. Its privileged helper (installed with your approval in System Settings › Login Items) then writes a runtime authorization for exactly that plan and disk, valid for at most 2 hours, and runs the install with live progress. If the app or the Mac stops, open the app again: it offers to continue or to undo. The last step is automatic: the helper sets a one-time next boot to SiliconForest (`bless --setBoot --nextonly` on the volume this install created, never a permanent default) and the finish screen has a **Restart into SiliconForest** button; if SiliconForest doesn't come up, shut down, hold the power button until “Loading startup options” and pick it. If `bless` fails the screen shows the command and startup-menu steps instead of failing the install. **Remove SiliconForest…** (Welcome screen) deletes exactly the partitions the install created, sets the startup disk back to macOS if it points at SiliconForest, and grows macOS back into the space, with the same typed confirmation and administrator approval.
 
-          Requirements: the app in `/Applications`; FileVault off; the compile key `SF_REAL_DISK_WRITES` is in this build, and nothing writes without your typed confirmation and administrator approval. Stage 1 is pinned to v1 (`44c1ef0b…`). The lab tools (`sfinstrun`, `sfstubrun`, under Lab tools in the DMG) still work with a hand-written authorization file.
+          SAP and A/B boot (for the SAP hardware test): the root image has SAP baked in (`sap`, `sf`, `sf-bootslot`, `sf-mount-sfboot`, `kc-builder`, the two launchd jobs, a database seeded from the image's own channel); stage 1 is **v2** (`c4be3087…`); the boot partition receives slot B's stage 2 (`sf/b/boot.bin`), the A/B record (`sf/bootstate.bin`) and SAP's trust anchor (`sf/trust`). SAP's channel manifest is `https://raw.githubusercontent.com/chriskearney/siliconforest/sap-channel/v1/stable/manifest.json`, signed offline with the release key together with `SHA256SUMS`. Not yet run on hardware.
+
+          Requirements: the app in `/Applications`; FileVault off; the compile key `SF_REAL_DISK_WRITES` is in this build, and nothing writes without your typed confirmation and administrator approval. Stage 1 is pinned to v2 (`c4be3087…`, the A/B try-once stage 1; v1 `44c1ef0b…` of previews 1–6 is refused). The lab tools (`sfinstrun`, `sfstubrun`, under Lab tools in the DMG) still work with a hand-written authorization file.
 
           Built from commit \`${GITHUB_SHA}\`. The signed payload (`install.json`, the root, `boot.bin`, the kernel-collection files, `SHA256SUMS.sig`) is assembled offline with the release key and uploaded to this GitHub release after this job; the key is never in CI. Verify the payload with `verify_release.py` in a directory that contains only those payload files (not the DMG).
 
@@ -545,7 +566,7 @@ jobs:
           | File | What | SHA-256 |
           |---|---|---|
           | \`${dmg_name}\` | The installer app, `sfinstrun`, `sfstubrun` and `allowed_signers`. Developer ID signed with the hardened runtime, notarized and stapled; team \`Z642ZK8JK4\`. DMG only: no pkg, no Developer ID Installer certificate | \`${dmg_sha}\` |
-          | \`sf-stage1.bin\` | The stub's stage 1, ${s1_bytes} bytes, built from source in this run: Omacom m1n1 at the profile's pin plus our stage 1 patch, version tag \`${s1_tag}\`. Byte-identical to the installed stage 1, and the job fails if it is not | \`${s1_sha}\` |
+          | \`sf-stage1.bin\` | The stub's stage 1, ${s1_bytes} bytes, built from source in this run: Omacom m1n1 at the profile's pin plus our stage 1 patch and the A/B try-once slot choice (stage 1 v2), version tag \`${s1_tag}\`. Byte-identical to the recorded v2 (and the app's pin), and the job fails if it is not | \`${s1_sha}\` |
           | \`sf-stage1.json\` | Provenance of that build | |
           | \`sf-stage1.bin.sha256\`, \`RELEASE-SHA256SUMS\` | Hashes of the files above | |
 

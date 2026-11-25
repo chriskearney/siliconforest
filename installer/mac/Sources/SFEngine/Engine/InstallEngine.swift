@@ -177,6 +177,12 @@ public final class InstallEngine: @unchecked Sendable {
     public var stubSource: StubSource?
     /// For removal: the install's proof.
     public var proof: InstallProof?
+    /// The shipped app's helper only: runs the one-time `bless` (S65) and the removal's reset (U10). Nil: simulated.
+    public var bless: BlessRunner?
+    /// A mount point's backing device (statfs); tests may replace it.
+    public var mountedFrom: @Sendable (String) -> String? = BlessGuard.systemMountedFrom
+    /// Where an APFS volume is already mounted (never mounts it): macOS's System volume, for the reset.
+    public var mountPointOfVolume: @Sendable (String) -> String? = BlessGuard.systemMountPoint(ofVolume:)
     /// The operation in progress, for error reports.
     var breadcrumb: String?
 

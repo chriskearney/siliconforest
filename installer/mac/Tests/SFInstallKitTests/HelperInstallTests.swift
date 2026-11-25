@@ -161,6 +161,10 @@ struct HelperInstallVerbTests {
         #expect(throws: Never.self) { try StagePin.check(ReleaseManifest.stubOnly(bytes: StagePin.stage1Bytes, sha256: StagePin.stage1SHA256, version: "v")) }
         #expect(throws: (any Error).self) { try StagePin.check(ReleaseManifest.stubOnly(bytes: StagePin.stage1Bytes, sha256: String(repeating: "b", count: 64), version: "v")) }
         #expect(throws: (any Error).self) { try StagePin.check(ReleaseManifest.stubOnly(bytes: 1, sha256: StagePin.stage1SHA256, version: "v")) }
+        // Preview7: stage 1 v2 is the pin; the v1 of previews 1-6 is refused, by name.
+        #expect(StagePin.stage1SHA256.hasPrefix("c4be3087") && StagePin.stage1V1SHA256.hasPrefix("44c1ef0b"))
+        do { try StagePin.check(ReleaseManifest.stubOnly(bytes: StagePin.stage1Bytes, sha256: StagePin.stage1V1SHA256, version: "v")); Issue.record("v1 accepted") }
+        catch { #expect("\(error)".contains("(v1)")) }
     }
 
     /// SF_RELEASE_DIR=<a downloaded signed release> (the M5 keeps preview5's): the real import, then a copy with one

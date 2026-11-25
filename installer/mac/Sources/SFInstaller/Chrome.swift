@@ -124,6 +124,9 @@ struct RootView: View {
         case .liveInstalling: if let l = s.live { LiveInstallingScreen(s: s, live: l) }
         case .liveStopped: if let l = s.live { LiveStoppedScreen(s: s, live: l) }
         case .liveFinish: if let l = s.live { LiveFinishScreen(s: s, live: l) }
+        case .liveRemoveList: if let l = s.live { LiveRemoveListScreen(s: s, live: l) }
+        case .liveRemoveConfirm: if let l = s.live { LiveRemoveConfirmScreen(s: s, live: l) }
+        case .liveRemoved: if let l = s.live { LiveRemovedScreen(s: s, live: l) }
         }
     }
 
@@ -135,14 +138,15 @@ struct RootView: View {
         switch s.screen {
         case .welcome:
             var lead = [BarAction(title: Copy.Welcome.whatIs) { s.showWhatIs = true }]
-            if s.ownedInstall != nil { lead.append(BarAction(title: Copy.Welcome.remove) { s.go(.removeWhat) }) }
+            if s.isLive { lead.append(BarAction(title: "Remove SiliconForest…") { s.live?.showRemoval() }) }
+            else if s.ownedInstall != nil { lead.append(BarAction(title: Copy.Welcome.remove) { s.go(.removeWhat) }) }
             return Footer(leading: lead, trailing: [BarAction(title: Copy.Welcome.primary, style: .primary, enabled: s.snapshot != nil, isDefault: true) { s.go(.check) }])
         case .check:
             if s.checksDone, let e = Copy.Check.entry(s.entry) {
                 var acts: [BarAction] = [back]
                 switch s.entry {
                 case .installed:
-                    acts += [BarAction(title: "Update", enabled: false) {}, BarAction(title: "Remove…") { s.go(.removeWhat) },
+                    acts += [BarAction(title: "Update", enabled: false) {}, BarAction(title: "Remove…") { if s.isLive { s.live?.showRemoval() } else { s.go(.removeWhat) } },
                              BarAction(title: Copy.Common.quit, style: .primary) { s.requestQuit() }]
                 default:
                     acts += e.actions.dropLast().map { t in BarAction(title: t) {} }
@@ -199,13 +203,27 @@ struct RootView: View {
             let cont = l.resumeExpected != nil
                 ? BarAction(title: "Confirm and Continue", style: .primary, enabled: l.typedMatches) { l.reconfirmAndResume() }
                 : BarAction(title: "Continue", style: .primary) { if let j = l.job { l.resume(j) } }
+            if l.isRemoval { return Footer(leading: [details], trailing: [cont]) }
             return Footer(leading: [details], trailing: [BarAction(title: "Undo Everything", style: .destructive) { l.rollback() }, cont])
         case .liveResume:
             guard let l = s.live, let j = l.unfinished.first else { return Footer() }
             return Footer(leading: [details], trailing: [BarAction(title: "Undo Everything", style: .destructive) { l.job = j; l.rollback() },
                                                           BarAction(title: "Continue", style: .primary) { l.resume(j) }])
         case .liveFinish:
+            guard let l = s.live else { return Footer() }
+            if l.blessReport?.set == true {
+                return Footer(leading: [details], trailing: [BarAction(title: "Quit") { s.terminate() },
+                                                             BarAction(title: l.restarting ? "Restarting…" : "Restart into SiliconForest", style: .primary,
+                                                                       enabled: !l.restarting && l.blessReport?.canRestart == true) { l.restart() }])
+            }
             return Footer(leading: [details], trailing: [BarAction(title: Copy.Common.quit, style: .primary) { s.terminate() }])
+        case .liveRemoveList:
+            return Footer(leading: [details], trailing: [back])
+        case .liveRemoveConfirm:
+            return Footer(leading: [details], trailing: [back, BarAction(title: "Remove SiliconForest", style: .destructive,
+                                                                         enabled: (s.live?.typedMatches ?? false) && !(s.live?.isWorking ?? true)) { s.live?.install() }])
+        case .liveRemoved:
+            return Footer(leading: [details], trailing: [BarAction(title: Copy.Common.done, style: .primary, isDefault: true) { s.terminate() }])
         case .recovery:
             return Footer(leading: [details, BarAction(title: Copy.Recovery.save) {}],
                           trailing: [BarAction(title: Copy.Recovery.notNow) { s.go(.welcome) },

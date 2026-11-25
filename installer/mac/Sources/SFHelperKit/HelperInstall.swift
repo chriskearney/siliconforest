@@ -79,6 +79,32 @@ public struct LiveProgress: Codable, Sendable, Hashable {
     public var confirmedUntil: String?
     /// What to type to confirm this job's plan again (only while it isn't running).
     public var expected: TypedConfirmation?
+    /// What the one-time bless did (S65), once it has run.
+    public var bless: BlessReport?
+}
+
+/// Preview7: the outcome of S65 for the finish screen.
+public struct BlessReport: Codable, Sendable, Hashable {
+    /// The one-time next boot is set (bless exited 0).
+    public var set: Bool
+    public var volumeName: String
+    /// `bless --getBoot` named the stub (it may not report a one-time selection).
+    public var confirmed: Bool
+    public var note: String
+    /// What the person runs themselves if it wasn't set.
+    public var manualCommand: String
+    /// The helper can restart this Mac for them now.
+    public var canRestart: Bool
+}
+
+public struct InstalledInstall: Codable, Sendable, Hashable {
+    public var job: String
+    public var installID: String
+    public var releaseVersion: String
+    public var name: String
+    public var finished: String?
+    public var removable: Bool
+    public var note: String?
 }
 
 extension HelperService {
@@ -307,7 +333,98 @@ extension HelperService {
                 failed: Dictionary(uniqueKeysWithValues: st.failed.map { ($0.key.rawValue, $0.value) }),
                 approvals: st.approvals, events: events, lastSeq: max(sequence, all.last?.seq ?? 0),
                 planDigest: st.plan?.digest, installName: st.plan?.request?.installName, operation: st.plan?.operation.rawValue,
-                confirmedUntil: until.map { Self.isoString($0) }, expected: expected)), nil)
+                confirmedUntil: until.map { Self.isoString($0) }, expected: expected, bless: blessReport(st))), nil)
         } catch { reply(nil, Self.nsError(error)) }
+    }
+}
+
+extension HelperService {
+    func blessReport(_ st: JobState) -> BlessReport? {
+        guard st.plan?.operation == .install, let ev = st.evidence[.S65], let r = ev["blessed"]?.string else {
+            if st.plan?.operation == .install, st.status[.S65] == .simulated {
+                return BlessReport(set: false, volumeName: st.plan?.request?.installName ?? "SiliconForest", confirmed: false,
+                                   note: "This build doesn't change the startup disk.", manualCommand: BlessGuard.manual(volumeName: st.plan?.request?.installName ?? "SiliconForest"), canRestart: false)
+            }
+            return nil
+        }
+        let name = ev["name"]?.string ?? st.plan?.request?.installName ?? "SiliconForest"
+        let set = r == "next boot only"
+        return BlessReport(set: set, volumeName: name, confirmed: (ev["confirmed"]?.string ?? "").hasPrefix("getBoot names"),
+                           note: set ? (ev["confirmed"]?.string ?? "") : (ev["why"]?.string ?? "bless didn't run"),
+                           manualCommand: ev["manual"]?.string ?? BlessGuard.manual(volumeName: name),
+                           canRestart: set && config.restartAction != nil)
+    }
+
+    // MARK: Remove SiliconForest
+
+    func finishedInstalls() -> [(job: String, journal: ChainJournal, state: JobState)] {
+        let files = (try? FileManager.default.contentsOfDirectory(at: config.journalDirectory, includingPropertiesForKeys: nil)) ?? []
+        var out: [(String, ChainJournal, JobState)] = []
+        var removed = Set<UUID>()
+        for u in files where u.pathExtension == "jsonl" {
+            guard let j = try? ChainJournal.open(u) else { continue }
+            let st = JobState(j.records)
+            if st.plan?.operation == .remove, st.end == .committed, let id = st.plan?.installJob { removed.insert(id) }
+            if st.plan?.operation == .install, st.end == .handedOff || st.end == .committed { out.append((j.jobID.uuidString, j, st)) }
+        }
+        return out.filter { !removed.contains($0.1.jobID) }.sorted { ($0.1.records.first?.t ?? "") > ($1.1.records.first?.t ?? "") }
+    }
+
+    public func listInstalls(reply: @escaping (Data?, NSError?) -> Void) {
+        self.reply(reply) {
+            let topology = try? readTarget().topology
+            let list = finishedInstalls().map { (job, j, st) -> InstalledInstall in
+                var removable = false, note: String?
+                if let topology {
+                    do {
+                        let proof = try InstallProofReader.proof(from: j)
+                        _ = try EnginePlanner.removalPlan(topology: topology, profile: try profile(), proof: proof)
+                        removable = true
+                    } catch { note = "\(error)" }
+                } else { note = "this Mac's disk can't be read by the helper" }
+                return InstalledInstall(job: job, installID: st.plan?.request?.installID ?? "", releaseVersion: st.plan?.releaseVersion ?? "",
+                                        name: st.plan?.request?.installName ?? "SiliconForest", finished: j.records.last?.t, removable: removable, note: note)
+            }
+            return try Canonical.data(list)
+        }
+    }
+
+    public func planRemoval(installJob: String, reply: @escaping (Data?, NSError?) -> Void) {
+        self.reply(reply) {
+            let proof = try InstallProofReader.proof(from: try journal(installJob))
+            let read = try readTarget()
+            let plan = try EnginePlanner.removalPlan(topology: read.topology, profile: try profile(), proof: proof)
+            offer(plan, topology: read.topology, diskUUID: read.diskUUID)
+            guard let exp = TypedConfirmation.expected(plan: plan, topology: read.topology) else { throw HelperError.make(.failed, "the macOS volume has no name") }
+            let label: String
+            switch config.target {
+            case .internalDisk: label = "this Mac's internal disk"
+            case .image(let u): label = "disk image \(u.lastPathComponent)"
+            case .live(let a): label = a.label
+            case .none: label = "none"
+            }
+            return try Canonical.data(InstallOffer(plan: plan, expected: exp, gigabytes: TypedConfirmation.gigabytes(plan: plan), target: label,
+                                                   diskUUID: read.diskUUID, releaseVersion: plan.releaseVersion,
+                                                   steps: StepCode.order(plan).map { StepTitle(code: $0.rawValue, title: $0.title, writesDisk: $0.writesDisk) }))
+        }
+    }
+
+    public func restartIntoInstalledSystem(job: String, reply: @escaping (NSError?) -> Void) {
+        do {
+            let j = try journal(job)
+            let st = JobState(j.records)
+            guard let plan = st.plan, plan.operation == .install, st.end == .handedOff else { throw HelperError.make(.refused, "this job isn't a finished install") }
+            guard let report = blessReport(st), report.set else { throw HelperError.make(.refused, "the one-time startup selection wasn't set; restart from the startup menu instead") }
+            // The in-memory confirmation may be gone (the helper exits when idle); the journal proves it: begin needed it.
+            // Only a finished, not-yet-removed install, and only for a day after it finished.
+            guard finishedInstalls().contains(where: { $0.job == job }) else { throw HelperError.make(.refused, "that install has been removed") }
+            if let t = j.records.last?.t, let d = ISO8601DateFormatter().date(from: t), Date().timeIntervalSince(d) > 24 * 3600 {
+                throw HelperError.make(.refused, "that install finished more than a day ago; restart from the startup menu instead")
+            }
+            guard let action = config.restartAction else { throw HelperError.make(.refused, "this build doesn't restart the Mac") }
+            let delay = config.restartDelay
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay) { action() }
+            reply(nil)
+        } catch { reply(Self.nsError(error)) }
     }
 }

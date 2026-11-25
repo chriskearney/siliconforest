@@ -114,17 +114,20 @@ public enum AuthorizationFile {
     public static func remove(_ path: String = RealDiskGate.authorizationPath) { unlink(path) }
 }
 
-/// The stage 1 the installer app accepts: m1n1 121fcbf + the SiliconForest patch, tag
-/// `121fcbf…-siliconforest-stage1-v1`, rebuilt byte-identical by installer/payload/boot/build_stage1.sh.
-/// Stage 1 v2 (abboot) is deliberately not accepted here.
+/// The stage 1 the installer app accepts (preview7): stage 1 v2, m1n1 121fcbf + the SiliconForest patch + the A/B
+/// try-once slot choice (abboot), tag `121fcbf…-siliconforest-stage1-v2`, rebuilt byte-identical by
+/// integrations/siliconforest/m1-native-boot/install/abboot/build_stage1_v2.sh. v1 (`44c1ef0b…`, previews 1–6)
+/// is no longer accepted.
 public enum StagePin {
-    public static let stage1SHA256 = "44c1ef0bda96224f5fe8c6228cc12ec1966b7781f38844cea960b21b47654318"
+    public static let stage1SHA256 = "c4be30876d39f7416145e56f56b021bc96e54c3b35899be12658a4406421994d"
+    /// The v1 stage 1 of previews 1–6, kept only to say so in the refusal.
+    public static let stage1V1SHA256 = "44c1ef0bda96224f5fe8c6228cc12ec1966b7781f38844cea960b21b47654318"
     public static let stage1Bytes: Int64 = 4_325_376
 
     public static func check(_ m: ReleaseManifest) throws {
         guard let a = m.artifact(m.stage1) else { throw SafetyRefusal("the release has no stage 1") }
         guard a.sha256 == stage1SHA256, a.bytes == stage1Bytes else {
-            throw SafetyRefusal("the release's stage 1 is \(a.sha256.prefix(8))…, not the pinned v1 \(stage1SHA256.prefix(8))…")
+            throw SafetyRefusal("the release's stage 1 is \(a.sha256.prefix(8))…\(a.sha256 == stage1V1SHA256 ? " (v1)" : ""), not the pinned v2 \(stage1SHA256.prefix(8))…")
         }
     }
 }

@@ -42,6 +42,13 @@ public struct HelperConfig: Sendable {
     public var allowRehearsalRelease = false
     /// The release key's allowed_signers (nil: SFRelease's lookup, the app bundle's copy).
     public var allowedSigners: URL?
+    /// Runs the one-time bless after the stub is staged (S65), and the removal's reset (U10). Only SFHelper
+    /// in a SF_REAL_DISK_WRITES build sets a real one; tests set a recorder; nil simulates (the lab tools).
+    public var blessRunner: BlessRunner?
+    /// Restarts this Mac (`restartIntoInstalledSystem`). Same rules: nil refuses.
+    public var restartAction: (@Sendable () -> Void)?
+    /// Seconds between the restart verb's reply and the restart itself.
+    public var restartDelay: TimeInterval = 3
 
     public init(target: Target, allowedImageRoot: URL = ImageGuard.defaultRoot, journalDirectory: URL = ChainJournal.defaultDirectory,
                 workDirectory: URL, profileID: String, release: ReleaseManifest?, releaseSource: URL?, policy: ConnectionPolicy = ConnectionPolicy(),
@@ -158,6 +165,7 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
                               workDir: config.workDirectory.appendingPathComponent(j.jobID.uuidString), resizeTiming: config.resizeTiming)
         e.recoveryBinary = config.recoveryBinary
         e.stubSource = config.stubSource
+        e.bless = config.blessRunner
         if (operation ?? st.plan?.operation ?? .install) == .install, e.stubSource == nil, case .internalDisk = config.target {
             throw HelperError.make(.refused, "the helper can't build the stub (no profile, icon or admin list)")
         }
@@ -176,7 +184,7 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
         }
     }
 
-    private func reply<T>(_ r: (T?, NSError?) -> Void, _ body: () throws -> T) {
+    func reply<T>(_ r: (T?, NSError?) -> Void, _ body: () throws -> T) {
         do { r(try body(), nil) } catch { r(nil, Self.nsError(error)) }
     }
 

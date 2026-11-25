@@ -43,6 +43,11 @@ profiles ───┘                        │
 
 `rehearse.sh OUT` runs all of it on a synthetic root, or on a real one with `--base`.
 
+**Preview7:** the release ships **stage 1 v2** (`m1-native-boot/install/abboot/build_stage1_v2.sh`, `c4be3087…`, rebuilt byte-identical on the i9 and in CI;
+the app's `StagePin` accepts only it), slot B's stage 2 `boot-b.bin` (`boot/build_stage2.sh OUT b`: the same stage 2 recipe with `PDSF_KERNEL_FILE`
+`sf/b/kernel.bin`, the root's `fs_uuid` from `root.json`; slot A keeps the stage 2 already on the machine), and SAP in the root (docs/sap/IMAGE.md).
+The paragraph below describes v1's recipe, which v2 extends.
+
 **Stage 1** (`sf-stage1.bin`, one of the boot files) is built from source by `boot/build_stage1.sh OUT`: Omacom m1n1 at the profiles'
 `boot.stage1.source_revision` (`121fcbf`), our patch `m1-native-boot/install/patches/0001` (an installed machine stops with a message
 instead of falling back to the USB proxy or restarting), `RELEASE=1 CHAINLOADING=1 SF_INSTALLED=1`, our boot logo, version tag

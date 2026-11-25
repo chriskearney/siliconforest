@@ -47,6 +47,14 @@ import SFIdentity
     /// A job's live progress (`LiveProgress`): its state from the journal plus the in-memory step,
     /// byte and diskutil events after `sequence`.
     func progress(job: String, after sequence: UInt64, reply: @escaping (Data?, NSError?) -> Void)
+    /// Preview7. The finished installs this helper's journals prove (what "Remove SiliconForest" can remove).
+    func listInstalls(reply: @escaping (Data?, NSError?) -> Void)
+    /// Reads the target now and offers the removal plan of one finished install (an `InstallOffer`: the plan
+    /// and what the person must type), exactly as `planInstall` does for an install.
+    func planRemoval(installJob: String, reply: @escaping (Data?, NSError?) -> Void)
+    /// After a finished install whose one-time next boot was set: restarts this Mac. Needs the plan's
+    /// confirmation to still be valid; nothing else is touched.
+    func restartIntoInstalledSystem(job: String, reply: @escaping (NSError?) -> Void)
 }
 
 public enum HelperErrorCode: Int, Sendable {
@@ -69,7 +77,7 @@ public enum HelperVerbs {
         "removalPlanWithInstallJob:reply:", "beginRemovalWithInstallJob:planDigest:reply:", "authorizeBlessWithJob:password:reply:",
         "eventsWithJob:after:reply:", "jobStatusWithJob:reply:", "exportDiagnosticsWithJob:to:reply:",
         "importReleaseFrom:reply:", "planInstallWithRequest:reply:", "confirmWithPlanDigest:typed:authorization:reply:",
-        "progressWithJob:after:reply:",
+        "progressWithJob:after:reply:", "listInstallsWithReply:", "planRemovalWithInstallJob:reply:", "restartIntoInstalledSystemWithJob:reply:",
     ]
 
     public static func selectors() -> Set<String> {

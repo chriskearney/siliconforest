@@ -82,4 +82,72 @@ struct ImageEngineTests {
         #expect(after.digestForm == original.digestForm)
         #expect(JobState(rj.records).approvals.map(\.step) == ["U10"])
     }
+
+    /// Preview7: S65 runs the one-time bless through an injected runner (never the real tool), U10 resets only a
+    /// selection that names the stub, and the removal still restores the original table.
+    final class RecordingBlessRunner: BlessRunner, @unchecked Sendable {
+        private let lock = NSLock()
+        private var _calls: [[String]] = []
+        private var selection = "/dev/disk0s1\n"
+        var failSet = false
+        var calls: [[String]] { lock.lock(); defer { lock.unlock() }; return _calls }
+        func execute(_ argv: [String]) -> BlessResult {
+            lock.lock(); defer { lock.unlock() }
+            _calls.append(argv)
+            guard BlessGuard.isAllowed(argv) else { return BlessResult(status: 126, output: "refused") }
+            if argv == BlessGuard.getBoot { return BlessResult(status: 0, output: selection) }
+            if failSet && argv.contains("--nextonly") { return BlessResult(status: 1, output: "simulated failure") }
+            selection = (BlessGuard.systemMountedFrom(argv[2]) ?? "?") + "\n"
+            return BlessResult(status: 0, output: "")
+        }
+    }
+
+    @Test(.enabled(if: ImageLab.long)) func blessIsRunThroughTheRunnerThenRemovalResetsIt() throws {
+        let c = try ImageLab.fresh(.j293); defer { c.finish() }
+        let profile = try ImageLab.profile()
+        let original = try c.backend.topology()
+        let plan = try ImageLab.plan(c, profile: profile)
+        let j = try ChainJournal(directory: c.journalDir)
+        let e = try ImageLab.engine(c, journal: j, profile: profile)
+        let runner = RecordingBlessRunner()
+        e.bless = runner
+        try e.begin(plan)
+        #expect(try e.run() == .handedOff)
+        let st = JobState(j.records)
+        let ev = try #require(st.evidence[.S65])
+        #expect(ev["blessed"]?.string == "next boot only" && ev["exit"]?.int == 0)
+        #expect(ev["confirmed"]?.string == "getBoot names the stub")
+        #expect(runner.calls.first?.contains("--nextonly") == true)
+        #expect(runner.calls.allSatisfy { BlessGuard.isAllowed($0) })
+        #expect(!st.approvals.map(\.step).contains("S65"), "a real bless is not left as a simulated approval")
+
+        // Removal: the selection names the stub, so U10 sets macOS back, once; the table returns to the original.
+        let proof = try InstallProofReader.proof(from: j)
+        let removal = try EnginePlanner.removalPlan(topology: try c.backend.topology(), profile: profile, proof: proof)
+        let rj = try ChainJournal(directory: c.journalDir)
+        let re = try ImageLab.engine(c, journal: rj, profile: profile)
+        re.proof = proof
+        re.bless = runner
+        try re.begin(removal)
+        #expect(try re.run() == .committed)
+        let u10 = try #require(JobState(rj.records).evidence[.U10])
+        #expect(u10["reset"]?.string == "macOS" || (u10["reset"]?.string == "no" && u10["why"]?.string?.contains("isn't mounted") == true))
+        #expect(runner.calls.filter { $0.contains("--setBoot") && !$0.contains("--nextonly") }.count == (u10["reset"]?.string == "macOS" ? 1 : 0))
+        #expect(try c.backend.topology().digestForm == original.digestForm)
+    }
+
+    @Test(.enabled(if: ImageLab.long)) func aFailingBlessLeavesTheInstallDoneWithTheManualCommand() throws {
+        let c = try ImageLab.fresh(.j293); defer { c.finish() }
+        let profile = try ImageLab.profile()
+        let plan = try ImageLab.plan(c, profile: profile)
+        let j = try ChainJournal(directory: c.journalDir)
+        let e = try ImageLab.engine(c, journal: j, profile: profile)
+        let runner = RecordingBlessRunner(); runner.failSet = true
+        e.bless = runner
+        try e.begin(plan)
+        #expect(try e.run() == .handedOff, "bless failing must not fail the install")
+        let ev = try #require(JobState(j.records).evidence[.S65])
+        #expect(ev["blessed"]?.string == "no" && ev["exit"]?.int == 1)
+        #expect(ev["manual"]?.string?.hasPrefix("sudo /usr/sbin/bless --mount \"/Volumes/") == true)
+    }
 }

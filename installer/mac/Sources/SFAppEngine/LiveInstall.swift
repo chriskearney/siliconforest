@@ -157,6 +157,16 @@ public final class LiveInstallController: @unchecked Sendable {
     }
 
     public func begin(_ plan: EnginePlan) throws -> String { try call { try $0.begin(plan) } }
+
+    // Preview7: Remove SiliconForest, and the restart after a one-time bless.
+    public func installs() throws -> [InstalledInstall] {
+        try call { c in try Canonical.decoder().decode([InstalledInstall].self, from: try c.call { $0.listInstalls(reply: $1) }) }
+    }
+    public func offerRemoval(_ installJob: String) throws -> InstallOffer {
+        try call { c in try Canonical.decoder().decode(InstallOffer.self, from: try c.call(timeout: 120) { $0.planRemoval(installJob: installJob, reply: $1) }) }
+    }
+    public func beginRemoval(installJob: String, plan: EnginePlan) throws -> String { try call { try $0.beginRemoval(installJob, digest: plan.digest) } }
+    public func restart(_ job: String) throws { try call { c in try c.callVoid { $0.restartIntoInstalledSystem(job: job, reply: $1) } } }
     public func start(_ job: String) throws { try call { try $0.resume(job) } }
     public func rollback(_ job: String) throws { try call { try $0.rollback(job) } }
 
@@ -186,15 +196,18 @@ public final class LiveInstallController: @unchecked Sendable {
     }
 }
 
-/// What the app tells the person to do after the hand-off. Bless stays a step the person runs (the
-/// installer never runs bless, bputil, kmutil or nvram itself).
+/// What the app tells the person after the hand-off (preview7): the helper already set the one-time
+/// next boot, so "Restart into SiliconForest" is a button. If it couldn't, the manual command is shown.
 public enum AfterHandoff {
-    public static func blessCommand(installName: String) -> String {
-        "sudo /usr/sbin/bless --mount \"/Volumes/\(installName)\" --setBoot --nextonly"
-    }
-    public static func steps(installName: String) -> [String] {
+    public static func blessCommand(installName: String) -> String { BlessGuard.manual(volumeName: installName) }
+
+    /// The fallback every outcome shows.
+    public static let fallback = "If it doesn't come up: shut down, wait for the screen to go dark, then hold the power button until you see “Loading startup options”, and pick SiliconForest."
+
+    /// `command`: the exact command the helper worked out (it names the volume's real mount point); default: by name.
+    public static func manualSteps(installName: String, command: String? = nil) -> [String] {
         ["In Terminal (macOS), if the volume isn't mounted: diskutil mount \"\(installName)\"",
-         "Then: \(blessCommand(installName: installName))   (your Mac password)",
+         "Then: \(command ?? blessCommand(installName: installName))   (your Mac password)",
          "Shut down. Wait for the screen to go dark, then 25 more seconds.",
          "Press and hold the power button until you see “Loading startup options”.",
          "Choose \(installName), then Continue. Enter your Mac password when asked: SiliconForest Setup finishes in recoveryOS (bputil, kmutil configure-boot), then restarts into SiliconForest."]

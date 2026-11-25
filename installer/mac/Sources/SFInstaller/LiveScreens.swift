@@ -91,7 +91,7 @@ struct LiveConfirmScreen: View {
                             ForEach(o.plan.partitions, id: \.role) { p in
                                 Text("New \(p.role) partition: \(gb(p.bytes)), \(p.content) “\(p.label)”").font(SFType.label).foregroundStyle(theme.textSecondary)
                             }
-                            Text("Release \(o.releaseVersion), signature verified; stage 1 \(live.release?.stage1SHA256.prefix(8) ?? "")… (pinned v1). Plan \(o.plan.digest.prefix(12))….")
+                            Text("Release \(o.releaseVersion), signature verified; stage 1 \(live.release?.stage1SHA256.prefix(8) ?? "")… (pinned v2). Plan \(o.plan.digest.prefix(12))….")
                                 .font(SFType.caption).foregroundStyle(theme.textTertiary)
                         }
                     }
@@ -116,7 +116,7 @@ struct LiveInstallingScreen: View {
     @Environment(\.theme) private var theme
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ScreenHead(title: "Installing SiliconForest", lead: "Keep your Mac on power. You can quit the installer: its helper keeps going, and the installer reattaches when you open it again.")
+            ScreenHead(title: live.isRemoval ? "Removing SiliconForest" : "Installing SiliconForest", lead: "Keep your Mac on power. You can quit the installer: its helper keeps going, and the installer reattaches when you open it again.")
             HStack(spacing: 24) {
                 VStack(alignment: .leading, spacing: 2) {
                     SectionLabel("Elapsed"); Text(duration(live.elapsed)).font(SFType.numerals).foregroundStyle(theme.text)
@@ -219,26 +219,119 @@ struct LiveFinishScreen: View {
     @ObservedObject var live: LiveRun
     @Environment(\.theme) private var theme
     var body: some View {
+        let b = live.blessReport
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                ScreenHead(title: "One last step, and it's yours", lead: "SiliconForest is on your disk and checked. Apple requires you to approve a new operating system in person, from recovery. The installer never changes your startup disk itself.")
-                Panel {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(AfterHandoff.steps(installName: live.installName).enumerated()), id: \.offset) { i, t in
-                            HStack(alignment: .top, spacing: 10) {
-                                Text("\(i + 1)").font(SFType.bodyStrong).foregroundStyle(theme.accent).frame(width: 18)
-                                Text(t).font(SFType.body).foregroundStyle(theme.text).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                if b?.set == true {
+                    ScreenHead(title: "SiliconForest is installed", lead: "Your Mac is set to start SiliconForest once, the next time it starts. Save your work in other apps, then restart. SiliconForest Setup finishes in recoveryOS (it asks for your Mac password), then restarts into SiliconForest.")
+                    Panel {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Restart into SiliconForest").font(SFType.bodyStrong).foregroundStyle(theme.text)
+                            Text(b?.confirmed == true ? "The installer confirmed the selection with bless." : "The selection is a one-time next boot; macOS doesn't always report it, so this couldn't be read back.")
+                                .font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    if let e = live.restartError {
+                        Label("The installer couldn't restart your Mac: \(e)", systemImage: "exclamationmark.triangle.fill").font(SFType.body).foregroundStyle(theme.caution).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if live.restarting { Text("Restarting…").font(SFType.body).foregroundStyle(theme.text) }
+                    Text(AfterHandoff.fallback).font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ScreenHead(title: "One last step", lead: "SiliconForest is on your disk and checked, but the installer couldn't set your Mac to start it\(b.map { $0.note.isEmpty ? "" : " (\($0.note))" } ?? ""). Do this yourself:")
+                    Panel {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(Array(AfterHandoff.manualSteps(installName: live.installName, command: b?.manualCommand).enumerated()), id: \.offset) { i, t in
+                                HStack(alignment: .top, spacing: 10) {
+                                    Text("\(i + 1)").font(SFType.bodyStrong).foregroundStyle(theme.accent).frame(width: 18)
+                                    Text(t).font(SFType.body).foregroundStyle(theme.text).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                                }
                             }
                         }
                     }
+                    Button("Copy the bless command") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(b?.manualCommand ?? AfterHandoff.blessCommand(installName: live.installName), forType: .string)
+                    }.buttonStyle(SFTextButtonStyle())
                 }
-                Button("Copy the bless command") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(AfterHandoff.blessCommand(installName: live.installName), forType: .string)
-                }.buttonStyle(SFTextButtonStyle())
-                Text("If it doesn't start, hold the power button until the Mac turns off, then hold it again and choose macOS. Job \(live.job ?? ""), \(duration(live.elapsed)).")
-                    .font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+                Text("Job \(live.job ?? ""), \(duration(live.elapsed)).").font(SFType.caption).foregroundStyle(theme.textTertiary)
             }
+        }
+    }
+}
+
+struct LiveRemoveListScreen: View {
+    @ObservedObject var s: Session
+    @ObservedObject var live: LiveRun
+    @Environment(\.theme) private var theme
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                ScreenHead(title: "Remove SiliconForest", lead: "This removes everything an install created on this Mac's disk (the SiliconForest stub, its boot partition, the root partition and the recovery setup it added), gives the space back to macOS, and sets the startup disk back to macOS if it points at SiliconForest. Back up first.")
+                LiveWarning()
+                if live.isWorking { Text("Preparing…").font(SFType.body).foregroundStyle(theme.textSecondary) }
+                if !live.installsLoaded { Text("Looking for installs…").font(SFType.body).foregroundStyle(theme.textSecondary) }
+                else if live.installs.isEmpty {
+                    Text("No SiliconForest install made by this installer was found on this Mac. The installer removes only partitions its own journal records as SiliconForest's.")
+                        .font(SFType.body).foregroundStyle(theme.text).fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(live.installs, id: \.job) { i in
+                    Panel {
+                        HStack(alignment: .center, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("“\(i.name)” · release \(i.releaseVersion) · install \(i.installID)").font(SFType.bodyStrong).foregroundStyle(theme.text)
+                                Text(i.finished.map { "Finished \($0)" } ?? "").font(SFType.caption).foregroundStyle(theme.textTertiary)
+                                if let n = i.note, !i.removable { Text("Can't remove it now: \(n)").font(SFType.label).foregroundStyle(theme.caution).fixedSize(horizontal: false, vertical: true) }
+                            }
+                            Spacer()
+                            Button("Remove…") { live.chooseRemoval(i) }.buttonStyle(SFTextButtonStyle()).disabled(!i.removable || live.isWorking)
+                        }
+                    }
+                }
+                if let e = live.lastError { Label(e, systemImage: "xmark.octagon.fill").font(SFType.body).foregroundStyle(theme.critical).fixedSize(horizontal: false, vertical: true) }
+            }
+        }
+    }
+}
+
+struct LiveRemoveConfirmScreen: View {
+    @ObservedObject var s: Session
+    @ObservedObject var live: LiveRun
+    @Environment(\.theme) private var theme
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                ScreenHead(title: "Confirm the removal", lead: "The installer's helper made this plan from its own read of the disk and the install's journal. It deletes only the partitions that install created, and nothing else.")
+                LiveWarning()
+                if let o = live.offer {
+                    Panel {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Target: \(o.target)\(o.diskUUID.map { " (GPT \($0.prefix(8))…)" } ?? "")").font(SFType.bodyStrong).foregroundStyle(theme.text)
+                            Text("Deletes SiliconForest's stub, boot partition and root partition. macOS (“\(o.expected.diskName)”) grows back: \(gb(o.plan.macOS.from)) → \(gb(o.plan.macOS.to)). Your macOS files stay where they are.")
+                                .font(SFType.body).foregroundStyle(theme.text).fixedSize(horizontal: false, vertical: true)
+                            Text("If the startup disk points at SiliconForest it is set back to macOS first. Plan \(o.plan.digest.prefix(12))….").font(SFType.caption).foregroundStyle(theme.textTertiary)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("To approve, type the name of the macOS volume: \(o.expected.diskName)").font(SFType.body).foregroundStyle(theme.text)
+                        SFTextField(o.expected.diskName, text: $live.typedName, width: 420)
+                        Text("and type: \(o.expected.phrase)").font(SFType.body).foregroundStyle(theme.text)
+                        SFTextField(o.expected.phrase, text: $live.typedPhrase, width: 420)
+                        Text("Then an administrator approves in the macOS dialog.").font(SFType.label).foregroundStyle(theme.textSecondary)
+                    }
+                }
+                if case .failed(let m) = live.activity { Label(m, systemImage: "xmark.octagon.fill").font(SFType.body).foregroundStyle(theme.critical) }
+            }
+        }
+    }
+}
+
+struct LiveRemovedScreen: View {
+    @ObservedObject var s: Session
+    @ObservedObject var live: LiveRun
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ScreenHead(title: "SiliconForest has been removed", lead: "Its partitions are gone and macOS has its space back. The partition table was checked against the one saved before the install. Nothing else changed.")
+            Text("Job \(live.job ?? ""), \(duration(live.elapsed)).").font(SFType.caption)
         }
     }
 }

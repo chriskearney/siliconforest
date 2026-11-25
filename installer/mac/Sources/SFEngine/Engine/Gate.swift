@@ -63,6 +63,12 @@ public struct Gate: Sendable {
         return s
     }
 
+    /// The one-time next-boot selection (S65): only an install, only the stub this job created, only while it exists.
+    public func admitBless(partition: String, now: ImageTopology) throws {
+        guard plan.operation == .install else { throw SafetyRefusal("gate: bless: only an install selects its stub") }
+        guard created["stub"] == partition, now.partition(uuid: partition) != nil else { throw SafetyRefusal("gate: bless: not a stub this job created") }
+    }
+
     public func admit(_ verb: DiskVerb, now: ImageTopology, rollback: Bool = false) throws {
         func refuse(_ why: String) -> SafetyRefusal { SafetyRefusal("gate: \(verb.summary): \(why)") }
         switch verb {

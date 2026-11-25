@@ -32,6 +32,10 @@ public enum Screen: Hashable, Sendable {
     case liveInstalling
     case liveStopped
     case liveFinish
+    // Preview7: Remove SiliconForest (an install this Mac's helper has a journal for).
+    case liveRemoveList
+    case liveRemoveConfirm
+    case liveRemoved
 
     /// Step dots: Check · Prepare · Space · Review · Install · Recovery · Finish.
     public var dotIndex: Int? {
@@ -46,6 +50,7 @@ public enum Screen: Hashable, Sendable {
         case .liveFetch, .liveConfirm: return 3
         case .liveInstalling, .liveStopped, .liveResume: return 4
         case .liveFinish: return 5
+        case .liveRemoveList, .liveRemoveConfirm, .liveRemoved: return nil
         default: return nil
         }
     }
@@ -70,6 +75,8 @@ public enum Screen: Hashable, Sendable {
         case .liveFetch, .liveConfirm: return 0.1
         case .liveInstalling, .liveStopped: return 0.4
         case .liveFinish: return 0.6
+        case .liveRemoveList, .liveRemoveConfirm: return -0.4
+        case .liveRemoved: return -0.2
         }
     }
 
@@ -228,6 +235,7 @@ public final class Session: ObservableObject {
         case .liveResume, .liveFetch, .liveConfirm: return 0.1
         case .liveInstalling, .liveStopped: return 0.12 + 0.48 * (live?.overall ?? 0)
         case .liveFinish: return 0.6
+        case .liveRemoveList, .liveRemoveConfirm, .liveRemoved: return 0.04
         }
     }
 
@@ -333,11 +341,13 @@ public final class Session: ObservableObject {
         case .removeWhat: go(.welcome)
         case .removeConfirm: go(.removeWhat)
         case .liveConfirm: go(.review)
+        case .liveRemoveList: go(.welcome)
+        case .liveRemoveConfirm: go(.liveRemoveList)
         default: break
         }
     }
 
-    public var canGoBack: Bool { [.check, .prepare, .space, .options, .review, .removeWhat, .removeConfirm, .liveConfirm].contains(screen) }
+    public var canGoBack: Bool { [.check, .prepare, .space, .options, .review, .removeWhat, .removeConfirm, .liveConfirm, .liveRemoveList, .liveRemoveConfirm].contains(screen) }
 
     public func runChecks() {
         guard !checksRunning else { return }

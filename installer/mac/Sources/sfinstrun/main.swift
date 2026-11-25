@@ -10,13 +10,15 @@
 //                         build with SF_REAL_DISK_WRITES, root, and Chris's runtime authorization file for
 //                         exactly this plan and disk (RealDiskGate); without them they refuse before any
 //                         change.
-// It never runs bless, bputil, kmutil, nvram, DFU or a firmware tool (S65's bless is simulated).
+// It never runs bless, bputil, kmutil, nvram, DFU or a firmware tool (S65's bless and U10's reset are simulated; the app's helper runs them).
 //
 //   sfinstrun plan     --target T --release-dir D [--size 80G] [--name N] [--install-id ID] --out PLAN.json
 //   sfinstrun run      --target T --release-dir D --plan PLAN.json --journal DIR --work DIR
 //                      --icon F --admin-users F [--ipsw URL|PATH] [--recovery-binary F] [--job UUID]
 //   sfinstrun rollback (the run options) --job UUID
-//   sfinstrun remove   --target T --journal DIR --work DIR --job UUID
+//   sfinstrun remove   --target T --journal DIR --work DIR --job UUID [--removal-job UUID]
+//                      Remove SiliconForest: deletes what install job UUID created, grows macOS back (the
+//                      same typed/authorized flow as the app). --removal-job resumes a stopped removal.
 //   sfinstrun status   --journal DIR --job UUID
 //   sudo sfinstrun startup-disk   this Mac's startup disk and its GPT disk GUID (read-only: diskutil info
 //                      and the GPT header; diskutil doesn't report a whole disk's GUID)
@@ -166,6 +168,18 @@ func main() throws {
         let proof = try InstallProofReader.proof(from: try ChainJournal(directory: dir, jobID: u))
         let (p, _) = try profile()
         let t = try target(a)
+        if let rj = a.kv["removal-job"] {
+            // Resume a stopped removal from its own journal (its plan is the journal's first record).
+            guard let ru = UUID(uuidString: rj) else { throw RunError("bad --removal-job") }
+            let rjj = try ChainJournal(directory: dir, jobID: ru)
+            guard let plan = JobState(rjj.records).plan, plan.operation == .remove else { throw RunError("that job isn't a removal") }
+            let backend = LiveDiskBackend(authority: try StubOnlyRun.authority(t, planDigest: plan.digest))
+            let e = InstallEngine(backend: backend, journal: rjj, profile: p, release: nil, releaseSource: nil,
+                                  workDir: try a.url("work").appendingPathComponent(rjj.jobID.uuidString))
+            e.proof = proof
+            print("resuming removal job \(rjj.jobID.uuidString) end: \(try e.run().rawValue)")
+            break
+        }
         let (topo, _) = try StubOnlyRun.read(t)
         let removal = try EnginePlanner.removalPlan(topology: topo, profile: p, proof: proof)
         print("removal plan \(removal.digest): delete \(proof.owned.all.joined(separator: ", ")), grow \(removal.macOS.store) to \(removal.macOS.to) B")

@@ -7,6 +7,8 @@ Written 24 November 2026, made runnable 25 November 2026 for the first real stub
 explicit go for each stage, and **a person at the Air**. It follows [`ENGINE.md`](ENGINE.md) sections 6, 7 and 11 and [`FIRST-INSTALL-J313.md`](FIRST-INSTALL-J313.md)
 (G5 and G6), and builds the stub that [`PAYLOAD.md`](PAYLOAD.md) section 9 describes (SFStub, the SiliconForest payload).
 
+> **Preview7:** the release's stage 1 is now **v2** (`c4be3087…`, `abboot/build_stage1_v2.sh`); wherever this checklist says `44c1ef0b…` (v1, previews 1–6) read the release's `sf-stage1.bin` hash from its `install.json`. `sfstubrun` takes it from there.
+
 **What it proves:** the stub SFStub builds is accepted by the Air: the startup picker lists it, recoveryOS pairs with it,
 SiliconForest Setup runs there, and stage 1 (m1n1 `121fcbf`) starts from the boot object it carries. **What it does not:**
 kernel, root, firmware slot or SFBOOT. Those are G6.
