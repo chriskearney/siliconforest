@@ -26,9 +26,9 @@ concurrency:
 
 jobs:
   test:
-    name: SFInstallKit tests (unit + smoke images)
+    name: SFInstallKit tests (unit tests only)
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -45,11 +45,13 @@ jobs:
         working-directory: installer/mac
         shell: bash
         env:
-          # CI tier: unit tests plus the smoke image tests (refusals that stop before the first write).
-          # Every image-backed test that runs a whole install/resize, every sweep and every repeat is the
-          # long tier and runs on the M5 (installer/mac/scripts/test-long.sh, ~35 min there). On macos-15
-          # each of them costs 10-17 min (diskutil/hdiutil/APFS resize are ~14x slower than on the M5):
-          # runs 45504226352 and 45540938850 took hours. SF_IMAGE_LONG=0 skips the lot.
+          # CI tier: unit tests only. Every image-backed test (installs, resizes, sweeps, repeats, and
+          # the pre-write refusals that still attach an APFS image) is the long tier and runs on the M5
+          # (installer/mac/scripts/test-long.sh). On macos-15, hdiutil/diskutil/APFS are ~20x slower than
+          # the M5: even the short refusals take minutes (planBinding 88 s on run 45504226352), and run
+          # 45560301367 was still going at 16 min with only those five left on CI. SF_IMAGE_TESTS=0 is
+          # the suite-level switch so a new untagged image test cannot blow the 10-15 min budget.
+          SF_IMAGE_TESTS: "0"
           SF_IMAGE_LONG: "0"
         run: |
           set -euo pipefail

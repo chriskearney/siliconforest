@@ -158,7 +158,7 @@ struct LiveBackendImageTests {
         #expect(live.chokepoint.tripped == nil)
     }
 
-    @Test func aProtectedPartitionChangingBehindOurBackTripsTheJob() throws {
+    @Test(.enabled(if: ImageLab.long)) func aProtectedPartitionChangingBehindOurBackTripsTheJob() throws {
         let c = try ImageLab.fresh(.j313); defer { c.finish() }
         let profile = try ImageLab.profile("J313")
         let original = try c.backend.topology()
@@ -180,7 +180,7 @@ struct LiveBackendImageTests {
         #expect(try c.backend.freshTopology().digestForm == original.digestForm)
     }
 
-    @Test func aReleaseDamagedAfterTheEngineCheckedItIsStillRefusedBeforeAnyWrite() throws {
+    @Test(.enabled(if: ImageLab.long)) func aReleaseDamagedAfterTheEngineCheckedItIsStillRefusedBeforeAnyWrite() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let original = try c.backend.topology()
@@ -238,7 +238,7 @@ struct LiveBackendImageTests {
         }
     }
 
-    @Test func nothingIsWrittenWithoutAReleaseOrFromOutsideIt() throws {
+    @Test(.enabled(if: ImageLab.long)) func nothingIsWrittenWithoutAReleaseOrFromOutsideIt() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let original = try c.backend.topology()

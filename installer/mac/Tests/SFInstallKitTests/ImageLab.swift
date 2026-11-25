@@ -21,13 +21,13 @@ enum ImageLab {
     static var sweepRecords: Set<UInt64>? {
         ProcessInfo.processInfo.environment["SF_SWEEP_RECORDS"].map { Set($0.split(separator: ",").compactMap { UInt64($0) }) }
     }
-    /// The journal fork-sweep tests (everyJournalState, everyRollbackState). On by default; installer-mac.yml
-    /// sets SF_FAULT_SWEEP=0 because on macos-15 they take ~1.6 hours even with the reduced sample
-    /// (run 45504226352: 2451 s and 3498 s) and the job then hits its 180-minute limit. The M5 runs them.
-    /// The long tier: every image-backed test that runs a whole install or resize (or a sweep or repeat of
-    /// one). On macos-15 each of these costs 10-17 minutes (diskutil/hdiutil/APFS resize are ~14x slower
-    /// than on the M5), so CI sets SF_IMAGE_LONG=0 and keeps only the unit tests and the smoke image tests
-    /// (refusals that stop before the first write). The M5 lane runs everything: `scripts/test-long.sh`.
+    /// The journal fork-sweep tests (everyJournalState, everyRollbackState). On by default; the M5 lane
+    /// runs them. CI does not (SF_IMAGE_TESTS=0 / SF_IMAGE_LONG=0).
+    /// The long tier: every image-backed test (installs, resizes, sweeps, repeats, and the pre-write
+    /// refusals that still attach an APFS image). On macos-15, attach/diskutil is ~20x slower than the
+    /// M5: even the short refusals take minutes (planBinding was 88 s on run 45504226352; the five
+    /// remaining "smoke" image tests in run 45560301367 pushed the job past the 10-15 min target).
+    /// CI sets SF_IMAGE_LONG=0 and SF_IMAGE_TESTS=0. The M5 lane runs everything: `scripts/test-long.sh`.
     static var long: Bool { ProcessInfo.processInfo.environment["SF_IMAGE_LONG"] != "0" }
     static var faultSweep: Bool { ProcessInfo.processInfo.environment["SF_FAULT_SWEEP"] != "0" }
 

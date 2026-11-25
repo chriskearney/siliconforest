@@ -306,7 +306,7 @@ struct FaultInjectionTests {
 
     /// The approved plan binds to the disk: any change to the table, a tampered plan, or a plan
     /// below the live APFS minimum is refused before anything is written.
-    @Test func planBindingRefusesDriftTamperingAndTheLiveMinimum() throws {
+    @Test(.enabled(if: ImageLab.long)) func planBindingRefusesDriftTamperingAndTheLiveMinimum() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let plan = try ImageLab.plan(c, profile: profile)

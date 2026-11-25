@@ -154,7 +154,7 @@ struct KernelCollectionImageTests {
                                              request: InstallRequest(siliconForestBytes: 20 * Bytes.gb, installName: "SiliconForest", installID: "a1b2c3d4"))
     }
 
-    @Test func aCollectionThatDoesNotMatchStopsTheJobBeforeAnyWrite() throws {
+    @Test(.enabled(if: ImageLab.long)) func aCollectionThatDoesNotMatchStopsTheJobBeforeAnyWrite() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let src = c.dir.appendingPathComponent("release")
