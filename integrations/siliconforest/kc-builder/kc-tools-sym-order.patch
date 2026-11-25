@@ -1,0 +1,66 @@
+--- a/lib/linker.c
++++ b/lib/linker.c
+@@ -62,8 +62,40 @@
+   return r;
+ }
+ 
+-static int sym_cmp(const void *a, const void *b) {
+-  return strcmp(((Sym *)a)->name, ((Sym *)b)->name);
++/* Sort the table by name, keeping names defined more than once in the order they were
++ * added (the kernel's first, then each kext's in link order). qsort is not stable: its
++ * order for equal names differs between C libraries (glibc's merge sort keeps insertion
++ * order, Apple's libc does not), and symtab_lookup bisects, so a duplicated name bound
++ * to a different definition depending on the host the collection was linked on. This
++ * merge sort gives glibc's order on every host. Addresses cannot stand in for the order:
++ * the kexts sit below the kernel in the collection. Which copy symtab_lookup's bisection
++ * then finds still depends on the size of the table; this keeps it the same on every host. */
++static void sym_sort_run(Sym *a, Sym *tmp, size_t n) {
++  if (n < 2)
++    return;
++  size_t h = n / 2;
++  sym_sort_run(a, tmp, h);
++  sym_sort_run(a + h, tmp, n - h);
++  if (strcmp(a[h - 1].name, a[h].name) <= 0)
++    return;   /* already in order */
++  memcpy(tmp, a, h * sizeof(Sym));
++  size_t i = 0, j = h, k = 0;
++  while (i < h && j < n)
++    a[k++] = strcmp(a[j].name, tmp[i].name) < 0 ? a[j++] : tmp[i++];   /* ties: left first */
++  while (i < h)
++    a[k++] = tmp[i++];
++}
++
++static void sym_sort(SymTable *st) {
++  if (st->count < 2)
++    return;
++  Sym *tmp = malloc((st->count / 2 + 1) * sizeof(Sym));
++  if (!tmp) {
++    fprintf(stderr, "symtab: out of memory sorting %zu symbols\n", st->count);
++    exit(1);
++  }
++  sym_sort_run(st->syms, tmp, st->count);
++  free(tmp);
+ }
+ 
+ // LC_DYLD_INFO(_ONLY) command + payload (mach-o/loader.h). Defined here so this
+@@ -190,7 +222,7 @@
+                  n.n_value | (mv.cputype == CPU_TYPE_ARM && (n.n_desc & N_ARM_THUMB_DEF) ? 1 : 0));
+   }
+ 
+-  qsort(st->syms, st->count, sizeof(Sym), sym_cmp);
++  sym_sort(st);
+   fprintf(stderr, "symtab: %zu kernel symbols\n", st->count);
+ 
+   return 0;
+@@ -423,10 +455,7 @@
+   }
+ 
+   if (added)
+-    qsort(st->syms,
+-        st->count,
+-        sizeof(Sym),
+-        sym_cmp);
++    sym_sort(st);
+ 
+   fprintf(stderr,
+       " merged %zu symbols from %s\n",

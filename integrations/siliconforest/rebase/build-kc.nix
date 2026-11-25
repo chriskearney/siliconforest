@@ -90,7 +90,9 @@ let
   ] ++ more);
   afterPin = [ "SFTegraSDMMC" "SFGadgetFamily" "SFTegraUSB" "SFTegraXUSB" "SFTegraDisplay" "SFFBSDem" ];
   collection = pkgs.callPackage (pd.outPath + "/nix/pkgs/toolchain/kc-arm64.nix") {
-    kcTools = import ../m1-bringup/kc-tools-fixed.nix;
+    # kc-tools-fixed.nix plus the host-independent symbol order (../kc-builder/README.md): the same bytes
+    # on glibc, and the same bytes again when the installer links this collection on macOS
+    kcTools = import ../kc-builder/build-tools.nix;
     inherit kernel kexts;
     kernelSource = kernel.src;
     kcBase = "fffffe0006000000";

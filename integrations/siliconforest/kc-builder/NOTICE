@@ -1,0 +1,5 @@
+kc-tools-sym-order.patch modifies PureDarwin kc-tools (https://github.com/PureDarwin/kc-tools,
+revision 05e5ed6a42533cfc4330559484e74b6dedeae51e), Copyright (c) 2026, Vali0004, BSD-3-Clause
+(LICENSES/third-party, and the LICENSE file prepare_source.py copies next to the source). The patch is
+offered under the same BSD-3-Clause terms. The other files here are MIT (SPDX headers).
+No kc-tools source, kernel, kext or collection is stored in this directory.

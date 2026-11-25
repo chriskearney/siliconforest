@@ -1,0 +1,89 @@
+name: kc-builder (Linux and macOS agree)
+
+# The installer links the kernel collection on the user's Mac (docs/installer/PAYLOAD.md, "Kernel
+# collection"). kc-builder must order symbols the same on glibc and Apple's libc, or a name defined twice
+# binds differently and the Mac's collection is not the one the release vouches for.
+#
+# Both jobs build kc-tools at the locked revision with ../integrations/siliconforest/kc-builder's patches
+# and run its symbol-order harness, which prints a digest of a fixed table sequence; the last job
+# requires the two digests to be equal. The macOS job also builds the installer's kc-builder (ad-hoc
+# signed here; the release workflow signs it with the Developer ID identity). The whole-collection check
+# needs the release's kernel and bundles, which are not in this repository: the builder runs it
+# (kc-builder/README.md, "Proof").
+on:
+  push:
+    paths:
+      - "integrations/siliconforest/kc-builder/**"
+      - "integrations/siliconforest/m1-bringup/kc-tools-arm64-text.patch"
+      - ".github/workflows/kc-builder.yml"
+  pull_request:
+    paths:
+      - "integrations/siliconforest/kc-builder/**"
+      - "integrations/siliconforest/m1-bringup/kc-tools-arm64-text.patch"
+      - ".github/workflows/kc-builder.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kc-builder-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux (glibc)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Symbol order harness
+        id: digest
+        run: |
+          d=$(python3 integrations/siliconforest/kc-builder/test_sym_order.py --digest | awk '/^sym-order-digest/ {print $2}')
+          test -n "$d"
+          echo "digest=$d" >> "$GITHUB_OUTPUT"
+      - name: kc-builder compiles (CMake, as Nix builds it)
+        run: |
+          python3 integrations/siliconforest/kc-builder/prepare_source.py "$RUNNER_TEMP/kc-tools"
+          cmake -S "$RUNNER_TEMP/kc-tools" -B "$RUNNER_TEMP/kc-build" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/kc-build" --target kc-builder
+          sha256sum "$RUNNER_TEMP/kc-build/kc-builder"
+
+  macos:
+    name: macOS (Apple silicon, Apple libc)
+    runs-on: macos-15
+    timeout-minutes: 20
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm Apple silicon
+        run: test "$(uname -m)" = arm64
+      - name: Symbol order harness
+        id: digest
+        run: |
+          d=$(python3 integrations/siliconforest/kc-builder/test_sym_order.py --digest | awk '/^sym-order-digest/ {print $2}')
+          test -n "$d"
+          echo "digest=$d" >> "$GITHUB_OUTPUT"
+      - name: Build the installer's kc-builder (ad-hoc signature)
+        run: |
+          integrations/siliconforest/kc-builder/build-macos.sh "$RUNNER_TEMP/kc-builder-macos"
+          test "$(cat "$RUNNER_TEMP/kc-builder-macos/kc-builder.signing")" = ad-hoc
+          lipo -archs "$RUNNER_TEMP/kc-builder-macos/kc-builder" | grep -qx arm64
+
+  agree:
+    name: Same symbol order on both
+    needs: [linux, macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Compare digests
+        env:
+          LINUX: ${{ needs.linux.outputs.digest }}
+          MACOS: ${{ needs.macos.outputs.digest }}
+        run: |
+          echo "linux $LINUX"
+          echo "macos $MACOS"
+          test -n "$LINUX" && test "$LINUX" = "$MACOS"
