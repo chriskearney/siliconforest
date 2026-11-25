@@ -1,0 +1,28 @@
+# Command sequence of SFStub with the SiliconForest payload on a disk-image APFS container, normalised as in
+# asahi-v0.9.2-commands.txt (N3, N6, <VGID>). It equals Asahi v0.9.2's sequence except the os.chflags lines of
+# the copied app tree (SiliconForest Setup.app instead of Finish Installation.app): stubtree.py sf-ops, D5.
+# Recorded on the M5 (macOS 26.5), run stubdiff-20261124-232503, with the synthetic icon, stage 1, SFRecovery
+# stand-in and plan.json the script generates. Contains no Apple data.
+diskutil apfs changeVolumeRole <DATA> D
+diskutil rename <DATA> SiliconForest - Data
+diskutil apfs addVolume <CONTAINER> apfs SiliconForest -role S -groupWith <DATA>
+diskutil apfs addVolume <CONTAINER> apfs Preboot -role B
+diskutil apfs addVolume <CONTAINER> apfs Recovery -role R
+diskutil mount <PREBOOT>
+diskutil mount <RECOVERY>
+diskutil mount <SYSTEM>
+diskutil mount <DATA>
+xattr -wx com.apple.FinderInfo 0000000000000000040000000000000000000000000000000000000000000000 <System>
+fsctl APFSIOC_VOL_BOOTABLE <System> 1
+chflags schg <Preboot>/<VGID>/var/db/AdminUserRecoveryInfo.plist
+xattr -wx com.apple.decmpfs 66706D630C0000009876306c00000000 <Recovery>/<VGID>/usr/standalone/firmware/arm64eBaseSystem.dmg
+os.chflags <Recovery>/<VGID>/usr/standalone/firmware/arm64eBaseSystem.dmg 0x20
+os.chflags <System>/SiliconForest Setup.app/Contents/MacOS/sf-launcher 0x0
+os.chflags <System>/SiliconForest Setup.app/Contents/MacOS/SFRecovery 0x0
+os.chflags <System>/SiliconForest Setup.app/Contents/MacOS 0x0
+os.chflags <System>/SiliconForest Setup.app/Contents/Resources/sf-step2.sh 0x0
+os.chflags <System>/SiliconForest Setup.app/Contents/Resources 0x0
+os.chflags <System>/SiliconForest Setup.app/Contents/Info.plist 0x0
+os.chflags <System>/SiliconForest Setup.app/Contents 0x0
+os.chflags <System>/SiliconForest Setup.app 0x0
+m1n1.build

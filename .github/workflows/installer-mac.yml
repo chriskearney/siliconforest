@@ -106,12 +106,13 @@ jobs:
           unset SF_REAL_DISK_WRITES || true
           unset SF_ALLOW_REAL_DISK_WRITES || true
           swift build --product sfstubctl
-          swift test --no-parallel --filter 'StubReaderTests|StubBuildTests'
+          swift test --no-parallel --filter 'StubReaderTests|StubBuildTests|SFPayloadTests'
 
-      - name: Check the differential-test scripts parse
+      - name: Check the differential-test scripts and the delta check
         working-directory: installer/mac
         shell: bash
         run: |
           set -euo pipefail
           python3 -m py_compile Tests/StubDifferential/asahi_oracle.py Tests/StubDifferential/stubtree.py
+          python3 Tests/StubDifferential/test_stubtree.py   # the delta check accepts the declared delta and rejects anything else
           bash -n scripts/stub-differential.sh

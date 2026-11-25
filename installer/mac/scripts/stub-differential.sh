@@ -16,6 +16,10 @@
 #   SF_STUB_OUT    output directory (default ~/sf-payload-work/stubdiff/<run>)
 #   SF_KEEP=1      leave the images attached
 #   SF_ORACLE_FROM reuse the oracle side (oracle.json, oracle.ops, oracle-tree.json) of an earlier run's output
+#   SF_PAYLOAD     asahi | sf | both (default both). asahi: SFStub with Asahi's own payload must equal the oracle
+#                  exactly (the port's proof). sf: SFStub with the SiliconForest payload must differ from the
+#                  oracle by exactly the delta in fixtures/sf-payload-delta.json (stubtree.py docstring D1-D5).
+#   SF_RECOVERY_BIN a built SFRecovery to carry instead of the synthetic stand-in
 set -euo pipefail
 cd "$(dirname "$0")/.."
 MAC="$(pwd)"
@@ -47,13 +51,16 @@ def blob(seed, n):
     return b[:n]
 open(os.path.join(out, "test-volume-icon.icns"), "wb").write(b"icns" + (4104).to_bytes(4, "big") + blob("icon", 4096))
 open(os.path.join(out, "test-stage1.bin"), "wb").write(blob("stage1-placeholder", 262144))
+open(os.path.join(out, "test-sf-icon.icns"), "wb").write(b"icns" + (4104).to_bytes(4, "big") + blob("sf-icon", 4096))
+open(os.path.join(out, "test-sfrecovery"), "wb").write(blob("sfrecovery-placeholder", 20000))
+open(os.path.join(out, "test-plan.json"), "w").write('{"boot":"00000000-5f00-4000-8000-000000000001","installID":"TEST-INSTALL","job":"TEST-JOB","planDigest":"TEST-DIGEST","root":"TEST-ROOT","stub":"TEST-STUB"}')
 PY
 ADMIN="$DIFF/fixtures/AdminUserRecoveryInfo.plist"
 VARS=(--var "chosen.asahi,efi-system-partition=00000000-5f00-4000-8000-000000000001"
       --var "chainload=00000000-5f00-4000-8000-000000000001;sf/boot.bin")
 cleanup() {
   [ "${SF_KEEP:-0}" = 1 ] && return
-  for i in oracle sfstub; do [ -e "$RUN/$i.sparseimage" ] && "$BIN" detach --path "$RUN/$i.sparseimage" --images-root "$IMAGES" >/dev/null 2>&1 || true; done
+  for i in oracle sfstub sfpayload; do [ -e "$RUN/$i.sparseimage" ] && "$BIN" detach --path "$RUN/$i.sparseimage" --images-root "$IMAGES" >/dev/null 2>&1 || true; done
 }
 trap cleanup EXIT
 store() { python3 -c 'import json,sys;print(json.load(sys.stdin)["store"])'; }
@@ -61,7 +68,7 @@ store() { python3 -c 'import json,sys;print(json.load(sys.stdin)["store"])'; }
 if [ -n "${SF_ORACLE_FROM:-}" ]; then
   echo "== A: reusing the oracle from $SF_ORACLE_FROM"
   cp "$SF_ORACLE_FROM"/oracle.json "$SF_ORACLE_FROM"/oracle.ops "$SF_ORACLE_FROM"/oracle-tree.json "$OUT/"
-  cp "$SF_ORACLE_FROM"/test-volume-icon.icns "$SF_ORACLE_FROM"/test-stage1.bin "$OUT/"
+  cp "$SF_ORACLE_FROM"/test-volume-icon.icns "$SF_ORACLE_FROM"/test-stage1.bin "$OUT/"   # same bytes as regenerated above
 else
 echo "== A: Asahi v0.9.2 oracle"
 STORE_A=$("$BIN" make-image --path "$RUN/oracle.sparseimage" --label SiliconForest --bytes "$STUB_BYTES" --images-root "$IMAGES" | store)
@@ -72,7 +79,12 @@ sudo -n /usr/bin/env python3 "$DIFF/stubtree.py" dump --info "$OUT/oracle.json" 
 [ "${SF_KEEP:-0}" = 1 ] || "$BIN" detach --path "$RUN/oracle.sparseimage" --images-root "$IMAGES"
 fi
 
-echo "== B: SFStub"
+MODE="${SF_PAYLOAD:-both}"
+rc=0
+: > "$OUT/report.txt"
+
+if [ "$MODE" = asahi ] || [ "$MODE" = both ]; then
+echo "== B: SFStub, Asahi payload (must equal the oracle)"
 STORE_B=$("$BIN" make-image --path "$RUN/sfstub.sparseimage" --label SiliconForest --bytes "$STUB_BYTES" --images-root "$IMAGES" | store)
 APP="$ASAHI/src/step2/Finish Installation.app"
 sudo -n "$BIN" build --profile "$PROFILE" --work "$WORK" --store "$STORE_B" --label SiliconForest --images-root "$IMAGES" \
@@ -83,11 +95,30 @@ sudo -n "$BIN" build --profile "$PROFILE" --work "$WORK" --store "$STORE_B" --la
   --boot-object-path Contents/Resources/boot.bin --stage1 "$OUT/test-stage1.bin" "${VARS[@]}" \
   --ops "$OUT/sfstub.ops" --out "$OUT/sfstub.json" > "$OUT/sfstub.log" 2>&1 || { tail -30 "$OUT/sfstub.log"; exit 1; }
 sudo -n /usr/bin/env python3 "$DIFF/stubtree.py" dump --info "$OUT/sfstub.json" --store "$STORE_B" --out "$OUT/sfstub-tree.json"
-
-echo "== compare"
-rc=0
+[ "${SF_KEEP:-0}" = 1 ] || "$BIN" detach --path "$RUN/sfstub.sparseimage" --images-root "$IMAGES"
+echo "== compare: Asahi payload"
 python3 "$DIFF/stubtree.py" compare "$OUT/oracle-tree.json" "$OUT/sfstub-tree.json" --report "$OUT/report.txt" || rc=1
 python3 "$DIFF/stubtree.py" ops "$OUT/oracle.ops" "$OUT/oracle.json" "$OUT/sfstub.ops" "$OUT/sfstub.json" \
   --fixture "$DIFF/fixtures/asahi-v0.9.2-commands.txt" | tee -a "$OUT/report.txt" || rc=1
+fi
+
+if [ "$MODE" = sf ] || [ "$MODE" = both ]; then
+echo "== C: SFStub, SiliconForest payload (must differ by exactly the declared delta)"
+STORE_C=$("$BIN" make-image --path "$RUN/sfpayload.sparseimage" --label SiliconForest --bytes "$STUB_BYTES" --images-root "$IMAGES" | store)
+SFREC="${SF_RECOVERY_BIN:-$OUT/test-sfrecovery}"
+sudo -n "$BIN" build --profile "$PROFILE" --work "$WORK" --store "$STORE_C" --label SiliconForest --images-root "$IMAGES" \
+  --admin-users "$ADMIN" --icon "$OUT/test-sf-icon.icns" \
+  --sf-launcher "$MAC/Recovery/sf-launcher" --sf-step2 "$MAC/Recovery/sf-step2.sh" --sf-recovery "$SFREC" \
+  --sf-stage1 "$OUT/test-stage1.bin" --sf-boot-partuuid 00000000-5f00-4000-8000-000000000001 --sf-plan "$OUT/test-plan.json" \
+  --payload-manifest "$OUT/sf-payload-manifest.json" \
+  --ops "$OUT/sfpayload.ops" --out "$OUT/sfpayload.json" > "$OUT/sfpayload.log" 2>&1 || { tail -30 "$OUT/sfpayload.log"; exit 1; }
+sudo -n /usr/bin/env python3 "$DIFF/stubtree.py" dump --info "$OUT/sfpayload.json" --store "$STORE_C" --out "$OUT/sfpayload-tree.json"
+[ "${SF_KEEP:-0}" = 1 ] || "$BIN" detach --path "$RUN/sfpayload.sparseimage" --images-root "$IMAGES"
+echo "== compare: SiliconForest payload vs the Asahi baseline"
+python3 "$DIFF/stubtree.py" sf-compare "$OUT/oracle-tree.json" "$OUT/sfpayload-tree.json" \
+  --delta "$DIFF/fixtures/sf-payload-delta.json" --manifest "$OUT/sf-payload-manifest.json" --report "$OUT/report-sf.txt" || rc=1
+python3 "$DIFF/stubtree.py" sf-ops "$OUT/oracle.ops" "$OUT/oracle.json" "$OUT/sfpayload.ops" "$OUT/sfpayload.json" \
+  --delta "$DIFF/fixtures/sf-payload-delta.json" --fixture "$DIFF/fixtures/sf-payload-commands.txt" | tee -a "$OUT/report-sf.txt" || rc=1
+fi
 echo "output: $OUT"
 exit $rc

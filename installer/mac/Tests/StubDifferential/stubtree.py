@@ -6,6 +6,8 @@
   stubtree.py dump --info build.json --store diskNsM --out tree.json
   stubtree.py compare A.json B.json [--report report.md]
   stubtree.py ops A.ops A-build.json B.ops B-build.json [--fixture asahi-v0.9.2-commands.txt]
+  stubtree.py sf-compare ASAHI-tree.json SF-tree.json --delta sf-payload-delta.json --manifest payload-manifest.json [--report R]
+  stubtree.py sf-ops ASAHI.ops ASAHI-build.json SF.ops SF-build.json --delta sf-payload-delta.json [--fixture sf-payload-commands.txt]
 
 The dump records, for every entry of the four volumes (System, Data, Preboot, Recovery): its path, type,
 permission bits, owner, group, BSD flags, every extended attribute (read with XATTR_SHOWCOMPRESSION, so the
@@ -26,18 +28,35 @@ NORMALISATIONS, the complete list (anything else that differs is a failure):
      excluded from the comparison.
   N6 Disk identifiers in the command sequence: replaced by the volume's role (<CONTAINER>, <DATA>, ...).
 Every file whose contents N1 or N2 changed is named in the report.
+
+THE SILICONFOREST PAYLOAD (sf-compare, sf-ops): the baseline is Asahi's tree, the other side is SFStub with the
+SiliconForest payload. The only differences allowed are the ones sf-payload-delta.json declares:
+  D1 Everything under the Asahi prefix (Finish Installation.app) is absent from the SF side, and everything
+     under the SF prefixes (SiliconForest Setup.app, SFInstall) is absent from the Asahi side.
+  D2 Two paths exist on both sides and may differ in size and content only (.VolumeIcon.icns, .IAPhysicalMedia);
+     type, mode, owner, flags and xattrs must still be equal.
+  D3 The SF-owned entries are exactly the payload manifest (sfstubctl --payload-manifest): same paths, types,
+     modes, sizes and SHA-256, with nothing extra and nothing missing.
+  D4 The boot object is byte-identical on both sides (same synthetic stage 1, same variables).
+  D5 In the command sequence, the `os.chflags` lines of the copied app tree differ (different tree) and nothing
+     else; the SF sequence equals the committed sf-payload-commands.txt.
+Every other entry, all four volumes' names, roles, group, bootable flag, and the container size are equal.
 """
 import ctypes, hashlib, json, os, plistlib, stat, subprocess, sys
 
 OS_ARTIFACTS = {".fseventsd", ".Spotlight-V100", ".Trashes", ".TemporaryItems", ".DocumentRevisions-V100"}
 XATTR_NOFOLLOW, XATTR_SHOWCOMPRESSION = 0x0001, 0x0020
-libc = ctypes.CDLL("libSystem.B.dylib", use_errno=True)
-libc.listxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_size_t, ctypes.c_int]
-libc.listxattr.restype = ctypes.c_ssize_t
-libc.getxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int]
-libc.getxattr.restype = ctypes.c_ssize_t
-libc.fsctl.argtypes = [ctypes.c_char_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_int), ctypes.c_uint]
-libc.fsctl.restype = ctypes.c_int
+try:
+    libc = ctypes.CDLL("libSystem.B.dylib", use_errno=True)   # macOS only: dump needs it, the comparisons do not
+except OSError:
+    libc = None
+if libc is not None:
+    libc.listxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_size_t, ctypes.c_int]
+    libc.listxattr.restype = ctypes.c_ssize_t
+    libc.getxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int]
+    libc.getxattr.restype = ctypes.c_ssize_t
+    libc.fsctl.argtypes = [ctypes.c_char_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_int), ctypes.c_uint]
+    libc.fsctl.restype = ctypes.c_int
 
 
 def xattrs(path):
@@ -191,6 +210,118 @@ def compare(a_path, b_path, report=None):
     return 0 if not diffs else 1
 
 
+def _owned(key, prefixes):
+    return any(key == p or key.startswith(p + "/") for p in prefixes)
+
+
+def sf_compare(a_path, b_path, delta_path, manifest_path, report=None):
+    a, b = json.load(open(a_path)), json.load(open(b_path))
+    dl, man = json.load(open(delta_path)), json.load(open(manifest_path))
+    A, B = a["entries"], b["entries"]
+    diffs, notes = [], []
+    asahi, sf, only_content = dl["asahi_prefixes"], dl["sf_prefixes"], set(dl["content_only"])
+    # D1
+    a_own = sorted(k for k in A if _owned(k, asahi))
+    b_own = sorted(k for k in B if _owned(k, sf))
+    diffs += [f"Asahi payload entry on the SF side: {k}" for k in B if _owned(k, asahi)]
+    diffs += [f"SF payload entry on the Asahi side: {k}" for k in A if _owned(k, sf)]
+    if not a_own:
+        diffs.append("baseline has no Asahi payload (wrong baseline?)")
+    # everything else equal
+    rest_a = {k: v for k, v in A.items() if not _owned(k, asahi) and k not in only_content}
+    rest_b = {k: v for k, v in B.items() if not _owned(k, sf) and k not in only_content}
+    for k in sorted(set(rest_a) - set(rest_b)):
+        diffs.append(f"only in baseline: {k}")
+    for k in sorted(set(rest_b) - set(rest_a)):
+        diffs.append(f"only on the SF side: {k}")
+    for k in sorted(set(rest_a) & set(rest_b)):
+        for f in sorted(set(rest_a[k]) | set(rest_b[k])):
+            if rest_a[k].get(f) != rest_b[k].get(f):
+                diffs.append(f"{k}: {f}: {rest_a[k].get(f)} != {rest_b[k].get(f)}")
+    # D2
+    for k in sorted(only_content):
+        if k not in A or k not in B:
+            diffs.append(f"{k} missing on one side"); continue
+        for f in sorted((set(A[k]) | set(B[k])) - {"sha256", "size"}):
+            if A[k].get(f) != B[k].get(f):
+                diffs.append(f"{k}: {f}: {A[k].get(f)} != {B[k].get(f)}")
+    # D3
+    want = {}
+    for m in man["entries"]:
+        want["System:/" + m["path"]] = m
+    got = {k for k in B if _owned(k, sf)} | {k for k in only_content}
+    for k in sorted(set(want) - got):
+        diffs.append(f"in the payload manifest but not on the stub: {k}")
+    for k in sorted(got - set(want)):
+        diffs.append(f"on the stub but not in the payload manifest: {k}")
+    for k, m in sorted(want.items()):
+        e = B.get(k)
+        if not e:
+            continue
+        if e["type"] != m["type"]:
+            diffs.append(f"{k}: type {e['type']} != manifest {m['type']}")
+        if int(e["mode"], 8) != m["mode"]:
+            diffs.append(f"{k}: mode {e['mode']} != manifest {oct(m['mode'])}")
+        if m["type"] == "file":
+            if e.get("sha256") != m["sha256"] or e.get("size") != m["size"]:
+                diffs.append(f"{k}: content differs from the payload manifest")
+    # D4
+    ba, bb = A.get(dl["boot_object"]["asahi"]), B.get(dl["boot_object"]["sf"])
+    if not ba or not bb or ba["sha256"] != bb["sha256"] or ba["size"] != bb["size"]:
+        diffs.append("boot objects are not byte-identical")
+    # volumes, container, normalisation
+    for k in sorted(set(a["volumes"]) | set(b["volumes"])):
+        if a["volumes"].get(k) != b["volumes"].get(k):
+            diffs.append(f"volume {k}: {a['volumes'].get(k)} != {b['volumes'].get(k)}")
+    if a.get("container_bytes") != b.get("container_bytes"):
+        diffs.append(f"container size {a.get('container_bytes')} != {b.get('container_bytes')}")
+    if a["artifacts"] != b["artifacts"]:
+        diffs.append(f"OS-created root entries differ: {a['artifacts']} != {b['artifacts']}")
+    if a["normalised_contents"] != dl["normalised_asahi"] or b["normalised_contents"]:
+        diffs.append(f"normalised contents: baseline {a['normalised_contents']} (expected {dl['normalised_asahi']}), SF {b['normalised_contents']} (expected none)")
+    notes = [f"baseline entries {len(A)}, SF entries {len(B)}",
+             f"D1 removed ({len(a_own)}): {a_own}", f"D1 added ({len(b_own)}): {b_own}",
+             f"D2 content-only: {sorted(only_content)}",
+             f"D3 manifest entries {len(want)} all matched" if not [d for d in diffs if 'manifest' in d] else "D3 FAILED",
+             f"D4 boot object {bb['sha256'][:16] if bb else '?'} identical" if bb and ba and ba['sha256'] == bb['sha256'] else "D4 FAILED",
+             f"volumes: {json.dumps(b['volumes'], sort_keys=True)}"]
+    text = "\n".join(notes + [f"differences beyond the declared delta: {len(diffs)}"] + [f"  {d}" for d in diffs[:200]]) + "\n"
+    print(text)
+    if report:
+        open(report, "w").write(text)
+    return 0 if not diffs else 1
+
+
+def sf_ops(a_ops, a_info, b_ops, b_info, delta_path, fixture=None):
+    dl = json.load(open(delta_path))
+    A, B = norm_ops(a_ops, a_info), norm_ops(b_ops, b_info)
+    def is_app(l, name):
+        return l.startswith("os.chflags <System>/" + name)
+    a_app = [l for l in A if is_app(l, dl["asahi_app"])]
+    b_app = [l for l in B if is_app(l, dl["sf_app"])]
+    rest_a = [l for l in A if not is_app(l, dl["asahi_app"])]
+    rest_b = [l for l in B if not is_app(l, dl["sf_app"])]
+    rc = 0
+    if rest_a != rest_b:
+        rc = 1
+        import difflib
+        print("\n".join(difflib.unified_diff(rest_a, rest_b, "asahi", "sf", lineterm="")))
+    else:
+        print(f"command sequences equal apart from the app tree's os.chflags lines ({len(rest_a)} commands; {len(a_app)} Asahi app lines vs {len(b_app)} SiliconForest app lines)")
+    if fixture:
+        if os.path.exists(fixture):
+            F = [l for l in open(fixture).read().splitlines() if l and not l.startswith("#")]
+            if F != B:
+                rc = 1
+                print("SF sequence differs from the committed fixture")
+            else:
+                print("matches fixture", fixture)
+        else:
+            print("fixture missing:", fixture)
+            rc = 1
+    return rc
+
+
 def norm_ops(ops_path, info_path):
     info = json.load(open(info_path))
     subs = sorted(((r, f"<{v}>") for v, r in info["roots"].items()), key=lambda x: -len(x[0]))
@@ -237,6 +368,13 @@ if __name__ == "__main__":
     elif cmd == "compare":
         rep = sys.argv[sys.argv.index("--report") + 1] if "--report" in sys.argv else None
         sys.exit(compare(sys.argv[2], sys.argv[3], rep))
+    elif cmd == "sf-compare":
+        g = lambda k: sys.argv[sys.argv.index(k) + 1]
+        rep = g("--report") if "--report" in sys.argv else None
+        sys.exit(sf_compare(sys.argv[2], sys.argv[3], g("--delta"), g("--manifest"), rep))
+    elif cmd == "sf-ops":
+        fx = sys.argv[sys.argv.index("--fixture") + 1] if "--fixture" in sys.argv else None
+        sys.exit(sf_ops(*sys.argv[2:6], sys.argv[sys.argv.index("--delta") + 1], fixture=fx))
     elif cmd == "ops":
         fx = sys.argv[sys.argv.index("--fixture") + 1] if "--fixture" in sys.argv else None
         sys.exit(ops(*sys.argv[2:6], fixture=fx))

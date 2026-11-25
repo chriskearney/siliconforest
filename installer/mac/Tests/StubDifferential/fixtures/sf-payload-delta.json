@@ -1,0 +1,13 @@
+{
+  "_comment": "The complete, declared difference between Asahi v0.9.2's stub and SFStub's with the SiliconForest payload (stubtree.py sf-compare / sf-ops, docstring D1-D5). Anything not listed here must be equal.",
+  "asahi_prefixes": ["System:/Finish Installation.app"],
+  "sf_prefixes": ["System:/SiliconForest Setup.app", "System:/SFInstall"],
+  "content_only": ["System:/.VolumeIcon.icns", "System:/.IAPhysicalMedia"],
+  "boot_object": {
+    "asahi": "System:/Finish Installation.app/Contents/Resources/boot.bin",
+    "sf": "System:/SiliconForest Setup.app/Contents/Resources/boot.bin"
+  },
+  "normalised_asahi": ["System:/Finish Installation.app/Contents/Resources/step2.sh"],
+  "asahi_app": "Finish Installation.app",
+  "sf_app": "SiliconForest Setup.app"
+}
