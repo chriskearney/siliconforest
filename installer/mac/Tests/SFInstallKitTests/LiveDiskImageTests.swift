@@ -45,7 +45,7 @@ enum LiveLab {
 @Suite("Live backend on disk images", .serialized, .enabled(if: ImageLab.enabled))
 struct LiveBackendImageTests {
 
-    @Test func theWholeInstallAndRemovalRunThroughTheLiveBackend() throws {
+    @Test(.enabled(if: ImageLab.long)) func theWholeInstallAndRemovalRunThroughTheLiveBackend() throws {
         for layout in [ImageFixtures.Layout.j293, .j313] {
             let c = try ImageLab.fresh(layout); defer { c.finish() }
             let profile = try ImageLab.profile(layout == .j293 ? "J293" : "J313")
@@ -80,7 +80,7 @@ struct LiveBackendImageTests {
         }
     }
 
-    @Test func refusesLinuxAppleAndEveryDiskThatIsNotTheTarget() throws {
+    @Test(.enabled(if: ImageLab.long)) func refusesLinuxAppleAndEveryDiskThatIsNotTheTarget() throws {
         let c = try ImageLab.fresh(.j313); defer { c.finish() }
         let profile = try ImageLab.profile("J313")
         let original = try c.backend.topology()
@@ -206,7 +206,7 @@ struct LiveBackendImageTests {
         #expect(try LiveLab.engine(c, live: LiveLab.live(c), release: rel, journal: try ChainJournal(directory: c.journalDir, jobID: j.jobID), profile: profile).rollback() == .rolledBack)
     }
 
-    @Test func aRootImageDamagedOrNotTheManifestsIsRefusedBeforeTheFirstByteIsWritten() throws {
+    @Test(.enabled(if: ImageLab.long)) func aRootImageDamagedOrNotTheManifestsIsRefusedBeforeTheFirstByteIsWritten() throws {
         for mode in ["tamper-after-verify", "manifest-hash-differs", "manifest-length-differs"] {
             let c = try ImageLab.fresh(.j293); defer { c.finish() }
             let profile = try ImageLab.profile()
@@ -267,7 +267,7 @@ struct LiveBackendImageTests {
         #expect(try c.backend.freshTopology().digestForm == original.digestForm)
     }
 
-    @Test func aHelperWithALiveTargetRunsAJobOverXPC() throws {
+    @Test(.enabled(if: ImageLab.long)) func aHelperWithALiveTargetRunsAJobOverXPC() throws {
         let c = try ImageLab.fresh(.j313); defer { c.finish() }
         let rel = try ImageLab.release()
         let profile = try ImageLab.profile("J313")
@@ -299,7 +299,7 @@ struct LiveBackendImageTests {
 @Suite("Live backend: fault injection on disk images", .serialized, .enabled(if: ImageLab.enabled))
 struct LiveBackendFaultTests {
 
-    @Test func failingDiskutilStopsThenRollBackOrTryAgain() throws {
+    @Test(.enabled(if: ImageLab.long)) func failingDiskutilStopsThenRollBackOrTryAgain() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let original = try c.backend.topology()
@@ -324,7 +324,7 @@ struct LiveBackendFaultTests {
         #expect(try again.run() == .handedOff)
     }
 
-    @Test func aWriteThatFailsHalfwayOrWritesABadBitIsNeverTrusted() throws {
+    @Test(.enabled(if: ImageLab.long)) func aWriteThatFailsHalfwayOrWritesABadBitIsNeverTrusted() throws {
         for fault in ["short-write", "flipped-bit"] {
             let c = try ImageLab.fresh(.j293); defer { c.finish() }
             let profile = try ImageLab.profile()
@@ -345,7 +345,7 @@ struct LiveBackendFaultTests {
         }
     }
 
-    @Test(.enabled(if: LiveLab.heavy)) func powerLossAfterEachDiskStepResumesThroughTheLiveBackend() throws {
+    @Test(.enabled(if: LiveLab.heavy), .enabled(if: ImageLab.long)) func powerLossAfterEachDiskStepResumesThroughTheLiveBackend() throws {
         let c = try ImageLab.fresh(.j313); defer { c.finish() }
         let profile = try ImageLab.profile("J313")
         let original = try c.backend.topology()
@@ -369,7 +369,7 @@ struct LiveBackendFaultTests {
         #expect(live.chokepoint.tripped == nil)
     }
 
-    @Test func aFailedResizeIsReportedAndNothingElseRuns() throws {
+    @Test(.enabled(if: ImageLab.long)) func aFailedResizeIsReportedAndNothingElseRuns() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let original = try c.backend.topology()
@@ -390,7 +390,7 @@ struct LiveBackendFaultTests {
     /// The fork sweep of `FaultInjectionTests`, through the live backend: after each sampled journal
     /// record the image and journal are forked as a crash would leave them; on the fork a fresh engine
     /// must resume to the end, and on a second fork roll back to the original table.
-    @Test(.enabled(if: LiveLab.heavy)) func everySampledJournalStateHasAWayForwardAndBackThroughTheLiveBackend() throws {
+    @Test(.enabled(if: LiveLab.heavy), .enabled(if: ImageLab.long)) func everySampledJournalStateHasAWayForwardAndBackThroughTheLiveBackend() throws {
         let c = try ImageLab.fresh(.j313); defer { c.finish() }
         let profile = try ImageLab.profile("J313")
         let original = try c.backend.topology()

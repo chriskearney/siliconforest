@@ -173,7 +173,7 @@ struct KernelCollectionImageTests {
         #expect(c.backend.chokepoint.records.isEmpty)
     }
 
-    @Test func installWritesThePersonalisedPDSFKernel() throws {
+    @Test(.enabled(if: ImageLab.long)) func installWritesThePersonalisedPDSFKernel() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let src = c.dir.appendingPathComponent("release")

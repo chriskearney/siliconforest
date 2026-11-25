@@ -24,6 +24,11 @@ enum ImageLab {
     /// The journal fork-sweep tests (everyJournalState, everyRollbackState). On by default; installer-mac.yml
     /// sets SF_FAULT_SWEEP=0 because on macos-15 they take ~1.6 hours even with the reduced sample
     /// (run 45504226352: 2451 s and 3498 s) and the job then hits its 180-minute limit. The M5 runs them.
+    /// The long tier: every image-backed test that runs a whole install or resize (or a sweep or repeat of
+    /// one). On macos-15 each of these costs 10-17 minutes (diskutil/hdiutil/APFS resize are ~14x slower
+    /// than on the M5), so CI sets SF_IMAGE_LONG=0 and keeps only the unit tests and the smoke image tests
+    /// (refusals that stop before the first write). The M5 lane runs everything: `scripts/test-long.sh`.
+    static var long: Bool { ProcessInfo.processInfo.environment["SF_IMAGE_LONG"] != "0" }
     static var faultSweep: Bool { ProcessInfo.processInfo.environment["SF_FAULT_SWEEP"] != "0" }
 
     static func template(_ layout: ImageFixtures.Layout) throws -> URL {

@@ -69,7 +69,7 @@ struct FaultInjectionTests {
     /// journal exactly as a crash at that record would leave them — and on the fork a fresh engine
     /// must (a) resume to the end and (b), on a second fork, roll back to the original partition
     /// table. Every record with SF_FULL_SWEEP=1; a fixed sample otherwise.
-    @Test(.enabled(if: ImageLab.faultSweep), .timeLimit(.minutes(60))) func everyJournalStateHasAWayForwardAndBack() throws {
+    @Test(.enabled(if: ImageLab.faultSweep), .enabled(if: ImageLab.long), .timeLimit(.minutes(60))) func everyJournalStateHasAWayForwardAndBack() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let original = try c.backend.topology()
@@ -114,7 +114,7 @@ struct FaultInjectionTests {
 
     /// The same for a rollback: fork after each rollback record; each fork's rollback, resumed by a
     /// fresh engine, must finish and restore the table (J313, so Linux must also be untouched).
-    @Test(.enabled(if: ImageLab.faultSweep), .timeLimit(.minutes(60))) func everyRollbackStateFinishes() throws {
+    @Test(.enabled(if: ImageLab.faultSweep), .enabled(if: ImageLab.long), .timeLimit(.minutes(60))) func everyRollbackStateFinishes() throws {
         let c = try ImageLab.fresh(.j313); defer { c.finish() }
         let profile = try ImageLab.profile("J313")
         let original = try c.backend.topology()
@@ -150,7 +150,7 @@ struct FaultInjectionTests {
 
     /// Power cut (forced detach) right after the command of each disk step; the image comes back
     /// with new diskN numbers, and the engine finds everything again by UUID.
-    @Test func powerLossAfterEachDiskStepResumes() throws {
+    @Test(.enabled(if: ImageLab.long)) func powerLossAfterEachDiskStepResumes() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let plan = try ImageLab.plan(c, profile: profile)
@@ -184,7 +184,7 @@ struct FaultInjectionTests {
 
     /// diskutil fails creating the root: the step stops with the real error; Roll Back restores the
     /// table, and on a second copy Try Again finishes.
-    @Test func failingDiskutilStopsThenRollBackOrTryAgain() throws {
+    @Test(.enabled(if: ImageLab.long)) func failingDiskutilStopsThenRollBackOrTryAgain() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let original = try c.backend.topology()
@@ -213,7 +213,7 @@ struct FaultInjectionTests {
     /// Resize: a known diskutil failure is classified (First Aid, nothing changed); a hang is
     /// reported and never killed; the helper dying mid-resize leaves diskutil running and the
     /// next engine reattaches; the topology showing the target before exit counts as done (#391).
-    @Test func resizeFailureHangDeathAndEarlyCompletion() throws {
+    @Test(.enabled(if: ImageLab.long)) func resizeFailureHangDeathAndEarlyCompletion() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let plan = try ImageLab.plan(c, profile: profile)
@@ -267,7 +267,7 @@ struct FaultInjectionTests {
 
     /// J313: SiliconForest goes between macOS and the existing Linux stub; Linux's stub, ESP and
     /// root are never modified, and the gate refuses to touch them even if asked.
-    @Test func j313InstallLeavesLinuxAloneAndTheGateRefusesIt() throws {
+    @Test(.enabled(if: ImageLab.long)) func j313InstallLeavesLinuxAloneAndTheGateRefusesIt() throws {
         let c = try ImageLab.fresh(.j313); defer { c.finish() }
         let profile = try ImageLab.profile("J313")
         let original = try c.backend.topology()

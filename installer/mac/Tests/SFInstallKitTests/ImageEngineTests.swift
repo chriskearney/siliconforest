@@ -53,7 +53,7 @@ struct ImageEngineTests {
         #expect(st.approvals.map(\.step) == ["S20", "S65"])
     }
 
-    @Test func j293InstallThenRemoveRestoresTheOriginalTable() throws {
+    @Test(.enabled(if: ImageLab.long)) func j293InstallThenRemoveRestoresTheOriginalTable() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let profile = try ImageLab.profile()
         let original = try c.backend.topology()

@@ -26,9 +26,9 @@ concurrency:
 
 jobs:
   test:
-    name: SFInstallKit tests (image-backed only)
+    name: SFInstallKit tests (unit + smoke images)
     runs-on: macos-15
-    timeout-minutes: 180
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -45,17 +45,12 @@ jobs:
         working-directory: installer/mac
         shell: bash
         env:
-          # Default sample sweep did not finish in 90 minutes on macos-15
-          # (run 45487533893, cancelled in everyJournalStateHasAWayForwardAndBack).
-          # Keep a smaller sample here; the full sample remains a local/M5 run.
-          SF_SWEEP_RECORDS: "13,41,60"
-          # The live backend's repeats of the power-loss test and the fork sweep add ~15 min on the
-          # M5 (more here); they run on the M5. Every other live-backend suite runs here.
-          SF_LIVE_HEAVY: "0"
-          # everyJournalState + everyRollbackState: ~1.6 h on macos-15 even with SF_SWEEP_RECORDS
-          # (run 45504226352). The M5 runs them (~5 min). Left on, the job hits timeout-minutes: 180
-          # before the later live-backend and kernel-collection image tests finish (run 45524414605).
-          SF_FAULT_SWEEP: "0"
+          # CI tier: unit tests plus the smoke image tests (refusals that stop before the first write).
+          # Every image-backed test that runs a whole install/resize, every sweep and every repeat is the
+          # long tier and runs on the M5 (installer/mac/scripts/test-long.sh, ~35 min there). On macos-15
+          # each of them costs 10-17 min (diskutil/hdiutil/APFS resize are ~14x slower than on the M5):
+          # runs 45504226352 and 45540938850 took hours. SF_IMAGE_LONG=0 skips the lot.
+          SF_IMAGE_LONG: "0"
         run: |
           set -euo pipefail
           unset SF_REAL_DISK_WRITES || true
@@ -65,6 +60,14 @@ jobs:
             exit 1
           fi
           scripts/test.sh
+
+  app:
+    # Built in parallel with the tests so the two don't add up.
+    name: Ad-hoc app, helper and recovery layout
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Build an ad-hoc app and verify helper and recovery layout
         working-directory: installer/mac

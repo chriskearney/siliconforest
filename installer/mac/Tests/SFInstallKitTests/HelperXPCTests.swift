@@ -118,7 +118,7 @@ final class Flag: @unchecked Sendable {
 
 @Suite("Helper: a whole job over XPC on a disk image", .serialized, .enabled(if: ImageLab.enabled))
 struct HelperImageTests {
-    @Test func installStatusEventsDiagnosticsAndRemovalOverXPC() throws {
+    @Test(.enabled(if: ImageLab.long)) func installStatusEventsDiagnosticsAndRemovalOverXPC() throws {
         let c = try ImageLab.fresh(.j293); defer { c.finish() }
         let (release, src) = try ImageLab.release()
         let profile = try ImageLab.profile()
