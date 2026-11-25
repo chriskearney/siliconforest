@@ -208,12 +208,18 @@ extension InstallEngine {
             guard let release, let boot = gate.created["boot"], let root = gate.created["root"] else { throw EngineError(.inconsistent, "no SFBOOT or root") }
             // kernel.bin is made (from the collection S17 accepted, re-hashed) before anything is written.
             let kernelBin = try personalisedKernel(root: root)
-            try gate.admit(.writeFiles(partition: boot, volumeRole: nil, files: [release.stage2, release.kernel]), now: try backend.topology())
+            let extra = [release.stage2B, release.trust, release.bootState].compactMap { $0 }
+            try gate.admit(.writeFiles(partition: boot, volumeRole: nil, files: [release.stage2, release.kernel] + extra), now: try backend.topology())
             try journal.append(.intent, step: c, args: ["kernel_sha256": .s(SHA256Hasher.hex(kernelBin))])
             let dir = try backend.fatURL(boot).appendingPathComponent("sf", isDirectory: true)
             try FileManager.default.ensureDirectory(dir)
             try copy(work(release.stage2), to: dir.appendingPathComponent("boot.bin"))
             try atomicWrite(kernelBin, to: dir.appendingPathComponent("kernel.bin"))
+            // A/B boot and SAP (abboot, docs/sap): slot B's stage 2, the trust anchor, and last the
+            // record (`sf-bootslot init` for slot A as installed): its presence means "stage 1 v2, slots".
+            for (name, rel) in Self.sfbootExtras(release) {
+                try copy(work(name), to: dir.appendingPathComponent(rel))
+            }
             try atomicWrite(try installJSON(plan: plan, gate: gate), to: dir.appendingPathComponent("install.json"))
             try afterCommand(code)
             guard case .done(let ev) = try check(code, plan: plan, gate: gate) else { throw EngineError(.appleTool, "read-back of SFBOOT failed") }
@@ -374,6 +380,7 @@ extension InstallEngine {
             let dir = fat.appendingPathComponent("sf")
             guard (try? SHA256Hasher.file(dir.appendingPathComponent("boot.bin"))) == release.artifact(release.stage2)?.sha256,
                   let k = try? Data(contentsOf: dir.appendingPathComponent("kernel.bin")), k == (try personalisedKernel(root: root)),
+                  Self.sfbootExtras(release).allSatisfy({ (try? SHA256Hasher.file(dir.appendingPathComponent($0.1))) == release.artifact($0.0)?.sha256 }),
                   FileManager.default.fileExists(atPath: dir.appendingPathComponent("install.json").path) else { return .notDone }
             return .done(["kernel_sha256": .s(SHA256Hasher.hex(k))])
         case .S50, .S52:
@@ -534,6 +541,15 @@ extension InstallEngine {
             .replacingOccurrences(of: "@SF_PART_BLOCKS@", with: String(blocks))
         guard !args.contains("@") else { throw EngineError(.inconsistent, "the boot-argument template has an unknown placeholder") }
         return args
+    }
+
+    /// The optional SFBOOT files of a release, (artifact, path under sf/), in the order they are written.
+    static func sfbootExtras(_ release: ReleaseManifest) -> [(String, String)] {
+        var out: [(String, String)] = []
+        if let b = release.stage2B { out.append((b, "b/boot.bin")) }
+        if let t = release.trust { out.append((t, "trust")) }
+        if let r = release.bootState { out.append((r, "bootstate.bin")) }
+        return out
     }
 
     func installJSON(plan: EnginePlan, gate: Gate) throws -> Data {
