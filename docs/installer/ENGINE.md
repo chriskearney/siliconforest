@@ -134,6 +134,13 @@ At `begin`, the helper reads the disk itself, rebuilds the plan with the same in
 margin (ordinary macOS writes) changes `CapacityFree` but not the partition layout, so the digest covers the **bounds** the step needs, rather than
 the exact free byte count. The helper separately rechecks that `to >= macos_min`.
 
+**The stub-only plan** (the first supervised run, [`STUB-ONLY-RUN-J313.md`](STUB-ONLY-RUN-J313.md); Chris, 25 Nov 2026): `request.stubOnly = true`.
+macOS gives up exactly the profile's stub size, the only new partition is the stub, and the steps are S00–S15, S20–S35, S55–S70 (no S17, S40–S52).
+Stage 1's variables name `absentBootPartUUID`, a v4-shaped PARTUUID derived from the install ID and on no disk, so stage 1 stops at "can't find
+stage 2"; `SFInstall/plan.json` carries it as `boot` and `root: "none"`. It needs `stubSource` (SFStub builds the stub), its release is stage 1
+alone (`ReleaseManifest.stubOnly`), and its install proof names only the stub, so removal deletes only that. `sfstubrun` drives it on an image or,
+behind the real-disk gate (section 12), the internal disk.
+
 ## 6. The gate
 
 Ported from SF-AJ's `sf_gate.py`, every disk-changing call goes through it.

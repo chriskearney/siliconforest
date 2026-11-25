@@ -25,6 +25,8 @@ public struct HelperConfig: Sendable {
     public var helperBuild: Int
     public var resizeTiming: ResizeSupervisor.Timing
     public var recoveryBinary: URL?
+    /// Set: the engine builds the stub with SFStub (needed by a stub-only plan).
+    public var stubSource: StubSource?
 
     public init(target: Target, allowedImageRoot: URL = ImageGuard.defaultRoot, journalDirectory: URL = ChainJournal.defaultDirectory,
                 workDirectory: URL, profileID: String, release: ReleaseManifest?, releaseSource: URL?, policy: ConnectionPolicy = ConnectionPolicy(),
@@ -98,6 +100,7 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
         let e = InstallEngine(backend: try backend(), journal: j, profile: try profile(), release: config.release, releaseSource: config.releaseSource,
                               workDir: config.workDirectory.appendingPathComponent(j.jobID.uuidString), resizeTiming: config.resizeTiming)
         e.recoveryBinary = config.recoveryBinary
+        e.stubSource = config.stubSource
         return e
     }
 

@@ -70,6 +70,8 @@ let package = Package(
         // The stub builder (DESIGN §6.4, ENGINE §10): Foundation + Compression only, no dependency on the engine (the engine runs it at S10/S32/S35/S55/S60).
         .target(name: "SFStub"),
         .executableTarget(name: "sfstubctl", dependencies: ["SFStub", "SFEngine"]),
+        // The supervised stub-only run (docs/installer/STUB-ONLY-RUN-J313.md). A lab tool, never in the app bundle.
+        .executableTarget(name: "sfstubrun", dependencies: ["SFStub", "SFEngine", "SFLiveDisk", "SFInstallKit"]),
         // Same tests as an executable, for Command Line Tools-only Macs (see scripts/test.sh).
         .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub"], path: "Tests/CLTRunner",
                           swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),

@@ -50,6 +50,15 @@ public struct ReleaseManifest: Codable, Sendable, Hashable {
 
     public func artifact(_ name: String) -> Artifact? { artifacts.first { $0.name == name } }
     public var digest: String { (try? Canonical.digest(self)) ?? "" }
+
+    /// What a stub-only run needs of a release: stage 1 alone, by the size and SHA-256 the signed `install.json`
+    /// gives it (installer/payload/boot/build_stage1.sh builds it). No root, kernel, firmware or stage 2.
+    public static func stubOnly(stage1 name: String = "sf-stage1.bin", bytes: Int64, sha256: String, version: String) -> ReleaseManifest {
+        ReleaseManifest(version: version, artifacts: [.init(name: name, bytes: bytes, sha256: sha256.lowercased())],
+                        rootImage: "", rootImageBytes: 0, rootImageSHA256: "", rootImageCompressed: false, rootMinBytes: 0,
+                        firmwareSlotOffset: 0, firmwareSlotBytes: 0, receiptSlotOffset: 0, receiptSlotBytes: 0,
+                        stubFiles: [], stage1: name, stage2: "", kernel: "", firmware: "")
+    }
 }
 
 public struct ProfileRef: Codable, Sendable, Hashable {

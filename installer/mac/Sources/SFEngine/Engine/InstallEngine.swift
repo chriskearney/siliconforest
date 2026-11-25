@@ -212,12 +212,12 @@ public final class InstallEngine: @unchecked Sendable {
         let st = state
         guard let plan = st.plan, let original = st.original else { throw EngineError(.internalError, "job has not begun") }
         if let end = st.end { return end }
+        if plan.isStubOnly && stubSource == nil { throw EngineError(.internalError, "a stub-only run builds the stub with SFStub (stubSource)") }
         // A protecting backend derives its protection receipt from exactly the plan and the original
         // partition table the journal saved, so it is the same after a crash and a restart.
         try backend.arm(plan: plan, original: original)
         if plan.operation == .install { backend.expectRelease(release, in: workDir) }
         var gate = Gate(plan: plan, original: original, created: st.created)
-        if plan.isStubOnly && stubSource == nil { throw EngineError(.internalError, "a stub-only run builds the stub with SFStub (stubSource)") }
         let order = StepCode.order(plan)
         for code in order {
             var s = state

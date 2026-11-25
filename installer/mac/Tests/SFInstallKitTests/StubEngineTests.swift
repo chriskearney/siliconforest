@@ -8,6 +8,7 @@ import Testing
 @testable import SFEngine
 import SFInstallKit
 import SFStub
+@testable import SFLiveDisk
 
 private func vol(_ id: String, _ uuid: String, _ name: String, _ roles: [String]) -> ImageVolume {
     ImageVolume(identifier: id, uuid: uuid, name: name, roles: roles)
@@ -324,6 +325,82 @@ struct StubOnlyImageTests {
         let r = try ImageLab.engine(c, journal: try ChainJournal(directory: c.journalDir, jobID: j.jobID), profile: profile)
         r.stubSource = src
         #expect(try r.rollback() == .rolledBack)
+        #expect(try c.backend.freshTopology().digestForm == original.digestForm)
+    }
+}
+
+@Suite("sfstubrun: the stub-only run's plan, release and target")
+struct StubOnlyRunUnitTests {
+    @Test func theInternalDiskIsRefusedInThisBuildAndTheAuthorizationIsForThisPlan() throws {
+        let plan = StubOnlyPlanTests.plan()
+        if !RealDiskGate.compiledIn {
+            #expect(throws: SafetyRefusal.self) { _ = try StubOnlyRun.authority(.internalDisk("11111111-2222-3333-4444-555555555555"), planDigest: plan.digest) }
+        }
+        let t0 = Date(timeIntervalSince1970: 1_790_000_000)
+        let json = try StubOnlyRun.authorizationTemplate(plan: plan, diskUUID: "abcd", from: t0, hours: 12)
+        let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601
+        let a = try d.decode(RealDiskGate.Authorization.self, from: Data(json.utf8))
+        #expect(a.planDigest == plan.digest && a.diskUUID == "ABCD" && a.statement == RealDiskGate.statement)
+        #expect(a.notAfter.timeIntervalSince(a.notBefore) == RealDiskGate.maxValidity)   // never longer than the gate allows
+    }
+
+    @Test func theReleaseIsStage1AloneAndTheSummarySaysWhereItStops() throws {
+        let r = ReleaseManifest.stubOnly(bytes: 4_325_376, sha256: String(repeating: "A", count: 64), version: "v")
+        #expect(r.artifacts.map(\.name) == ["sf-stage1.bin"] && r.stage1 == "sf-stage1.bin" && r.artifacts[0].sha256 == String(repeating: "a", count: 64))
+        #expect(r.kernelCollection == nil && r.rootImage.isEmpty)
+        let plan = StubOnlyPlanTests.plan()
+        let lines = StubOnlyRun.summary(plan, release: r)
+        #expect(lines.contains { $0.contains(plan.absentBootPartUUID) && $0.contains("can't find stage 2") })
+        #expect(!lines.contains("NOT A STUB-ONLY PLAN"))
+        #expect(StubOnlyRun.summary(try StubVolumePlanTests.plan(), release: r).contains("NOT A STUB-ONLY PLAN"))
+    }
+}
+
+@Suite("sfstubrun on a disk image: the stub-only run through the live backend", .serialized, .enabled(if: ImageLab.enabled), .enabled(if: ImageLab.long))
+struct StubOnlyRunImageTests {
+    @Test(.timeLimit(.minutes(30))) func theDressRehearsalRunsResumesAndRemovesThroughTheLiveBackend() throws {
+        let c = try ImageLab.fresh(.j293); defer { c.finish() }
+        let profile = try ImageLab.profile("J313")
+        let src = try fixtureStubSource(c.dir.appendingPathComponent("stub-src"))
+        let original = try c.backend.topology()
+        // The release: a stand-in stage 1 by its hash (the real one comes from build_stage1.sh)
+        let relDir = c.dir.appendingPathComponent("stub-release", isDirectory: true)
+        try FileManager.default.ensureDirectory(relDir)
+        let s1 = bytes("stage1", 65_536)
+        try s1.write(to: relDir.appendingPathComponent("sf-stage1.bin"))
+        let rel = ReleaseManifest.stubOnly(bytes: Int64(s1.count), sha256: SHA256Hasher.hex(s1), version: "stub-only")
+        let target = StubOnlyRun.Target.image(c.image)
+        let (topo, limits) = try StubOnlyRun.read(target)
+        #expect(topo.digestForm == original.digestForm)
+        let plan = try StubOnlyRun.plan(topology: topo, limits: limits, profile: profile, release: rel, installID: "a1b2c3d4")
+        #expect(plan.isStubOnly && plan.partitions.map(\.role) == ["stub"])
+        let j = try ChainJournal(directory: c.journalDir)
+        func engine(_ f: FaultPlan = FaultPlan()) throws -> InstallEngine {
+            let live = LiveDiskBackend(authority: try StubOnlyRun.authority(target, planDigest: plan.digest))
+            let e = InstallEngine(backend: live, journal: try ChainJournal(directory: c.journalDir, jobID: j.jobID), profile: profile, release: rel,
+                                  releaseSource: relDir, workDir: c.workDir, faults: f, resizeTiming: .tests)
+            e.stubSource = src
+            return e
+        }
+        try engine().begin(plan)
+        #expect(throws: SimulatedKill.self) { try engine(FaultPlan(powerLossAfterCommand: .S32)).run() }
+        #expect(!c.backend.isAttached()); try c.backend.attach()
+        #expect(throws: SimulatedKill.self) { try engine(FaultPlan(killAtPoint: "S35/action-25")).run() }
+        #expect(try engine().run() == .handedOff)
+        let st = JobState(try ChainJournal(directory: c.journalDir, jobID: j.jobID).records)
+        let stub = try #require(st.created["stub"])
+        #expect(st.created.keys.sorted() == ["stub"])
+        let sys = try c.backend.volumeURL(store: stub, role: "System")
+        #expect(try Data(contentsOf: sys.appendingPathComponent("SiliconForest Setup.app/Contents/Resources/boot.bin"))
+                == InstallEngine.bootObject(stage1: s1, bootPartUUID: plan.absentBootPartUUID))
+        // removal through the live backend: the original table again
+        let proof = try InstallProofReader.proof(from: try ChainJournal(directory: c.journalDir, jobID: j.jobID))
+        let removal = try EnginePlanner.removalPlan(topology: try StubOnlyRun.read(target).0, profile: profile, proof: proof)
+        let re = InstallEngine(backend: LiveDiskBackend(authority: try StubOnlyRun.authority(target, planDigest: removal.digest)),
+                               journal: try ChainJournal(directory: c.journalDir), profile: profile, release: nil, releaseSource: nil, workDir: c.workDir)
+        re.proof = proof
+        try re.begin(removal)
+        #expect(try re.run() == .committed)
         #expect(try c.backend.freshTopology().digestForm == original.digestForm)
     }
 }
