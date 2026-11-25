@@ -1,13 +1,11 @@
-name: Installer dry-run preview
+name: Installer release
 
-# Builds, Developer ID-signs, notarizes and staples the macOS installer app, and builds the
-# stub's stage 1 (sf-stage1.bin) from source. The app is a dry-run preview: disk writes are
-# compiled out (the release checks that). Do not use it to change a real disk.
-# A tag push (installer-v*) publishes a prerelease: the DMG, its hash, sf-stage1.bin, its
-# provenance (sf-stage1.json) and RELEASE-SHA256SUMS. Manual dispatch builds, signs and
-# notarizes only and keeps everything as Actions artifacts. The signed install.json, the root
-# and the rest of the payload release are assembled offline with the release key
-# (docs/installer/PAYLOAD.md); that key is never in CI.
+# Builds, Developer ID-signs, notarizes and staples the macOS installer app, the lab tools
+# (sfinstrun, sfstubrun) with the real-disk compile key, and sf-stage1.bin from source.
+# A tag push (installer-v*) publishes a prerelease (DMG, hashes, stage 1). The signed payload
+# (install.json, root, boot files, kernel-collection inputs, SHA256SUMS.sig) is assembled
+# offline with the release key and uploaded to the same GitHub release afterwards. The private
+# key is never in CI. Manual dispatch builds, signs and notarizes only and does not publish.
 on:
   push:
     tags:
@@ -17,7 +15,7 @@ on:
       version:
         description: "Version to stamp (no installer-v prefix)"
         required: true
-        default: "0.1.0-preview2"
+        default: "0.1.0-preview5"
         type: string
 
 permissions:
@@ -300,20 +298,29 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}
           SIGN_IDENTITY: ${{ secrets.MAC_SIGNING_IDENTITY }}
+          SWIFT_DEFINES: SF_REAL_DISK_WRITES
         run: |
           set -euo pipefail
           [[ -n "$SIGN_IDENTITY" && "$SIGN_IDENTITY" != "-" ]]
+          # The compile key is a -D flag only. Do not export SF_REAL_DISK_WRITES as an env var
+          # (check-real-disk-gate.sh treats that as a failure).
+          unset SF_REAL_DISK_WRITES SF_ALLOW_REAL_DISK_WRITES || true
           scripts/make-app.sh
           app="build/SiliconForest Installer.app"
           test -d "$app"
           scripts/verify-signed-app.sh --developer-id "$app"
-          scripts/check-real-disk-gate.sh "$app"
+          test -x build/lab/sfinstrun && test -x build/lab/sfstubrun
+          scripts/check-real-disk-gate.sh --expect-compiled build/lab/sfinstrun build/lab/sfstubrun
           echo "---- app ----"
           codesign -dvv "$app"
           echo "---- helper ----"
           codesign -dvv "$app/Contents/MacOS/SFHelper"
           echo "---- recovery ----"
           codesign -dvv "$app/Contents/Helpers/SFRecovery"
+          echo "---- sfinstrun ----"
+          codesign -dvv build/lab/sfinstrun
+          echo "---- sfstubrun ----"
+          codesign -dvv build/lab/sfstubrun
 
       - name: Build and Developer ID-sign kc-builder
         # The installer's kernel-collection linker (PAYLOAD.md section 13): PureDarwin kc-tools,
@@ -366,20 +373,33 @@ jobs:
           app="installer/mac/build/SiliconForest Installer.app"
           dist="installer/mac/build/dist"
           mkdir -p "$dist"
-          dmg="$dist/SiliconForest-Installer-${INSTALLER_VERSION}-dryrun-preview.dmg"
+          dmg="$dist/SiliconForest-Installer-${INSTALLER_VERSION}.dmg"
           staging="$dist/dmg-staging"
           rm -rf "$staging" "$dmg"
           mkdir -p "$staging"
           ditto "$app" "$staging/SiliconForest Installer.app"
           ln -s /Applications "$staging/Applications"
-          cat > "$staging/DRY-RUN PREVIEW.txt" <<'TXT'
-          SiliconForest Installer — dry-run preview
+          mkdir -p "$staging/Lab tools"
+          cp installer/mac/build/lab/sfinstrun installer/mac/build/lab/sfstubrun \
+            installer/mac/build/lab/allowed_signers "$staging/Lab tools/"
+          python3 - <<PY
+          from pathlib import Path
+          Path("$staging/READ ME FIRST.txt").write_text("""SiliconForest Installer ${INSTALLER_VERSION}
 
-          This build is a design and flow preview only. Disk writes are compiled
-          out. It will not install, resize, or remove anything on a real Mac.
+          THIS BUILD CAN WRITE TO A REAL DISK.
 
-          Do not use this as an installer.
-          TXT
+          It has not been run on a real Mac. Back up first. Chris's runtime authorization
+          file is required for any real write (docs/installer/FIRST-INSTALL-J313.md).
+
+          The app UI is still a flow preview; the first real install is run with the lab
+          tool "Lab tools/sfinstrun", which is Developer ID signed and in this DMG.
+          sfstubrun is the stub-only tool. Both are built with the real-disk compile key.
+
+          There is no pkg and no Developer ID Installer certificate. Do not run bless,
+          bputil, kmutil or DFU yourself except as the printed, simulated commands the
+          engine asks Chris to confirm.
+          """.replace("${INSTALLER_VERSION}", __import__("os").environ["INSTALLER_VERSION"]))
+          PY
           dmg_created=false
           for attempt in 1 2 3; do
             if hdiutil create -volname "SiliconForest Installer" -srcfolder "$staging" \
@@ -460,10 +480,10 @@ jobs:
           (cd "$dist" && shasum -a 256 "$(basename "$dmg")" > "$(basename "$dmg").sha256")
           echo "DMG=$dmg" >> "$GITHUB_ENV"
 
-      - name: Upload signed dry-run artifact
+      - name: Upload signed installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: siliconforest-installer-macos-dryrun-preview
+          name: siliconforest-installer-macos
           path: |
             installer/mac/build/dist/*.dmg
             installer/mac/build/dist/*.sha256
@@ -494,7 +514,7 @@ jobs:
           set -euo pipefail
           tag="$INSTALLER_TAG"
           version="$INSTALLER_VERSION"
-          title="SiliconForest Installer ${version} (dry-run app, stub stage 1)"
+          title="SiliconForest Installer ${version} (real-disk preview)"
           dist=installer/mac/build/dist
           s1=installer/mac/build/stage1
           cp "$s1/sf-stage1.bin" "$s1/sf-stage1.json" "$s1/sf-stage1.bin.sha256" "$dist/"
@@ -506,26 +526,29 @@ jobs:
           dmg_sha="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
           notes="$RUNNER_TEMP/release-notes.md"
           cat > "$notes" <<EOF
-          **The installer app in this build is still a dry run: its real-disk write gate is compiled out, so the app cannot change a real disk.** (The release job checks that.) The first supervised stub-only run on the Air uses the lab tool \`sfstubrun\`, which is not in this release: Chris builds it himself with the real-disk gate, and every real write needs his authorization file (docs/installer/STUB-ONLY-RUN-J313.md).
+          **This build can write to a real disk.** The lab tools (`sfinstrun`, `sfstubrun`) are built with the compile key `SF_REAL_DISK_WRITES`. Any real write still needs Chris's runtime authorization file for this plan and disk, root, and a signed payload. **It has not been run on a real Mac. Back up first.**
 
-          Built from commit \`${GITHUB_SHA}\`.
+          The app UI is still a flow preview. The first real install is `sfinstrun` (in the DMG, under Lab tools). The privileged helper in the app stays aimed at no disk (`noTarget`); it cannot install by itself.
 
-          ## What is in this release
+          Built from commit \`${GITHUB_SHA}\`. The signed payload (`install.json`, the root, `boot.bin`, the kernel-collection files, `SHA256SUMS.sig`) is assembled offline with the release key and uploaded to this GitHub release after this job; the key is never in CI. Verify the payload with `verify_release.py` in a directory that contains only those payload files (not the DMG).
+
+          ## What is in this job's assets
 
           | File | What | SHA-256 |
           |---|---|---|
-          | \`${dmg_name}\` | The installer app (UI, flow, privileged helper and the recovery-mode component). Developer ID signed with the hardened runtime, notarized and stapled; team \`Z642ZK8JK4\`. DMG only: no pkg, no Developer ID Installer certificate | \`${dmg_sha}\` |
-          | \`sf-stage1.bin\` | The stub's stage 1, ${s1_bytes} bytes, built from source in this run: Omacom m1n1 at the profile's pin plus our stage 1 patch, version tag \`${s1_tag}\`. Byte-identical to the stage 1 already installed on the lab machine, and the job fails if it is not | \`${s1_sha}\` |
-          | \`sf-stage1.json\` | Provenance of that build: pin, patch hashes, make flags, toolchain | |
+          | \`${dmg_name}\` | The installer app, `sfinstrun`, `sfstubrun` and `allowed_signers`. Developer ID signed with the hardened runtime, notarized and stapled; team \`Z642ZK8JK4\`. DMG only: no pkg, no Developer ID Installer certificate | \`${dmg_sha}\` |
+          | \`sf-stage1.bin\` | The stub's stage 1, ${s1_bytes} bytes, built from source in this run: Omacom m1n1 at the profile's pin plus our stage 1 patch, version tag \`${s1_tag}\`. Byte-identical to the installed stage 1, and the job fails if it is not | \`${s1_sha}\` |
+          | \`sf-stage1.json\` | Provenance of that build | |
           | \`sf-stage1.bin.sha256\`, \`RELEASE-SHA256SUMS\` | Hashes of the files above | |
 
-          ## What is not in this release
+          ## What is not produced by this job
 
-          - **No signed \`install.json\`, \`boot.bin\` (stage 2), \`bootargs.template\`, installer root or kernel-collection files.** That payload release is assembled and signed offline with the release key (PAYLOAD.md sections 1 and 7); the key is never in CI and never uploaded. The hash of \`sf-stage1.bin\` above is therefore not yet covered by a signature. The stub-only run needs only \`sf-stage1.bin\` and its SHA-256 (\`sfstubrun --release-dir <dir with sf-stage1.bin> --stage1-sha256 <hash>\`); the full install (G6) needs the signed payload.
-          - **No Apple binaries or firmware.** The stub's 13.5 files are read by range from Apple's CDN on the Air at run time and checked against the profile's CRCs before any write. Firmware for the Wi-Fi slot is not part of the stub-only run.
-          - Also needed on the Air for the stub-only run, and not here: the gated \`sfstubrun\` build, a copy of the macOS \`AdminUserRecoveryInfo.plist\`, and Chris's approval words. The signed \`SFRecovery\` and \`AppIcon.icns\` are inside the app in the DMG (\`Contents/Helpers/SFRecovery\`, \`Contents/Resources/AppIcon.icns\`).
+          - The signed payload (`install.json`, `boot.bin`, `bootargs.template`, the root parts, the kernel-collection files, `SHA256SUMS` / `SHA256SUMS.sig`) is assembled offline and uploaded to this release after this job. Until then, this tag's release has only the DMG and stage 1.
+          - **No Apple binaries or firmware.** The stub's 13.5 files and the Wi-Fi firmware the installer extracts at S50 are read from Apple's CDN / this Mac's restore image at run time and checked against the signed names and hashes in `install.json` before any write.
 
-          Do not use this build to resize, partition or write any real disk.
+          Also needed on the Air, and not in the DMG: a copy of macOS's `AdminUserRecoveryInfo.plist`, the runtime authorization file Chris writes, and his approval words. The signed `SFRecovery` and `AppIcon.icns` are inside the app.
+
+          **Back up first. This build has had no real-hardware run.**
           EOF
           assets=("$dist"/*.dmg "$dist/${dmg_name}.sha256" "$dist/sf-stage1.bin" "$dist/sf-stage1.json" "$dist/sf-stage1.bin.sha256" "$dist/RELEASE-SHA256SUMS")
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then

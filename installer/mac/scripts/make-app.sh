@@ -17,12 +17,26 @@ mkdir -p "$ROOT/build"
 # Stamp the helper Info.plist before linking so CFBundleVersion matches this build.
 scripts/write-helper-info-plist.sh "$VERSION" "$BUILD_NUMBER" "$ROOT/build/SFHelper-Info.plist"
 
-echo "▸ swift build (release)"
-swift build -c release --product SFInstaller
-swift build -c release --product sfinstallctl
-swift build -c release --product SFHelper
-swift build -c release --product SFRecovery
-BIN="$(swift build -c release --show-bin-path)"
+# SWIFT_DEFINES=SF_REAL_DISK_WRITES adds -Xswiftc -D... to every product in this build.
+# Do not export SF_REAL_DISK_WRITES itself: check-real-disk-gate.sh treats that env var as a failure.
+SWIFT_EXTRA=()
+if [[ -n "${SWIFT_DEFINES:-}" ]]; then
+  IFS=',' read -ra _defs <<< "$SWIFT_DEFINES"
+  for _d in "${_defs[@]}"; do
+    [[ -n "$_d" ]] || continue
+    SWIFT_EXTRA+=(-Xswiftc -D"$_d")
+  done
+fi
+
+echo "▸ swift build (release)${SWIFT_DEFINES:+  defines: $SWIFT_DEFINES}"
+swift build -c release --product SFInstaller "${SWIFT_EXTRA[@]}"
+swift build -c release --product sfinstallctl "${SWIFT_EXTRA[@]}"
+swift build -c release --product SFHelper "${SWIFT_EXTRA[@]}"
+swift build -c release --product SFRecovery "${SWIFT_EXTRA[@]}"
+# Lab tools: not inside the app (DESIGN / STUB-ONLY-RUN). Built and signed into build/ for the DMG.
+swift build -c release --product sfstubrun "${SWIFT_EXTRA[@]}"
+swift build -c release --product sfinstrun "${SWIFT_EXTRA[@]}"
+BIN="$(swift build -c release --show-bin-path "${SWIFT_EXTRA[@]}")"
 [ -f build/fonts/Inter-Regular.ttf ] && [ -f build/fonts/SourceCodePro-OFL.txt ] || scripts/fetch-fonts.sh
 
 APP="$ROOT/build/SiliconForest Installer.app"
@@ -47,6 +61,8 @@ chmod a-x "$APP/Contents/Resources/RecoveryPayload/sf-launcher" "$APP/Contents/R
 
 # Device profiles: the canonical installer/profiles (with their schema).
 cp "$ROOT"/../profiles/*.json "$APP/Contents/Resources/Profiles/"
+# The release-key allowed_signers line; sfinstrun / SFRelease also look next to the tools and at SF_ALLOWED_SIGNERS.
+cp "$ROOT/../payload/release/allowed_signers" "$APP/Contents/Resources/allowed_signers"
 # Dry-run disks (the simulator's fake Macs; DESIGN says SFSimulator never ships in release builds,
 # so drop these when the app stops being dry-run-only).
 cp -R "$ROOT/Fixtures/disks" "$APP/Contents/Resources/Fixtures/disks"
@@ -92,11 +108,17 @@ codesign "${SIGN_ARGS[@]}" "$APP/Contents/MacOS/sfinstallctl"
 codesign "${SIGN_ARGS[@]}" --identifier org.siliconforest.installer.helper "$APP/Contents/MacOS/SFHelper"
 codesign "${SIGN_ARGS[@]}" --identifier org.siliconforest.recovery "$APP/Contents/Helpers/SFRecovery"
 codesign "${SIGN_ARGS[@]}" --identifier org.siliconforest.installer "$APP"
+# Lab tools live next to the app in the DMG, not inside it (so codesign --verify --deep on the app stays clean).
+mkdir -p "$ROOT/build/lab"
+cp "$BIN/sfstubrun" "$BIN/sfinstrun" "$ROOT/../payload/release/allowed_signers" "$ROOT/build/lab/"
+codesign "${SIGN_ARGS[@]}" --identifier org.siliconforest.sfstubrun "$ROOT/build/lab/sfstubrun"
+codesign "${SIGN_ARGS[@]}" --identifier org.siliconforest.sfinstrun "$ROOT/build/lab/sfinstrun"
 
 VERIFY=(scripts/verify-signed-app.sh)
 if [ "$IDENTITY" != "-" ]; then VERIFY+=(--developer-id); fi
 "${VERIFY[@]}" "$APP"
 
 echo "✓ $APP"
-echo "  open \"$APP\"                     # full-screen dry run"
+echo "  lab tools: $ROOT/build/lab/sfinstrun  $ROOT/build/lab/sfstubrun"
+echo "  open \"$APP\"                     # installer UI"
 echo "  open \"$APP\" --args --windowed   # in a window"
