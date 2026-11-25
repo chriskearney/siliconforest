@@ -50,9 +50,76 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=installer-v${version}" >> "$GITHUB_OUTPUT"
 
+  stage1:
+    name: Build sf-stage1.bin from source
+    # The stub's stage 1 (Omacom m1n1 at the profile's pin plus our patch), built the way the installed
+    # machine's stage 1 was (installer/payload/boot/build_stage1.sh). The script refuses any build that is
+    # not byte-identical to the installed stage 1 (a different stage 1 is a new install). Nothing here
+    # is signed, and the file is never committed. Manual dispatch builds it and keeps it as an artifact.
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools (LLVM 22, ImageMagick, librsvg)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          sudo apt-get install -y -q make git imagemagick librsvg2-bin python3
+          wget -q https://apt.llvm.org/llvm.sh -O "$RUNNER_TEMP/llvm.sh"
+          sudo bash "$RUNNER_TEMP/llvm.sh" 22 all
+          sudo ln -sf "$(command -v clang-22)" /usr/local/bin/clang
+          sudo ln -sf "$(command -v ld.lld-22)" /usr/local/bin/ld.lld
+          clang --version | head -1
+          ld.lld --version
+
+      - name: Rust 1.98.1 with the bare-metal target
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --target aarch64-unknown-none-softfloat
+          rustup default 1.98.1
+          rustc --version
+          cargo --version
+
+      - name: Fetch m1n1 at the profile's pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          pin="$(python3 -c 'import json; print(json.load(open("installer/profiles/J313.json"))["boot"]["stage1"]["source_revision"])')"
+          git clone --quiet https://github.com/omacom/m1n1 "$RUNNER_TEMP/m1n1"
+          git -C "$RUNNER_TEMP/m1n1" checkout --quiet "$pin"
+          git -C "$RUNNER_TEMP/m1n1" submodule update --init --recursive --quiet
+          [[ "$(git -C "$RUNNER_TEMP/m1n1" rev-parse HEAD)" == "$pin" ]]
+          echo "SF_M1N1_SRC=$RUNNER_TEMP/m1n1" >> "$GITHUB_ENV"
+
+      - name: Build sf-stage1.bin
+        shell: bash
+        env:
+          SF_CARGO_ONLINE: "1"
+        run: |
+          set -euo pipefail
+          installer/payload/boot/build_stage1.sh "$RUNNER_TEMP/stage1"
+          cd "$RUNNER_TEMP/stage1"
+          sha256sum sf-stage1.bin | tee sf-stage1.bin.sha256
+          python3 -c 'import json; r=json.load(open("sf-stage1.json")); assert r["same_as_installed_stage1"] is True, r'
+
+      - name: Upload sf-stage1 (release input)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sf-stage1
+          path: |
+            ${{ runner.temp }}/stage1/sf-stage1.bin
+            ${{ runner.temp }}/stage1/sf-stage1.bin.sha256
+            ${{ runner.temp }}/stage1/sf-stage1.json
+          if-no-files-found: error
+          retention-days: 30
+
   macos:
     name: Signed and notarized dry-run DMG (Apple silicon)
-    needs: validate
+    needs: [validate, stage1]
     runs-on: macos-15
     timeout-minutes: 90
     env:
