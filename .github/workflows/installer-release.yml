@@ -84,14 +84,30 @@ jobs:
           ld.lld --version | head -1
           llvm-objcopy --version | head -1
 
-      - name: Rust 1.98.1 with the bare-metal target
+      - name: Rust 1.98.1 with the bare-metal target, at the lab's paths
+        # The installed stage 1 was built by the lab's rustup toolchain (stable, rustc 1.98.1, rust-src installed)
+        # under /home/chrisk, and rustc embeds the source paths of the crates it builds (panic locations).
+        # A build is byte-identical only if those paths are the same, so the toolchain and the cargo home
+        # are put at the same paths. Nothing else about the path matters (the m1n1 tree is in a temp directory).
         shell: bash
         run: |
           set -euo pipefail
-          rustup toolchain install 1.98.1 --profile minimal --target aarch64-unknown-none-softfloat
-          rustup default 1.98.1
-          rustc --version
-          cargo --version
+          sudo mkdir -p /home/chrisk
+          sudo chown "$USER" /home/chrisk
+          export RUSTUP_HOME=/home/chrisk/.rustup CARGO_HOME=/home/chrisk/.cargo
+          rustup toolchain install 1.98.1 --profile minimal --target aarch64-unknown-none-softfloat --component rust-src
+          mv "$RUSTUP_HOME/toolchains/1.98.1-x86_64-unknown-linux-gnu" "$RUSTUP_HOME/toolchains/stable-x86_64-unknown-linux-gnu"
+          tc="$RUSTUP_HOME/toolchains/stable-x86_64-unknown-linux-gnu"
+          {
+            echo "RUSTUP_HOME=$RUSTUP_HOME"
+            echo "CARGO_HOME=$CARGO_HOME"
+            echo "$tc/bin"
+          } > "$RUNNER_TEMP/rust-env"
+          echo "RUSTUP_HOME=$RUSTUP_HOME" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$CARGO_HOME" >> "$GITHUB_ENV"
+          echo "$tc/bin" >> "$GITHUB_PATH"
+          "$tc/bin/rustc" --version
+          "$tc/bin/cargo" --version
 
       - name: Fetch m1n1 at the profile's pin
         shell: bash
