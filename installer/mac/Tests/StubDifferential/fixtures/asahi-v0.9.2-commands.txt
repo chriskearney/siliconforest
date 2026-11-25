@@ -1,0 +1,32 @@
+# Command sequence of Asahi installer v0.9.2 (tag v0.9.2, commit dffbb38e) for the
+# SiliconForest stub on a disk-image APFS container, as recorded by
+# Tests/StubDifferential/asahi_oracle.py and normalised by stubtree.py norm_ops:
+#   <DATA>/<SYSTEM>/<PREBOOT>/<RECOVERY>/<CONTAINER> = disk identifiers (N6)
+#   <System>/<Preboot>/<Recovery>/<Data> = mount points (N3), <VGID> = volume group (N1)
+# Recorded on the M5 (macOS 26.5), run stubdiff-20261124-160316, Asahi's own step2
+# payload and the 13.5 (22G74) j313ap restore image. SFStub must emit exactly this
+# sequence (scripts/stub-differential.sh). Contains no Apple data; the decmpfs header
+# holds only the uncompressed size of arm64eBaseSystem.dmg.
+diskutil apfs changeVolumeRole <DATA> D
+diskutil rename <DATA> SiliconForest - Data
+diskutil apfs addVolume <CONTAINER> apfs SiliconForest -role S -groupWith <DATA>
+diskutil apfs addVolume <CONTAINER> apfs Preboot -role B
+diskutil apfs addVolume <CONTAINER> apfs Recovery -role R
+diskutil mount <PREBOOT>
+diskutil mount <RECOVERY>
+diskutil mount <SYSTEM>
+diskutil mount <DATA>
+xattr -wx com.apple.FinderInfo 0000000000000000040000000000000000000000000000000000000000000000 <System>
+fsctl APFSIOC_VOL_BOOTABLE <System> 1
+chflags schg <Preboot>/<VGID>/var/db/AdminUserRecoveryInfo.plist
+xattr -wx com.apple.decmpfs 66706D630C0000009876306c00000000 <Recovery>/<VGID>/usr/standalone/firmware/arm64eBaseSystem.dmg
+os.chflags <Recovery>/<VGID>/usr/standalone/firmware/arm64eBaseSystem.dmg 0x20
+os.chflags <System>/Finish Installation.app/Contents/MacOS/step2_launcher.sh 0x0
+os.chflags <System>/Finish Installation.app/Contents/MacOS 0x0
+os.chflags <System>/Finish Installation.app/Contents/Resources/en.lproj/InfoPlist.strings 0x0
+os.chflags <System>/Finish Installation.app/Contents/Resources/en.lproj 0x0
+os.chflags <System>/Finish Installation.app/Contents/Resources 0x0
+os.chflags <System>/Finish Installation.app/Contents/Info.plist 0x0
+os.chflags <System>/Finish Installation.app/Contents 0x0
+os.chflags <System>/Finish Installation.app 0x0
+m1n1.build

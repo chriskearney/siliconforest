@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>sftest</key>
+	<dict>
+		<key>GeneratedUID</key>
+		<string>5F0E6B2A-1C3D-4E5F-8A9B-0C1D2E3F4A5B</string>
+		<key>RealName</key>
+		<string>SiliconForest Test (synthetic fixture)</string>
+	</dict>
+</dict>
+</plist>
