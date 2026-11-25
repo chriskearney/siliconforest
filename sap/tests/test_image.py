@@ -77,6 +77,10 @@ class ImageFiles(unittest.TestCase):
             for n in sap_image.BINARIES.values():
                 Path(d, n).write_bytes(bytes.fromhex("cffaedfe0c000001") + b"\0" * 56)
             got = {t: m for t, _, m in sap_image.files(d)}
+            self.assertNotIn("/usr/libexec/sap/kc-builder", got)
+            Path(d, "kc-builder").write_bytes(bytes.fromhex("cffaedfe0c000001") + b"\0" * 56)
+            Path(d, "LICENSE.kc-tools").write_text("BSD-3-Clause\n")
+            got = {t: m for t, _, m in sap_image.files(d)}
         self.assertEqual(got["/usr/bin/sap"], 0o755)
         self.assertEqual(got["/System/Library/LaunchDaemons/org.siliconforest.sap-boot.plist"], 0o644)
         self.assertIn("/etc/sap.conf", got)

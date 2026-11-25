@@ -84,6 +84,14 @@ fn fault(kind: &str, n: usize) {
             eprintln!("sap: SAP_FAULT {f}: aborting");
             std::process::abort();
         }
+        // halt:KIND:N stops here for good, after saying so: the guest tests (sap/tests/guest) cut
+        // the power at that moment, which is what a crash of the whole machine looks like.
+        if f == format!("halt:{kind}:{n}") {
+            eprintln!("SAPG_HALT {kind}:{n}");
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(3600));
+            }
+        }
     }
 }
 

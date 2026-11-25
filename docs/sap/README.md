@@ -107,9 +107,11 @@ What a test on hardware still needs (design 11 questions; deltas in the final re
   (`sf-mount-sfboot`, IMAGE.md). The msdosfs argument layout is PureDarwin's; it has to be seen to
   work on the machine.
 * **Root filesystem atomicity (Q2).** The journal assumes `rename` is atomic and `fsync` durable on the
-  root filesystem (ext4 through SiliconForest's ext4.kext); checked on the QEMU guest, not on NVMe.
-* **kc-builder on SiliconForest (Q5).** The relink runs `/usr/libexec/sap/kc-builder` on the machine; the
-  kernel-collection inputs live under `/System/Library/SiliconForest/KernelCollection` (proposal).
+  root filesystem (ext4 through SiliconForest's ext4.kext); power cuts in the QEMU guest confirm it
+  (IMAGE.md), Apple's NVMe is not in that picture.
+* **kc-builder on SiliconForest (Q5).** The relink runs `/usr/libexec/sap/kc-builder` on the machine
+  (`build_darwin.sh` with `SAP_KC_BUILDER=1`; in the guest it links the release inputs byte-identically);
+  the kernel-collection inputs live under `/System/Library/SiliconForest/KernelCollection` (proposal).
 * **HTTPS.** `https://` URLs go through `/usr/bin/curl` with `--cacert /etc/ssl/cert.pem`; the root has both.
 * **Boot fallback (Q4).** With stage 1 v2 and `sf/bootstate.bin` (written by the installer, IMAGE.md),
   SAP stages into the inactive slot (BOOT-INTERFACE.md); `early` and a health-gated `mark-good` run

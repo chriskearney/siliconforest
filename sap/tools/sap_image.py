@@ -29,6 +29,12 @@ BINARIES = {
     "/usr/libexec/sf-bootslot": "sf-bootslot",
     "/usr/libexec/sap/sf-mount-sfboot": "sf-mount-sfboot",
 }
+# Optional: kc-tools' kc-builder for SiliconForest (build_darwin.sh SAP_KC_BUILDER=1), the tool the
+# kernel-collection relink runs (design Q5), with its BSD licence next to it.
+OPTIONAL = {
+    "/usr/libexec/sap/kc-builder": ("kc-builder", 0o755, True),
+    "/usr/libexec/sap/LICENSE.kc-tools": ("LICENSE.kc-tools", 0o644, False),
+}
 SCRIPTS = {
     "/usr/libexec/sap/sap-boot": "sap-boot",
     "/usr/libexec/sap/sap-mark-good": "sap-mark-good",
@@ -78,6 +84,13 @@ def files(bin_dir, manifest_url=None, allow_host_binaries=False):
         if not allow_host_binaries and data[:8] != MACHO_ARM64:
             raise ImageError(f"{p} is not an arm64 Mach-O executable")
         out.append((target, data, 0o755))
+    for target, (name, mode, binary) in OPTIONAL.items():
+        p = bin_dir / name
+        if p.is_file():
+            data = p.read_bytes()
+            if binary and not allow_host_binaries and data[:8] != MACHO_ARM64:
+                raise ImageError(f"{p} is not an arm64 Mach-O executable")
+            out.append((target, data, mode))
     for target, name in SCRIPTS.items():
         out.append((target, (IMAGE / name).read_bytes(), 0o755))
     for target, name in JOBS.items():

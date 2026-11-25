@@ -30,6 +30,7 @@ adds (`sap/tools/sap_image.py`):
 | `/usr/libexec/sap/sap-boot`, `sap-mark-good` | the launchd jobs' scripts |
 | `/System/Library/LaunchDaemons/org.siliconforest.sap-boot.plist`, `…sap-mark-good.plist` | RunAtLoad, LaunchOnlyOnce |
 | `/etc/sap.conf` | `sap/image/sap.conf`; `--sap-manifest-url` sets `manifest_url` |
+| `/usr/libexec/sap/kc-builder`, `LICENSE.kc-tools` | when OUT has them (`SAP_KC_BUILDER=1`): the relink tool (design Q5) |
 | `/private/var/db/sap/…` | the installed database, seeded |
 
 The base root already has `/usr/bin/curl` and `/etc/ssl/cert.pem` (the CA bundle SAP passes to curl
@@ -102,3 +103,25 @@ on battery SAP stops with exit 30 before staging anything (`--ignore-power` over
 `pmset -g batt`; SiliconForest has no `pmset` and does not expose the battery yet (SF-K K4), so on
 SiliconForest power is "unknown": SAP warns and continues. `require_ac = no` turns the check off.
 Image mode (`--root`) never checks.
+
+## Checked without hardware (sap/tests/guest)
+
+`sap/tests/guest/cases.py` (on the build host; QEMU arm64 `virt`, SiliconForest's release kernel,
+ext4.kext root, disks are files under `runs/sap-guest`) checks what SAP assumes of the machine:
+
+* **durable**: write + fsync + rename + fsync(dir) in a loop on the ext4 root; QEMU is killed
+  (SIGKILL, a power cut) at several acknowledged steps. After a host e2fsck and when the guest boots
+  the cut disk itself, the file is always one whole record, never older than the last acknowledgement.
+* **sap-cut**: the Darwin build of sap installs 0.1.0 into a root directory, upgrades to 0.1.1 and is
+  stopped for good at a journal record or a file operation (`SAP_FAULT=halt:rec:N|op:N`, testing
+  builds only), then the power is cut. On the next boot `sap recover` and `sap verify` both succeed.
+* **sfboot**: a second disk (GPT, FAT32 `SFBOOT`) with the installer's record. sf-mount-sfboot mounts
+  it read-write through msdosfs.kext, sf-bootslot stages and arms slot B, the record reads back on
+  the host; booted with `sf_slot=b`, the two launchd jobs run `early` and, once the health service
+  runs, `mark-good`: the record ends with default=b.
+* **kc**: kc-builder built for SiliconForest links the release's kernel-collection inputs in the
+  guest; the collection is byte-identical to the host kc-builder's.
+
+Only the machine can show: stage 1 v2 choosing slot B and falling back to A (m1n1, iBoot), Apple's
+NVMe and ext4 on it, msdosfs on the real SFBOOT, the real services' health, and power (no battery
+reading on SiliconForest yet).

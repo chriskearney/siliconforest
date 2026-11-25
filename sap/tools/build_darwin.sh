@@ -6,6 +6,10 @@
 #
 #   sap/tools/build_darwin.sh OUT          -> OUT/sap, OUT/sf, OUT/sf-bootslot, OUT/sf-mount-sfboot, OUT/build.json
 #   SAP_FEATURES=testing sap/tools/build_darwin.sh OUT   (test hooks; never for an image)
+#   SAP_EXTRA_C="a.c b.c"   also build these one-file C programs (OUT/a, OUT/b; the guest tests' probes)
+#   SAP_KC_BUILDER=1        also OUT/kc-builder: kc-tools' kc-builder (integrations/siliconforest/kc-builder,
+#                           prepare_source.py; the flags of build-macos.sh) for SiliconForest itself, the
+#                           relink tool SAP runs as /usr/libexec/sap/kc-builder (design Q5)
 #
 # Needs nix and a Rust toolchain with the aarch64-apple-darwin target (rustup target add).
 set -euo pipefail
@@ -32,6 +36,23 @@ DARWIN_SDK_ROOT=$(get sdk) SDKROOT=$(get sdk) "$CC" -std=c11 -Wall -Wextra -Werr
     -c "$REPO/sap/image/sf-mount-sfboot.c" -o "$OUT/sf-mount-sfboot.o"
 "$CD/darwin-linker-inputs.py" -lSystem "$OUT/sf_ab.o" "$OUT/sf-bootslot.o" -o "$OUT/sf-bootslot"
 "$CD/darwin-linker-inputs.py" -lSystem "$OUT/sf-mount-sfboot.o" -o "$OUT/sf-mount-sfboot"
+for c in ${SAP_EXTRA_C:-}; do
+  n=$(basename "$c" .c)
+  DARWIN_SDK_ROOT=$(get sdk) SDKROOT=$(get sdk) "$CC" -std=c11 -Wall -Wextra -Werror -O2 -isystem "$(get sdk)/usr/include" -c "$c" -o "$OUT/$n.o"
+  "$CD/darwin-linker-inputs.py" -lSystem "$OUT/$n.o" -o "$OUT/$n"
+done
+if [ "${SAP_KC_BUILDER:-0}" = 1 ]; then
+  KCS=$(mktemp -d); python3 "$REPO/integrations/siliconforest/kc-builder/prepare_source.py" "$KCS/src" > /dev/null
+  objs=()
+  for c in src/kc_builder.c src/fileset.c src/auxkc.c lib/linker.c lib/macho_view.c lib/plist.c lib/prelink.c; do
+    o="$OUT/kc-$(basename "$c" .c).o"
+    (cd "$KCS/src" && DARWIN_SDK_ROOT=$(get sdk) SDKROOT=$(get sdk) "$CC" -std=gnu11 -O2 -Wall -Wno-unused-function -Wno-unused-variable \
+      -Wno-pointer-bool-conversion -Iinclude -isystem "$(get sdk)/usr/include" -c "$c" -o "$o")
+    objs+=("$o")
+  done
+  "$CD/darwin-linker-inputs.py" -lSystem "${objs[@]}" -o "$OUT/kc-builder"
+  cp "$KCS/src/LICENSE" "$OUT/LICENSE.kc-tools"; rm -rf "$KCS"
+fi
 rm -f "$OUT"/*.o
 python3 - "$OUT" "$REPO" <<'PY'
 import hashlib, json, subprocess, sys
