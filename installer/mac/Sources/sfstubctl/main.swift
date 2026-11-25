@@ -48,11 +48,7 @@ struct Args {
 }
 
 func openImage(_ a: Args, _ profile: StubProfile) throws -> ZipReader {
-    let src = a.single["ipsw"] ?? profile.restore_image.url
-    let base: RangeSource = src.hasPrefix("https://")
-        ? try HTTPRangeSource(url: URL(string: src)!, expectedSize: profile.restore_image.bytes)
-        : try FileRangeSource(path: src)
-    return try ZipReader(BlockCache(base))
+    try RestoreImageSource.open(a.single["ipsw"] ?? profile.restore_image.url, expectedSize: profile.restore_image.bytes)
 }
 
 func json(_ o: Any) -> String {

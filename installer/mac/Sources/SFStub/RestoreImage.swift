@@ -100,3 +100,14 @@ public struct RestoreImage {
 
     public var baseSystemMember: String? { identity["Manifest"]?["BaseSystem"]?["Info"]?["Path"]?.string }
 }
+
+public enum RestoreImageSource {
+    /// The restore image as a zip: an `https://` URL read with range requests (the profile's pinned size), or a local
+    /// file (tests and the differential test's cached copy). Every read goes through a bounded block cache.
+    public static func open(_ src: String, expectedSize: UInt64?) throws -> ZipReader {
+        let base: RangeSource = src.hasPrefix("https://")
+            ? try HTTPRangeSource(url: URL(string: src)!, expectedSize: expectedSize)
+            : try FileRangeSource(path: src)
+        return try ZipReader(BlockCache(base))
+    }
+}

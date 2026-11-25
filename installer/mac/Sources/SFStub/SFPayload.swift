@@ -151,7 +151,6 @@ public enum SFPayload {
 
     /// Builds the app directory and the other inputs under `dir` (private, empty or absent) and the StubPayload that copies them.
     public static func assemble(_ i: Inputs, into dir: URL) throws -> Assembled {
-        let fm = FileManager.default
         let vars = try variables(profile: i.profile, bootPartUUID: i.bootPartUUID)
         let stage1 = try Data(contentsOf: i.stage1)
         guard !stage1.isEmpty else { throw StubError("stage 1 is empty") }
@@ -161,6 +160,44 @@ public enum SFPayload {
         let plan = try checkPlan(i.planJSON, bootPartUUID: i.bootPartUUID)
         guard stage1.count < 64 << 20 else { throw StubError("stage 1 is implausibly large") }
 
+        let built = try assembleApp(launcher: i.launcher, step2: i.step2, recoveryBinary: i.recoveryBinary, resources: i.resources, into: dir)
+        let app = built.app, media = built.media, files = built.files, dirs = built.dirs
+        let boot = bootObject(stage1: stage1, variables: vars)
+        let payload = StubPayload(
+            volumeIcon: i.volumeIcon, appSource: app, appName: appName, script: nil, physicalMedia: media,
+            bootObject: (bootObjectPath, i.stage1, vars),
+            systemExtras: [StubExtra("SFInstall", nil), StubExtra(planPath, plan), StubExtra(statePath, nil)])
+
+        // What must be on the System volume afterwards.
+        var m: [ManifestEntry] = []
+        func file(_ path: String, _ d: Data, _ mode: Int) { m.append(ManifestEntry(path: path, type: "file", mode: mode, size: d.count, sha256: SHA256Hex.hex(d))) }
+        for d in dirs.sorted() { m.append(ManifestEntry(path: d, type: "dir", mode: 0o755, size: 0, sha256: "")) }
+        for f in files { file(f.rel, f.data, f.mode) }
+        file("\(appName)/\(bootObjectPath)", boot, 0o644)
+        m.append(ManifestEntry(path: "SFInstall", type: "dir", mode: 0o755, size: 0, sha256: ""))
+        m.append(ManifestEntry(path: statePath, type: "dir", mode: 0o755, size: 0, sha256: ""))
+        file(planPath, plan, 0o644)
+        file(".IAPhysicalMedia", Data(physicalMedia.utf8), 0o644)
+        let icon = try Data(contentsOf: i.volumeIcon)
+        var st = stat(); stat(i.volumeIcon.path, &st)
+        file(".VolumeIcon.icns", icon, Int(st.st_mode & 0o7777))
+        m.sort { $0.path < $1.path }
+        return Assembled(payload: payload, manifest: m, variables: vars, bootObject: boot)
+    }
+
+    public struct AppTree {
+        public var app: URL
+        public var media: URL
+        public var files: [(rel: String, data: Data, mode: Int)]
+        public var dirs: Set<String>
+    }
+
+    /// The parts of the payload that need no boot partition or plan: `SiliconForest Setup.app` and IAPhysicalMedia.plist
+    /// under `dir` (private; replaced). The engine copies these at S35, before SFBOOT exists, and writes the boot
+    /// object (S55) and SFInstall (S60) once it does.
+    public static func assembleApp(launcher: URL, step2: URL, recoveryBinary: URL, resources: [(String, URL)], into dir: URL) throws -> AppTree {
+        let fm = FileManager.default
+        let i = (launcher: launcher, step2: step2, recoveryBinary: recoveryBinary, resources: resources)
         if fm.fileExists(atPath: dir.path) { try fm.removeItem(at: dir) }
         let app = dir.appendingPathComponent(appName)
         var files: [(rel: String, data: Data, mode: Int)] = [
@@ -194,27 +231,21 @@ public enum SFPayload {
         try Data(physicalMedia.utf8).write(to: media)
         try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: media.path)
 
-        let boot = bootObject(stage1: stage1, variables: vars)
-        let payload = StubPayload(
-            volumeIcon: i.volumeIcon, appSource: app, appName: appName, script: nil, physicalMedia: media,
-            bootObject: (bootObjectPath, i.stage1, vars),
-            systemExtras: [StubExtra("SFInstall", nil), StubExtra(planPath, plan), StubExtra(statePath, nil)])
+        return AppTree(app: app, media: media, files: files, dirs: dirs)
+    }
 
-        // What must be on the System volume afterwards.
-        var m: [ManifestEntry] = []
-        func file(_ path: String, _ d: Data, _ mode: Int) { m.append(ManifestEntry(path: path, type: "file", mode: mode, size: d.count, sha256: SHA256Hex.hex(d))) }
-        for d in dirs.sorted() { m.append(ManifestEntry(path: d, type: "dir", mode: 0o755, size: 0, sha256: "")) }
-        for f in files { file(f.rel, f.data, f.mode) }
-        file("\(appName)/\(bootObjectPath)", boot, 0o644)
-        m.append(ManifestEntry(path: "SFInstall", type: "dir", mode: 0o755, size: 0, sha256: ""))
-        m.append(ManifestEntry(path: statePath, type: "dir", mode: 0o755, size: 0, sha256: ""))
-        file(planPath, plan, 0o644)
-        file(".IAPhysicalMedia", Data(physicalMedia.utf8), 0o644)
-        let icon = try Data(contentsOf: i.volumeIcon)
-        var st = stat(); stat(i.volumeIcon.path, &st)
-        file(".VolumeIcon.icns", icon, Int(st.st_mode & 0o7777))
-        m.sort { $0.path < $1.path }
-        return Assembled(payload: payload, manifest: m, variables: vars, bootObject: boot)
+    /// The payload for the engine's S35: the app, icon and media marker, no boot object and no SFInstall.
+    public static func appPayload(_ t: AppTree, volumeIcon: URL) -> StubPayload {
+        StubPayload(volumeIcon: volumeIcon, appSource: t.app, appName: appName, script: nil, physicalMedia: t.media, bootObject: nil, systemExtras: [])
+    }
+
+    /// SFInstall/ with plan.json, as StubPlanner emits the extras (the engine's S60).
+    public static func installActions(planJSON: Data, bootPartUUID: String) throws -> [StubAction] {
+        let plan = try checkPlan(planJSON, bootPartUUID: bootPartUUID)
+        let sys = StubPath(.system, "")
+        // StubPlanner's extras for [SFInstall/, SFInstall/plan.json, SFInstall/state/]: plan.json's parent is made again.
+        return [.mkdir(sys.appending("SFInstall")), .mkdir(sys.appending("SFInstall")), .bytes(plan, sys.appending(planPath), label: planPath),
+                .mkdir(sys.appending(statePath))]
     }
 
     /// plan.json as the engine writes it (RecoveryPlan): the keys SFRecovery and sf-step2.sh rely on, and the

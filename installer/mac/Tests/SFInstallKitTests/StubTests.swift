@@ -392,6 +392,48 @@ struct StubBuildTests {
         #expect(bootable == ["vol-System"])
     }
 
+    @Test func aResumedWriterConvergesAndTheVerifierReadsTheStubBack() throws {
+        // The engine's S35 resume: StubVerifier says what isn't done; a rerun with replaceExisting finishes it.
+        let dir = tempDir("resume")
+        let (t, plan, _, _, z) = try build(dir)
+        let staged = try StubStager(zip: z, work: dir.appendingPathComponent("work")).stage(try StubPlanner.members(of: plan, in: z))
+        #expect(StubVerifier.unmet(plan, target: t, staged: staged, rootOnly: false) == [])
+        // a partly written stub: a member gone, a plist cut short, the app half copied, the FinderInfo lost
+        let r = t.roots
+        try FileManager.default.removeItem(at: r[.preboot]!.appendingPathComponent("\(t.vgid)/Restore/SystemVersion.plist"))
+        try Data("x".utf8).write(to: r[.preboot]!.appendingPathComponent("\(t.vgid)/Restore/BuildManifest.plist"))
+        try FileManager.default.removeItem(at: r[.system]!.appendingPathComponent("Setup.app/Contents/MacOS"))
+        removexattr(r[.system]!.path, "com.apple.FinderInfo", 0)
+        let bad = StubVerifier.unmet(plan, target: t, staged: staged, rootOnly: false)
+        #expect(bad.count == 4, "\(bad)")
+        #expect(bad.contains { $0.contains("Restore/SystemVersion.plist is missing") } && bad.contains { $0.contains("BuildManifest.plist is 1 bytes") })
+        #expect(bad.contains { $0.contains("Setup.app") } && bad.contains { $0.hasPrefix("xattr com.apple.FinderInfo") })
+        // upstream's writer refuses to copy over an existing app (shutil.copytree); the engine's replaces it
+        var w = StubWriter(target: t, staged: staged)
+        w.requireMountPoints = false; w.bootable = { _ in }; w.systemFlags = { _, _ in }
+        #expect(throws: StubError.self) { try w.run(plan) }
+        w.replaceExisting = true
+        var after: [Int] = []
+        w.afterAction = { i, _ in after.append(i) }
+        try w.run(plan)
+        #expect(after == Array(1...plan.count))
+        #expect(StubVerifier.unmet(plan, target: t, staged: staged, rootOnly: false) == [])
+    }
+
+    @Test func theEnginesSFInstallActionsAreStubPlannersExtras() throws {
+        let plan = Data(#"{"boot":"5F8A2C10-1B2C-4D3E-8F40-0123456789AB","installID":"I","job":"J","planDigest":"D","root":"R","stub":"S"}"#.utf8)
+        let mine = try SFPayload.installActions(planJSON: plan, bootPartUUID: "5f8a2c10-1b2c-4d3e-8f40-0123456789ab").map(\.description)
+        let dir = tempDir("extras")
+        let (data, profile) = fixtureIPSW()
+        let img = try RestoreImage(zip: try ZipReader(MemorySource(data)), profile: profile)
+        var p = try fixturePayload(dir)
+        p.systemExtras = [StubExtra("SFInstall", nil), StubExtra(SFPayload.planPath, plan), StubExtra(SFPayload.statePath, nil)]
+        let full = try StubPlanner.plan(image: img, target: "V", payload: p, adminUsers: dir).map(\.description)
+        let tail = Array(full.suffix(mine.count + (p.bootObject == nil ? 0 : 1)).prefix(mine.count))
+        #expect(mine == tail)
+        #expect(throws: StubError.self) { _ = try SFPayload.installActions(planJSON: plan, bootPartUUID: "00000000-0000-4000-8000-000000000000") }
+    }
+
     @Test func refusesUnmountedRootsAndEscapes() throws {
         let dir = tempDir("refuse")
         let t = StubTarget(roots: [.system: dir], vgid: "V", prebootVolumeUUID: "P")

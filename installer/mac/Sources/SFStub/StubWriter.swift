@@ -24,6 +24,11 @@ public struct StubWriter {
     public var bootable: (URL) throws -> Void = StubWriter.setVolumeBootable
     /// Set system flags such as schg (needs root); tests without root record them instead.
     public var systemFlags: (String, UInt32) throws -> Void = { path, flags in try StubWriter.posix(chflags(path, flags), "chflags \(path)") }
+    /// Resuming over a partly written stub (the engine): a copied tree or compressed file already there is removed
+    /// first. Upstream (and a first run) never finds one; with this off an existing tree is an error, as upstream.
+    public var replaceExisting = false
+    /// After each action, with its 1-based index (the engine's journal, progress and fault points).
+    public var afterAction: (Int, StubAction) throws -> Void = { _, _ in }
 
     public init(target: StubTarget, staged: [String: URL]) { self.target = target; self.staged = staged }
 
@@ -151,6 +156,19 @@ public struct StubWriter {
         if chflags(dst, st.st_flags) != 0 && errno != ENOTSUP && errno != EOPNOTSUPP { try posix(-1, "chflags \(dst)") }
     }
 
+    /// Removes a file or tree (clearing its flags first) if it exists; for `replaceExisting`.
+    static func removeTree(_ path: String) throws {
+        var st = stat()
+        guard lstat(path, &st) == 0 else { return }
+        if st.st_flags != 0 { try posix(lchflags(path, 0), "chflags \(path)") }
+        if (st.st_mode & S_IFMT) == S_IFDIR {
+            for n in try readdirNames(path) { try removeTree(path + "/" + n) }
+            try posix(rmdir(path), "rmdir \(path)")
+        } else {
+            try posix(unlink(path), "unlink \(path)")
+        }
+    }
+
     public static func setVolumeBootable(_ root: URL) throws {
         typealias FsctlFn = @convention(c) (UnsafePointer<CChar>, UInt, UnsafeMutableRawPointer, UInt32) -> Int32
         guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "fsctl") else { throw StubError("fsctl is not available") }
@@ -177,9 +195,10 @@ public struct StubWriter {
         if requireMountPoints {
             for (v, r) in target.roots where !Self.isMountPoint(r) { throw StubError("\(v.rawValue) root \(r.path) is not a mount point") }
         }
-        for act in plan {
+        for (i, act) in plan.enumerated() {
             log(act.description)
             try perform(act)
+            try afterAction(i + 1, act)
         }
     }
 
@@ -206,6 +225,7 @@ public struct StubWriter {
         case .copyFile(let src, let p):
             try Self.copy(src.path, try url(p).path)
         case .copyTree(let src, let p):
+            if replaceExisting { try Self.removeTree(try url(p).path) }
             try Self.copytree(src.path, try url(p).path, effect)
         case .script(let tpl, let tokens, let p):
             var text = try String(contentsOf: tpl, encoding: .utf8)
@@ -233,6 +253,7 @@ public struct StubWriter {
             let src = try staged(m)
             guard let crc = try Self.memberCRC(m, self) else { throw StubError("no CRC for \(m)") }
             let path = try url(p).path
+            if replaceExisting { try Self.removeTree(path) }
             try Decmpfs.writeLZFSE(from: src, to: path, expectedCRC: crc) { size in
                 effect("xattr -wx com.apple.decmpfs \(Decmpfs.upstreamHex(size: size)) \(path)")
                 effect("os.chflags \(path) 0x\(String(UF_COMPRESSED, radix: 16))")
