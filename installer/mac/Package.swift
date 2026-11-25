@@ -11,6 +11,7 @@ import Foundation
 //   SFEngine      the acting half: chokepoint, gate, journal, step machine, resize supervisor, image backend
 //   SFHelperKit   the helper's verb-only XPC protocol and service; SFHelper is its launchd executable
 //   SFRecovery    recoveryOS app (AppKit only) over SFRecoveryKit (gate, steps, PTY driver)
+//   SFStub        restore-image range reader, zip, stub builder (port of Asahi v0.9.2, MIT); sfstubctl drives it on images
 //
 // Safety: real-disk writes are compiled out. `SF_REAL_DISK_WRITES` is never defined here, and even
 // with it the only executor in this phase refuses every mutating operation (see RealDiskBackend).
@@ -60,10 +61,13 @@ let package = Package(
         .target(name: "SFRecoveryKit", swiftSettings: ui),
         .executableTarget(name: "SFRecovery", dependencies: ["SFRecoveryKit"], swiftSettings: ui),
         .executableTarget(name: "sfinstallctl", dependencies: ["SFInstallKit", "SFCopy", "SFEngine"]),
+        // The stub builder (DESIGN §6.4, ENGINE §10): Foundation + Compression only, no dependency on the engine.
+        .target(name: "SFStub"),
+        .executableTarget(name: "sfstubctl", dependencies: ["SFStub", "SFEngine"]),
         // Same tests as an executable, for Command Line Tools-only Macs (see scripts/test.sh).
-        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit", "SFRecoveryKit"], path: "Tests/CLTRunner",
+        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit", "SFRecoveryKit", "SFStub"], path: "Tests/CLTRunner",
                           swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
-        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit", "SFRecoveryKit"],
+        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine", "SFHelperKit", "SFRecoveryKit", "SFStub"],
                     swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
     ]
 )
