@@ -245,6 +245,7 @@ struct SpaceScreen: View {
             if c.rootLocked { return Copy.Space.fixed(c.minimum) }
             switch s.limitHit {
             case .macOSReserve: return Copy.Space.limitReserve(c.reserve)
+            case .rootGrowCap: return Copy.Space.limitGrowCap(c.rootMaxBytes)
             case .siliconForestMinimum: return Copy.Space.limitMinimum(c.minimum)
             case .none: return s.siliconForestSize < c.lowSpaceNote ? Copy.Space.lowSpace : nil
             }

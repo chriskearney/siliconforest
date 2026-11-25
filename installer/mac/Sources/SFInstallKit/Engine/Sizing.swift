@@ -3,7 +3,7 @@ import Foundation
 /// What the release brings (placeholder until release manifests exist: DESIGN §10, ENGINE §4).
 public struct ReleaseInfo: Sendable, Hashable {
     public enum RootSizing: Sendable, Hashable {
-        /// The root image grows to fill its partition on first start.
+        /// The helper grows the root offline at S48 to fill its partition (`sf-ext4grow`).
         case growable
         /// The root partition equals the image size; the size handle is locked.
         case fixed(Int64)
@@ -12,11 +12,19 @@ public struct ReleaseInfo: Sendable, Hashable {
     public var downloadBytes: Int64
     public var rootImageBytes: Int64
     public var rootMinBytes: Int64
+    /// Largest root partition this release can grow into. Default is the 0.1.0 cap.
+    public var rootMaxBytes: Int64
     public var rootSizing: RootSizing
 
-    public init(version: String, downloadBytes: Int64, rootImageBytes: Int64, rootMinBytes: Int64, rootSizing: RootSizing) {
+    /// Growth limit of the 0.1.0 installer root, from its reserved GDT blocks (Chris, 24 Nov 2026):
+    /// (1 GDT block + 259 reserved) × 64 descriptors per 4 KiB block × 32,768 blocks per group
+    /// × 4,096 bytes = 2,233,382,993,920 (exactly 2,080 GiB). The grower still refuses a larger target.
+    public static let rootGrowCapBytes: Int64 = 2_233_382_993_920
+
+    public init(version: String, downloadBytes: Int64, rootImageBytes: Int64, rootMinBytes: Int64, rootSizing: RootSizing,
+                rootMaxBytes: Int64 = ReleaseInfo.rootGrowCapBytes) {
         self.version = version; self.downloadBytes = downloadBytes; self.rootImageBytes = rootImageBytes
-        self.rootMinBytes = rootMinBytes; self.rootSizing = rootSizing
+        self.rootMinBytes = rootMinBytes; self.rootSizing = rootSizing; self.rootMaxBytes = rootMaxBytes
     }
 
     public static let placeholder = ReleaseInfo(version: "0.3", downloadBytes: 3_400_000_000, rootImageBytes: 7_300_000_000,
@@ -52,6 +60,10 @@ public struct SizingConstraints: Sendable, Hashable {
     public var boot: Int64
     public var rootLocked: Bool
     public var lowSpaceNote: Int64
+    /// Largest root partition this release can grow into (`ReleaseInfo.rootMaxBytes`).
+    public var rootMaxBytes: Int64
+    /// True when `maximum` is the grow cap, not the macOS reserve (for the size-handle explanation).
+    public var isCappedByRootGrow: Bool
 
     public var pool: Int64 { macOSPartition.size + freeAfterMacOS }
     public var isFeasible: Bool { maximum >= minimum }
@@ -76,15 +88,20 @@ public struct SizingConstraints: Sendable, Hashable {
         step = Bytes.gb
         lowSpaceNote = p.rootLowSpaceNoteBytes ?? 40 * Bytes.gb
         let rootMin = max(p.rootMinBytes, release.rootMinBytes)
+        rootMaxBytes = max(rootMin, release.rootMaxBytes)
         switch release.rootSizing {
         case .growable:
             rootLocked = false
             minimum = stub + boot + rootMin
-            maximum = ((mac.size + freeAfterMacOS - macOSFloor) / Bytes.gb) * Bytes.gb
+            let diskMax = ((mac.size + freeAfterMacOS - macOSFloor) / Bytes.gb) * Bytes.gb
+            let growMax = stub + boot + rootMaxBytes
+            isCappedByRootGrow = growMax < diskMax
+            maximum = min(diskMax, growMax)
             let rootDefault = max(p.rootRecommendedBytes, Int64(Double(disk.size) * (p.rootDefaultDiskFraction ?? 0)))
             recommended = min(max(stub + boot + Self.roundGB(rootDefault), minimum), maximum)
         case .fixed(let bytes):
             rootLocked = true
+            isCappedByRootGrow = false
             minimum = stub + boot + bytes
             maximum = min(minimum, mac.size + freeAfterMacOS - macOSFloor)
             recommended = minimum
@@ -111,10 +128,10 @@ public struct SizingConstraints: Sendable, Hashable {
         return clamp(Self.roundGB(c))
     }
 
-    public enum Limit: Sendable { case macOSReserve, siliconForestMinimum, none }
+    public enum Limit: Sendable { case macOSReserve, rootGrowCap, siliconForestMinimum, none }
     /// Which limit a requested size runs into (for the one-line explanation at the hard stop).
     public func limit(for requested: Int64) -> Limit {
-        if requested > maximum { return .macOSReserve }
+        if requested > maximum { return isCappedByRootGrow ? .rootGrowCap : .macOSReserve }
         if requested < minimum { return .siliconForestMinimum }
         return .none
     }

@@ -3,8 +3,25 @@ import Testing
 @testable import SFInstallKit
 
 private func fixture(_ name: String) throws -> DiskFixture { try DiskFixture.named(name) }
-private func j293() throws -> DeviceProfile {
-    try #require(ProfileStore.profile(id: "J293"))
+private func j293() throws -> DeviceProfile { try #require(ProfileStore.profile(id: "J293")) }
+
+/// Enlarge a fixture disk so the macOS container (and the disk) have `capacity` bytes, leaving used space unchanged.
+private func diskWithCapacity(_ capacity: Int64, from base: PhysicalDisk) -> PhysicalDisk {
+    var d = base
+    guard let mac = d.macOSPartition, let i = d.partitions.firstIndex(where: { $0.identifier == mac.identifier }) else { return d }
+    let extra = capacity - d.size
+    guard extra > 0 else { return d }
+    d.size = capacity
+    var p = d.partitions[i]
+    p.size += extra
+    if var c = p.container {
+        c.capacityCeiling += extra
+        c.capacityFree += extra
+        p.container = c
+    }
+    d.partitions[i] = p
+    for j in (i + 1)..<d.partitions.count { d.partitions[j].offset += extra }
+    return d
 }
 
 @Suite("Profiles")
@@ -117,6 +134,34 @@ struct SizingTests {
         #expect(Bytes.format(524_288_000) == "524 MB")
     }
 }
+
+
+    @Test func rootPartitionIsCappedAtTheGrowLimit() throws {
+        let p = try j293()
+        let base = try #require(try fixture("j293-512").snapshot.internalDisk)
+        // 8 TiB: well above the 0.1.0 grow cap, so the cap (not the macOS reserve) is the limit.
+        let d = diskWithCapacity(8 * Bytes.gib * 1024, from: base)
+        let c = try #require(SizingConstraints(profile: p, disk: d))
+        #expect(c.rootMaxBytes == ReleaseInfo.rootGrowCapBytes)
+        #expect(ReleaseInfo.rootGrowCapBytes == 2_233_382_993_920)
+        #expect(c.isCappedByRootGrow)
+        #expect(c.maximum == c.stub + c.boot + ReleaseInfo.rootGrowCapBytes)
+        #expect(c.snap(Int64.max / 4) == c.maximum)
+        #expect(c.limit(for: c.maximum + Bytes.gb) == .rootGrowCap)
+        #expect(c.limit(for: c.maximum) == .none)
+        let plan = try Planner.installPlan(profile: p, snapshot: DiskSnapshot(disks: [d]),
+                                           options: InstallOptions(siliconForestSize: c.maximum))
+        #expect(plan.rootSize == ReleaseInfo.rootGrowCapBytes)
+        #expect(throws: PlanError.self) {
+            try Planner.installPlan(profile: p, snapshot: DiskSnapshot(disks: [d]),
+                                    options: InstallOptions(siliconForestSize: c.maximum + Bytes.gb))
+        }
+        // On the ordinary 512 GB fixture the macOS reserve still binds, and the cap is not hit.
+        let small = try #require(SizingConstraints(profile: p, disk: base))
+        #expect(!small.isCappedByRootGrow)
+        #expect(small.maximum < small.stub + small.boot + ReleaseInfo.rootGrowCapBytes)
+        #expect(small.limit(for: small.maximum + Bytes.gb) == .macOSReserve)
+    }
 
 @Suite("Compatibility")
 struct CompatibilityTests {

@@ -141,14 +141,24 @@ public enum EnginePlanner {
         let stub = profile.partitioning.stubContainerBytes, boot = profile.partitioning.bootPartition.bytes
         let macMin = macOSMinimum(c, limits: limits)
         let pool = mac.size + topology.freeAfter(uuid: mac.uuid)
-        let sfMax = ((pool - macMin) / align) * align
+        let diskMax = ((pool - macMin) / align) * align
+        let growMax = ((stub + boot + c.rootMaxBytes) / align) * align
+        let sfMax = min(diskMax, growMax)
         let sf = (request.siliconForestBytes / align) * align
         guard sf >= c.minimum else { throw PlanRefusal(reason: "SiliconForest needs at least \(Bytes.format(c.minimum))") }
-        guard sf <= sfMax else { throw PlanRefusal(reason: "at most \(Bytes.format(max(0, sfMax))) can be freed (macOS keeps \(Bytes.format(macMin)))") }
+        guard sf <= sfMax else {
+            if growMax < diskMax {
+                throw PlanRefusal(reason: "the root partition cannot exceed \(Bytes.format(c.rootMaxBytes)) (this release's growth limit)")
+            }
+            throw PlanRefusal(reason: "at most \(Bytes.format(max(0, sfMax))) can be freed (macOS keeps \(Bytes.format(macMin)))")
+        }
         let to = ((min(mac.size, pool - sf)) / align) * align
         let root = sf - stub - boot
         guard root >= max(profile.partitioning.rootMinBytes, release.rootMinBytes), root >= release.rootImageBytes else {
             throw PlanRefusal(reason: "root partition would be smaller than the release needs")
+        }
+        guard root <= c.rootMaxBytes else {
+            throw PlanRefusal(reason: "the root partition cannot exceed \(Bytes.format(c.rootMaxBytes)) (this release's growth limit)")
         }
         return EnginePlan(operation: .install, profile: profileRef(profile), release: release.digest, releaseVersion: release.version,
                           request: request, layoutDigest: topology.layoutDigest,

@@ -196,6 +196,7 @@ public enum Copy {
             ["recommended": "Recommended", "half": "Half", "minimum": "Minimum", "maximum": "Maximum"][id] ?? id
         }
         public static func limitReserve(_ b: Int64) -> String { "macOS needs to keep \(Bytes.format(b)) free for updates." }
+        public static func limitGrowCap(_ b: Int64) -> String { "This release can grow the SiliconForest root to at most \(Bytes.format(b))." }
         public static func limitMinimum(_ b: Int64) -> String { "SiliconForest needs at least \(Bytes.format(b))." }
         public static let lowSpace = "That's enough to start, but not for much else."
         public static func fixed(_ b: Int64) -> String { "This release uses a fixed \(Bytes.format(b)). Larger installations are coming." }

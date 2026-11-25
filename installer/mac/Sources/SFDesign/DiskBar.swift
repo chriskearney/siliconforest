@@ -195,7 +195,7 @@ public struct DiskBar: View {
                 let limit = c.limit(for: requested)
                 size = c.snap(requested)
                 onLimit(limit)
-                if limit != .none { bumpAnimation(limit == .macOSReserve ? -1 : 1) }
+                if limit != .none { bumpAnimation(limit == .siliconForestMinimum ? 1 : -1) }
             }
             .onEnded { _ in withAnimation(.easeOut(duration: 0.2)) { dragging = false } }
     }
@@ -252,7 +252,7 @@ struct BarAccessibility: ViewModifier {
                     let limit = c.limit(for: requested)
                     withAnimation(SFMotion.numbers) { size = c.snap(requested) }
                     onLimit(limit)
-                    if limit != .none { bump(limit == .macOSReserve ? -1 : 1) }
+                    if limit != .none { bump(limit == .siliconForestMinimum ? 1 : -1) }
                 }
                 .accessibilityElement()
                 .accessibilityLabel("SiliconForest size")
