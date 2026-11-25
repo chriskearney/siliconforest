@@ -54,10 +54,7 @@ def bootslot():
         return _SLOT
     cc = os.environ.get("CC") or shutil.which("cc") or shutil.which("clang") or shutil.which("gcc")
     out = Path(tempfile.mkdtemp(prefix="sap-bootslot-")) / "sf-bootslot"
-    # On Darwin, sf-bootslot.c's _POSIX_C_SOURCE hides the BSD types <sys/sysctl.h> needs (u_int);
-    # _DARWIN_C_SOURCE brings them back without touching the abboot sources.
-    darwin = ["-D_DARWIN_C_SOURCE"] if sys.platform == "darwin" else []
-    subprocess.run([cc, "-std=c11", "-O1", *darwin, "-I", str(AB), str(AB / "sf_ab.c"), str(AB / "sf-bootslot.c"), "-o", str(out)], check=True)
+    subprocess.run([cc, "-std=c11", "-O1", "-I", str(AB), str(AB / "sf_ab.c"), str(AB / "sf-bootslot.c"), "-o", str(out)], check=True)
     _SLOT = out
     return out
 

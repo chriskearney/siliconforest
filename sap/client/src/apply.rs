@@ -920,7 +920,13 @@ pub fn rollback(sys: &Sys, which: Option<&str>) -> Result<i32> {
     let res: Result<()> = (|| {
         for (k, o) in ops.iter().enumerate().rev() {
             if o.op == "arm" {
-                println!("note: {} is left as it is: the default slot never changed, and an armed slot that does not report a clean start falls back by itself (sap boot-status)", o.label);
+                // Not restarted yet: cancel the trial before its files are put back. Once started, the
+                // default slot never changed and a trial without a clean start falls back by itself.
+                match crate::boot::Tool::new(sys).and_then(|t| t.disarm(txn::slot_of(&o.path))) {
+                    Ok(true) => println!("{}: the armed trial is cancelled (sf-bootslot disarm)", o.label),
+                    Ok(false) => println!("note: {} is not armed any more; left as it is (sap boot-status)", o.label),
+                    Err(e) => return Err(e),
+                }
                 continue;
             }
             let b = txn::base(sys, &o.area)?;

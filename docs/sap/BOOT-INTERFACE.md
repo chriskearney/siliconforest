@@ -57,11 +57,11 @@ What `sap upgrade --boot` does (design 10.5):
 No file of the default slot is written at any point. In image mode (`--root`) SAP runs the tool named
 by `SAP_BOOTSLOT_TOOL` (a host build) with `--running <default>`.
 
-**Rollback.** `sap rollback` and `sap recover --rollback` leave the slots alone when the trial is not
-armed. `sf-bootslot` has no way to disarm an armed trial, so a rollback of an armed transaction renames
-the trial's stage 2 to `boot.bin.cancelled`: stage 1 then finds the trial damaged and starts the default
-(`TRIAL_DAMAGED`, shown), and `early` records the fallback. A `disarm` command in `sf-bootslot` would make
-this quieter (design delta).
+**Rollback.** A rollback before the restart (`sap rollback`, `sap recover --rollback`, or a failed
+commit undoing itself) runs `sf-bootslot disarm b`: the ARMED trial is cancelled and slot B is left
+unrecorded, as `begin-stage` left it, and B's files are put back. Stage 1 then starts the default with
+no notice. Once the trial has been started (`early` made it TRIED), `disarm` is refused and SAP leaves
+the slots alone: a start that never reports clean falls back by itself, and `sap boot-status` shows it.
 
 **verify.** With slots, `sap verify` checks the stage 2 of the slot SAP last staged (the armed or tried
 trial, else the default); with the legacy layout `/sf/b/*` is not installed and not checked.

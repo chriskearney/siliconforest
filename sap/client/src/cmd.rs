@@ -193,10 +193,8 @@ pub fn verify(sys: &Sys, names: &[String], repair: bool) -> Result<i32> {
         match crate::boot::backend(sys)? {
             crate::boot::Backend::Slots => {
                 let st = crate::boot::Tool::new(sys)?.status()?;
-                let sb = sys.sfboot.clone().unwrap();
                 Some(match (st.trial, st.trial_state.as_str()) {
-                    // A trial cancelled by a rollback (its stage 2 renamed away) no longer counts.
-                    (Some(t), "armed" | "tried") if sb.join(crate::boot::boot_path(t)).exists() => t,
+                    (Some(t), "armed" | "tried") => t,
                     _ => st.default,
                 })
             }

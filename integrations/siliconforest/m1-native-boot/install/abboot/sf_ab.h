@@ -138,6 +138,7 @@ char sf_ab_slot_name(int slot); /* 'a', 'b', '-' */
 int sf_ab_init(struct sf_ab_state *st, uint32_t a_bytes, uint32_t a_crc, uint32_t generation);
 int sf_ab_begin_stage(struct sf_ab_state *st, int slot);
 int sf_ab_arm(struct sf_ab_state *st, int slot, uint32_t bytes, uint32_t crc, uint32_t generation);
+int sf_ab_disarm(struct sf_ab_state *st, int slot);
 int sf_ab_on_boot(struct sf_ab_state *st, int running, bool *changed);
 int sf_ab_mark_good(struct sf_ab_state *st, int running, bool *changed);
 

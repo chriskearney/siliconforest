@@ -281,6 +281,28 @@ class Cycles(unittest.TestCase):
         b.tool('arm', 'b', expect=1)
         self.assertEqual((b.dir / STATE).read_bytes(), armed)
 
+    def test_disarm_cancels_an_armed_trial(self):
+        b = Boot(self)
+        b.tool('init')
+        b.tool('disarm', 'b', expect=1)                      # nothing armed
+        b.stage_b()
+        b.tool('disarm', 'a', expect=1)                      # the default slot
+        b.tool('disarm', 'b', running='b', expect=1)         # never from the trial slot itself
+        st = b.tool('disarm', 'b')
+        self.assertEqual((st['default'], st['trial'], st['trial_state']), ('a', '-', 'none'))
+        self.assertTrue(st['slot_b'].startswith('bytes:0 '), st['slot_b'])
+        booted, notices, _ = b.stage1()
+        self.assertEqual((booted, notices), ('a', []))       # B is not tried: no notice either
+        b.tool('early')
+        self.assertEqual(b.tool('status')['trial_state'], 'none')
+        b.stage_b()                                          # the next update stages again
+        self.assertEqual(b.tool('status')['trial_state'], 'armed')
+        b.stage1()
+        b.tool('early', running='b')                         # tried: too late to disarm
+        tried = (b.dir / STATE).read_bytes()
+        b.tool('disarm', 'b', expect=1)
+        self.assertEqual((b.dir / STATE).read_bytes(), tried)
+
     def test_the_v2_gap_and_a_writing_stage1(self):
         """v2 cannot write: a trial that dies before 'early' runs is started again (README, gap).
         A stage 1 that stores the plan's writeback (v3) closes it."""

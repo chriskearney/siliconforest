@@ -187,6 +187,20 @@ static void test_decide(void)
     struct sf_ab_state damaged = st;
     CHECK(sf_ab_on_boot(&damaged, SF_AB_SLOT_A, &ch) == 0 && ch && damaged.reason == SF_AB_R_TRIAL_DAMAGED);
 
+    /* an interrupted update rolled back before the restart: the ARMED trial is cancelled */
+    struct sf_ab_state off = st;
+    CHECK(sf_ab_disarm(&off, SF_AB_SLOT_A) != 0); /* the default slot */
+    CHECK(sf_ab_disarm(&off, SF_AB_SLOT_B) == 0);
+    CHECK(off.trial_state == SF_AB_TRIAL_NONE && off.trial_slot == SF_AB_SLOT_NONE && off.default_slot == SF_AB_SLOT_A);
+    CHECK(off.slot[1].boot_bytes == 0 && !off.slot[1].good && off.slot[0].good);
+    CHECK(sf_ab_disarm(&off, SF_AB_SLOT_B) != 0); /* nothing armed any more */
+    sf_ab_decide(SF_AB_OK, &off, &p);
+    CHECK(p.c[0].slot == SF_AB_SLOT_A && p.reason == SF_AB_R_NONE && !p.writeback_valid);
+    CHECK(sf_ab_begin_stage(&off, SF_AB_SLOT_B) == 0); /* the next update can stage again */
+    struct sf_ab_state t2 = tried, f2 = failed;
+    CHECK(sf_ab_disarm(&t2, SF_AB_SLOT_B) != 0 && t2.trial_state == SF_AB_TRIAL_TRIED); /* not once tried */
+    CHECK(sf_ab_disarm(&f2, SF_AB_SLOT_B) != 0);
+
     /* the next update after a failure */
     CHECK(sf_ab_begin_stage(&failed, SF_AB_SLOT_B) == 0 && failed.trial_state == SF_AB_TRIAL_NONE);
     CHECK(failed.slot[1].boot_bytes == 0);

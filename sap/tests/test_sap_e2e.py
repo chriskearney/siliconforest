@@ -789,6 +789,7 @@ class Slots(unittest.TestCase):
         sf0 = e.d / "sf0"
         shutil.copytree(e.root, root0, symlinks=True)
         shutil.copytree(e.sfboot, sf0)
+        seq0 = int(T.slot_status(sf0)["seq"])
         outcomes = set()
         for kind in ("rec", "op"):
             for back in (False, True):
@@ -804,11 +805,12 @@ class Slots(unittest.TestCase):
                     e.run(*(["recover", "--rollback"] if back else ["recover"]), anchor=False, check=0)
                     self.assertEqual(self.slot_a(), self.default_a, f"{kind}:{n}: the default slot was written")
                     st = T.slot_status(e.sfboot)
-                    if st["trial_state"] == "armed" and back and not (e.sfboot / "sf/b/boot.bin").exists():
-                        # Armed before the fault, then rolled back: sf-bootslot has no disarm, so the
-                        # trial's stage 2 is renamed away; stage 1 then starts the default (TRIAL_DAMAGED).
-                        self.assertTrue((e.sfboot / "sf/b/boot.bin.cancelled").exists())
-                        outcomes.add("cancelled")
+                    self.assertFalse((e.sfboot / "sf/b/boot.bin.cancelled").exists())
+                    if st["trial_state"] == "none" and int(st["seq"]) == seq0 + 3:
+                        # Armed before the fault, then rolled back: begin-stage, arm, disarm.
+                        self.assertTrue(back, f"{kind}:{n}")
+                        self.assertTrue(st["slot_b"].startswith("bytes:0 "), st["slot_b"])
+                        outcomes.add("disarmed")
                     elif st["trial_state"] == "armed":
                         # Armed only with B complete and matching (a fault after the done record leaves the
                         # finished transaction alone, even with --rollback).
@@ -820,15 +822,30 @@ class Slots(unittest.TestCase):
                         outcomes.add("not armed")
                     e.run("verify", anchor=False, check=0)
                     n += 1
-        self.assertEqual(outcomes, {"armed", "not armed", "cancelled"})
+        self.assertEqual(outcomes, {"armed", "not armed", "disarmed"})
 
-    def test_rollback_leaves_slots(self):
+    def test_rollback_before_restart_disarms(self):
         e = self.e
         rel2, _, _ = self.kext_release("rel2", b"v2\n")
         e.publish("0.1.1", self.t1, kc=rel2, boot=self.bin("a1", self.A1), extra=["--boot-bin-b", str(self.bin("b1", self.B1))])
         e.run("upgrade", "--boot", anchor=False, check=50)
+        self.assertEqual(T.slot_status(e.sfboot)["trial_state"], "armed")
         p = e.run("rollback", anchor=False, check=0)
-        self.assertIn("slot b (arm) is left as it is", p.stdout)
+        self.assertIn("slot b (arm): the armed trial is cancelled (sf-bootslot disarm)", p.stdout)
+        st = T.slot_status(e.sfboot)
+        self.assertEqual((st["default"], st["trial_state"]), ("a", "none"))
+        self.assertEqual(self.slot_a(), self.default_a)
+        e.run("verify", anchor=False, check=0)
+
+    def test_rollback_after_restart_leaves_slots(self):
+        e = self.e
+        rel2, _, _ = self.kext_release("rel2", b"v2\n")
+        e.publish("0.1.1", self.t1, kc=rel2, boot=self.bin("a1", self.A1), extra=["--boot-bin-b", str(self.bin("b1", self.B1))])
+        e.run("upgrade", "--boot", anchor=False, check=50)
+        subprocess.run([str(T.bootslot()), "--boot", str(e.sfboot), "--running", "b", "early"], check=True, capture_output=True)
+        p = e.run("rollback", anchor=False, check=0)
+        self.assertIn("slot b (arm) is not armed any more; left as it is", p.stdout)
+        self.assertEqual(T.slot_status(e.sfboot)["trial_state"], "tried")
         self.assertEqual(self.slot_a(), self.default_a)
 
     def test_legacy_config_refused_with_record(self):

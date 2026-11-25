@@ -361,6 +361,25 @@ int sf_ab_arm(struct sf_ab_state *st, int slot, uint32_t bytes, uint32_t crc, ui
     return 0;
 }
 
+/* SAP rolling back an interrupted update before the system restarted: an ARMED trial of slot is
+ * cancelled and the slot is left unrecorded, as begin_stage left it (its files are not a fallback).
+ * Only while ARMED: a TRIED trial is the running system's own decision (early / mark-good). */
+int sf_ab_disarm(struct sf_ab_state *st, int slot)
+{
+    if (!valid_slot((unsigned)slot) || slot == st->default_slot)
+        return -1;
+    if (st->trial_state != SF_AB_TRIAL_ARMED || st->trial_slot != slot)
+        return -1;
+    st->slot[slot].boot_bytes = 0;
+    st->slot[slot].boot_crc32 = 0;
+    st->slot[slot].generation = 0;
+    st->slot[slot].good = 0;
+    st->trial_slot = SF_AB_SLOT_NONE;
+    st->trial_state = SF_AB_TRIAL_NONE;
+    st->reason = SF_AB_R_NONE;
+    return 0;
+}
+
 /* First thing at every start of the OS (sf-bootslot early). running: the slot this system came from. */
 int sf_ab_on_boot(struct sf_ab_state *st, int running, bool *changed)
 {

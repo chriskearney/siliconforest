@@ -186,6 +186,20 @@ impl Tool {
         Ok(())
     }
 
+    /// Cancel an ARMED trial of slot (a rollback before the restart). Nothing to do when that slot
+    /// is not armed; a trial already TRIED is the running system's to resolve (early / mark-good).
+    pub fn disarm(&self, slot: char) -> Result<bool> {
+        let st = self.status()?;
+        if st.trial != Some(slot) || st.trial_state != "armed" {
+            return Ok(false);
+        }
+        let (rc, _, err) = self.run(self.running_arg(&st), &["disarm".into(), slot.to_string()])?;
+        if rc != 0 {
+            bail!(Conflict, "sf-bootslot disarm {slot} refused ({rc}): {}", err.trim());
+        }
+        Ok(true)
+    }
+
     pub fn mark_good(&self) -> Result<String> {
         if self.image {
             bail!(Failure, "mark-good is for the running system (after a clean start), not an image");

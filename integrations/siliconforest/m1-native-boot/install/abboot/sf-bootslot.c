@@ -15,12 +15,17 @@
  *   mark-good           after a clean start: the running trial slot becomes the default
  *   begin-stage a|b     SAP, before writing any file of that (inactive) slot
  *   arm a|b             SAP, after that slot's files are written, synced and read back
+ *   disarm a|b          SAP rolling back before a restart: cancel the ARMED trial of that slot
  *
  * Every write overwrites the older of the record's two copies in place (the file never changes
  * size, so the FAT is never written), is fsynced, and is read back. Exit status: 0 done or nothing
  * to do, 1 the change is not allowed in this state (nothing written), 2 any other failure.
  */
 #define _POSIX_C_SOURCE 200809L
+#ifdef __APPLE__
+/* <sys/sysctl.h> needs the BSD types (u_int) that strict POSIX hides on Darwin */
+#define _DARWIN_C_SOURCE
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -202,7 +207,7 @@ int main(int argc, char **argv)
     if (i >= argc || !boot_dir)
         goto usage;
     cmd = argv[i++];
-    if (!strcmp(cmd, "begin-stage") || !strcmp(cmd, "arm")) {
+    if (!strcmp(cmd, "begin-stage") || !strcmp(cmd, "arm") || !strcmp(cmd, "disarm")) {
         if (i >= argc || (slot = slot_arg(argv[i++])) < 0)
             goto usage;
     }
@@ -220,7 +225,7 @@ int main(int argc, char **argv)
     if (load == SF_AB_ABSENT) {
         /* an install without the record: stage 1 starts slot A, as v1 does; nothing to record */
         printf("no boot state record: slot a, as installed\n");
-        return !strcmp(cmd, "begin-stage") || !strcmp(cmd, "arm") ? 1 : 0;
+        return !strcmp(cmd, "begin-stage") || !strcmp(cmd, "arm") || !strcmp(cmd, "disarm") ? 1 : 0;
     }
     if (load != SF_AB_OK || sf_ab_parse(file, sizeof(file), &st, NULL) != SF_AB_OK) {
         fprintf(stderr, "sf-bootslot: the boot state record is damaged (both copies)\n");
@@ -250,6 +255,11 @@ int main(int argc, char **argv)
             rc = fail("read the slot's boot.bin");
         else
             rc = sf_ab_arm(&st, slot, b, c, generation) ? 1 : 0;
+    } else if (!strcmp(cmd, "disarm")) {
+        if (slot == running_slot(running_arg))
+            rc = 1;
+        else
+            rc = sf_ab_disarm(&st, slot) ? 1 : 0;
     } else {
         close(fd);
         goto usage;
@@ -265,6 +275,6 @@ int main(int argc, char **argv)
 
 usage:
     fprintf(stderr, "usage: sf-bootslot [--boot DIR] [--running a|b] [--generation N] "
-                    "status|init|early|mark-good|begin-stage SLOT|arm SLOT\n");
+                    "status|init|early|mark-good|begin-stage SLOT|arm SLOT|disarm SLOT\n");
     return 2;
 }

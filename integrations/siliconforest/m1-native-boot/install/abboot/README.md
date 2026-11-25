@@ -52,6 +52,7 @@ The CRC finds damage, not tampering: whoever can write SFBOOT can write the reco
 | `sf-bootslot begin-stage b` | SAP, before writing B's files | B unrecorded (not good) |
 | write `sf/b/*`, sync, read back | SAP | |
 | `sf-bootslot arm b` | SAP | B's size and CRC recorded, trial B ARMED |
+| `sf-bootslot disarm b` | SAP rolling back before the restart | ARMED → NONE, B unrecorded (refused once TRIED) |
 | start | stage 1 v2 | starts B, checked against the record |
 | `sf-bootslot early` | first launchd job | ARMED → TRIED; or, started from the default, FAILED (shown) |
 | `sf-bootslot mark-good` | after a clean start | trial B becomes the default and good |
@@ -90,7 +91,7 @@ write (`plan.writeback`), and `sf-ab-stage1 --stage1-writes` simulates it.
 | `sf_ab_stage1.c` | stage 1's glue (m1n1, `SF_AB_BOOT`) |
 | `../patches/stage1-v2/0002-…patch` | the m1n1 hooks: `SF_AB_BOOT=1` in the Makefile, `chainload_read_file`, `chainload_load_slot`, the call in `payload.c` (applied after `0001`; not matched by the `patches/*.patch` globs of v1 and stage 2) |
 | `build_stage1_v2.sh OUT` | builds `sf-stage1-v2.bin` like v1, tag `<pin>-siliconforest-stage1-v2` |
-| `sf-bootslot.c` | the userland tool (host and Darwin; a stub until SAP calls it) |
+| `sf-bootslot.c` | the userland tool (host and Darwin), run by SAP (`sap/client/src/boot.rs`) and launchd |
 | `sf_ab_sim.c` | `sf-ab-stage1 DIR`: stage 1 v2's decision over a directory, for tests |
 | `test_sf_ab.c`, `test_sf_ab_stage1.c`, `hostmock/` | C unit tests; the glue is tested against host stand-ins for m1n1 |
 | `../../../../../tests/test_boot_ab.py` | builds and runs all of it, plus whole update cycles |
@@ -111,6 +112,6 @@ With the v1 toolchain (clang/ld.lld 22.1.8, rustc 1.98.1) it is reproducible:
 2. Build a slot-B stage 2 (`PDSF_KERNEL_FILE="sf/b/kernel.bin"`) and add it to the payload.
 3. Switch `build_stage1.sh` (and its test) to v2's patches, tag and hash, and give the installer
    app a v2 stub; installing a new stage 1 is a recovery-mode step, as any new stage 1 is.
-4. Run `sf-bootslot init` at install time or first start, `early`/`mark-good` from launchd, and
-   have SAP use `begin-stage`/`arm`. Anything that replaces slot files outside this protocol must
+4. Run `sf-bootslot init` at install time or first start and `early`/`mark-good` from launchd.
+   SAP uses `begin-stage`/`arm` (and `disarm` on a rollback before the restart) since SAP 1.0. Anything that replaces slot files outside this protocol must
    rewrite or delete `sf/bootstate.bin`.

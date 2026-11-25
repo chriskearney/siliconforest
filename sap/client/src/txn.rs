@@ -325,7 +325,7 @@ pub fn forward(sys: &Sys, op: &Op) -> Result<()> {
     Ok(())
 }
 
-fn slot_of(boot_rel: &str) -> char {
+pub fn slot_of(boot_rel: &str) -> char {
     if boot_rel.starts_with("sf/b/") {
         'b'
     } else {
@@ -368,15 +368,9 @@ pub fn backward(sys: &Sys, op: &Op) -> Result<()> {
             }
         }
         "arm" => {
-            // sf-bootslot has no disarm (design delta): make the armed trial fail its check, so stage 1
-            // starts the default slot (TRIAL_DAMAGED) and `early` records the fallback.
-            let tool = crate::boot::Tool::new(sys)?;
-            let st = tool.status()?;
-            if st.trial == Some(slot_of(&op.path)) && (st.trial_state == "armed" || st.trial_state == "tried") && cur.is_some() {
-                let cancelled = target.with_extension("bin.cancelled");
-                fs::rename(&target, &cancelled).ctx(|| format!("cancel {}", target.display()))?;
-                util::fsync_dir(target.parent().unwrap());
-            }
+            // Rolled back before the restart: cancel the ARMED trial (sf-bootslot disarm). The slot is
+            // left unrecorded, as begin-stage left it; its files are put back by the operations before.
+            crate::boot::Tool::new(sys)?.disarm(slot_of(&op.path))?;
         }
         "rmdir" if op.old.is_some() && cur.is_none() => {
             fs::create_dir_all(&target)?;
