@@ -49,7 +49,7 @@ let package = Package(
         .target(name: "SFInstallKit", dependencies: ["SFIdentity"]),
         // The acting half (DESIGN §4): typed verbs, gate, hash-chained journal, step machine, resize
         // supervisor, and the DiskImageBackend whose every write passes the image-only chokepoint.
-        .target(name: "SFEngine", dependencies: ["SFInstallKit"]),
+        .target(name: "SFEngine", dependencies: ["SFInstallKit", "SFStub"]),
         .target(name: "SFCopy", dependencies: ["SFInstallKit"], swiftSettings: ui),
         .target(name: "SFDesign", dependencies: ["SFInstallKit", "SFCopy"], swiftSettings: ui),
         .target(name: "SFFlow", dependencies: ["SFInstallKit", "SFCopy", "SFDesign"], swiftSettings: ui),
@@ -67,7 +67,7 @@ let package = Package(
         .target(name: "SFRecoveryKit", swiftSettings: ui),
         .executableTarget(name: "SFRecovery", dependencies: ["SFRecoveryKit"], swiftSettings: ui),
         .executableTarget(name: "sfinstallctl", dependencies: ["SFInstallKit", "SFCopy", "SFEngine"]),
-        // The stub builder (DESIGN §6.4, ENGINE §10): Foundation + Compression only, no dependency on the engine.
+        // The stub builder (DESIGN §6.4, ENGINE §10): Foundation + Compression only, no dependency on the engine (the engine runs it at S10/S32/S35/S55/S60).
         .target(name: "SFStub"),
         .executableTarget(name: "sfstubctl", dependencies: ["SFStub", "SFEngine"]),
         // Same tests as an executable, for Command Line Tools-only Macs (see scripts/test.sh).

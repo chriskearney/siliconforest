@@ -127,9 +127,14 @@ public struct FaultPlan: Sendable {
     public var powerLossAfterCommand: StepCode?
     /// The helper dies this many seconds into a resize, leaving `diskutil` running.
     public var resizeDieAfter: Double?
-    public init(killAfterRecord: UInt64? = nil, killAfterCommand: StepCode? = nil, powerLossAfterCommand: StepCode? = nil, resizeDieAfter: Double? = nil) {
+    /// Kill, or cut the power, right after a named point inside a step ("S32/system": after the command that
+    /// adds the stub's System volume): each of a step's commands, not just its last one.
+    public var killAtPoint: String?
+    public var powerLossAtPoint: String?
+    public init(killAfterRecord: UInt64? = nil, killAfterCommand: StepCode? = nil, powerLossAfterCommand: StepCode? = nil, resizeDieAfter: Double? = nil,
+                killAtPoint: String? = nil, powerLossAtPoint: String? = nil) {
         self.killAfterRecord = killAfterRecord; self.killAfterCommand = killAfterCommand; self.powerLossAfterCommand = powerLossAfterCommand
-        self.resizeDieAfter = resizeDieAfter
+        self.resizeDieAfter = resizeDieAfter; self.killAtPoint = killAtPoint; self.powerLossAtPoint = powerLossAtPoint
     }
 }
 
@@ -139,6 +144,8 @@ public enum EngineEvent: Sendable {
     case checked(StepCode, CheckResult)
     case rollback(StepCode)
     case simulated(ApprovalNeeded)
+    /// Within a step: what it is doing now ("12/57 extract …"), for the progress bar and the log.
+    case progress(StepCode, String)
 }
 
 /// Runs an approved plan against a disk image, journaling intent before and evidence after every
@@ -158,6 +165,8 @@ public final class InstallEngine: @unchecked Sendable {
     public var onEvent: (@Sendable (EngineEvent) -> Void)?
     /// Optional path to a built SFRecovery binary to stage (S60); a placeholder file otherwise.
     public var recoveryBinary: URL?
+    /// Build the stub with SFStub (S10, S35, S55, S60). Nil: the older rehearsal path (`release.stubFiles`).
+    public var stubSource: StubSource?
     /// For removal: the install's proof.
     public var proof: InstallProof?
     /// The operation in progress, for error reports.
@@ -358,6 +367,15 @@ public final class InstallEngine: @unchecked Sendable {
             throw SimulatedKill(at: "power lost after \(code.rawValue)'s command")
         }
         if faults.killAfterCommand == code { throw SimulatedKill(at: "killed after \(code.rawValue)'s command") }
+    }
+
+    func faultPoint(_ code: StepCode, _ point: String) throws {
+        let name = "\(code.rawValue)/\(point)"
+        if faults.powerLossAtPoint == name {
+            try backend.detach(force: true)
+            throw SimulatedKill(at: "power lost at \(name)")
+        }
+        if faults.killAtPoint == name { throw SimulatedKill(at: "killed at \(name)") }
     }
 
     // MARK: paths

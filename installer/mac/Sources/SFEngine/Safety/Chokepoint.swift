@@ -35,11 +35,11 @@ public final class ImageChokepoint: @unchecked Sendable {
         guard argv.count >= 2 else { return false }
         switch argv[0] {
         case "/usr/sbin/diskutil":
-            let verbs: Set<String> = ["addPartition", "eraseVolume", "partitionDisk", "mount", "unmount", "unmountDisk", "eject"]
+            let verbs: Set<String> = ["addPartition", "eraseVolume", "partitionDisk", "mount", "unmount", "unmountDisk", "eject", "rename"]
             if verbs.contains(argv[1]) { return true }
             if argv[1] == "apfs", argv.count >= 3 {
                 if argv[2] == "resizeContainer" { return !argv.contains("limits") }
-                return ["addVolume", "deleteContainer", "deleteVolume"].contains(argv[2])
+                return ["addVolume", "changeVolumeRole", "deleteContainer", "deleteVolume"].contains(argv[2])
             }
             return false
         case "/sbin/newfs_msdos": return true

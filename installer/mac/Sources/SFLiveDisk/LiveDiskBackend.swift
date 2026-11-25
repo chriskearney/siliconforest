@@ -221,9 +221,33 @@ public final class LiveDiskBackend: EngineBackend, @unchecked Sendable {
         try mutate(["-F", "32", "-v", label, "/dev/r\(id)"], needsRelease: true, tool: "/sbin/newfs_msdos")
     }
 
-    public func addVolume(container storeUUID: String, name: String, role: String) throws {
-        guard let ref = try topology().partition(uuid: storeUUID)?.apfs?.reference else { throw EngineError(.inconsistent, "no APFS container on \(storeUUID)") }
-        try mutate(["apfs", "addVolume", ref, "APFS", name, "-role", role, "-nomount"], needsRelease: true)
+    public func addVolume(container storeUUID: String, name: String, role: String, groupWith: String?) throws {
+        let (ref, vols) = try stubVolumes(storeUUID)
+        var args = ["apfs", "addVolume", ref, "apfs", name, "-role", role]
+        if let groupWith {
+            guard let g = vols.first(where: { $0.uuid == groupWith }) else { throw EngineError(.inconsistent, "no volume \(groupWith) in \(ref)") }
+            args += ["-groupWith", g.identifier]
+        }
+        try mutate(args, needsRelease: true)
+    }
+
+    public func changeVolumeRole(container storeUUID: String, volume: String, role: String) throws {
+        try mutate(["apfs", "changeVolumeRole", try volumeID(storeUUID, volume), role], needsRelease: true)
+    }
+
+    public func renameVolume(container storeUUID: String, volume: String, name: String) throws {
+        try mutate(["rename", try volumeID(storeUUID, volume), name], needsRelease: true)
+    }
+
+    func stubVolumes(_ storeUUID: String) throws -> (String, [ImageVolume]) {
+        guard let a = try freshTopology().partition(uuid: storeUUID)?.apfs else { throw EngineError(.inconsistent, "no APFS container on \(storeUUID)") }
+        return (a.reference, a.volumes)
+    }
+
+    func volumeID(_ storeUUID: String, _ volume: String) throws -> String {
+        let (ref, vols) = try stubVolumes(storeUUID)
+        guard let v = vols.first(where: { $0.uuid == volume }) else { throw EngineError(.inconsistent, "no volume \(volume) in \(ref)") }
+        return v.identifier
     }
 
     func mount(_ device: String) throws { try mutate(["mount", "nobrowse", device]) }

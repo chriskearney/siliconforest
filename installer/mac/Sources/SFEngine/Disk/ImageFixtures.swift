@@ -54,12 +54,12 @@ public enum ImageFixtures {
             guard let mac = t.partitions.first(where: { $0.content == "Apple_APFS" && $0.apfs?.volumes.first?.name == "SFImage HD" }) else {
                 throw EngineError(.internalError, "fixture: no macOS container")
             }
-            try backend.addVolume(container: mac.uuid, name: "SFImage HD System", role: "S")
-            try backend.addVolume(container: mac.uuid, name: "SFImage HD Data", role: "D")
+            try backend.addFixtureVolume(container: mac.uuid, name: "SFImage HD System", role: "S")
+            try backend.addFixtureVolume(container: mac.uuid, name: "SFImage HD Data", role: "D")
             if layout == .j313 {
                 // The Linux stub carries macOS 13.5's boot volumes on the real Air; one System volume stands in.
                 if let stub = t.partitions.first(where: { $0.apfs?.volumes.first?.name == "Linux stub" }) {
-                    try backend.addVolume(container: stub.uuid, name: "Linux stub System", role: "S")
+                    try backend.addFixtureVolume(container: stub.uuid, name: "Linux stub System", role: "S")
                 }
                 if let esp = t.partitions.first(where: { $0.content == "EFI" }) {
                     try backend.formatFAT32(esp.uuid, label: "EFI")

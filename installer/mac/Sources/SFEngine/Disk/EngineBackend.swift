@@ -8,6 +8,9 @@ public protocol EngineBackend: AnyObject, Sendable {
     /// For the journal and logs: the image path, or "internal disk <uuid>".
     var targetLabel: String { get }
 
+    /// Read-only diskutil queries (info, list, listVolumeGroups).
+    var query: ToolRunner { get }
+
     func topology() throws -> ImageTopology
     func freshTopology() throws -> ImageTopology
     func limits(store uuid: String) throws -> TopologyReader.ResizeLimits
@@ -15,7 +18,13 @@ public protocol EngineBackend: AnyObject, Sendable {
 
     func addPartition(after uuid: String, content: String, label: String, bytes: Int64) throws -> String
     func formatFAT32(_ uuid: String, label: String) throws
-    func addVolume(container storeUUID: String, name: String, role: String) throws
+    /// `apfs addVolume <container> apfs <name> -role <role> [-groupWith <volume>]`: upstream stub.py's shape,
+    /// so the stub's volumes come out as Asahi's do. `groupWith` is a volume UUID.
+    func addVolume(container storeUUID: String, name: String, role: String, groupWith: String?) throws
+    /// `apfs changeVolumeRole <volume> <role>`.
+    func changeVolumeRole(container storeUUID: String, volume: String, role: String) throws
+    /// `rename <volume> <name>`.
+    func renameVolume(container storeUUID: String, volume: String, name: String) throws
     func volumeURL(store uuid: String, role: String?) throws -> URL
     func fatURL(_ uuid: String) throws -> URL
     func deleteContainer(_ uuid: String) throws

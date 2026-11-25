@@ -29,6 +29,7 @@ struct ImageEngineTests {
         #expect(stub.content == "Apple_APFS" && boot.content == "EFI" && boot.filesystem == "msdos" && root.content == "Linux Filesystem")
         let roles = Set(stub.apfs?.volumes.flatMap(\.roles) ?? [])
         #expect(roles.isSuperset(of: ["System", "Data", "Preboot", "Recovery"]))
+        expectAsahiStubVolumes(stub.apfs?.volumes ?? [])
         // The image up to the firmware slot is the release's (S50/S52 then write their slots inside it).
         let head = try c.backend.readRaw(root.uuid, offset: 0, count: 8)
         #expect(String(decoding: head, as: UTF8.self) == "SFROOT1 ")

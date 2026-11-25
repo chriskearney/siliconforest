@@ -8,7 +8,11 @@ public enum DiskVerb: Codable, Sendable, Hashable {
     case grow(store: String)
     case addPartition(role: String, after: String, content: String, label: String, bytes: Int64)
     case formatFAT32(partition: String, label: String)
-    case addVolume(store: String, name: String, role: String)
+    /// `groupWith`: the Data volume (by volume UUID) a new System volume joins.
+    case addVolume(store: String, name: String, role: String, groupWith: String? = nil)
+    /// The stub's empty default volume becomes its Data volume (upstream stub.py prepare_volume).
+    case changeVolumeRole(store: String, volume: String, role: String)
+    case renameVolume(store: String, volume: String, name: String)
     case writeFiles(partition: String, volumeRole: String?, files: [String])
     case writeRaw(partition: String, offset: Int64, bytes: Int64)
     case deleteContainer(partition: String)
@@ -16,7 +20,7 @@ public enum DiskVerb: Codable, Sendable, Hashable {
 
     public var target: String {
         switch self {
-        case .resize(let s, _), .grow(let s), .addVolume(let s, _, _): return s
+        case .resize(let s, _), .grow(let s), .addVolume(let s, _, _, _), .changeVolumeRole(let s, _, _), .renameVolume(let s, _, _): return s
         case .addPartition(_, let a, _, _, _): return a
         case .formatFAT32(let p, _), .writeFiles(let p, _, _), .writeRaw(let p, _, _), .deleteContainer(let p), .eraseToFree(let p): return p
         }
@@ -28,7 +32,9 @@ public enum DiskVerb: Codable, Sendable, Hashable {
         case .grow(let s): return "grow \(s.prefix(8))"
         case .addPartition(let r, _, _, _, let b): return "add \(r) (\(b) B)"
         case .formatFAT32(let p, let l): return "format \(p.prefix(8)) FAT32 \(l)"
-        case .addVolume(_, let n, let r): return "add volume \(n) (\(r))"
+        case .addVolume(_, let n, let r, let g): return "add volume \(n) (\(r))" + (g == nil ? "" : " grouped")
+        case .changeVolumeRole(_, let v, let r): return "volume \(v.prefix(8)) becomes role \(r)"
+        case .renameVolume(_, let v, let n): return "rename volume \(v.prefix(8)) to \(n)"
         case .writeFiles(let p, _, let f): return "write \(f.count) file(s) to \(p.prefix(8))"
         case .writeRaw(let p, let o, let b): return "raw write \(b) B at \(o) on \(p.prefix(8))"
         case .deleteContainer(let p): return "delete container \(p.prefix(8))"
@@ -93,13 +99,31 @@ public struct Gate: Sendable {
             if case .writeRaw(_, let off, let b) = verb, let part = now.partition(uuid: p) {
                 guard off >= 0, off + b <= part.size else { throw refuse("outside the partition") }
             }
-        case .addVolume(let store, _, _):
+        case .addVolume(let store, _, _, let group):
             guard created["stub"] == store else { throw refuse("volumes are added only to this job's stub") }
+            if let group {
+                guard Self.volumes(of: store, in: now).contains(where: { $0.uuid == group && $0.roles == ["Data"] }) else {
+                    throw refuse("a System volume joins only the stub's own Data volume")
+                }
+            }
+        case .changeVolumeRole(let store, let vol, let role):
+            guard created["stub"] == store else { throw refuse("only this job's stub's volumes change role") }
+            guard role == "D" else { throw refuse("a volume only ever becomes Data") }
+            guard Self.volumes(of: store, in: now).contains(where: { $0.uuid == vol && $0.roles.isEmpty }) else {
+                throw refuse("only the stub's role-less default volume becomes Data")
+            }
+        case .renameVolume(let store, let vol, _):
+            guard created["stub"] == store else { throw refuse("only this job's stub's volumes are renamed") }
+            guard Self.volumes(of: store, in: now).contains(where: { $0.uuid == vol }) else { throw refuse("not a volume of the stub") }
         case .deleteContainer(let p), .eraseToFree(let p):
             guard ownedUUIDs.contains(p) else { throw refuse("only what this job (or the proved install) created may be deleted") }
             // An install deletes nothing outside a rollback, except the booter diskutil added for it.
             if plan.operation == .install && !rollback && p != created["booter"] { throw refuse("an install deletes nothing except while rolling back") }
         }
+    }
+
+    static func volumes(of store: String, in t: ImageTopology) -> [ImageVolume] {
+        t.partition(uuid: store)?.apfs?.volumes ?? []
     }
 
     /// After each change: stop everything if any pre-existing partition moved, vanished or changed

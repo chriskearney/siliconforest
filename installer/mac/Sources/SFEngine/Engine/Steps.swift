@@ -32,8 +32,15 @@ extension InstallEngine {
                 try? FileManager.default.removeItem(at: dst)
                 try FileManager.default.copyItem(at: src.appendingPathComponent(a.name), to: dst)
             }
+            var ev: JArgs = ["bytes": .i(release.artifacts.reduce(0) { $0 + $1.bytes })]
+            if let stubSource {
+                // The stub's restore-image members, CRC-checked, before anything is written (DESIGN D6).
+                let ctx = try stageStubMembers(stubSource)
+                ev["stub_members"] = .i(Int64(ctx.staged.count))
+                ev["stub_fetched"] = .i(Int64(ctx.zip.source.bytesFetched))
+            }
             try afterCommand(code)
-            try journal.append(.evidence, step: c, result: ["bytes": .i(release.artifacts.reduce(0) { $0 + $1.bytes })])
+            try journal.append(.evidence, step: c, result: ev)
         case .S15:
             guard let release else { throw EngineError(.internalError, "no release") }
             try journal.append(.intent, step: c)
@@ -116,17 +123,49 @@ extension InstallEngine {
             try journal.append(.evidence, step: c, result: ["booter": .s(gate.created["booter"] == nil ? "none" : "erased")])
 
         case .S32:
+            // Upstream stub.py prepare_volume (Asahi v0.9.2, MIT), as SFStub's differential test runs it: the new
+            // container's default volume becomes Data and is renamed "<name> - Data", then System (grouped with
+            // Data), Preboot and Recovery are added. Each action is chosen from a fresh read, so a resumed job
+            // carries on from whatever the last one left.
             guard let stub = gate.created["stub"] else { throw EngineError(.inconsistent, "no stub") }
-            try journal.append(.intent, step: c, args: ["roles": .a(["S", "D", "B", "R"].map(JValue.s))])
             let name = plan.request?.installName ?? "SiliconForest"
-            let have = Set(try backend.topology().partition(uuid: stub)?.apfs?.volumes.flatMap(\.roles) ?? [])
-            for (role, full, suffix) in [("S", "System", ""), ("D", "Data", " - Data"), ("B", "Preboot", " - Preboot"), ("R", "Recovery", " - Recovery")]
-                where !have.contains(full) {
-                try gate.admit(.addVolume(store: stub, name: name + suffix, role: role), now: try backend.topology())
-                try backend.addVolume(container: stub, name: name + suffix, role: role)
+            try journal.append(.intent, step: c, args: ["name": .s(name)])
+            var done = 0
+            while let next = try Self.nextStubVolumeVerb(stub: stub, name: name, in: try backend.freshTopology()) {
+                done += 1
+                guard done <= 6 else { throw EngineError(.appleTool, "the stub's volumes don't converge") }
+                try gate.admit(next, now: try backend.topology())
+                try journal.append(.note, step: c, result: ["verb": .s(next.summary)], note: "S32 volume command")
+                breadcrumb = next.summary
+                do {
+                    switch next {
+                    case .changeVolumeRole(let s, let v, let r): try backend.changeVolumeRole(container: s, volume: v, role: r)
+                    case .renameVolume(let s, let v, let n):
+                        // diskutil renames only a mounted volume. addPartition leaves the new one mounted; after a
+                        // power cut it comes back unmounted, so it is mounted (nobrowse) first when it isn't.
+                        _ = try backend.volumeURL(store: s, role: "Data")
+                        try backend.renameVolume(container: s, volume: v, name: n)
+                    case .addVolume(let s, let n, let r, let g): try backend.addVolume(container: s, name: n, role: r, groupWith: g)
+                    default: throw EngineError(.internalError, "not a volume verb")
+                    }
+                } catch let e as EngineError where e.errorClass == .appleTool {
+                    // Upstream ignores an addVolume failure whose output says it was mounting; here the next fresh
+                    // read decides: if the volume is there, carry on, otherwise stop.
+                    guard case .addVolume(_, _, let r, _) = next, Self.hasRole(r, stub: stub, in: try backend.freshTopology()) else { throw e }
+                }
+                breadcrumb = nil
+                try faultPoint(code, Self.volumePoint(next))
             }
             try afterCommand(code)
             guard case .done(let ev) = try check(code, plan: plan, gate: gate) else { throw EngineError(.appleTool, "the stub's volumes are incomplete") }
+            try journal.append(.evidence, step: c, result: ev)
+
+        case .S35 where stubSource != nil:
+            guard let stub = gate.created["stub"], let src = stubSource else { throw EngineError(.inconsistent, "no stub") }
+            try gate.admit(.writeFiles(partition: stub, volumeRole: nil, files: ["SFStub plan"]), now: try backend.topology())
+            _ = try performStubContent(src, stub: stub)
+            try afterCommand(code)
+            guard case .done(let ev) = try check(code, plan: plan, gate: gate) else { throw EngineError(.appleTool, "read-back of the stub's content failed") }
             try journal.append(.evidence, step: c, result: ev)
 
         case .S35:
@@ -179,6 +218,17 @@ extension InstallEngine {
             try backend.writeRaw(root, offset: offset, data: data)
             try afterCommand(code)
             guard case .done(let ev) = try check(code, plan: plan, gate: gate) else { throw EngineError(.appleTool, "read-back of the slot failed") }
+            try journal.append(.evidence, step: c, result: ev)
+
+        case .S55 where stubSource != nil, .S60 where stubSource != nil:
+            // SFStub: the boot object into the app (m1n1.build's format), then SFInstall/, as StubPlanner orders them.
+            guard let stub = gate.created["stub"], let src = stubSource else { throw EngineError(.inconsistent, "no stub") }
+            try gate.admit(.writeFiles(partition: stub, volumeRole: "System", files: []), now: try backend.topology())
+            let acts = code == .S55 ? [try stubBootAction(gate: gate)] : try stubInstallActions(plan: plan, gate: gate)
+            try journal.append(.intent, step: c, args: ["actions": .i(Int64(acts.count))])
+            try performStubTail(src, stub: stub, actions: acts, code: code)
+            try afterCommand(code)
+            guard case .done(let ev) = try check(code, plan: plan, gate: gate) else { throw EngineError(.appleTool, "read-back on the stub failed") }
             try journal.append(.evidence, step: c, result: ev)
 
         case .S55, .S60, .S68:
@@ -250,7 +300,7 @@ extension InstallEngine {
         case .S00, .S05, .S08, .S70, .S20, .S65, .U10:
             return .notDone   // reads or records only: rerun
         case .S10:
-            guard let release else { return .notDone }
+            guard let release, stubSource == nil else { return .notDone }   // with SFStub: rerun; staged members are reused
             let ok = release.artifacts.allSatisfy { (try? FileManager.default.attributesOfItem(atPath: work($0.name).path)[.size] as? Int64) == $0.bytes }
             return ok ? .done(["bytes": .i(release.artifacts.reduce(0) { $0 + $1.bytes })]) : .notDone
         case .S15:
@@ -290,8 +340,17 @@ extension InstallEngine {
             return t.partition(uuid: b) == nil ? .done(["booter": .s("erased")]) : .notDone
         case .S32:
             guard let stub = gate.created["stub"], let a = t.partition(uuid: stub)?.apfs else { return .notDone }
-            let roles = Set(a.volumes.flatMap(\.roles))
-            return ["System", "Data", "Preboot", "Recovery"].allSatisfy(roles.contains) ? .done(["volumes": .i(Int64(a.volumes.count))]) : .notDone
+            let name = plan.request?.installName ?? "SiliconForest"
+            if case .cannotTell(let why) = Self.stubVolumeShape(stub: stub, in: t) { return .cannotTell(why) }
+            guard try Self.nextStubVolumeVerb(stub: stub, name: name, in: t) == nil else { return .notDone }
+            return .done(["volumes": .i(Int64(a.volumes.count))])
+        case .S35 where stubSource != nil:
+            guard let stub = gate.created["stub"], let src = stubSource else { return .notDone }
+            return try checkStubContent(src, stub: stub)
+        case .S55 where stubSource != nil, .S60 where stubSource != nil:
+            guard let stub = gate.created["stub"], let src = stubSource else { return .notDone }
+            let acts = code == .S55 ? [try stubBootAction(gate: gate)] : try stubInstallActions(plan: plan, gate: gate)
+            return checkStubTail(src, stub: stub, actions: acts)
         case .S35:
             guard let release, let stub = gate.created["stub"], let vol = try? backend.volumeURL(store: stub, role: "System") else { return .notDone }
             for f in release.stubFiles {
@@ -464,12 +523,18 @@ extension InstallEngine {
         return Self.bootObject(stage1: try Data(contentsOf: work(release.stage1)), bootPartUUID: boot)
     }
 
+    /// The profile's `boot.stage1.variables` with the SFBOOT PARTUUID (SFPayloadTests proves they are the J313 and
+    /// J293 profiles' own).
+    public static func bootVariables(bootPartUUID: String) -> [String] {
+        let u = bootPartUUID.lowercased()
+        return ["chosen.asahi,efi-system-partition=\(u)", "chainload=\(u);sf/boot.bin"]
+    }
+
     /// m1n1.build's format, the one SFStub writes (SFPayload.bootObject): stage 1, then each variable and a
     /// newline, then four NULs. The variables are the profile's `boot.stage1.variables` with the SFBOOT PARTUUID.
     public static func bootObject(stage1: Data, bootPartUUID: String) -> Data {
-        let u = bootPartUUID.lowercased()
         var d = stage1
-        for v in ["chosen.asahi,efi-system-partition=\(u)", "chainload=\(u);sf/boot.bin"] { d.append(Data((v + "\n").utf8)) }
+        for v in bootVariables(bootPartUUID: bootPartUUID) { d.append(Data((v + "\n").utf8)) }
         d.append(Data(count: 4))
         return d
     }
@@ -489,6 +554,52 @@ extension InstallEngine {
         return d
     }
 
+    // MARK: the stub's volumes (upstream prepare_volume)
+
+    enum VolumeShape: Equatable { case ok, cannotTell(String) }
+
+    static func stubVolumeShape(stub: String, in t: ImageTopology) -> VolumeShape {
+        let vols = t.partition(uuid: stub)?.apfs?.volumes ?? []
+        for r in ["Preboot", "Recovery", "Data", "System"] where vols.filter({ $0.roles == [r] }).count > 1 {
+            return .cannotTell("the stub has more than one \(r) volume")
+        }
+        if vols.contains(where: { $0.roles.count > 1 }) { return .cannotTell("a stub volume has several roles") }
+        return .ok
+    }
+
+    /// Fault-injection names for the volume commands: S32/data-role, data-name, system, preboot, recovery.
+    static func volumePoint(_ v: DiskVerb) -> String {
+        switch v {
+        case .changeVolumeRole: return "data-role"
+        case .renameVolume: return "data-name"
+        case .addVolume(_, _, let r, _): return ["S": "system", "D": "data-role", "B": "preboot", "R": "recovery"][r] ?? r
+        default: return "other"
+        }
+    }
+
+    static func hasRole(_ letter: String, stub: String, in t: ImageTopology) -> Bool {
+        let full = ["S": "System", "D": "Data", "B": "Preboot", "R": "Recovery"][letter] ?? letter
+        return (t.partition(uuid: stub)?.apfs?.volumes ?? []).contains { $0.roles == [full] }
+    }
+
+    /// The next volume verb upstream's prepare_volume would run on this container, or nil when it is ready.
+    static func nextStubVolumeVerb(stub: String, name: String, in t: ImageTopology) throws -> DiskVerb? {
+        if case .cannotTell(let why) = stubVolumeShape(stub: stub, in: t) { throw EngineError(.inconsistent, why) }
+        let vols = t.partition(uuid: stub)?.apfs?.volumes ?? []
+        let data = vols.first { $0.roles == ["Data"] }
+        if data == nil {
+            if let def = vols.first(where: { $0.roles.isEmpty }) { return .changeVolumeRole(store: stub, volume: def.uuid, role: "D") }
+            return .addVolume(store: stub, name: name, role: "D")
+        }
+        guard let data else { return nil }
+        // Renamed straight after the role change; a volume that already was Data keeps its name (upstream).
+        if data.name == name { return .renameVolume(store: stub, volume: data.uuid, name: name + " - Data") }
+        if !vols.contains(where: { $0.roles == ["System"] }) { return .addVolume(store: stub, name: name, role: "S", groupWith: data.uuid) }
+        if !vols.contains(where: { $0.roles == ["Preboot"] }) { return .addVolume(store: stub, name: "Preboot", role: "B") }
+        if !vols.contains(where: { $0.roles == ["Recovery"] }) { return .addVolume(store: stub, name: "Recovery", role: "R") }
+        return nil
+    }
+
     func stageRecovery(vol: URL, plan: EnginePlan, gate: Gate) throws {
         let app = vol.appendingPathComponent("SiliconForest Setup.app/Contents")
         let payload = RecoveryPayload.files()
@@ -504,11 +615,16 @@ extension InstallEngine {
         }
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin.path)
         try copy(vol.appendingPathComponent(".sf/boot.bin"), to: app.appendingPathComponent("Resources/boot.bin"))
+        try atomicWrite(try recoveryPlanJSON(plan: plan, gate: gate), to: vol.appendingPathComponent("SFInstall/plan.json"))
+        try FileManager.default.ensureDirectory(vol.appendingPathComponent("SFInstall/state"))
+    }
+
+    /// SFInstall/plan.json (what SFRecovery and sf-step2.sh read).
+    func recoveryPlanJSON(plan: EnginePlan, gate: Gate) throws -> Data {
         struct RecoveryPlan: Codable { var job: String; var installID: String; var stub: String; var boot: String; var root: String; var planDigest: String }
         let rp = RecoveryPlan(job: journal.jobID.uuidString, installID: plan.request?.installID ?? "", stub: gate.created["stub"] ?? "",
                               boot: gate.created["boot"] ?? "", root: gate.created["root"] ?? "", planDigest: plan.digest)
-        try atomicWrite(try Canonical.data(rp), to: vol.appendingPathComponent("SFInstall/plan.json"))
-        try FileManager.default.ensureDirectory(vol.appendingPathComponent("SFInstall/state"))
+        return try Canonical.data(rp)
     }
 
     func hide(vol: URL) throws {
