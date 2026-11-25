@@ -72,6 +72,8 @@ jobs:
           sudo bash "$RUNNER_TEMP/llvm.sh" 22 all
           sudo ln -sf "$(command -v clang-22)" /usr/local/bin/clang
           sudo ln -sf "$(command -v ld.lld-22)" /usr/local/bin/ld.lld
+          # Ubuntu's ImageMagick 6 has `convert`, not `magick`; the logo step only flattens and dumps pixels
+          command -v magick >/dev/null || sudo ln -sf "$(command -v convert)" /usr/local/bin/magick
           clang --version | head -1
           ld.lld --version
 
