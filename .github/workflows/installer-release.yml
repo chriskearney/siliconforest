@@ -75,12 +75,14 @@ jobs:
           sudo apt-get install -y -q make git imagemagick librsvg2-bin python3
           wget -q https://apt.llvm.org/llvm.sh -O "$RUNNER_TEMP/llvm.sh"
           sudo bash "$RUNNER_TEMP/llvm.sh" 22 all
-          sudo ln -sf "$(command -v clang-22)" /usr/local/bin/clang
-          sudo ln -sf "$(command -v ld.lld-22)" /usr/local/bin/ld.lld
+          # unversioned clang, ld.lld, llvm-objcopy, llvm-config (m1n1's Makefile uses these names)
+          echo /usr/lib/llvm-22/bin >> "$GITHUB_PATH"
+          export PATH=/usr/lib/llvm-22/bin:$PATH
           # Ubuntu's ImageMagick 6 has `convert`, not `magick`; the logo step only flattens and dumps pixels
           command -v magick >/dev/null || sudo ln -sf "$(command -v convert)" /usr/local/bin/magick
           clang --version | head -1
-          ld.lld --version
+          ld.lld --version | head -1
+          llvm-objcopy --version | head -1
 
       - name: Rust 1.98.1 with the bare-metal target
         shell: bash
