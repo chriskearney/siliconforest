@@ -124,13 +124,12 @@ jobs:
         shell: bash
         env:
           SF_CARGO_ONLINE: "1"
-          SF_NEW_STAGE1: "1"
         run: |
           set -euo pipefail
           installer/payload/boot/build_stage1.sh "$RUNNER_TEMP/stage1"
           cd "$RUNNER_TEMP/stage1"
           sha256sum sf-stage1.bin | tee sf-stage1.bin.sha256
-          python3 -c 'import json; r=json.load(open("sf-stage1.json")); print("same_as_installed_stage1", r["same_as_installed_stage1"])'
+          python3 -c 'import json; r=json.load(open("sf-stage1.json")); assert r["same_as_installed_stage1"] is True, r'
 
       - name: Build log (on failure)
         if: failure()
