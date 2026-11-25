@@ -9,6 +9,10 @@ import SFInstallKit
 /// and raw I/O as `ImageEngineTests`, but through `LiveDiskBackend`, its protection receipt and its
 /// pre-write release checks. Every target here is an image the test made under .build-images.
 enum LiveLab {
+    /// The long live-backend repeats of suites CI already runs on the image backend (power loss after
+    /// every step, the journal fork sweep). On by default; installer-mac.yml sets SF_LIVE_HEAVY=0 to fit
+    /// its time limit, and the M5 runs them.
+    static let heavy = ProcessInfo.processInfo.environment["SF_LIVE_HEAVY"] != "0"
     static func live(_ c: ImageLab.Case, runner: ToolRunner = ProcessToolRunner()) -> LiveDiskBackend {
         LiveDiskBackend(authority: ImageTargetAuthority(imagePath: c.image), runner: runner)
     }
@@ -341,7 +345,7 @@ struct LiveBackendFaultTests {
         }
     }
 
-    @Test func powerLossAfterEachDiskStepResumesThroughTheLiveBackend() throws {
+    @Test(.enabled(if: LiveLab.heavy)) func powerLossAfterEachDiskStepResumesThroughTheLiveBackend() throws {
         let c = try ImageLab.fresh(.j313); defer { c.finish() }
         let profile = try ImageLab.profile("J313")
         let original = try c.backend.topology()
@@ -386,7 +390,7 @@ struct LiveBackendFaultTests {
     /// The fork sweep of `FaultInjectionTests`, through the live backend: after each sampled journal
     /// record the image and journal are forked as a crash would leave them; on the fork a fresh engine
     /// must resume to the end, and on a second fork roll back to the original table.
-    @Test func everySampledJournalStateHasAWayForwardAndBackThroughTheLiveBackend() throws {
+    @Test(.enabled(if: LiveLab.heavy)) func everySampledJournalStateHasAWayForwardAndBackThroughTheLiveBackend() throws {
         let c = try ImageLab.fresh(.j313); defer { c.finish() }
         let profile = try ImageLab.profile("J313")
         let original = try c.backend.topology()
