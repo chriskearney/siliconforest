@@ -13,6 +13,7 @@ pub mod kc;
 pub mod manifest;
 pub mod paths;
 pub mod payload;
+pub mod power;
 pub mod repo;
 pub mod resolve;
 pub mod sshsig;

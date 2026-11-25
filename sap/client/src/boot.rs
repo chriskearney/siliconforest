@@ -101,6 +101,8 @@ pub struct Tool {
     pub sfboot: PathBuf,
     /// Image mode: the machine is not running from this SFBOOT; act as if its default slot were running.
     pub image: bool,
+    /// Tests only (SAP_RUNNING_SLOT, feature `testing`): act as the machine started from this slot.
+    pub running: Option<char>,
 }
 
 impl Tool {
@@ -114,7 +116,11 @@ impl Tool {
         } else {
             PathBuf::from(sys.cfg.bootslot_tool.clone().unwrap_or_else(|| DEFAULT_TOOL.into()))
         };
-        Ok(Tool { path, sfboot, image: sys.image_mode })
+        #[cfg(feature = "testing")]
+        let running = std::env::var("SAP_RUNNING_SLOT").ok().and_then(|v| v.chars().next()).filter(|c| *c == 'a' || *c == 'b');
+        #[cfg(not(feature = "testing"))]
+        let running = None;
+        Ok(Tool { path, sfboot, image: sys.image_mode && running.is_none(), running })
     }
 
     fn run(&self, running: Option<char>, args: &[String]) -> Result<(i32, String, String)> {
@@ -150,7 +156,9 @@ impl Tool {
         if s.default == '\0' {
             bail!(Failure, "sf-bootslot status: no boot state record ({})", out.trim());
         }
-        if self.image {
+        if let Some(r) = self.running {
+            s.running = r;
+        } else if self.image {
             s.running = s.default;
         }
         Ok(s)
@@ -158,7 +166,9 @@ impl Tool {
 
     fn running_arg(&self, st: &Status) -> Option<char> {
         // On the machine the tool reads sf_slot from kern.bootargs itself; for an image, say it.
-        if self.image {
+        if self.running.is_some() {
+            self.running
+        } else if self.image {
             Some(st.default)
         } else {
             None
@@ -204,7 +214,7 @@ impl Tool {
         if self.image {
             bail!(Failure, "mark-good is for the running system (after a clean start), not an image");
         }
-        let (rc, out, err) = self.run(None, &["mark-good".into()])?;
+        let (rc, out, err) = self.run(self.running, &["mark-good".into()])?;
         if rc != 0 {
             bail!(Conflict, "sf-bootslot mark-good refused ({rc}): {}", err.trim());
         }

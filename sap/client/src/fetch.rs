@@ -65,7 +65,14 @@ fn curl(url: &str, dest: &Path, max: u64, resume: bool) -> Result<()> {
     })?;
     let mut c = std::process::Command::new(tool);
     c.env_clear().env("PATH", "/usr/bin:/bin").args(["--proto", "=https", "--tlsv1.2", "-q", "-sS", "--fail", "--max-redirs", "0", "--connect-timeout", "30"]);
-    c.args(["-A", &user_agent(), "-H", "Accept:", "--max-filesize", &max.to_string(), "-o"]).arg(dest);
+    c.args(["-A", &user_agent(), "-H", "Accept:", "--max-filesize", &max.to_string()]);
+    // The system's CA bundle, named: curl's built-in default differs between builds.
+    if let Some(ca) =
+        ["/etc/ssl/cert.pem", "/private/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt"].iter().find(|p| std::path::Path::new(p).is_file())
+    {
+        c.args(["--cacert", ca]);
+    }
+    c.arg("-o").arg(dest);
     if resume && dest.exists() {
         c.args(["-C", "-"]);
     }

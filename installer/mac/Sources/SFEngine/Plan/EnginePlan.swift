@@ -49,6 +49,11 @@ public struct ReleaseManifest: Codable, Sendable, Hashable {
     public var rootFilesystemUUID: String? = nil
     /// Format 3: the xz parts of the root, in order. Empty: `rootImage` is the only file.
     public var rootParts: [String] = []
+    /// A/B boot (abboot): slot B's stage 2 (`sf/b/boot.bin`), the record for slot A as installed
+    /// (`sf/bootstate.bin`, only with stage 1 v2) and SAP's trust anchor (`sf/trust`). Nil: not in the release.
+    public var stage2B: String? = nil
+    public var bootState: String? = nil
+    public var trust: String? = nil
     public var effectiveRootParts: [String] { rootParts.isEmpty ? (rootImage.isEmpty ? [] : [rootImage]) : rootParts }
 
     public func artifact(_ name: String) -> Artifact? { artifacts.first { $0.name == name } }

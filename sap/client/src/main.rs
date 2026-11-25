@@ -14,7 +14,7 @@ commands:
   check                          fetch and verify the manifest; exit 10 if updates are available
   list [--installed|--upgradable|--available]
   show PKG
-  upgrade [PKG…] [--dry-run] [--download-only] [--boot] [--adopt PATH]… [-y]
+  upgrade [PKG…] [--dry-run] [--download-only] [--boot [--ignore-power]] [--adopt PATH]… [-y]
   install PKG… | --all [--boot]  install packages not yet installed (same verified path)
   verify [PKG…] [--repair]
   history
@@ -22,7 +22,8 @@ commands:
   hold PKG… | unhold PKG…
   recover [--rollback]
   boot-status                    the A/B boot slots (stage 1 v2), or the legacy layout
-  mark-good                      after a clean start from an updated slot: make it the default
+  mark-good [--wait S] [--no-health]  after a clean start from an updated slot (the services the
+                                 records name are running): make it the default
   version
 
 global options:
@@ -134,6 +135,7 @@ fn run() -> Result<i32, Error> {
                     "--dry-run" => a.dry_run = true,
                     "--download-only" => a.download_only = true,
                     "--boot" => a.boot = true,
+                    "--ignore-power" => a.ignore_power = true,
                     "-y" | "--yes" => a.yes = true,
                     "--all" if command == "install" => a.install_all = true,
                     "--adopt" => {
@@ -178,8 +180,21 @@ fn run() -> Result<i32, Error> {
             cmd::boot_status(&sys)
         }
         "mark-good" => {
-            flags(&[])?;
-            cmd::mark_good(&sys)
+            let mut wait = 0u64;
+            let mut force = false;
+            let mut j = 0;
+            while j < rest.len() {
+                match rest[j].as_str() {
+                    "--wait" => {
+                        j += 1;
+                        wait = rest.get(j).and_then(|v| v.parse().ok()).ok_or_else(|| usage("--wait needs seconds"))?;
+                    }
+                    "--no-health" => force = true,
+                    x => return Err(usage(&format!("unknown option {x}"))),
+                }
+                j += 1;
+            }
+            cmd::mark_good(&sys, wait, force)
         }
         c => Err(usage(&format!("unknown command {c}"))),
     }

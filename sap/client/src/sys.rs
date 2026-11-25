@@ -29,6 +29,10 @@ pub struct Config {
     pub boot_backend: String,
     /// sf-bootslot (abboot) for boot_backend slots; default boot::DEFAULT_TOOL.
     pub bootslot_tool: Option<String>,
+    /// `yes` (default): boot and kernel updates need AC power; `no`: never checked.
+    pub require_ac: String,
+    /// Services a clean start needs besides those the installed records name (mark-good).
+    pub health_services: Vec<String>,
 }
 
 pub struct Sys {
@@ -65,6 +69,13 @@ impl Installed {
     pub fn config_files(&self) -> Vec<String> {
         self.record.get("config_files").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default()
     }
+    pub fn service_labels(&self) -> Vec<String> {
+        self.record
+            .get("services")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|x| x.get("label").and_then(|l| l.as_str()).map(String::from)).collect())
+            .unwrap_or_default()
+    }
     pub fn target(&self) -> &str {
         self.record.get("target").and_then(|t| t.as_str()).unwrap_or("root")
     }
@@ -78,7 +89,15 @@ pub struct Anchor {
 }
 
 fn parse_config(text: &str) -> Result<Config> {
-    let mut c = Config { channel: "stable".into(), manifest_url: None, sfboot: None, boot_backend: "auto".into(), bootslot_tool: None };
+    let mut c = Config {
+        channel: "stable".into(),
+        manifest_url: None,
+        sfboot: None,
+        boot_backend: "auto".into(),
+        bootslot_tool: None,
+        require_ac: "yes".into(),
+        health_services: Vec::new(),
+    };
     for (i, line) in text.lines().enumerate() {
         let l = line.trim();
         if l.is_empty() || l.starts_with('#') {
@@ -92,6 +111,8 @@ fn parse_config(text: &str) -> Result<Config> {
             "sfboot" => c.sfboot = Some(PathBuf::from(v)),
             "boot_backend" => c.boot_backend = v,
             "bootslot_tool" => c.bootslot_tool = Some(v),
+            "require_ac" => c.require_ac = v,
+            "health_services" => c.health_services = v.split([',', ' ']).filter(|x| !x.is_empty()).map(String::from).collect(),
             "mirrors" => {}
             _ => {} // unknown keys are ignored, like the manifest's
         }
@@ -260,6 +281,9 @@ impl Sys {
         } else if let Some(tok) = self.bootargs_token()? {
             let (v, k) = parse_trust_token(&tok).ok_or_else(|| Error::new(Code::Verify, "the boot-chain trust anchor (sf_trust=) is malformed".to_string()))?;
             (v, k, "boot chain (sf_trust)".into())
+        } else if let Some((tok, p)) = self.sfboot_trust()? {
+            let (v, k) = parse_trust_token(&tok).ok_or_else(|| Error::new(Code::Verify, format!("the trust anchor in {} is malformed", p.display())))?;
+            (v, k, "boot partition (sf/trust)".into())
         } else {
             warnings.push("no boot-chain trust anchor (sf_trust=) on this machine; using the keys compiled into sap (design 8.2 option A, interim)".into());
             let (v, k) = builtin.clone();
@@ -272,6 +296,17 @@ impl Sys {
             warnings.push(format!("the trust anchor ({source}) differs from the keys sap was built with"));
         }
         Ok(Anchor { version, keys, source, warnings })
+    }
+
+    /// `sf/trust` on SFBOOT: the installer writes the anchor there when the boot arguments have no
+    /// room for it (m1n1 passes at most 607 characters). One line, `sf_trust=<version>:<keys>`.
+    fn sfboot_trust(&self) -> Result<Option<(String, PathBuf)>> {
+        let Some(p) = self.sfboot.as_ref().map(|b| b.join("sf/trust")) else { return Ok(None) };
+        if !p.exists() {
+            return Ok(None);
+        }
+        let t = fs::read_to_string(&p).ctx(|| format!("read {}", p.display()))?;
+        Ok(t.split_whitespace().find_map(|w| w.strip_prefix("sf_trust=").map(String::from)).map(|tok| (tok, p)))
     }
 
     /// `sf_trust=` from the running kernel's boot arguments, or in image mode from the image's

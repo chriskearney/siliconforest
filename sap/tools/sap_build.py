@@ -51,6 +51,8 @@ SCHEMA = "siliconforest-update/1"
 RECORD_SCHEMA = "siliconforest-package/1"
 PAYLOAD_FORMAT = "xz-bodies/1"
 HEADER = "# path\ttype\tmode\tuid\tgid\tsize\tsha256 or link target"
+# SAP's own state on the machine (database, cache, journal): made by seed-db and SAP, never in a package.
+SAP_STATE = ("/private/var/db/sap", "/private/var/cache/sap", "/private/var/lib/sap", "/var/db/sap", "/var/cache/sap", "/var/lib/sap")
 PROTECTED = {"/private/var/db/sf-firmware-slot", "/private/var/db/sf-boot-receipt", "/var/db/sf-firmware-slot", "/var/db/sf-boot-receipt"}
 NAME = re.compile(r"\A[a-z0-9][a-z0-9+._-]{0,127}\Z")
 VERSION = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9.+~-]{0,63}\Z")
@@ -120,6 +122,8 @@ def parse_tsv(text):
         if len(c) != 7 or c[1] not in ("f", "d", "l") or not re.fullmatch(r"[0-7]{4}", c[2]):
             raise BuildError(f"TSV line {n} is malformed")
         p = c[0]
+        if p == "/" and c[1] == "d":
+            continue  # the root directory itself (image manifests list it); no package owns it
         if not p.startswith("/") or p == "/" or any(x in ("", ".", "..") for x in p[1:].split("/")):
             raise BuildError(f"TSV line {n}: unsafe path {p!r}")
         rows.append({"path": p, "type": c[1], "mode": int(c[2], 8), "uid": int(c[3]), "gid": int(c[4]), "size": int(c[5]), "data": c[6]})
@@ -230,6 +234,8 @@ def build_root_packages(rows, tree, spec, release):
     for r in rows:
         if r["path"] in PROTECTED:
             continue   # fixed-extent installer files are never part of any package
+        if any(r["path"] == d or r["path"].startswith(d + "/") for d in SAP_STATE):
+            continue   # SAP's database of an image that was seeded before
         owner = next((p for p in pkgs if any(matches(r["path"], pat) for pat in p.patterns)), None)
         if owner is None:
             owner = base

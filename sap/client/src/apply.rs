@@ -29,6 +29,7 @@ pub struct UpgradeArgs {
     pub boot: bool,
     pub adopt: Vec<String>,
     pub yes: bool,
+    pub ignore_power: bool,
 }
 
 pub struct Pkg {
@@ -166,6 +167,9 @@ pub fn upgrade(sys: &Sys, a: &UpgradeArgs) -> Result<i32> {
     if res.order.is_empty() && rotate.is_none() {
         println!("Nothing to do: everything is up to date (manifest sequence {}).", m.sequence);
         return Ok(0);
+    }
+    if boot_work && a.boot && !a.dry_run && !a.download_only {
+        crate::power::require_ac(sys, a.ignore_power)?;
     }
     // Plan: records and file lists, before any payload.
     let mut pkgs: Vec<Pkg> = Vec::new();

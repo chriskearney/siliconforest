@@ -107,6 +107,14 @@ public enum SFRelease {
         for p in parts {
             guard listed[p]?.role == "root-part" else { throw Refusal("root part \(p) is not a listed root part") }
         }
+        // Optional SFBOOT files (A/B boot, SAP's trust anchor): each must be a listed artifact.
+        func optionalBoot(_ key: String) throws -> String? {
+            guard let v = boot[key] else { return nil }
+            guard let name = v as? String, listed[name] != nil else { throw Refusal("boot \(key) is not a listed artifact") }
+            return name
+        }
+        let stage2B = try optionalBoot("stage2_b"), bootState = try optionalBoot("bootstate"), trust = try optionalBoot("trust")
+        if bootState != nil && stage2B == nil { throw Refusal("the A/B boot record comes without slot B's stage 2") }
         let (kc, fsUUID) = try KernelCollection.fromInstallJSON(instData)
         if !rehearsal, kc.toolSigning != "developer-id" { throw Refusal("a release's kc-builder must be Developer ID signed") }
 
@@ -131,7 +139,10 @@ public enum SFRelease {
             firmware: "",
             kernelCollection: kc,
             rootFilesystemUUID: fsUUID,
-            rootParts: parts)
+            rootParts: parts,
+            stage2B: stage2B,
+            bootState: bootState,
+            trust: trust)
     }
 
     private static func verifySignature(sums: URL, signature: URL, allowedSigners: URL) throws {

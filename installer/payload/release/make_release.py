@@ -14,6 +14,12 @@ signature, namespace siliconforest-release, SHA256SUMS.sig):
     siliconforest-V-root.ext4.xz.NN   the installer root (prepare_root.py), xz, parts below 2 GiB
     siliconforest-V-root.manifest.tsv every entry of that root
     sf-stage1.bin, boot.bin, bootargs.template   stage 1, stage 2 and the boot-argument template, as built
+    boot-b.bin                        slot B's stage 2 (A/B boot, abboot), when the boot directory has it
+    bootstate.bin                     the A/B boot record for a fresh install (sf-bootslot init: slot A as
+                                      installed, good), only with stage 1 v2 and boot-b.bin (--slots)
+    sf-trust.txt                      SAP's trust anchor, sf_trust=<version>:<key> for the signing key; also
+                                      appended to bootargs.template when the personalised arguments still
+                                      fit m1n1's 607 characters (docs/sap/README.md)
     kc-builder, LICENSE.kc-tools, kc.kernel, kc.<kind>.<Bundle>.kext.<path>
                                       the kernel collection as separate files, linked on the Mac
                                       (kc_release.py; PAYLOAD.md section 13). The collection itself is
@@ -42,6 +48,56 @@ import kc_release as KC  # noqa: E402
 import tempfile  # noqa: E402
 
 BOOT_ROLES = {"stage1": "sf-stage1.bin", "stage2": "boot.bin", "bootargs": "bootargs.template"}
+STAGE2_B = "boot-b.bin"
+BOOTSTATE = "bootstate.bin"
+TRUST = "sf-trust.txt"
+REPO = Path(__file__).resolve().parents[3]
+ABBOOT = REPO / "integrations/siliconforest/m1-native-boot/install/abboot"
+BOOTARGS_CAPACITY = 608   # m1n1 xnuboot.h v2, with the NUL (SFEngine PDSF.bootargsCapacity)
+# Worst case of the fields the installer fills in, and the slot marker SAP adds for slot B
+PERSONALISED = {"@SF_FSUUID@": 36, "@SF_PARTUUID@": 36, "@SF_PART_LBA@": 10, "@SF_PART_BLOCKS@": 10}
+SLOT_MARK = " sf_slot=b"
+
+
+def template_args(text):
+    """The command line a bootargs.template holds: lines not starting with #, joined by spaces."""
+    return " ".join(l.strip() for l in text.splitlines() if l.strip() and not l.lstrip().startswith("#"))
+
+
+def personalised_length(args):
+    n = len(args)
+    for field, width in PERSONALISED.items():
+        n += args.count(field) * (width - len(field))
+    return n + len(SLOT_MARK)
+
+
+def trust_token(pub_path, version=1):
+    import base64
+    blob = base64.b64decode(Path(pub_path).read_text().split("ssh-ed25519", 1)[1].split()[0])
+    if blob[:15] != b"\0\0\0\x0bssh-ed25519" or len(blob) != 51:
+        raise R.ReleaseError(f"{pub_path}: not an Ed25519 public key")
+    return f"sf_trust={version}:" + base64.b64encode(blob[-32:]).decode().rstrip("=")
+
+
+def make_bootstate(stage2, generation):
+    """sf/bootstate.bin as `sf-bootslot init` writes it for a fresh install (slot A = stage2, good),
+    by running a host build of sf-bootslot on a scratch SFBOOT."""
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        tool = td / "sf-bootslot"
+        cc = shutil.which("cc") or shutil.which("clang") or shutil.which("gcc")
+        if not cc:
+            raise R.ReleaseError("no C compiler for sf-bootslot (bootstate.bin)")
+        subprocess.run([cc, "-std=c11", "-O1", "-I", str(ABBOOT), str(ABBOOT / "sf_ab.c"), str(ABBOOT / "sf-bootslot.c"), "-o", str(tool)],
+                       check=True, capture_output=True)
+        (td / "boot/sf").mkdir(parents=True)
+        shutil.copyfile(stage2, td / "boot/sf/boot.bin")
+        subprocess.run([str(tool), "--boot", str(td / "boot"), "--running", "a", "--generation", str(generation), "init"],
+                       check=True, capture_output=True)
+        st = subprocess.run([str(tool), "--boot", str(td / "boot"), "status"], check=True, capture_output=True, text=True).stdout
+        if "default=a" not in st or "file:matches" not in st:
+            raise R.ReleaseError(f"sf-bootslot init did not record slot A:\n{st}")
+        return (td / "boot/sf/bootstate.bin").read_bytes()
 
 
 def read_firmware_names(path):
@@ -144,6 +200,7 @@ def build(a):
     add(out / f"{stem}-root.manifest.tsv", "root-manifest")
 
     boot = {}
+    stage1_tag = None
     for role, name in BOOT_ROLES.items():
         src = a.boot_dir / name
         if not src.is_file():
@@ -152,10 +209,45 @@ def build(a):
             # A release carries our real stage 1 (boot/build_stage1.sh); only a rehearsal may use a placeholder.
             data = src.read_bytes()
             if not a.rehearsal or R.STAGE1_MARK in data:
-                R.check_stage1(data, *R.profile_stage1(a.profiles))
+                stage1_tag = R.check_stage1(data, *R.profile_stage1(a.profiles))
         shutil.copyfile(src, out / name)
         add(out / name, f"boot-{role}")
         boot[role] = name
+    if stage1_tag:
+        boot["stage1_tag"] = stage1_tag
+    # A/B boot (abboot): slot B's stage 2, and the record for slot A, only for stage 1 v2
+    if (a.boot_dir / STAGE2_B).is_file():
+        shutil.copyfile(a.boot_dir / STAGE2_B, out / STAGE2_B)
+        add(out / STAGE2_B, "boot-stage2-b")
+        boot["stage2_b"] = STAGE2_B
+    v2 = bool(stage1_tag and stage1_tag.endswith("-siliconforest-stage1-v2"))
+    slots = a.slots == "yes" or (a.slots == "auto" and v2 and "stage2_b" in boot)
+    if slots:
+        if "stage2_b" not in boot:
+            raise R.ReleaseError(f"--slots needs {STAGE2_B} in {a.boot_dir}")
+        if not v2 and not a.rehearsal:
+            raise R.ReleaseError("A/B slots need stage 1 v2 (abboot/build_stage1_v2.sh); stage 1 v1 never reads the record")
+        (out / BOOTSTATE).write_bytes(make_bootstate(out / boot["stage2"], a.sequence))
+        add(out / BOOTSTATE, "boot-state")
+        boot["bootstate"] = BOOTSTATE
+    boot["slots"] = slots
+    # SAP's trust anchor (design 8.2): the signing key, in sf-trust.txt (written to SFBOOT as sf/trust)
+    # and, when it fits, in the boot arguments themselves
+    pub = a.public_key if a.unsigned else Path(str(a.key) + ".pub")
+    token = trust_token(pub)
+    (out / TRUST).write_text(token + "\n")
+    add(out / TRUST, "boot-trust")
+    boot["trust"] = TRUST
+    tmpl = (out / boot["bootargs"]).read_text()
+    args = template_args(tmpl)
+    boot["trust_in_bootargs"] = False
+    if "sf_trust=" in args:
+        raise R.ReleaseError("bootargs.template already has an sf_trust= token")
+    if personalised_length(args + " " + token) < BOOTARGS_CAPACITY:
+        (out / boot["bootargs"]).write_text(tmpl.rstrip("\n") + "\n" + token + "\n")
+        add(out / boot["bootargs"], "boot-bootargs")
+        boot["trust_in_bootargs"] = True
+    boot["bootargs_personalised_max"] = personalised_length(template_args((out / boot["bootargs"]).read_text()))
 
     kc = kernel_collection(a, out, add)
 
@@ -230,6 +322,8 @@ def main(argv=None):
     ap.add_argument("--kc-link-tool", type=Path, help="a kc-builder that runs on this host, for the expected hash")
     ap.add_argument("--kc-expect", help="the SHA-256 the collection must have (e.g. release-inputs.nix's kernel)")
     ap.add_argument("--rehearsal", action="store_true")
+    ap.add_argument("--slots", choices=("auto", "yes", "no"), default="auto",
+                    help="A/B boot record (bootstate.bin): auto = with stage 1 v2 and boot-b.bin; yes in a rehearsal also with a placeholder stage 1")
     ap.add_argument("--xz-level", type=int, default=6)
     ap.add_argument("--threads", type=int, default=0)
     a = ap.parse_args(argv)

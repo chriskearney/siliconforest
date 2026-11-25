@@ -411,12 +411,32 @@ pub fn boot_status(sys: &Sys) -> Result<i32> {
 }
 
 /// `sap mark-good`: after a clean start from an updated slot, make it the default (design 10.4).
-pub fn mark_good(sys: &Sys) -> Result<i32> {
+/// Only once the services a clean start needs are running (crate::power::health_labels), waiting
+/// up to `wait` seconds for them; otherwise nothing is marked and the trial falls back at the next start.
+pub fn mark_good(sys: &Sys, wait: u64, no_health: bool) -> Result<i32> {
     sys.require_writer()?;
     if crate::boot::backend(sys)? != crate::boot::Backend::Slots {
         println!("boot: legacy layout; nothing to mark");
         return Ok(0);
     }
-    print!("{}", crate::boot::Tool::new(sys)?.mark_good()?);
+    let tool = crate::boot::Tool::new(sys)?;
+    let st = tool.status()?;
+    let trial_running = st.trial_state == "tried" && st.trial == Some(st.running);
+    if trial_running && !no_health {
+        let labels = crate::power::health_labels(sys)?;
+        if let Err(bad) = crate::power::wait_healthy(&labels, std::time::Duration::from_secs(wait)) {
+            eprintln!("sap: not a clean start; slot {} is not marked good:", st.running);
+            for b in &bad {
+                eprintln!("  {b}");
+            }
+            eprintln!("sap: the next start falls back to slot {} by itself", st.default);
+            return Ok(Code::Conflict as i32);
+        }
+        println!("health: {} service(s) running{}", labels.len(), if labels.is_empty() { "" } else { ":" });
+        for l in &labels {
+            println!("  {l}");
+        }
+    }
+    print!("{}", tool.mark_good()?);
     Ok(0)
 }

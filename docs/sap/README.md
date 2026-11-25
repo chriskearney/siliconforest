@@ -27,7 +27,7 @@ update" below.
     sap check                      # exit 10 if updates are available
     sap list [--installed|--upgradable|--available]
     sap show vim
-    sap upgrade [PKG…] [--dry-run] [--download-only] [--boot] [--adopt PATH]… [-y]
+    sap upgrade [PKG…] [--dry-run] [--download-only] [--boot] [--adopt PATH]… [--ignore-power] [-y]
     sap install PKG… | --all [--boot]
     sap verify [PKG…] [--repair]
     sap history
@@ -35,7 +35,7 @@ update" below.
     sap hold PKG… / sap unhold PKG…
     sap recover [--rollback]
     sap boot-status                # A/B boot record (stage 1 v2), or "legacy layout"
-    sap mark-good                  # after a clean start from an updated slot
+    sap mark-good [--wait S] [--no-health]   # after a clean start from an updated slot (IMAGE.md)
 
 Global options: `--root DIR` (operate on an image, not the running system), `--sfboot DIR`,
 `--manifest-url URL`, `--trust-anchor FILE` (images only, with `--root`), `--offline`, `--json`.
@@ -55,8 +55,10 @@ expired or replayed · 30 conflict or dependency failure · 40 a transaction was
     sfboot = /Volumes/SFBOOT          # where SFBOOT is mounted (Q3: settled by the image recipe)
     boot_backend = auto               # auto | legacy | slots (BOOT-INTERFACE.md)
     bootslot_tool = /usr/libexec/sf-bootslot
+    require_ac = yes                  # boot updates only on AC power (IMAGE.md, Power)
+    health_services = LABEL …         # also wait for these before mark-good
 
-Unknown keys are ignored.
+Unknown keys are ignored. The image's own copy is `sap/image/sap.conf` (IMAGE.md).
 
 ### On-disk state (all under the root)
 
@@ -99,18 +101,18 @@ record and every swap and check exactly that.
 
 What a test on hardware still needs (design 11 questions; deltas in the final report):
 
-* **Trust anchor.** The installer must write `sf_trust=1:<key>` into the kernel.bin boot arguments
-  (`sap_build.py anchor-token installer/payload/release/allowed_signers`). Until it does, SAP warns and
-  falls back to the compiled-in key list.
-* **SFBOOT mount (Q3).** SAP writes SFBOOT through a mounted path (`sfboot =`); the image recipe has to
-  mount it read-write on SiliconForest, or kernel and stage 2 updates stay deferred.
+* **Trust anchor.** The installer writes `sf/trust` on SFBOOT, and `sf_trust=` into the boot arguments
+  when it fits (IMAGE.md); without either SAP warns and falls back to the compiled-in key list.
+* **SFBOOT mount (Q3).** `org.siliconforest.sap-boot` mounts SFBOOT read-write at `/Volumes/SFBOOT`
+  (`sf-mount-sfboot`, IMAGE.md). The msdosfs argument layout is PureDarwin's; it has to be seen to
+  work on the machine.
 * **Root filesystem atomicity (Q2).** The journal assumes `rename` is atomic and `fsync` durable on the
-  root filesystem; to be checked on the real one.
+  root filesystem (ext4 through SiliconForest's ext4.kext); checked on the QEMU guest, not on NVMe.
 * **kc-builder on SiliconForest (Q5).** The relink runs `/usr/libexec/sap/kc-builder` on the machine; the
   kernel-collection inputs live under `/System/Library/SiliconForest/KernelCollection` (proposal).
-* **HTTPS.** `https://` URLs go through `/usr/bin/curl`; the image must ship it, with a CA bundle.
-* **Boot fallback (Q4).** With stage 1 v2 and `sf/bootstate.bin`, SAP stages into the inactive slot
-  (BOOT-INTERFACE.md); that needs the slot-B stage 2 build, `early`/`mark-good` in launchd, and stage 1
-  v2 on the machine. Until then the legacy backend replaces SFBOOT files in place, with `.old` copies.
-* **First channel.** Publish the release's root as a channel and seed each installed image's database
-  with `sap_build.py seed-db` (OPERATOR.md).
+* **HTTPS.** `https://` URLs go through `/usr/bin/curl` with `--cacert /etc/ssl/cert.pem`; the root has both.
+* **Boot fallback (Q4).** With stage 1 v2 and `sf/bootstate.bin` (written by the installer, IMAGE.md),
+  SAP stages into the inactive slot (BOOT-INTERFACE.md); `early` and a health-gated `mark-good` run
+  from launchd. Without them the legacy backend replaces SFBOOT files in place, with `.old` copies.
+* **First channel.** prepare_root.py `--sap-bin` publishes the image's channel and seeds the database
+  (IMAGE.md); the channel still needs a host (`manifest_url`) and the M3 signature.

@@ -18,6 +18,9 @@ What it adds (docs/installer/PAYLOAD.md section 3):
                                      installer writes the SFRCPT1 header and install ID at S52)
 - /usr/libexec/sf-installer-firstboot, sf-boot-receipt, sf-unpack-firmware
 - org.siliconforest.firstboot runs sf-installer-firstboot (which ends by running sf-firstboot)
+- with --sap-bin: SAP, the system updater (sap/tools/sap_image.py, docs/sap/IMAGE.md): its binaries,
+  boot jobs and /etc/sap.conf, the image's own SAP channel (--sap-channel, root packages) and the
+  installed database seeded from it (/private/var/db/sap)
 
 Only ordinary image files are touched, through debugfs. Nothing here opens a device. Each
 written entry is read back, slot extents are checked from the extent tree and from the raw
@@ -43,6 +46,7 @@ RECEIPT_SLOT = "/private/var/db/sf-boot-receipt"
 RECEIPT_SLOT_BYTES = 64 << 10
 FIRSTBOOT_JOB = "/System/Library/LaunchDaemons/org.siliconforest.firstboot.plist"
 HERE = Path(__file__).resolve().parent
+SAP_TOOLS = HERE.parents[2] / "sap" / "tools"
 TOOLS = ["debugfs", "e2fsck", "resize2fs", "dumpe2fs"]
 
 
@@ -141,7 +145,18 @@ def readback(image, work, target, data, mode):
     out.unlink()
 
 
-def prepare(base, output, slack_mib=0):
+def add_dir_rows(manifest_rows, rows):
+    """Rows for the directories ensure_dir made for new entries (0755, root)."""
+    known = {r.split("\t", 1)[0] for r in manifest_rows[1:]} | set(rows)
+    for target in list(rows):
+        d = os.path.dirname(target)
+        while d not in ("", "/") and d not in known:
+            rows[d] = f"{d}\td\t0755\t0\t0\t0\t-"
+            known.add(d)
+            d = os.path.dirname(d)
+
+
+def prepare(base, output, slack_mib=0, sap=None):
     src = base / "siliconforest-root.ext4"
     if not src.is_file():
         raise PrepareError(f"{src} missing")
@@ -179,6 +194,10 @@ def prepare(base, output, slack_mib=0):
             ("/usr/libexec/sf-unpack-firmware", (HERE / "sf-unpack-firmware").read_bytes(), 0o755, None),
             (FIRSTBOOT_JOB, job_new, 0o644, None),
         ]
+        if sap:
+            sys.path.insert(0, str(SAP_TOOLS))
+            import sap_image  # noqa: E402
+            entries += [(t, d, m, None) for t, d, m in sap_image.files(sap["bin"], sap.get("manifest_url"), sap.get("host_binaries", False))]
         for target, data, mode, fill in entries:
             write_entry(image, work, target, data, mode, fill)
 
@@ -201,6 +220,25 @@ def prepare(base, output, slack_mib=0):
         for target, data, mode, _ in entries:
             readback(image, work, target, data, mode)
             rows[target] = f"{target}\tf\t{mode:04o}\t0\t0\t{len(data)}\t{hashlib.sha256(data).hexdigest()}"
+        add_dir_rows(manifest_rows, rows)
+        if sap:
+            # The image's channel is published from this very root, then the database is seeded
+            # from it and written in (design 4.3): SAP starts with every file accounted for.
+            header, body = manifest_rows[0], manifest_rows[1:]
+            merged = sorted([r for r in body if r.split("\t", 1)[0] not in rows] + list(rows.values()), key=lambda r: r.split("\t", 1)[0])
+            tsv = work / "root.manifest.tsv"
+            tsv.write_text("\n".join([header, *merged, ""]))
+            tree = work / "tree"
+            tree.mkdir()
+            run("debugfs", "-R", f"rdump / {tree}", str(image))
+            db = sap_image.publish_and_seed(tree, tsv, sap["channel"], sap["release"], sap.get("sequence", 1), sap.get("key"))
+            for target, data, mode in db:
+                write_entry(image, work, target, data, mode)
+            for target, data, mode in db:
+                readback(image, work, target, data, mode)
+                rows[target] = f"{target}\tf\t{mode:04o}\t0\t0\t{len(data)}\t{hashlib.sha256(data).hexdigest()}"
+            shutil.rmtree(tree)
+        add_dir_rows(manifest_rows, rows)
         fsck = run("e2fsck", "-fn", str(image))
         sb = superblock(image)
         final = output / "siliconforest-root.ext4"
@@ -248,9 +286,27 @@ def main(argv=None):
     ap.add_argument("base", type=Path)
     ap.add_argument("output", type=Path)
     ap.add_argument("--slack-mib", type=int, default=0, help="grow the base by this much before adding files")
+    ap.add_argument("--sap-bin", type=Path, help="sap/tools/build_darwin.sh output: put SAP into the root")
+    ap.add_argument("--sap-channel", type=Path, help="with --sap-bin: where the image's SAP channel is published")
+    ap.add_argument("--sap-release", help="with --sap-bin: the channel's release (default: the base's image.json version)")
+    ap.add_argument("--sap-sequence", type=int, default=1)
+    ap.add_argument("--sap-key", type=Path, help="TEST-ONLY key for a rehearsal; default --unsigned (sign offline on the M3)")
+    ap.add_argument("--sap-manifest-url", help="manifest_url written into /etc/sap.conf")
+    ap.add_argument("--sap-host-binaries", action="store_true", help=argparse.SUPPRESS)  # synthetic tests only
     a = ap.parse_args(argv)
+    sap = None
+    if a.sap_bin:
+        if not a.sap_channel:
+            ap.error("--sap-bin needs --sap-channel")
+        release = a.sap_release
+        if not release and (a.base / "image.json").is_file():
+            release = json.loads((a.base / "image.json").read_text()).get("version")
+        if not release:
+            ap.error("--sap-bin needs --sap-release (the base has no image.json)")
+        sap = {"bin": a.sap_bin.resolve(), "channel": a.sap_channel.resolve(), "release": release, "sequence": a.sap_sequence,
+               "key": a.sap_key.resolve() if a.sap_key else None, "manifest_url": a.sap_manifest_url, "host_binaries": a.sap_host_binaries}
     try:
-        info = prepare(a.base.resolve(), a.output.resolve(), a.slack_mib)
+        info = prepare(a.base.resolve(), a.output.resolve(), a.slack_mib, sap)
     except PrepareError as e:
         print(f"prepare_root: {e}", file=sys.stderr)
         return 1

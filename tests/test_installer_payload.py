@@ -357,6 +357,66 @@ class ReleaseTests(unittest.TestCase):
         (boot / 'sf-stage1.bin').write_bytes(Stage1Tests().image())
         self.assertEqual(self.make_release.main(args + ['--out', str(self.t / 'right-s1'), '--rehearsal']), 0)
 
+    # SAP and A/B boot on SFBOOT (docs/sap/IMAGE.md): the trust anchor, slot B's stage 2, the record
+
+    def boot_variant(self, name, stage1=None, boot_b=False, template=None):
+        boot = self.t / name
+        shutil.copytree(self.t / 'boot', boot)
+        if stage1 is not None:
+            (boot / 'sf-stage1.bin').write_bytes(stage1)
+        if boot_b:
+            (boot / 'boot-b.bin').write_bytes(b'SF-REHEARSAL boot-b.bin\n')
+        if template is not None:
+            (boot / 'bootargs.template').write_text(template)
+        return [a if a != str(self.t / 'boot') else str(boot) for a in self.args]
+
+    def test_trust_anchor_ships_and_fits_the_boot_arguments(self):
+        inst = json.loads((self.t / 'rel/install.json').read_text())
+        tok = (self.t / 'rel/sf-trust.txt').read_text().strip()
+        self.assertRegex(tok, r'^sf_trust=1:[A-Za-z0-9+/]{43}$')
+        pub = (self.keys / 'TEST-ONLY-release-key.pub').read_text().split()[1]
+        import base64
+        self.assertEqual(base64.b64decode(pub)[-32:], base64.b64decode(tok.split(':')[1] + '='))
+        self.assertEqual(inst['boot']['trust'], 'sf-trust.txt')
+        self.assertTrue(inst['boot']['trust_in_bootargs'])
+        self.assertIn(tok, (self.t / 'rel/bootargs.template').read_text())
+        self.assertFalse(inst['boot']['slots'])
+        self.assertNotIn('bootstate', inst['boot'])
+
+    def test_trust_stays_out_of_boot_arguments_that_would_overflow(self):
+        # J313's real arguments are ~587 characters personalised: no room for the 54 of sf_trust
+        long = '# comment\n' + ' '.join(['x' * 60] * 8) + ' root=@SF_FSUUID@ part=@SF_PARTUUID@\n'
+        args = self.boot_variant('boot-long', template=long)
+        self.assertEqual(self.make_release.main(args + ['--out', str(self.t / 'long'), '--rehearsal']), 0)
+        inst = json.loads((self.t / 'long/install.json').read_text())
+        self.assertFalse(inst['boot']['trust_in_bootargs'])
+        self.assertEqual((self.t / 'long/bootargs.template').read_text(), long)
+        self.assertLess(inst['boot']['bootargs_personalised_max'], 608)
+        self.assertTrue(self.verify(self.t / 'long', allow_rehearsal=True)['ok'])
+
+    def test_stage1_v2_and_slot_b_carry_the_ab_record(self):
+        v2 = Stage1Tests().image(tag=Stage1Tests.PIN + '-siliconforest-stage1-v2')
+        args = self.boot_variant('boot-v2', stage1=v2, boot_b=True)
+        self.assertEqual(self.make_release.main(args + ['--out', str(self.t / 'v2'), '--rehearsal']), 0)
+        inst = json.loads((self.t / 'v2/install.json').read_text())
+        self.assertTrue(inst['boot']['slots'])
+        self.assertEqual((inst['boot']['stage2_b'], inst['boot']['bootstate']), ('boot-b.bin', 'bootstate.bin'))
+        self.assertEqual(inst['boot']['stage1_tag'], Stage1Tests.PIN + '-siliconforest-stage1-v2')
+        self.assertEqual((self.t / 'v2/bootstate.bin').stat().st_size, 8192)
+        roles = {a['name']: a['role'] for a in inst['artifacts']}
+        self.assertEqual((roles['boot-b.bin'], roles['bootstate.bin'], roles['sf-trust.txt']), ('boot-stage2-b', 'boot-state', 'boot-trust'))
+        self.assertTrue(self.verify(self.t / 'v2', allow_rehearsal=True)['ok'])
+
+    def test_stage1_v1_never_gets_the_ab_record(self):
+        args = self.boot_variant('boot-v1b', stage1=Stage1Tests().image(), boot_b=True)
+        self.assertEqual(self.make_release.main(args + ['--out', str(self.t / 'v1b'), '--rehearsal']), 0)
+        inst = json.loads((self.t / 'v1b/install.json').read_text())
+        self.assertFalse(inst['boot']['slots'])
+        self.assertEqual(inst['boot']['stage2_b'], 'boot-b.bin')
+        self.assertFalse((self.t / 'v1b/bootstate.bin').exists())
+        # --slots yes with stage 1 v1 is refused outside a rehearsal; without boot-b.bin always
+        self.assertEqual(self.make_release.main(self.args + ['--out', str(self.t / 'nob'), '--rehearsal', '--slots', 'yes']), 1)
+
     # The kernel collection as separate files (PAYLOAD.md section 13; release/kc_release.py)
 
     def kc(self, d=None):

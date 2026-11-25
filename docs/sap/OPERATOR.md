@@ -63,7 +63,8 @@ file hash); CI runs it against the Rust client on the same channels.
   copied to the build host, CI or a test. Tests make throwaway keys (`sap_build.py test-key DIR`,
   comment `TEST-ONLY`).
 * Machines trust, in order: the `sf_trust=<version>:<key>[,<key>]` token in the boot arguments of the
-  kernel they booted (written by the installer, rewritten only by SAP with `--boot`); else the keys
+  kernel they booted (written by the installer, rewritten only by SAP with `--boot`); else the same
+  token in `sf/trust` on SFBOOT (the installer writes it; IMAGE.md); else the keys
   compiled into `sap` (`sap/trust/release-keys`, kept identical to `allowed_signers` by
   `sap/tests/test_trust.py`), with a warning.
 * The token for a key list: `sap_build.py anchor-token installer/payload/release/allowed_signers`.
@@ -87,7 +88,8 @@ rotation release is old enough, or reinstall such machines.
 
 ## Bootstrapping an installed image
 
-Images built from a release that is also published as a channel get their database with:
+Images built with `prepare_root.py --sap-bin` already carry a seeded database (IMAGE.md). Other
+images built from a release that is also published as a channel get their database with:
 
     python3 sap/tools/sap_build.py seed-db --repo /srv/sap --root /mnt/image \
         --allowed-signers installer/payload/release/allowed_signers

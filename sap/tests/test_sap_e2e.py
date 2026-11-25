@@ -294,6 +294,21 @@ class Trust(unittest.TestCase):
         mp.write_text(mp.read_text().replace('"release": "0.1.1"', '"release": "0.1.2"'))
         self.both_reject(20)
 
+    def test_anchor_from_sfboot_trust_file(self):
+        """No sf_trust= in the boot arguments: the installer's sf/trust on SFBOOT is the anchor."""
+        e = self.e
+        self.v2()
+        e.run("check", anchor=False, check=20)                     # only the compiled-in keys: the test key is not one
+        (e.sfboot / "sf").mkdir(parents=True, exist_ok=True)
+        (e.sfboot / "sf/trust").write_text(SB.anchor_token([e.keys.pub], 1) + "\n")
+        p = e.run("check", anchor=False, check=10)              # verified: an update is there
+        self.assertIn("boot partition (sf/trust)", p.stderr)
+        other = T.Keys(e.d, "other")
+        (e.sfboot / "sf/trust").write_text(SB.anchor_token([other.pub], 1) + "\n")
+        e.run("check", anchor=False, check=20)
+        (e.sfboot / "sf/trust").write_text("sf_trust=1:not-base64!\n")
+        e.run("check", anchor=False, check=20)
+
     def test_wrong_key(self):
         other = T.Keys(self.e.d, "other")
         self.v2(key=other.key)
@@ -847,6 +862,56 @@ class Slots(unittest.TestCase):
         self.assertIn("slot b (arm) is not armed any more; left as it is", p.stdout)
         self.assertEqual(T.slot_status(e.sfboot)["trial_state"], "tried")
         self.assertEqual(self.slot_a(), self.default_a)
+
+    def test_boot_update_needs_ac_power(self):
+        e = self.e
+        rel2, _, _ = self.kext_release("rel2", b"v2\n")
+        e.publish("0.1.1", self.t1, kc=rel2, boot=self.bin("a1", self.A1), extra=["--boot-bin-b", str(self.bin("b1", self.B1))])
+        p = e.run("upgrade", "--boot", anchor=False, env={"SAP_POWER": "battery:40"}, check=30)
+        self.assertIn("on battery (40%)", p.stderr)
+        self.assertEqual(T.slot_status(e.sfboot)["trial_state"], "none")
+        self.assertFalse((e.sfboot / "sf/b").exists(), "nothing is written on battery")
+        e.run("upgrade", "--dry-run", "--boot", anchor=False, env={"SAP_POWER": "battery:40"}, check=0)
+        p = e.run("upgrade", "--boot", anchor=False, env={"SAP_POWER": "unknown"}, check=50)
+        self.assertIn("cannot tell whether AC power is connected", p.stderr)
+        e.run("rollback", anchor=False, check=0)
+        p = e.run("upgrade", "--boot", "--ignore-power", anchor=False, env={"SAP_POWER": "battery:40"}, check=50)
+        self.assertIn("--ignore-power", p.stderr)
+
+    def test_mark_good_waits_for_a_clean_start(self):
+        e = self.e
+        conf = e.root / "etc/sap.conf"
+        conf.parent.mkdir(parents=True, exist_ok=True)
+        conf.write_text("health_services = org.siliconforest.desktop, org.test.second\n")
+        running = e.d / "running"
+        running.mkdir()
+        lc = e.d / "launchctl"
+        lc.write_text(f"""#!/bin/sh
+# launchctl list LABEL, as the launchd of PureDarwin answers it
+[ "$1" = list ] || exit 2
+[ -f "{running}/$2" ] || {{ echo "Could not find service \"$2\" in domain for system" >&2; exit 113; }}
+printf '{{\n\t"Label" = "%s";\n\t"PID" = 77;\n}};\n' "$2"
+""")
+        lc.chmod(0o755)
+        rel2, _, _ = self.kext_release("rel2", b"v2\n")
+        e.publish("0.1.1", self.t1, kc=rel2, boot=self.bin("a1", self.A1), extra=["--boot-bin-b", str(self.bin("b1", self.B1))])
+        e.run("upgrade", "--boot", anchor=False, check=50)
+        T.slot_tool(e.sfboot, "early", running="b")           # the machine started slot B once
+        env = {"SAP_RUNNING_SLOT": "b", "SAP_LAUNCHCTL": str(lc)}
+        (running / "org.siliconforest.desktop").touch()
+        (running / "org.siliconforest.vimd").touch()          # the service tree_v1's record names
+        p = e.run("mark-good", "--wait", "1", anchor=False, env=env, check=30)
+        self.assertIn("org.test.second: not loaded", p.stderr)
+        self.assertIn("falls back to slot a", p.stderr)
+        st = T.slot_status(e.sfboot)
+        self.assertEqual((st["default"], st["trial_state"]), ("a", "tried"))
+        (running / "org.test.second").touch()
+        p = e.run("mark-good", "--wait", "5", anchor=False, env=env, check=0)
+        self.assertIn("health: 3 service(s) running", p.stdout)
+        st = T.slot_status(e.sfboot)
+        self.assertEqual((st["default"], st["trial_state"]), ("b", "none"))
+        # Nothing to confirm any more: mark-good on the default slot changes nothing, health or not.
+        e.run("mark-good", anchor=False, env={"SAP_RUNNING_SLOT": "b", "SAP_LAUNCHCTL": "/bin/false"}, check=0)
 
     def test_legacy_config_refused_with_record(self):
         e = self.e
