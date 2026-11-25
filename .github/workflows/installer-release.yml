@@ -217,6 +217,30 @@ jobs:
           echo "---- recovery ----"
           codesign -dvv "$app/Contents/Helpers/SFRecovery"
 
+      - name: Build and Developer ID-sign kc-builder
+        # The installer's kernel-collection linker (PAYLOAD.md section 13): PureDarwin kc-tools,
+        # BSD-3-Clause, built from source here and shipped as its own hashed release file. It is
+        # an open-source tool with no Apple parts; the collections it links are never uploaded.
+        shell: bash
+        env:
+          KC_SIGN_IDENTITY: ${{ secrets.MAC_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          [[ -n "$KC_SIGN_IDENTITY" && "$KC_SIGN_IDENTITY" != "-" ]]
+          if [[ -n "${MAC_KEYCHAIN_PATH:-}" ]]; then export KC_SIGN_KEYCHAIN="$MAC_KEYCHAIN_PATH"; fi
+          out="installer/mac/build/kc-builder"
+          integrations/siliconforest/kc-builder/build-macos.sh "$out"
+          [[ "$(cat "$out/kc-builder.signing")" == developer-id ]]
+          codesign --verify --strict --verbose=2 "$out/kc-builder"
+          details="$(codesign -dvv "$out/kc-builder" 2>&1)"
+          echo "$details" | grep -E '^(Identifier|Authority|TeamIdentifier|Timestamp|CodeDirectory)'
+          echo "$details" | grep -q '^Authority=Developer ID Application:'
+          echo "$details" | grep -q 'flags=0x10000(runtime)'
+          lipo -archs "$out/kc-builder" | grep -qx arm64
+          # Same source and patches as the Linux build: the cross-platform digest must agree.
+          python3 integrations/siliconforest/kc-builder/test_sym_order.py --digest | tee "$out/sym-order-digest.txt"
+          grep -qx 'sym-order-digest c00ce981b7966302' "$out/sym-order-digest.txt"
+
       - name: Package, sign, notarize and staple the DMG
         shell: bash
         run: |
@@ -326,6 +350,18 @@ jobs:
             installer/mac/build/dist/*.dmg
             installer/mac/build/dist/*.sha256
             installer/mac/build/dist/notary-result.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload the signed kc-builder (release input, not a collection)
+        uses: actions/upload-artifact@v4
+        with:
+          name: siliconforest-kc-builder-macos-arm64
+          path: |
+            installer/mac/build/kc-builder/kc-builder
+            installer/mac/build/kc-builder/kc-builder.sha256
+            installer/mac/build/kc-builder/kc-builder.signing
+            installer/mac/build/kc-builder/LICENSE.kc-tools
           if-no-files-found: error
           retention-days: 30
 
