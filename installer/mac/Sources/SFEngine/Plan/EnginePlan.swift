@@ -47,6 +47,9 @@ public struct ReleaseManifest: Codable, Sendable, Hashable {
     public var kernelCollection: KernelCollection? = nil
     /// install.json root.fs_uuid: the root filesystem's UUID, for the boot arguments' @SF_FSUUID@.
     public var rootFilesystemUUID: String? = nil
+    /// Format 3: the xz parts of the root, in order. Empty: `rootImage` is the only file.
+    public var rootParts: [String] = []
+    public var effectiveRootParts: [String] { rootParts.isEmpty ? (rootImage.isEmpty ? [] : [rootImage]) : rootParts }
 
     public func artifact(_ name: String) -> Artifact? { artifacts.first { $0.name == name } }
     public var digest: String { (try? Canonical.digest(self)) ?? "" }

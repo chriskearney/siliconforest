@@ -72,6 +72,8 @@ let package = Package(
         .executableTarget(name: "sfstubctl", dependencies: ["SFStub", "SFEngine"]),
         // The supervised stub-only run (docs/installer/STUB-ONLY-RUN-J313.md). A lab tool, never in the app bundle.
         .executableTarget(name: "sfstubrun", dependencies: ["SFStub", "SFEngine", "SFLiveDisk", "SFInstallKit"]),
+        // The supervised full install (docs/installer/FIRST-INSTALL-J313.md). A lab tool, not in the app bundle.
+        .executableTarget(name: "sfinstrun", dependencies: ["SFStub", "SFEngine", "SFLiveDisk", "SFInstallKit"]),
         // Same tests as an executable, for Command Line Tools-only Macs (see scripts/test.sh).
         .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub"], path: "Tests/CLTRunner",
                           swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
