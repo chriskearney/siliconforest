@@ -6,6 +6,7 @@
     make_release.py --root-dir R --boot-dir B --firmware-names F.tsv --profiles DIR \\
                     --kc-inputs KC --kc-builder TOOL [--kc-builder-signing S] [--kc-link-tool T] [--kc-expect SHA] \\
                     --version V --sequence N --key KEY --out OUT [--rehearsal]
+                    --unsigned --public-key PUB   assemble without the private key; sign SHA256SUMS offline
 
 OUT receives the files of one release, all listed in SHA256SUMS, which KEY signs (SSH Ed25519
 signature, namespace siliconforest-release, SHA256SUMS.sig):
@@ -91,7 +92,16 @@ def build(a):
     if out.exists() and any(out.iterdir()):
         raise R.ReleaseError(f"{out} is not empty")
     out.mkdir(parents=True, exist_ok=True)
-    key = R.key_info(Path(str(a.key) + ".pub"))
+    if a.unsigned:
+        if a.key is not None:
+            raise R.ReleaseError("--unsigned does not take --key (the private key stays offline)")
+        if a.public_key is None:
+            raise R.ReleaseError("--unsigned needs --public-key")
+        key = R.key_info(a.public_key)
+    else:
+        if a.key is None:
+            raise R.ReleaseError("--key is required unless --unsigned")
+        key = R.key_info(Path(str(a.key) + ".pub"))
     if a.rehearsal != key["test_only"]:
         raise R.ReleaseError("a rehearsal is signed only with a TEST-ONLY key, and a TEST-ONLY key signs only rehearsals")
     if not a.rehearsal and key["fingerprint"] not in R.RELEASE_KEY_FINGERPRINTS:
@@ -195,6 +205,8 @@ def build(a):
     with (out / R.SUMS).open("w") as f:
         for name in sorted(artifacts):
             f.write(f"{artifacts[name]['sha256']}  {name}\n")
+    if a.unsigned:
+        return install
     subprocess.run(["ssh-keygen", "-q", "-Y", "sign", "-n", R.NAMESPACE, "-f", str(a.key), str(out / R.SUMS)], check=True,
                    stdin=subprocess.DEVNULL)
     return install
@@ -208,7 +220,9 @@ def main(argv=None):
     ap.add_argument("--profiles", type=Path, required=True)
     ap.add_argument("--version", required=True)
     ap.add_argument("--sequence", type=int, required=True)
-    ap.add_argument("--key", type=Path, required=True)
+    ap.add_argument("--key", type=Path, help="private key; signs SHA256SUMS. Omit with --unsigned.")
+    ap.add_argument("--public-key", type=Path, help="public key only, for --unsigned (fingerprint in install.json)")
+    ap.add_argument("--unsigned", action="store_true", help="write SHA256SUMS but do not sign; sign offline with the release key")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--kc-inputs", type=Path, required=True, help="release-inputs directory (kernel, kexts/, codeless/, link-args.txt)")
     ap.add_argument("--kc-builder", type=Path, required=True, help="the kc-builder the Mac runs (build-macos.sh output)")
