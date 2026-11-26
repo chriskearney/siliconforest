@@ -24,8 +24,6 @@ public enum Copy {
         public static let dryRunDetail = "Simulated disk · nothing is written"
         public static let readOnly = "Read-Only"
         public static let readOnlyDetail = "Analysing this Mac · nothing is written"
-        public static let live = "Real Install"
-        public static let liveDetail = "Writes to this Mac's disk · back up first"
         public static let dryRunComplete = "Dry run complete. No disk was changed."
     }
 

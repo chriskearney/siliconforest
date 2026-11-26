@@ -221,3 +221,13 @@ and the `--getBoot` read-back, the bless-failure fallback, the restart verb, and
 registration, the startup-disk lookup and the Preboot admin list on real hardware, what `bless --nextonly` does on Apple
 silicon with this stub (whether `--getBoot` reports it, whether the restart lands in SiliconForest Setup), the real restart,
 and any real disk.
+
+## Preview8: the same install, easier to read and use (UI only)
+
+Chris tried preview7 on the Air and it stopped at the preflight screen "Not enough free space" (correct: the install needs 19 GB and macOS keeps 38 GB).
+Preview8 changes the app's look and its buttons, not the engine, the payload or the free-space rule:
+
+- The **"REAL INSTALL · Writes to this Mac's disk · back up first" pill is gone** from the top bar. The back-up warning stays in the flow text (Before you begin, Confirm the change, Remove SiliconForest).
+- A **reading panel** (a soft translucent card under the content column, on every screen) and lighter secondary text and stronger hairlines in the dark theme (darker in the light theme) keep the text readable over the forest. The forest still shows around and faintly through the panel.
+- **Every control that does something looks like a button**: filled primary, bordered secondary, a smaller bordered "quiet" button for Details and What is SiliconForest?, a destructive button, and bordered disclosure buttons ("About security", "Show partition details"). All have hover and pressed states and a dimmed disabled look.
+- **"Open Storage Settings" works** (`SystemLinks`): it opens `x-apple.systempreferences:com.apple.settings.Storage`, then the General pane, then the System Settings app. "Open Software Update", "Open Disk Utility" and "See Supported Macs" / "Learn More" open their places too. A check-screen button with nothing behind it is not shown in the real install (it was an empty button in preview7).

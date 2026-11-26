@@ -18,6 +18,15 @@ private func duration(_ t: TimeInterval) -> String {
     let s = Int(t); return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%d:%02d", s / 60, s % 60)
 }
 
+/// A scroll view that, offscreen (snapshots), is just its content: AppKit-backed scrolling doesn't render there.
+struct SnapScroll<Content: View>: View {
+    @Environment(\.isSnapshot) private var isSnapshot
+    @ViewBuilder var content: Content
+    var body: some View {
+        if isSnapshot { content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading) } else { ScrollView { content } }
+    }
+}
+
 struct LiveWarning: View {
     @Environment(\.theme) private var theme
     var body: some View {
@@ -78,7 +87,7 @@ struct LiveConfirmScreen: View {
     @ObservedObject var live: LiveRun
     @Environment(\.theme) private var theme
     var body: some View {
-        ScrollView {
+        SnapScroll {
             VStack(alignment: .leading, spacing: 16) {
                 ScreenHead(title: "Confirm the change", lead: "This is the plan the installer's helper made from its own read of the disk. It will do exactly this, and nothing else.")
                 LiveWarning()
@@ -178,7 +187,7 @@ struct LiveStoppedScreen: View {
     @ObservedObject var live: LiveRun
     @Environment(\.theme) private var theme
     var body: some View {
-        ScrollView {
+        SnapScroll {
             VStack(alignment: .leading, spacing: 14) {
                 if live.end == "rolled-back" {
                     ScreenHead(title: "Your Mac is back as it was", lead: "The installer undid every change it had made. macOS has its space back.")
@@ -220,7 +229,7 @@ struct LiveFinishScreen: View {
     @Environment(\.theme) private var theme
     var body: some View {
         let b = live.blessReport
-        ScrollView {
+        SnapScroll {
             VStack(alignment: .leading, spacing: 14) {
                 if b?.set == true {
                     ScreenHead(title: "SiliconForest is installed", lead: "Your Mac is set to start SiliconForest once, the next time it starts. Save your work in other apps, then restart. SiliconForest Setup finishes in recoveryOS (it asks for your Mac password), then restarts into SiliconForest.")
@@ -264,7 +273,7 @@ struct LiveRemoveListScreen: View {
     @ObservedObject var live: LiveRun
     @Environment(\.theme) private var theme
     var body: some View {
-        ScrollView {
+        SnapScroll {
             VStack(alignment: .leading, spacing: 14) {
                 ScreenHead(title: "Remove SiliconForest", lead: "This removes everything an install created on this Mac's disk (the SiliconForest stub, its boot partition, the root partition and the recovery setup it added), gives the space back to macOS, and sets the startup disk back to macOS if it points at SiliconForest. Back up first.")
                 LiveWarning()
@@ -298,7 +307,7 @@ struct LiveRemoveConfirmScreen: View {
     @ObservedObject var live: LiveRun
     @Environment(\.theme) private var theme
     var body: some View {
-        ScrollView {
+        SnapScroll {
             VStack(alignment: .leading, spacing: 16) {
                 ScreenHead(title: "Confirm the removal", lead: "The installer's helper made this plan from its own read of the disk and the install's journal. It deletes only the partitions that install created, and nothing else.")
                 LiveWarning()

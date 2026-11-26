@@ -18,9 +18,9 @@ public struct Theme: Sendable {
     public var surfaceRaised: Color { isDark ? Color(hex: 0x17221D) : Color(hex: 0xE9EDE5) }
     public var surfaceBase: Color { isDark ? Color(hex: 0x111A16) : Color(hex: 0xFBFCF9) }
     public var text: Color { isDark ? Color(hex: 0xE6EDE4) : Color(hex: 0x1F2A24) }
-    public var textSecondary: Color { isDark ? Color(hex: 0x9AA89D) : Color(hex: 0x56625A) }
-    public var textTertiary: Color { isDark ? Color(hex: 0x9AA89D, alpha: 0.7) : Color(hex: 0x56625A, alpha: 0.75) }
-    public var hairline: Color { isDark ? Color(hex: 0x2E3D35) : Color(hex: 0xB9C3B8) }
+    public var textSecondary: Color { isDark ? Color(hex: 0xBAC7BC) : Color(hex: 0x3F4B43) }
+    public var textTertiary: Color { isDark ? Color(hex: 0xBAC7BC, alpha: 0.82) : Color(hex: 0x3F4B43, alpha: 0.85) }
+    public var hairline: Color { isDark ? Color(hex: 0x41554A) : Color(hex: 0x9AA89B) }
     public var accent: Color { isDark ? Color(hex: 0xDD8F55) : Color(hex: 0x2C7A54) }
     public var onAccent: Color { isDark ? Color(hex: 0x1A120B) : .white }
     public var selection: Color { isDark ? Color(hex: 0x2B3D33) : Color(hex: 0xCFE6D8) }

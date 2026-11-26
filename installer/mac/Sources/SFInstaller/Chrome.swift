@@ -3,6 +3,7 @@ import SFInstallKit
 import SFCopy
 import SFDesign
 import SFFlow
+import SFAppEngine
 
 /// One action in the bottom bar.
 struct BarAction {
@@ -48,15 +49,11 @@ struct RootView: View {
             Grove(camera: s.screen.camera, dawn: s.dawn)
                 .animation(reduceMotion ? .easeInOut(duration: 0.15) : .easeInOut(duration: 1.6), value: s.screen)
                 .animation(.linear(duration: 1.2), value: s.dawn)
-            // A quiet, feathered band under the content column keeps text at 4.5:1 wherever trees,
-            // traces or the morning light pass behind it.
-            Rectangle().fill(ui.scrim.opacity(ui.isDark ? 0.34 : 0.58))
-                .frame(width: column + 280, height: h)
-                .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.12),
-                                             .init(color: .black, location: 0.88), .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing))
-                .mask(LinearGradient(stops: [.init(color: .black.opacity(0.5), location: 0), .init(color: .black, location: 0.3),
-                                             .init(color: .black, location: 0.75), .init(color: .black.opacity(0.4), location: 1)], startPoint: .top, endPoint: .bottom))
-                .offset(x: x - 140)
+            // A frosted reading panel under the content column (preview8): the forest stays visible around it and
+            // faintly through it, but the text sits on a calm, dark (or pale, by day) surface at well over 4.5:1.
+            // The welcome screen's panel is lighter: its wordmark is large and carries itself.
+            ContentPanel(width: column + 72, height: max(120, h - 72 - 88 - 20), welcome: s.screen == .welcome)
+                .offset(x: x - 36, y: 72 + 6)
                 .allowsHitTesting(false)
             // The bars sit on a soft band so their text reads over trees, traces and the morning ground.
             VStack(spacing: 0) {
@@ -130,6 +127,18 @@ struct RootView: View {
         }
     }
 
+    /// The secondary buttons of a check result. Each one does something: it opens the macOS place it names, or checks
+    /// again. A title with nothing behind it in this build is left out of the real install (it was a dead button in
+    /// preview7); the dry run keeps its inert preview buttons.
+    private func outsideActions<T: Sequence>(_ titles: T) -> [BarAction] where T.Element == String {
+        titles.compactMap { t in
+            if let place = SystemLinks.place(forButton: t) { return BarAction(title: t) { SystemLinks.open(place) } }
+            if t == Copy.Common.checkAgain { return BarAction(title: t) { s.runChecks() } }
+            if t == Copy.Common.quit { return BarAction(title: t) { s.requestQuit() } }
+            return s.isLive ? nil : BarAction(title: t) {}
+        }
+    }
+
     private var footer: Footer {
         let back = BarAction(title: Copy.Common.back) { s.back() }
         let details = BarAction(title: s.showDetails ? Copy.Common.hideDetails : Copy.Common.details) {
@@ -146,17 +155,17 @@ struct RootView: View {
                 var acts: [BarAction] = [back]
                 switch s.entry {
                 case .installed:
-                    acts += [BarAction(title: "Update", enabled: false) {}, BarAction(title: "Remove…") { if s.isLive { s.live?.showRemoval() } else { s.go(.removeWhat) } },
+                    acts += (s.isLive ? [] : [BarAction(title: "Update", enabled: false) {}]) + [BarAction(title: "Remove…") { if s.isLive { s.live?.showRemoval() } else { s.go(.removeWhat) } },
                              BarAction(title: Copy.Common.quit, style: .primary) { s.requestQuit() }]
                 default:
-                    acts += e.actions.dropLast().map { t in BarAction(title: t) {} }
+                    acts += outsideActions(e.actions.dropLast())
                     acts.append(BarAction(title: e.actions.last ?? Copy.Common.quit, style: .primary) { s.requestQuit() })
                 }
                 return Footer(leading: [details], trailing: acts)
             }
             if s.checksDone, let b = s.blocker.flatMap({ Copy.Check.blocked($0) }) {
                 var acts: [BarAction] = [back]
-                acts += b.actions.dropLast().map { t in BarAction(title: t) {} }
+                acts += outsideActions(b.actions.dropLast())
                 let last = b.actions.last ?? Copy.Common.checkAgain
                 acts.append(BarAction(title: last, style: .primary) { last == Copy.Common.quit ? s.requestQuit() : s.runChecks() })
                 return Footer(leading: [details], trailing: acts)
@@ -280,7 +289,8 @@ struct TopBar: View {
                 Spacer()
                 if let i = s.screen.dotIndex { StepDots(index: i).transition(.opacity) }
             }
-            ModeBadge(dryRun: s.isDryRun, live: s.isLive)
+            // The real install shows no mode pill (preview8); its back-up warning is in the flow text.
+            if !s.isLive { ModeBadge(dryRun: s.isDryRun) }
         }
         .padding(.horizontal, 32)
         .accessibilityElement(children: .contain)
@@ -314,8 +324,11 @@ struct BottomBar: View {
         case .text:
             if a.title == Copy.Common.back {
                 Button(a.title, action: a.action).buttonStyle(SFTextButtonStyle()).disabled(!a.enabled).keyboardShortcut("[", modifiers: .command)
+            } else if footer.leading.contains(where: { $0.title == a.title }) {
+                // Utility actions on the left (Details, What is SiliconForest?, Remove…): a smaller bordered button.
+                Button(a.title, action: a.action).buttonStyle(SFQuietButtonStyle()).disabled(!a.enabled)
             } else {
-                Button(a.title, action: a.action).buttonStyle(SFTextButtonStyle(color: footer.leading.contains { $0.title == a.title } ? theme.textSecondary : nil)).disabled(!a.enabled)
+                Button(a.title, action: a.action).buttonStyle(SFTextButtonStyle()).disabled(!a.enabled)
             }
         case .destructive:
             Button(a.title, action: a.action).buttonStyle(SFDestructiveButtonStyle()).disabled(!a.enabled)
@@ -526,4 +539,23 @@ struct DetailsDrawer: View {
         }
     }
     static let time: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm:ss"; return f }()
+}
+
+
+/// The reading panel behind every screen's content column (see RootView).
+struct ContentPanel: View {
+    var width: CGFloat
+    var height: CGFloat
+    var welcome: Bool
+    @Environment(\.theme) private var theme
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+        let strength = welcome ? 0.5 : 1.0
+        shape
+            .fill(theme.scrim.opacity((theme.isDark ? 0.70 : 0.80) * strength))
+            .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(theme.isDark ? 0.045 : 0.30), .clear], startPoint: .top, endPoint: .center)))
+            .overlay(shape.strokeBorder(LinearGradient(colors: [theme.hairline.opacity(0.95 * strength), theme.hairline.opacity(0.35 * strength)], startPoint: .top, endPoint: .bottom), lineWidth: 1))
+            .shadow(color: theme.shadow.opacity(0.55 * strength), radius: 36, y: 14)
+            .frame(width: width, height: height)
+    }
 }

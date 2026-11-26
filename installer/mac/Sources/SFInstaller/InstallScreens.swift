@@ -428,7 +428,7 @@ struct ReviewScreen: View {
                 Button { s.showCommands = true } label: {
                     HStack(spacing: 6) { Image(systemName: "terminal").font(.system(size: 11)); Text(Copy.Review.showWhatWouldHappen) }
                 }
-                .buttonStyle(SFTextButtonStyle(color: theme.accent)).padding(.leading, -14).padding(.top, 4)
+                .buttonStyle(SFTextButtonStyle(color: theme.accent)).padding(.top, 6)
             }
         }
     }

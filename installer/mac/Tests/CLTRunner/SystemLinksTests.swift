@@ -1,0 +1,1 @@
+../SFInstallKitTests/SystemLinksTests.swift

@@ -3,76 +3,130 @@ import SFInstallKit
 import SFCopy
 
 // MARK: - Buttons (VISUAL-DESIGN §5)
+//
+// Every control the person can press looks like a button (preview8): a filled primary, a bordered secondary,
+// a smaller bordered "quiet" for utility actions (Details, What is SiliconForest?) and a destructive one.
+// All four have a hover and a pressed state; a disabled one is dimmed but keeps its outline.
 
-/// Primary: 44 pt tall, 12 pt radius, accent fill, on.accent text. One per screen.
-public struct SFPrimaryButtonStyle: ButtonStyle {
-    @Environment(\.theme) private var theme
-    @Environment(\.isEnabled) private var enabled
-    public init() {}
-    public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(SFType.button)
-            .foregroundStyle(theme.onAccent)
-            .padding(.horizontal, 22)
-            .frame(minWidth: 120, minHeight: 44)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.accent)
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(LinearGradient(colors: [Color.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center)))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(configuration.isPressed ? 0.12 : 0)))
-            )
-            .shadow(color: theme.accent.opacity(enabled ? (theme.isDark ? 0.35 : 0.2) : 0), radius: 14, y: 4)
-            .opacity(enabled ? 1 : 0.4)
-            .saturation(enabled ? 1 : 0.3)
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+/// Forces a button's look in snapshots (the offscreen renderer has no pointer).
+public enum SFButtonStateOverride: Sendable { case hover, pressed }
+public struct ButtonStateOverrideKey: EnvironmentKey { public static let defaultValue: SFButtonStateOverride? = nil }
+public extension EnvironmentValues {
+    var buttonStateOverride: SFButtonStateOverride? {
+        get { self[ButtonStateOverrideKey.self] }
+        set { self[ButtonStateOverrideKey.self] = newValue }
     }
 }
 
-/// Secondary: text only.
-public struct SFTextButtonStyle: ButtonStyle {
+struct SFButtonFace: View {
+    enum Kind { case primary, secondary, quiet, destructive }
+    var kind: Kind
+    var label: ButtonStyleConfiguration.Label
+    var isPressed: Bool
+    var tint: Color? = nil
     @Environment(\.theme) private var theme
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.buttonStateOverride) private var forced
+    @State private var hovering = false
+
+    var body: some View {
+        let pressed = enabled && (isPressed || forced == .pressed)
+        let hover = enabled && !pressed && (hovering || forced == .hover)
+        let radius: CGFloat = kind == .quiet ? 9 : 12
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        switch kind {
+        case .primary:
+            label
+                .lineLimit(1)
+                .font(SFType.button)
+                .foregroundStyle(theme.onAccent)
+                .padding(.horizontal, 22)
+                .frame(minWidth: 120, minHeight: 44)
+                .fixedSize(horizontal: true, vertical: false)
+                .background(
+                    shape.fill(theme.accent)
+                        .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center)))
+                        .overlay(shape.fill(Color.white.opacity(hover ? 0.14 : 0)))
+                        .overlay(shape.fill(Color.black.opacity(pressed ? 0.16 : 0)))
+                        .overlay(shape.strokeBorder(Color.white.opacity(hover ? 0.35 : 0.0), lineWidth: 1))
+                )
+                .shadow(color: theme.accent.opacity(enabled ? (theme.isDark ? 0.35 : 0.2) : 0), radius: hover ? 18 : 14, y: pressed ? 2 : 4)
+                .opacity(enabled ? 1 : 0.4)
+                .saturation(enabled ? 1 : 0.3)
+                .scaleEffect(pressed ? 0.98 : 1)
+                .contentShape(shape)
+                .onHover { hovering = $0 }
+        case .secondary, .quiet:
+            let quiet = kind == .quiet
+            let ink = tint ?? theme.text
+            label
+                .lineLimit(1)
+                .font(quiet ? SFType.label.weight(.semibold) : SFType.button.weight(.medium))
+                .foregroundStyle(ink)
+                .padding(.horizontal, quiet ? 14 : 18)
+                .frame(minWidth: quiet ? 0 : 96, minHeight: quiet ? 34 : 44)
+                .fixedSize(horizontal: true, vertical: false)
+                .background(
+                    shape.fill(theme.isDark ? Color.white.opacity(pressed ? 0.05 : (hover ? 0.17 : 0.09)) : Color.white.opacity(pressed ? 0.55 : (hover ? 0.95 : 0.78)))
+                        .overlay(shape.fill(Color.black.opacity(pressed ? 0.10 : 0)))
+                        .overlay(shape.strokeBorder(hover || pressed ? (tint ?? theme.accent) : (tint ?? theme.textSecondary).opacity(0.62), lineWidth: hover || pressed ? 1.6 : 1.25))
+                )
+                .shadow(color: theme.shadow.opacity(enabled && !pressed ? 0.35 : 0), radius: hover ? 10 : 6, y: hover ? 3 : 2)
+                .opacity(enabled ? 1 : 0.42)
+                .scaleEffect(pressed ? 0.98 : 1)
+                .contentShape(shape)
+                .onHover { hovering = $0 }
+        case .destructive:
+            label
+                .lineLimit(1)
+                .font(SFType.button)
+                .foregroundStyle(enabled ? (theme.isDark ? Color(hex: 0x1A0D09) : .white) : theme.critical)
+                .padding(.horizontal, 22).frame(minWidth: 120, minHeight: 44)
+                .fixedSize(horizontal: true, vertical: false)
+                .background(
+                    shape.fill(enabled ? theme.critical : (theme.isDark ? Color.white.opacity(0.05) : Color.white.opacity(0.6)))
+                        .overlay(shape.fill(Color.white.opacity(hover ? 0.14 : 0)))
+                        .overlay(shape.fill(Color.black.opacity(pressed ? 0.18 : 0)))
+                        .overlay(shape.strokeBorder(theme.critical.opacity(enabled ? 0 : 0.8), lineWidth: 1.4))
+                )
+                .scaleEffect(pressed ? 0.98 : 1)
+                .contentShape(shape)
+                .onHover { hovering = $0 }
+        }
+    }
+}
+
+/// Primary: 44 pt tall, 12 pt radius, accent fill, on.accent text. One per screen.
+public struct SFPrimaryButtonStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: Configuration) -> some View {
+        SFButtonFace(kind: .primary, label: configuration.label, isPressed: configuration.isPressed)
+    }
+}
+
+/// Secondary: a bordered, softly filled button (the old text-only style, now unmistakably a button).
+/// `color` tints the label and the border (a link-like action).
+public struct SFTextButtonStyle: ButtonStyle {
     var color: Color?
     public init(color: Color? = nil) { self.color = color }
     public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(SFType.button.weight(.medium))
-            .foregroundStyle(color ?? theme.text)
-            .padding(.horizontal, 14).frame(minHeight: 44)
-            .opacity(configuration.isPressed ? 0.55 : (enabled ? 1 : 0.35))
-            .contentShape(Rectangle())
+        SFButtonFace(kind: .secondary, label: configuration.label, isPressed: configuration.isPressed, tint: color)
     }
 }
 
 /// Destructive: status.critical outline, filled only when armed.
 public struct SFDestructiveButtonStyle: ButtonStyle {
-    @Environment(\.theme) private var theme
-    @Environment(\.isEnabled) private var enabled
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(SFType.button)
-            .foregroundStyle(enabled ? (theme.isDark ? Color(hex: 0x1A0D09) : .white) : theme.critical)
-            .padding(.horizontal, 22).frame(minWidth: 120, minHeight: 44)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(enabled ? theme.critical : .clear))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(theme.critical.opacity(enabled ? 0 : 0.7), lineWidth: 1.2))
-            .opacity(configuration.isPressed ? 0.8 : 1)
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+        SFButtonFace(kind: .destructive, label: configuration.label, isPressed: configuration.isPressed)
     }
 }
 
-/// A quiet bordered button for secondary actions that need more presence than text (Practice…).
+/// A smaller bordered button for utility actions (Details, What is SiliconForest?, Practice…).
 public struct SFQuietButtonStyle: ButtonStyle {
-    @Environment(\.theme) private var theme
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(SFType.label)
-            .foregroundStyle(theme.text)
-            .padding(.horizontal, 14).frame(minHeight: 34)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.surfaceRaised.opacity(configuration.isPressed ? 1 : 0.7))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(theme.hairline, lineWidth: 1)))
-            .contentShape(Rectangle())
+        SFButtonFace(kind: .quiet, label: configuration.label, isPressed: configuration.isPressed)
     }
 }
 
@@ -228,16 +282,15 @@ public struct Panel<Content: View>: View {
 /// The unmistakable-but-elegant dry-run badge.
 public struct ModeBadge: View {
     var dryRun: Bool
-    var live: Bool
     @Environment(\.theme) private var theme
-    public init(dryRun: Bool, live: Bool = false) { self.dryRun = dryRun; self.live = live }
+    public init(dryRun: Bool) { self.dryRun = dryRun }
     public var body: some View {
-        let tone = live ? theme.critical : (dryRun ? theme.caution : theme.textSecondary)
+        let tone = dryRun ? theme.caution : theme.textSecondary
         HStack(spacing: 9) {
-            Image(systemName: live ? "exclamationmark.triangle.fill" : (dryRun ? "testtube.2" : "eye")).font(.system(size: 11, weight: .semibold)).foregroundStyle(tone)
+            Image(systemName: dryRun ? "testtube.2" : "eye").font(.system(size: 11, weight: .semibold)).foregroundStyle(tone)
             VStack(alignment: .leading, spacing: 0) {
-                Text((live ? Copy.Common.live : (dryRun ? Copy.Common.dryRun : Copy.Common.readOnly)).uppercased()).font(SFType.micro).tracking(1.4).foregroundStyle(tone)
-                Text(live ? Copy.Common.liveDetail : (dryRun ? Copy.Common.dryRunDetail : Copy.Common.readOnlyDetail)).font(SFType.caption).foregroundStyle(theme.textSecondary)
+                Text((dryRun ? Copy.Common.dryRun : Copy.Common.readOnly).uppercased()).font(SFType.micro).tracking(1.4).foregroundStyle(tone)
+                Text(dryRun ? Copy.Common.dryRunDetail : Copy.Common.readOnlyDetail).font(SFType.caption).foregroundStyle(theme.textSecondary)
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
@@ -368,23 +421,20 @@ public struct RadioRow: View {
     }
 }
 
-/// Disclosure line: chevron + title.
+/// Disclosure button: chevron + title, drawn as a small bordered button.
 public struct DisclosureLine: View {
     var title: String
     var expanded: Bool
     var action: () -> Void
-    @Environment(\.theme) private var theme
     public init(_ title: String, expanded: Bool, action: @escaping () -> Void) { self.title = title; self.expanded = expanded; self.action = action }
     public var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).rotationEffect(.degrees(expanded ? 90 : 0))
-                Text(title).font(SFType.label)
+                Text(title)
             }
-            .foregroundStyle(theme.textSecondary)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SFQuietButtonStyle())
         .accessibilityAddTraits(.isButton)
         .accessibilityValue(expanded ? "Expanded" : "Collapsed")
     }

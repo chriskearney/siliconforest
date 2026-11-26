@@ -4,6 +4,8 @@ import SFInstallKit
 import SFCopy
 import SFDesign
 import SFFlow
+import SFAppEngine
+import SFHelperKit
 
 /// Renders every screen offscreen with ImageRenderer, from the same views the app shows, with the
 /// Grove frozen at a fixed time. Never opens a window.
@@ -19,6 +21,8 @@ struct Snapshotter {
         var name: String
         var dark: Bool
         var build: @MainActor () async -> Session
+        /// A hand-built view instead of a screen (the button-state sheet).
+        var custom: (@MainActor (Bool) -> AnyView)? = nil
     }
 
     func run() async {
@@ -38,7 +42,11 @@ struct Snapshotter {
                 let dir = outDir.appendingPathComponent("\(Int(w * scale))x\(Int(h * scale))")
                 try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 let url = dir.appendingPathComponent("\(sc.name).png")
-                render(session, dark: sc.dark, size: CGSize(width: w, height: h), scale: scale, to: url)
+                if let custom = sc.custom {
+                    renderCustom(custom(sc.dark), dark: sc.dark, size: CGSize(width: w, height: h), scale: scale, to: url)
+                } else {
+                    render(session, dark: sc.dark, size: CGSize(width: w, height: h), scale: scale, to: url)
+                }
                 print("✓ \(url.path)")
             }
         }
@@ -61,7 +69,38 @@ struct Snapshotter {
         try? png.write(to: url)
     }
 
+    func renderCustom(_ content: AnyView, dark: Bool, size: CGSize, scale: CGFloat, to url: URL) {
+        let view = content
+            .environment(\.theme, Theme(isDark: dark))
+            .environment(\.colorScheme, dark ? .dark : .light)
+            .environment(\.isSnapshot, true)
+            .environment(\.backdropTime, time)
+            .environment(\.screenSize, size)
+            .frame(width: size.width, height: size.height)
+        let r = ImageRenderer(content: view)
+        r.scale = scale
+        r.proposedSize = ProposedViewSize(size)
+        guard let cg = r.cgImage, let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else {
+            print("✗ render failed: \(url.lastPathComponent)"); return
+        }
+        try? png.write(to: url)
+    }
+
     // MARK: building states
+
+    /// The real install's session (preview6+), over a simulated disk: the live screens and bars, no helper.
+    func liveBase(_ fixture: String = "j293-512") async -> Session {
+        let f = try! DiskFixture.named(fixture)
+        let s = Session(live: LiveInstallController { throw NSError(domain: "snapshot", code: 1) },
+                        origin: .github(tag: "installer-v0.1.0-preview8"),
+                        backend: SimulatedDiskBackend(fixture: f, timeScale: 0, failures: []))
+        s.journalDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("sf-snapshot-journals")
+        await s.load()
+        s.setSize(100 * Bytes.gb)
+        s.backupConfirmed = true
+        s.checksRevealed = s.checks.count
+        return s
+    }
 
     func base(_ fixture: String = "j293-512", failures: [FailureInjection] = []) async -> Session {
         let f = try! DiskFixture.named(fixture)
@@ -127,7 +166,9 @@ struct Snapshotter {
 
     func scenarios() -> [Scenario] {
         var list: [Scenario] = []
-        func add(_ name: String, dark: Bool = true, _ build: @escaping @MainActor () async -> Session) { list.append(Scenario(name: name, dark: dark, build: build)) }
+        func add(_ name: String, dark: Bool = true, _ build: @escaping @MainActor () async -> Session, custom: (@MainActor (Bool) -> AnyView)? = nil) {
+            list.append(Scenario(name: name, dark: dark, build: build, custom: custom))
+        }
 
         for dark in [true, false] {
             let sfx = dark ? "" : "-light"
@@ -139,6 +180,30 @@ struct Snapshotter {
                 await midRun("j293-512", at: .rootImage, fraction: 0.46, detail: "3.4 GB of 7.3 GB written", eta: "About 6 minutes left")
             }
             add("12-finish\(sfx)", dark: dark) { let s = await installed(); s.screen = .finish(.installed); return s }
+        }
+        // The real install (what Chris runs): no mode pill, the reading panel, bordered buttons.
+        for dark in [true, false] {
+            let sfx = dark ? "" : "-light"
+            add("30-live-welcome\(sfx)", dark: dark) { await liveBase() }
+            add("31-live-check-no-space\(sfx)", dark: dark) { let s = await liveBase("j293-256-full"); s.screen = .check; return s }
+            add("32-live-check-ready\(sfx)", dark: dark) { let s = await liveBase(); s.screen = .check; return s }
+            add("33-live-prepare\(sfx)", dark: dark) { let s = await liveBase(); s.screen = .prepare; return s }
+            add("34-live-space\(sfx)", dark: dark) { let s = await liveBase(); s.screen = .space; s.snapshotHandleActive = true; return s }
+            add("35-live-fetch-failed\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .liveFetch; s.live?.activity = .failed("couldn't download SHA256SUMS (HTTP 404)"); return s
+            }
+            add("36-live-fetching\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .liveFetch; s.live?.activity = .downloading(file: "boot.bin", done: 7, total: 133); return s
+            }
+            add("37-live-finish\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .liveFinish
+                let j = #"{"set":true,"volumeName":"SiliconForest","confirmed":false,"note":"","manualCommand":"","canRestart":true}"#
+                s.live?.blessReport = try? JSONDecoder().decode(BlessReport.self, from: Data(j.utf8))
+                s.live?.job = "20261125-190000-install"
+                return s
+            }
+            add("38-live-remove-list\(sfx)", dark: dark) { let s = await liveBase(); s.screen = .liveRemoveList; s.live?.installsLoaded = true; return s }
+            add("39-button-states\(sfx)", dark: dark, { await liveBase() }, custom: { dark in AnyView(ButtonStatesSheet()) })
         }
         add("02b-check-running") { let s = await base(); s.screen = .check; s.checksRevealed = 4; s.checksRunning = true; return s }
         add("02c-check-no-space") { let s = await base("j293-256-full"); s.screen = .check; return s }
@@ -192,5 +257,35 @@ struct Snapshotter {
             s.showQuitConfirm = true; return s
         }
         return list
+    }
+}
+
+
+/// Every kind of control in its four states, on the reading panel (preview8 audit sheet).
+struct ButtonStatesSheet: View {
+    @Environment(\.theme) private var theme
+    var body: some View {
+        ZStack {
+            Grove(camera: 0.4, dawn: 0)
+            ContentPanel(width: 1180, height: 620, welcome: false)
+            VStack(alignment: .leading, spacing: 22) {
+                Text("Buttons: normal · hover · pressed · disabled").font(SFType.inter(22, .semibold)).foregroundStyle(theme.text)
+                row("Primary", { Button("Continue") {}.buttonStyle(SFPrimaryButtonStyle()) })
+                row("Secondary", { Button("Open Storage Settings") {}.buttonStyle(SFTextButtonStyle()) })
+                row("Quiet (Details…)", { Button("Details") {}.buttonStyle(SFQuietButtonStyle()) })
+                row("Destructive", { Button("Remove SiliconForest") {}.buttonStyle(SFDestructiveButtonStyle()) })
+            }
+            .padding(48)
+            .frame(width: 1180, height: 620, alignment: .topLeading)
+        }
+    }
+    @ViewBuilder private func row<B: View>(_ name: String, _ make: @escaping () -> B) -> some View {
+        HStack(spacing: 28) {
+            Text(name).font(SFType.label).foregroundStyle(theme.textSecondary).frame(width: 150, alignment: .leading)
+            make()
+            make().environment(\.buttonStateOverride, .hover)
+            make().environment(\.buttonStateOverride, .pressed)
+            make().disabled(true)
+        }
     }
 }
