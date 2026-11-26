@@ -115,6 +115,7 @@ struct RootView: View {
         case .removeConfirm: RemoveConfirmScreen(s: s)
         case .removed: RemovedScreen(s: s)
         case .failure: FailureScreen(s: s)
+        case .livePrivileges: if let l = s.live { LivePrivilegesScreen(s: s, live: l) }
         case .liveResume: if let l = s.live { LiveResumeScreen(s: s, live: l) }
         case .liveFetch: if let l = s.live { LiveFetchScreen(s: s, live: l) }
         case .liveConfirm: if let l = s.live { LiveConfirmScreen(s: s, live: l) }
@@ -149,7 +150,7 @@ struct RootView: View {
             var lead = [BarAction(title: Copy.Welcome.whatIs) { s.showWhatIs = true }]
             if s.isLive { lead.append(BarAction(title: "Remove SiliconForest…") { s.live?.showRemoval() }) }
             else if s.ownedInstall != nil { lead.append(BarAction(title: Copy.Welcome.remove) { s.go(.removeWhat) }) }
-            return Footer(leading: lead, trailing: [BarAction(title: Copy.Welcome.primary, style: .primary, enabled: s.snapshot != nil, isDefault: true) { s.go(.check) }])
+            return Footer(leading: lead, trailing: [BarAction(title: Copy.Welcome.primary, style: .primary, enabled: s.snapshot != nil, isDefault: true) { if let l = s.live { l.checkPrivileges(then: .check) } else { s.go(.check) } }])
         case .check:
             if s.checksDone, let e = Copy.Check.entry(s.entry) {
                 var acts: [BarAction] = [back]
@@ -193,6 +194,19 @@ struct RootView: View {
                                       : BarAction(title: Copy.Installing.whyNoStop) { s.showWhyNoStop = true })
             }
             return Footer(leading: [details], trailing: t)
+        case .livePrivileges:
+            guard let l = s.live else { return Footer() }
+            let again = BarAction(title: Copy.Common.checkAgain) { l.checkPrivilegesAgain() }
+            switch l.privileges {
+            case .needsHelperApproval:
+                return Footer(leading: [details], trailing: [back, again, BarAction(title: "Open Login Items", style: .primary, isDefault: true) { l.openLoginItems() }])
+            case .needsFullDiskAccess:
+                return Footer(leading: [details], trailing: [back, again, BarAction(title: "Open Full Disk Access Settings", style: .primary, isDefault: true) { l.openFullDiskAccess() }])
+            case .failed:
+                return Footer(leading: [details], trailing: [back, BarAction(title: Copy.Common.checkAgain, style: .primary, isDefault: true) { l.checkPrivilegesAgain() }])
+            case .checking, .ready:
+                return Footer(leading: [details], trailing: [back])
+            }
         case .liveFetch:
             if case .failed = s.live?.activity {
                 return Footer(leading: [details], trailing: [BarAction(title: Copy.Common.back) { s.go(.review) },

@@ -183,6 +183,7 @@ extension HelperService {
         case .rollback(let c): e.step = c.rawValue; e.kind = "rollback"; e.text = "undo \(c.title)"
         case .simulated(let n): e.step = n.step; e.kind = "simulated"; e.text = n.command.joined(separator: " ")
         }
+        if ["step", "rollback", "checked"].contains(e.kind) { config.log?.info("job \(job.uuidString) \(e.step) \(e.kind): \(e.text)") }
         lock.lock()
         liveSeq += 1; e.seq = liveSeq
         var list = live[job] ?? []
@@ -241,8 +242,8 @@ extension HelperService {
             reply(try Canonical.data(ReleaseSummary(version: m.version, digest: m.digest, stage1SHA256: m.artifact(m.stage1)?.sha256 ?? "",
                                                      rootImageBytes: m.rootImageBytes, files: names.count, store: dest.path)), nil)
         } catch let r as SFRelease.Refusal {
-            reply(nil, HelperError.make(.refused, "the release doesn't verify: \(r.reason)"))
-        } catch { reply(nil, Self.nsError(error)) }
+            reply(nil, logged(HelperError.make(.refused, "the release doesn't verify: \(r.reason)")))
+        } catch { reply(nil, logged(error)) }
     }
 
     public func planInstall(request: Data, reply: @escaping (Data?, NSError?) -> Void) {
@@ -271,7 +272,7 @@ extension HelperService {
             reply(try Canonical.data(InstallOffer(plan: plan, expected: exp, gigabytes: TypedConfirmation.gigabytes(plan: plan), target: label,
                                                   diskUUID: read.diskUUID, releaseVersion: rel.version,
                                                   steps: StepCode.order(plan).map { StepTitle(code: $0.rawValue, title: $0.title, writesDisk: $0.writesDisk) })), nil)
-        } catch { reply(nil, Self.nsError(error)) }
+        } catch { reply(nil, logged(error)) }
     }
 
     public func confirm(planDigest: String, typed: Data, authorization: Data, reply: @escaping (Data?, NSError?) -> Void) {
@@ -310,7 +311,7 @@ extension HelperService {
             }
             lock.lock(); confirmed[planDigest] = auth.notAfter; lock.unlock()
             reply(try Canonical.data(ConfirmReply(planDigest: planDigest, validUntil: Self.isoString(auth.notAfter), authorizationFileWritten: wrote)), nil)
-        } catch { reply(nil, Self.nsError(error)) }
+        } catch { reply(nil, logged(error)) }
     }
 
     public func progress(job: String, after sequence: UInt64, reply: @escaping (Data?, NSError?) -> Void) {
@@ -334,7 +335,7 @@ extension HelperService {
                 approvals: st.approvals, events: events, lastSeq: max(sequence, all.last?.seq ?? 0),
                 planDigest: st.plan?.digest, installName: st.plan?.request?.installName, operation: st.plan?.operation.rawValue,
                 confirmedUntil: until.map { Self.isoString($0) }, expected: expected, bless: blessReport(st))), nil)
-        } catch { reply(nil, Self.nsError(error)) }
+        } catch { reply(nil, logged(error)) }
     }
 }
 
@@ -425,6 +426,6 @@ extension HelperService {
             let delay = config.restartDelay
             DispatchQueue.global().asyncAfter(deadline: .now() + delay) { action() }
             reply(nil)
-        } catch { reply(Self.nsError(error)) }
+        } catch { reply(logged(error)) }
     }
 }

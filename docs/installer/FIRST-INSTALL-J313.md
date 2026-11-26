@@ -231,3 +231,30 @@ Preview8 changes the app's look and its buttons, not the engine, the payload or 
 - A **reading panel** (a soft translucent card under the content column, on every screen) and lighter secondary text and stronger hairlines in the dark theme (darker in the light theme) keep the text readable over the forest. The forest still shows around and faintly through the panel.
 - **Every control that does something looks like a button**: filled primary, bordered secondary, a smaller bordered "quiet" button for Details and What is SiliconForest?, a destructive button, and bordered disclosure buttons ("About security", "Show partition details"). All have hover and pressed states and a dimmed disabled look.
 - **"Open Storage Settings" works** (`SystemLinks`): it opens `x-apple.systempreferences:com.apple.settings.Storage`, then the General pane, then the System Settings app. "Open Software Update", "Open Disk Utility" and "See Supported Macs" / "Learn More" open their places too. A check-screen button with nothing behind it is not shown in the real install (it was an empty button in preview7).
+
+## Preview10: permissions first, and no silent failures
+
+Preview9 on Connor's Air (macOS 27.2.1) went wrong in two ways. The app reopened System Settings → Login Items about every 2 s while the helper waited for approval, which pulled it out of full screen. Then the helper's plan read the GPT header from `/dev/rdisk0` (a whole disk has no DiskUUID in `diskutil`, and IOMedia doesn't publish one either, as the M5 shows). macOS denied that read: tccd refused kTCCServiceSystemPolicyAllFiles to `org.siliconforest.installer.helper`, because even root needs Full Disk Access for a raw device. Nothing was logged and nothing was shown. The disk was untouched.
+
+Preview10 changes the following:
+
+- **A Privileges screen comes before anything else.** Get Started (and Remove SiliconForest…) leads to "Permissions first", before the checks, any download or any disk work. `PrivilegeGate` (SFAppEngine) checks two things:
+  - **The helper's approval** (SMAppService). It registers the helper once, on the person's click. If macOS wants approval, the screen shows "Waiting for approval…".
+  - **The helper's Full Disk Access**, through a new verb, `checkPrivileges`. The helper opens the startup disk's raw device read-only and closes it at once. If it can't name the startup disk, it opens `/Library/Application Support/com.apple.TCC/TCC.db` read-only instead. It never reads or writes.
+- **System Settings opens only on a click, once per click.** "Open Login Items" calls `SMAppService.openSystemSettingsLoginItems()`. "Open Full Disk Access Settings" opens `x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles`. Between clicks the screen checks quietly every 2 s: it reads `SMAppService.status` and runs the helper's probe. It never registers again and never opens anything. It continues by itself once everything is in place. A Check Again button is there as well. The app no longer registers the helper at launch; it only reads the status.
+- **The Full Disk Access instructions**: turn on SFHelper. If SFHelper isn't in the list, click +, press ⌘⇧G and paste `/Applications/SiliconForest Installer.app/Contents/MacOS/SFHelper`.
+- **Raw-device access is typed.** Every raw open in the helper goes through `RawAccess.open`. EPERM or EACCES as root becomes `FullDiskAccessDenied`, which the helper returns as `HelperErrorCode.needsFullDiskAccess`. Three places do raw I/O:
+  - `GPTHeader.diskGUID`: a two-block read for the disk identity.
+  - `LiveChokepoint.openRaw`: partition reads and writes inside the protection receipt.
+  - `newfs_msdos` on `/dev/r<partition>`: a child of the helper, covered by the same grant.
+
+  Each runs only after `requireFullDiskAccess()`, which `readTarget` and `backend` call on the internal disk. If a denial still happens, the app goes back to the Privileges screen. The whole-disk GPT read stays: no non-raw source of the whole disk's GUID exists, and the install writes raw partitions anyway.
+- **Logs:**
+  - The app logs to `~/Library/Logs/SiliconForest Installer/installer.log`.
+  - The helper logs to `/Library/Logs/SiliconForest/helper.log`.
+  - Both also go to the unified log under subsystem `org.siliconforest.installer` (`log show --predicate 'subsystem == "org.siliconforest.installer"' --last 1h`).
+  - What's logged: privilege states, each helper verb's result, job steps and ends, and every error with its underlying cause. Passwords, authorizations and tokens are never logged; values after such keys are redacted.
+  - Every live error box shows the error, both log paths, Show Log and Show Helper Log.
+- **Unchanged from preview9:** macOS 27 passes (a note in Details), and the battery blocks only when the Mac is unplugged at 50% or lower.
+
+Not verified on hardware yet: the TCC prompts and Full Disk Access list on macOS 27, and whether a helper that is already running sees a new grant without restarting. The helper exits when idle, and launchd starts a fresh one for the next check.

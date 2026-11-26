@@ -57,19 +57,20 @@ struct LiveFetchScreen: View {
                 Text("Turn on “SiliconForest Installer” in System Settings → General → Login Items. The installer continues by itself.")
                     .font(SFType.body).foregroundStyle(theme.caution)
             }
-            if case .failed(let m) = live.activity {
-                Label(m, systemImage: "xmark.octagon.fill").font(SFType.body).foregroundStyle(theme.critical).fixedSize(horizontal: false, vertical: true)
-                Text("Nothing on your disk was changed.").font(SFType.label).foregroundStyle(theme.textSecondary)
-            }
+            if case .failed(let m) = live.activity { LiveErrorBox(message: m, live: live) }
         }
     }
     private var stage: Int {
-        switch live.activity {
+        if case .failed = live.activity, let d = live.failedDuring { return Self.stage(of: d, hasOffer: live.offer != nil) }
+        return Self.stage(of: live.activity, hasOffer: live.offer != nil)
+    }
+    private static func stage(of a: LiveRun.Activity, hasOffer: Bool) -> Int {
+        switch a {
         case .registering, .waitingForHelperApproval: return 0
         case .downloading: return 1
         case .importing: return 2
         case .planning: return 3
-        default: return live.offer == nil ? 0 : 4
+        default: return hasOffer ? 4 : 0
         }
     }
     private func state(for i: Int) -> RowState {
@@ -113,7 +114,7 @@ struct LiveConfirmScreen: View {
                             .font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                if case .failed(let m) = live.activity { Label(m, systemImage: "xmark.octagon.fill").font(SFType.body).foregroundStyle(theme.critical) }
+                if case .failed(let m) = live.activity { LiveErrorBox(message: m, note: "Nothing was written: the disk changes only after you click Install.", live: live) }
             }
         }
     }
@@ -195,7 +196,7 @@ struct LiveStoppedScreen: View {
                     ScreenHead(title: "The installer stopped", lead: live.noChangesMade
                                ? "Nothing on your disk was changed."
                                : "Your Mac is safe to use. The journal knows exactly what was done: continue from where it stopped, or undo everything.")
-                    if let e = live.lastError { Label(e, systemImage: "exclamationmark.octagon.fill").font(SFType.body).foregroundStyle(theme.critical).fixedSize(horizontal: false, vertical: true) }
+                    if let e = live.lastError { LiveErrorBox(message: e, note: nil, live: live) }
                     if let x = live.resumeExpected {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("To continue, confirm again: type \(x.diskName) and \(x.phrase).").font(SFType.body).foregroundStyle(theme.text)
@@ -296,7 +297,7 @@ struct LiveRemoveListScreen: View {
                         }
                     }
                 }
-                if let e = live.lastError { Label(e, systemImage: "xmark.octagon.fill").font(SFType.body).foregroundStyle(theme.critical).fixedSize(horizontal: false, vertical: true) }
+                if let e = live.lastError { LiveErrorBox(message: e, live: live) }
             }
         }
     }
@@ -328,7 +329,7 @@ struct LiveRemoveConfirmScreen: View {
                         Text("Then an administrator approves in the macOS dialog.").font(SFType.label).foregroundStyle(theme.textSecondary)
                     }
                 }
-                if case .failed(let m) = live.activity { Label(m, systemImage: "xmark.octagon.fill").font(SFType.body).foregroundStyle(theme.critical) }
+                if case .failed(let m) = live.activity { LiveErrorBox(message: m, note: "Nothing was removed.", live: live) }
             }
         }
     }

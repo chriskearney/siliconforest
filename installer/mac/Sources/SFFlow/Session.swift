@@ -26,6 +26,7 @@ public enum Screen: Hashable, Sendable {
     case removed            // U4
     case failure
     // The real install (preview6, RunMode.live): driven by LiveRun through the helper.
+    case livePrivileges     // preview10: the helper's approval and Full Disk Access, before anything else
     case liveResume         // an unfinished job was found at launch
     case liveFetch          // download, verify, hand to the helper, plan
     case liveConfirm        // the helper's plan, the typed confirmation, administrator approval
@@ -51,6 +52,7 @@ public enum Screen: Hashable, Sendable {
         case .liveInstalling, .liveStopped, .liveResume: return 4
         case .liveFinish: return 5
         case .liveRemoveList, .liveRemoveConfirm, .liveRemoved: return nil
+        case .livePrivileges: return nil
         default: return nil
         }
     }
@@ -72,6 +74,7 @@ public enum Screen: Hashable, Sendable {
         case .removing, .removed: return -0.2
         case .failure: return 0
         case .liveResume: return 0.3
+        case .livePrivileges: return -0.75
         case .liveFetch, .liveConfirm: return 0.1
         case .liveInstalling, .liveStopped: return 0.4
         case .liveFinish: return 0.6
@@ -185,9 +188,10 @@ public final class Session: ObservableObject {
 
     /// The real install: `controller` talks to the helper; `origin` is where the release comes from.
     public convenience init(live controller: LiveInstallController, origin: ReleaseOrigin, backend: any DiskBackend, release: ReleaseInfo = .placeholder,
-                            register: (@Sendable () throws -> HelperRegistrationState)? = nil) {
+                            register: (@Sendable () throws -> HelperRegistrationState)? = nil,
+                            status: (@Sendable () -> HelperRegistrationState)? = nil) {
         self.init(mode: .live, backend: backend, release: release)
-        self.live = LiveRun(controller: controller, origin: origin, register: register)
+        self.live = LiveRun(controller: controller, origin: origin, register: register, status: status)
         self.live?.session = self
     }
 
@@ -233,6 +237,7 @@ public final class Session: ObservableObject {
         case .removeWhat, .removeConfirm, .removing, .removed: return 0.04
         case .failure: return 0.05
         case .liveResume, .liveFetch, .liveConfirm: return 0.1
+        case .livePrivileges: return 0
         case .liveInstalling, .liveStopped: return 0.12 + 0.48 * (live?.overall ?? 0)
         case .liveFinish: return 0.6
         case .liveRemoveList, .liveRemoveConfirm, .liveRemoved: return 0.04
@@ -341,13 +346,14 @@ public final class Session: ObservableObject {
         case .removeWhat: go(.welcome)
         case .removeConfirm: go(.removeWhat)
         case .liveConfirm: go(.review)
+        case .livePrivileges: go(.welcome)
         case .liveRemoveList: go(.welcome)
         case .liveRemoveConfirm: go(.liveRemoveList)
         default: break
         }
     }
 
-    public var canGoBack: Bool { [.check, .prepare, .space, .options, .review, .removeWhat, .removeConfirm, .liveConfirm, .liveRemoveList, .liveRemoveConfirm].contains(screen) }
+    public var canGoBack: Bool { [.check, .prepare, .space, .options, .review, .removeWhat, .removeConfirm, .liveConfirm, .liveRemoveList, .liveRemoveConfirm, .livePrivileges].contains(screen) }
 
     public func runChecks() {
         guard !checksRunning else { return }

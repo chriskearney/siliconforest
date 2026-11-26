@@ -246,8 +246,10 @@ public final class LiveChokepoint: @unchecked Sendable {
             invalidate()
         }
         let path = "/dev/r\(id)"
-        let fd = open(path, write ? O_RDWR : O_RDONLY)
-        guard fd >= 0 else { throw EngineError(.appleTool, "couldn't open \(path)", detail: String(cString: strerror(errno))) }
+        let fd: Int32
+        do { fd = try RawAccess.open(path, write ? O_RDWR : O_RDONLY) }
+        catch let d as FullDiskAccessDenied { throw d }
+        catch { throw EngineError(.appleTool, "couldn't open \(path)", detail: RawAccess.message(error)) }
         lock.lock(); _records.append(Record(argv: ["<raw \(write ? "rw" : "ro")>", path], status: 0)); lock.unlock()
         return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     }

@@ -23,9 +23,12 @@ public enum WholeDiskIdentity {
 public enum GPTHeader {
     public static func diskGUID(device: String, blockSize: Int) throws -> String {
         guard [512, 4096].contains(blockSize) else { throw SafetyRefusal("unexpected block size \(blockSize) on \(device)") }
-        let fd = Darwin.open(device, O_RDONLY)
-        guard fd >= 0 else {
-            throw SafetyRefusal("can't read \(device)'s partition table (\(String(cString: strerror(errno))))\(geteuid() == 0 ? "" : "; this needs root")")
+        // Preview10: a TCC denial (no Full Disk Access for SFHelper) is typed, so the app can show the Privileges screen.
+        let fd: Int32
+        do { fd = try RawAccess.open(device, O_RDONLY) }
+        catch let d as FullDiskAccessDenied { throw d }
+        catch {
+            throw SafetyRefusal("can't read \(device)'s partition table (\(RawAccess.message(error)))\(geteuid() == 0 ? "" : "; this needs root")")
         }
         defer { close(fd) }
         var buf = [UInt8](repeating: 0, count: blockSize * 2)

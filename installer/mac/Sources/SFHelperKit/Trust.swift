@@ -100,6 +100,8 @@ public final class HelperLifecycle: @unchecked Sendable {
     public func connectionEnded() { change { $0.connections -= 1 } }
     public func jobStarted() { change { $0.running += 1 } }
     public func jobEnded() { change { $0.running -= 1 } }
+    /// Preview10: a job is running (the helper must not exit).
+    public var hasRunningJob: Bool { lock.lock(); defer { lock.unlock() }; return running > 0 }
 
     private func change(_ f: (HelperLifecycle) -> Void) {
         lock.lock()

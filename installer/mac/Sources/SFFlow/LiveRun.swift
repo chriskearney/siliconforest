@@ -74,16 +74,45 @@ public final class LiveRun: ObservableObject {
     @Published public var restarting = false
     @Published public var restartError: String?
     private var removalTarget: String?
+    // Preview10: the up-front privilege check.
+    /// Where the person goes once every privilege is in place.
+    public enum PrivilegeNext: Equatable, Sendable { case check, removal, install(bytes: Int64?, name: String), resume(String) }
+    @Published public var privileges: PrivilegeStage = .checking
+    /// What the installer was doing when it failed (so the right row shows the failure).
+    @Published public var failedDuring: Activity?
+    public private(set) var privilegeNext: PrivilegeNext = .check
+    public let gate: PrivilegeGate
+    private var pollTask: Task<Void, Never>?
+    /// Seconds between the Privileges screen's quiet checks.
+    public var pollInterval: Double = 2
+    public let log: InstallerLog
+    /// Where the app's and the helper's logs are (shown with every error).
+    public var appLogPath: String { log.file?.path ?? InstallerLog.appLogURL().path }
+    public var helperLogPath: String { InstallerLog.helperLogURL.path }
+    /// The app bundle (for SFHelper's path in the Full Disk Access instructions).
+    public var appBundle: URL = Bundle.main.bundleURL
 
     public let controller: LiveInstallController
     @Published public var origin: ReleaseOrigin
     public weak var session: Session?
     private let register: (@Sendable () throws -> HelperRegistrationState)?
+    private let status: (@Sendable () -> HelperRegistrationState)?
     private var following = false
     private var clock: Timer?
 
-    public init(controller: LiveInstallController, origin: ReleaseOrigin, register: (@Sendable () throws -> HelperRegistrationState)?) {
-        self.controller = controller; self.origin = origin; self.register = register
+    /// `register`/`status`: SMAppService (nil in tests and snapshots: the helper counts as approved).
+    /// `hooks` replaces the whole privilege check (tests).
+    public init(controller: LiveInstallController, origin: ReleaseOrigin, register: (@Sendable () throws -> HelperRegistrationState)?,
+                status: (@Sendable () -> HelperRegistrationState)? = nil, hooks: PrivilegeGate.Hooks? = nil, log: InstallerLog = InstallerLog.app) {
+        self.controller = controller; self.origin = origin; self.register = register; self.status = status; self.log = log
+        let reg = register, st = status
+        gate = PrivilegeGate(hooks ?? PrivilegeGate.Hooks(
+            register: { try reg?() ?? .enabled },
+            status: { st?() ?? (reg == nil ? .enabled : .notRegistered) },
+            probe: { [controller] in try controller.privileges() },
+            openLoginItems: { DispatchQueue.main.async { if #available(macOS 13.0, *) { HelperRegistration.openLoginItems() } } },
+            openFullDiskAccess: { DispatchQueue.main.async { SystemLinks.open(.fullDiskAccess) } }))
+        gate.log = { [log] in log.info($0) }
     }
 
     // MARK: derived
@@ -111,23 +140,102 @@ public final class LiveRun: ObservableObject {
         try await withCheckedThrowingContinuation { c in DispatchQueue.global(qos: .userInitiated).async { c.resume(with: Result { try work() }) } }
     }
 
-    private func ensureHelper() async throws {
-        guard let register else { return }
-        activity = .registering
-        var state = try await background(register)
-        while state == .requiresApproval {
-            activity = .waitingForHelperApproval
-            HelperRegistration.openLoginItems()
-            try await Task.sleep(nanoseconds: 2_000_000_000)
-            state = try await background(register)
+    // MARK: privileges (preview10)
+
+    /// Get Started, Remove SiliconForest…, or helper work that found something missing: the Privileges
+    /// screen. It registers the helper if needed (the person clicked), then checks quietly until everything
+    /// is in place and continues to `next` by itself. System Settings opens only from its buttons.
+    public func checkPrivileges(then next: PrivilegeNext) {
+        privilegeNext = next
+        lastError = nil
+        log.info("privileges: checking before \(next)")
+        if privileges != .ready { privileges = .checking }
+        session?.go(.livePrivileges)
+        runPrivilegeCheck(byPerson: true)
+    }
+
+    /// The Privileges screen's "Check Again".
+    public func checkPrivilegesAgain() { runPrivilegeCheck(byPerson: true) }
+    /// "Open Login Items": one System Settings open for this click; then the quiet checks carry on.
+    public func openLoginItems() { gate.userOpensLoginItems(); startPolling() }
+    /// "Open Full Disk Access Settings": one System Settings open for this click.
+    public func openFullDiskAccess() { gate.userOpensFullDiskAccess(); startPolling() }
+
+    private func runPrivilegeCheck(byPerson: Bool) {
+        Task {
+            let g = gate
+            let st = await withCheckedContinuation { c in DispatchQueue.global(qos: .userInitiated).async { c.resume(returning: g.check(byPerson: byPerson)) } }
+            absorbPrivileges(st)
         }
-        if case .refused(let why) = state { throw LiveError(why) }
+    }
+
+    func absorbPrivileges(_ st: PrivilegeStage) {
+        privileges = st
+        switch st {
+        case .ready:
+            stopPolling()
+            guard session?.screen == .livePrivileges else { return }
+            continueAfterPrivileges()
+        case .needsHelperApproval, .needsFullDiskAccess: startPolling()
+        case .failed(let m): stopPolling(); log.error("privileges: \(m)")
+        case .checking: break
+        }
+    }
+
+    private func startPolling() {
+        guard pollTask == nil else { return }
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                try? await Task.sleep(nanoseconds: UInt64(self.pollInterval * 1_000_000_000))
+                guard !Task.isCancelled, self.session?.screen == .livePrivileges, self.privileges.isWaiting else { break }
+                let g = self.gate
+                let st = await withCheckedContinuation { c in DispatchQueue.global(qos: .utility).async { c.resume(returning: g.check(byPerson: false)) } }
+                guard !Task.isCancelled else { break }
+                self.privileges = st
+                if !st.isWaiting { self.pollTask = nil; self.absorbPrivileges(st); return }
+            }
+            self?.pollTask = nil
+        }
+    }
+
+    private func stopPolling() { pollTask?.cancel(); pollTask = nil }
+
+    private func continueAfterPrivileges() {
+        log.info("privileges: ready; continuing to \(privilegeNext)")
+        switch privilegeNext {
+        case .check: session?.go(.check)
+        case .removal: loadRemoval()
+        case .install(let b, let n): fetchAndPlan(bytes: b, name: n)
+        case .resume(let j): resume(j)
+        }
+    }
+
+    /// Before helper work: a quiet re-check (no System Settings). If something is missing, the
+    /// Privileges screen takes over and `next` continues once it is fixed.
+    private func privilegesStillReady(_ next: PrivilegeNext) async -> Bool {
+        if register == nil && status == nil { return true }
+        let g = gate
+        let st = await withCheckedContinuation { c in DispatchQueue.global(qos: .userInitiated).async { c.resume(returning: g.check(byPerson: true)) } }
+        privileges = st
+        if st == .ready { return true }
+        privilegeNext = next
+        session?.go(.livePrivileges)
+        absorbPrivileges(st)
+        return false
+    }
+
+    /// A Full Disk Access denial reported by the helper in the middle of something.
+    private func isFullDiskAccessDenial(_ error: Error) -> Bool {
+        let ns = error as NSError
+        return ns.domain == HelperError.domain && ns.code == HelperErrorCode.needsFullDiskAccess.rawValue
     }
 
     /// At launch: an unfinished job (the app quit or crashed, or the Mac restarted) is offered for resume.
+    /// Preview10: reads SMAppService's status only (it no longer registers the helper at launch).
     public func lookForUnfinishedJobs() {
         Task {
-            guard (try? await background({ [register] in try register?() ?? .enabled })) == .enabled else { return }
+            guard (try? await background({ [status, register] in status?() ?? (register == nil ? .enabled : .notRegistered) })) == .enabled else { return }
             if let jobs = try? await background({ [controller] in try controller.unfinishedJobs() }), !jobs.isEmpty {
                 unfinished = jobs
                 session?.go(.liveResume)
@@ -137,21 +245,33 @@ public final class LiveRun: ObservableObject {
 
     /// After Review: register the helper, fetch and verify the release, hand it to the helper, plan.
     public func prepare(bytes: Int64?, name: String) {
+        lastBytes = bytes; lastName = name
+        if (register != nil || status != nil) && privileges != .ready { checkPrivileges(then: .install(bytes: bytes, name: name)); return }
+        fetchAndPlan(bytes: bytes, name: name)
+    }
+    private var lastBytes: Int64?
+    private var lastName = "SiliconForest"
+
+    private func fetchAndPlan(bytes: Int64?, name: String) {
         session?.go(.liveFetch)
-        lastError = nil
+        lastError = nil; failedDuring = nil
         Task {
             do {
-                try await ensureHelper()
+                guard await privilegesStillReady(.install(bytes: bytes, name: name)) else { return }
+                log.info("fetch: downloading the release (\(origin))")
                 activity = .downloading(file: "SHA256SUMS", done: 0, total: 0)
                 let fetcher = ReleaseFetcher()
                 let local = try await fetcher.fetch(origin) { [weak self] f, d, t in
                     Task { @MainActor in self?.activity = .downloading(file: f, done: d, total: t) }
                 }
                 activity = .importing
+                log.info("fetch: verified \(local.dir.lastPathComponent); handing it to the helper")
                 let c = controller
                 release = try await background { try c.importRelease(local.dir) }
                 activity = .planning
+                log.info("plan: asking the helper to read the disk and plan")
                 offer = try await background { try c.offer(bytes: bytes, name: name) }
+                log.info("plan: offered \(offer?.plan.digest.prefix(12) ?? "")")
                 typedName = ""; typedPhrase = ""
                 activity = .idle
                 session?.go(.liveConfirm)
@@ -193,15 +313,24 @@ public final class LiveRun: ObservableObject {
 
     /// Welcome → "Remove SiliconForest…": the installs the helper's journals prove.
     public func showRemoval() {
+        if (register != nil || status != nil) && privileges != .ready { checkPrivileges(then: .removal); return }
+        loadRemoval()
+    }
+
+    private func loadRemoval() {
         session?.go(.liveRemoveList)
         lastError = nil; installsLoaded = false; installs = []
         Task {
             do {
-                try await ensureHelper()
+                guard await privilegesStillReady(.removal) else { return }
                 let c = controller
                 installs = try await background { try c.installs() }
                 installsLoaded = true; activity = .idle
-            } catch { installsLoaded = true; lastError = (error as? LocalizedError)?.errorDescription ?? (error as NSError).localizedDescription; activity = .idle }
+            } catch {
+                if isFullDiskAccessDenial(error) { routeToPrivileges(error, next: .removal); return }
+                installsLoaded = true; lastError = describe(error); activity = .idle
+                log.error("remove: couldn't list installs: \(lastError ?? "")")
+            }
         }
     }
 
@@ -217,7 +346,11 @@ public final class LiveRun: ObservableObject {
                 typedName = ""; typedPhrase = ""
                 activity = .idle
                 session?.go(.liveRemoveConfirm)
-            } catch { lastError = (error as? LocalizedError)?.errorDescription ?? (error as NSError).localizedDescription; activity = .idle }
+            } catch {
+                if isFullDiskAccessDenial(error) { routeToPrivileges(error, next: .removal); return }
+                lastError = describe(error); activity = .idle
+                log.error("remove: couldn't plan the removal: \(lastError ?? "")")
+            }
         }
     }
 
@@ -227,7 +360,7 @@ public final class LiveRun: ObservableObject {
         restarting = true; restartError = nil
         Task {
             do { let c = controller; try await background { try c.restart(j) } }
-            catch { restarting = false; restartError = (error as? LocalizedError)?.errorDescription ?? (error as NSError).localizedDescription }
+            catch { restarting = false; restartError = describe(error); log.error("restart failed: \(restartError ?? "")") }
         }
     }
 
@@ -237,7 +370,8 @@ public final class LiveRun: ObservableObject {
         job = j
         Task {
             do {
-                try await ensureHelper()
+                guard await privilegesStillReady(.resume(j)) else { return }
+                log.info("resume: job \(j)")
                 let c = controller
                 let p = try await background { try c.progress(j, after: 0) }
                 absorb(p, replaceRows: true)
@@ -294,8 +428,29 @@ public final class LiveRun: ObservableObject {
         }
     }
 
+    /// The person-facing text of an error, with the helper's detail when it gave one.
+    func describe(_ error: Error) -> String {
+        let ns = error as NSError
+        let m = (error as? LocalizedError)?.errorDescription ?? ns.localizedDescription
+        if ns.domain == HelperError.domain, let r = ns.localizedFailureReason, !r.isEmpty, !m.contains(r) { return "\(m) (\(r))" }
+        return m
+    }
+
+    private func routeToPrivileges(_ error: Error, next: PrivilegeNext) {
+        let path = (error as NSError).localizedFailureReason ?? "/dev/rdisk0"
+        log.error("full disk access denied (\(path)): \(describe(error))")
+        gate.noteDenied(path: path)
+        privilegeNext = next
+        activity = .idle
+        session?.go(.livePrivileges)
+        absorbPrivileges(gate.stage)
+    }
+
     private func fail(_ error: Error) {
-        let m = (error as? LocalizedError)?.errorDescription ?? (error as NSError).localizedDescription
+        if job == nil, isFullDiskAccessDenial(error) { routeToPrivileges(error, next: .install(bytes: lastBytes, name: lastName)); return }
+        let m = describe(error)
+        if case .failed = activity {} else { failedDuring = activity }
+        log.error("failed\(job.map { " (job \($0))" } ?? ""): \(m) [\(String(describing: type(of: error)))]")
         lastError = m
         activity = .failed(m)
         session?.go(job == nil ? .liveFetch : .liveStopped)
@@ -318,6 +473,7 @@ public final class LiveRun: ObservableObject {
                 switch result {
                 case .success(let p):
                     self.absorb(p, replaceRows: false)
+                    self.log.info("job \(j) ended: \(p.end ?? "?")\(p.lastError.map { " (\($0))" } ?? "")")
                     if p.end == "handed-off" { self.activity = .done; self.session?.go(.liveFinish) }
                     else if self.isRemoval, p.end == "committed" { self.activity = .done; self.session?.go(.liveRemoved) }
                     else if p.end == "rolled-back" { self.activity = .done; self.session?.go(.liveStopped) }
@@ -357,6 +513,7 @@ public final class LiveRun: ObservableObject {
             default: break
             }
             journal.append("\(Self.clockString(e.time))  \(e.step)  \(e.kind == "step" ? "" : e.kind + " ")\(e.text)")
+            if e.kind == "step" || e.kind == "rollback" { log.info("job \(job ?? "?") \(e.step) \(e.kind): \(e.text)") }
         }
         if journal.count > 400 { journal.removeFirst(journal.count - 400) }
         // The journal is the truth: completed and failed steps from it, whatever the events said.

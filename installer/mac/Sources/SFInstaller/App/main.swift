@@ -50,7 +50,7 @@ func makeSession(_ o: LaunchOptions) -> Session {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
         let origin: ReleaseOrigin = o["release-folder"].map { .folder(URL(fileURLWithPath: $0)) } ?? .github(tag: ReleaseOrigin.tag(forAppVersion: version))
         return Session(live: LiveInstallController { HelperClient() }, origin: origin, backend: RealDiskBackend(),
-                       register: { HelperRegistrar.register() })
+                       register: { HelperRegistrar.register() }, status: { HelperRegistrar.status() })
     }
     if o.has("real") {
         return Session(mode: .readOnly, backend: RealDiskBackend())
@@ -92,6 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         SFType.registerFonts()
+        // Preview10: ~/Library/Logs/SiliconForest Installer/installer.log and the unified log.
+        InstallerLog.app = InstallerLog(file: InstallerLog.appLogURL(), category: "app")
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        InstallerLog.app.info("SiliconForest Installer \(v) started (\(realInstallBuild ? "real install build" : "dry-run build"); macOS \(ProcessInfo.processInfo.operatingSystemVersionString); \(Bundle.main.bundleURL.path))")
         session = makeSession(options)
         NSApp.applicationIconImage = renderIcon(side: 512)
         buildMenu()

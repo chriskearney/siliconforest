@@ -138,6 +138,11 @@ public final class LiveInstallController: @unchecked Sendable {
         try call { c in try Canonical.decoder().decode(ReleaseSummary.self, from: try c.call(timeout: 900) { $0.importRelease(from: dir.path, reply: $1) }) }
     }
 
+    /// Preview10: the helper's harmless privilege probe (Full Disk Access). Opens nothing for writing.
+    public func privileges() throws -> PrivilegeReport {
+        try call { c in try Canonical.decoder().decode(PrivilegeReport.self, from: try c.call(timeout: 30) { $0.checkPrivileges(reply: $1) }) }
+    }
+
     public func offer(bytes: Int64?, name: String?) throws -> InstallOffer {
         let body = try Canonical.data(InstallRequestBody(siliconForestBytes: bytes, installName: name))
         return try call { c in try Canonical.decoder().decode(InstallOffer.self, from: try c.call(timeout: 120) { $0.planInstall(request: body, reply: $1) }) }
@@ -219,10 +224,29 @@ public enum HelperRegistrationState: Sendable, Equatable {
     case enabled
     /// The person must turn the helper on in System Settings → General → Login Items.
     case requiresApproval
+    /// Preview10: not registered yet (only a person's action registers it).
+    case notRegistered
     case refused(String)
 }
 
 public enum HelperRegistrar {
+    /// Preview10: the status only (SMAppService.status). Never registers, never opens System Settings;
+    /// the Privileges screen polls this quietly while the person approves the helper.
+    public static func status() -> HelperRegistrationState {
+        if let r = HelperRegistration.preflight() {
+            switch r {
+            case .notInApplications: return .refused("Move SiliconForest Installer to the Applications folder, then open it again.")
+            case .notDeveloperIDSigned: return .refused("This copy of the installer isn't signed by SiliconForest's Developer ID.")
+            }
+        }
+        switch HelperRegistration.status() {
+        case .enabled: return .enabled
+        case .requiresApproval: return .requiresApproval
+        case .notRegistered, .notFound: return .notRegistered
+        @unknown default: return .notRegistered
+        }
+    }
+
     /// Registers (or re-checks) the helper. Only a Developer ID build in /Applications can.
     public static func register() -> HelperRegistrationState {
         if let r = HelperRegistration.preflight() {

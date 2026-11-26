@@ -30,12 +30,17 @@ public enum StartupDisk {
         return try volume(mountedFrom: withUnsafeBytes(of: fs.f_mntfromname) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) })
     }
 
-    public static func find(query: ToolRunner = ProcessToolRunner()) throws -> (uuid: String, whole: String) {
+    /// The startup volume's whole disk (diskutil only; no raw device is opened).
+    public static func wholeDisk(query: ToolRunner = ProcessToolRunner()) throws -> String {
         let rootID = try rootVolume()
         let root = try Query.dict(query, ["/usr/sbin/diskutil", "info", "-plist", rootID])
         let stores = (root["APFSPhysicalStores"] as? [[String: Any]] ?? []).compactMap { $0["APFSPhysicalStore"] as? String }
         guard stores.count == 1, let store = stores.first else { throw SafetyRefusal("this Mac's startup volume doesn't have exactly one APFS physical store") }
-        let whole = try ImageGuard.normalise(store).whole
+        return try ImageGuard.normalise(store).whole
+    }
+
+    public static func find(query: ToolRunner = ProcessToolRunner()) throws -> (uuid: String, whole: String) {
+        let whole = try wholeDisk(query: query)
         let info = try Query.dict(query, ["/usr/sbin/diskutil", "info", "-plist", whole])
         let uuid = try WholeDiskIdentity.uuid(whole, info: info)
         guard try StubOnlyRun.internalWholeDisk(diskUUID: uuid, query: query) == whole else { throw SafetyRefusal("the startup disk's UUID doesn't resolve back to \(whole)") }

@@ -49,6 +49,12 @@ public struct HelperConfig: Sendable {
     public var restartAction: (@Sendable () -> Void)?
     /// Seconds between the restart verb's reply and the restart itself.
     public var restartDelay: TimeInterval = 3
+    /// Preview10: the helper's log (/Library/Logs/SiliconForest/helper.log in the shipped helper; nil in tests).
+    public var log: InstallerLog?
+    /// Preview10: the Full Disk Access probe (injectable for tests).
+    public var privilegeProbe: @Sendable () -> PrivilegeReport = { FullDiskAccessProbe.run() }
+    /// Preview10: set in the shipped helper (exit(0)); nil in tests.
+    public var exitForFreshPrivilegeCheck: (@Sendable () -> Void)?
 
     public init(target: Target, allowedImageRoot: URL = ImageGuard.defaultRoot, journalDirectory: URL = ChainJournal.defaultDirectory,
                 workDirectory: URL, profileID: String, release: ReleaseManifest?, releaseSource: URL?, policy: ConnectionPolicy = ConnectionPolicy(),
@@ -115,6 +121,7 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
             #if SF_REAL_DISK_WRITES
             guard let planDigest else { throw HelperError.make(.refused, "the internal disk is only opened for one confirmed plan") }
             guard geteuid() == 0 else { throw HelperError.make(.refused, "the internal disk needs the root helper") }
+            try requireFullDiskAccess()
             let disk = try StartupDisk.find()
             return LiveDiskBackend(authority: try InternalDiskAuthority(planDigest: planDigest, diskUUID: disk.uuid,
                                                                        gate: { [path = config.authorizationPath] in
@@ -132,6 +139,7 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
         switch config.target {
         case .internalDisk:
             #if SF_REAL_DISK_WRITES
+            try requireFullDiskAccess()
             let disk = try StartupDisk.find()
             let (t, l) = try StubOnlyRun.read(.internalDisk(disk.uuid))
             return (t, l, disk.uuid)
@@ -177,6 +185,7 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
     static func nsError(_ e: Error) -> NSError {
         if let n = e as NSError?, n.domain == HelperError.domain { return n }
         switch e {
+        case let d as FullDiskAccessDenied: return HelperError.make(.needsFullDiskAccess, d.errorDescription ?? "Full Disk Access is off for SFHelper", detail: d.path)
         case let r as SafetyRefusal: return HelperError.make(.refused, r.reason)
         case let p as PlanRefusal: return HelperError.make(.planMismatch, p.reason)
         case let ee as EngineError: return HelperError.make(.failed, ee.message, detail: ee.detail)
@@ -184,8 +193,48 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
         }
     }
 
-    func reply<T>(_ r: (T?, NSError?) -> Void, _ body: () throws -> T) {
-        do { r(try body(), nil) } catch { r(nil, Self.nsError(error)) }
+    func reply<T>(_ r: (T?, NSError?) -> Void, verb: String = #function, _ body: () throws -> T) {
+        let name = verb.split(separator: "(").first.map(String.init) ?? verb
+        do {
+            let v = try body()
+            config.log?.info("\(name): ok")
+            r(v, nil)
+        } catch {
+            let ns = Self.nsError(error)
+            config.log?.error("\(name) failed: \(ns.localizedDescription)\(ns.localizedFailureReason.map { " (\($0))" } ?? "") [\(String(describing: type(of: error)))]")
+            r(nil, ns)
+        }
+    }
+
+    /// The NSError for a failed verb, logged with the verb's name.
+    func logged(_ error: Error, verb: String = #function) -> NSError {
+        let ns = Self.nsError(error)
+        let name = verb.split(separator: "(").first.map(String.init) ?? verb
+        config.log?.error("\(name) failed: \(ns.localizedDescription)\(ns.localizedFailureReason.map { " (\($0))" } ?? "")")
+        return ns
+    }
+
+    /// Preview10: on the internal disk, every verb that opens a raw device checks Full Disk Access first,
+    /// so a missing grant is one clear, typed error instead of a failure halfway through.
+    func requireFullDiskAccess() throws {
+        guard case .internalDisk = config.target else { return }
+        let r = config.privilegeProbe()
+        config.log?.info("full disk access probe: \(r.fullDiskAccess.rawValue) (\(r.probe)\(r.detail.map { ": \($0)" } ?? ""))")
+        if r.fullDiskAccess == .missing { throw FullDiskAccessDenied(path: r.probe, code: EPERM) }
+    }
+
+    public func checkPrivileges(reply: @escaping (Data?, NSError?) -> Void) {
+        self.reply(reply) {
+            let r = config.privilegeProbe()
+            config.log?.info("checkPrivileges: full disk access \(r.fullDiskAccess.rawValue) (\(r.probe)\(r.detail.map { ": \($0)" } ?? ""))")
+            // Still denied and nothing running: exit after replying, so the next check (launchd starts a new
+            // helper on demand) runs in a fresh process in case macOS applies a new grant only at process start.
+            if r.fullDiskAccess == .missing, let exit = config.exitForFreshPrivilegeCheck, !lifecycle.hasRunningJob {
+                config.log?.info("checkPrivileges: exiting so the next check runs in a fresh helper")
+                DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { exit() }
+            }
+            return try Canonical.data(r)
+        }
     }
 
     // MARK: verbs
@@ -243,12 +292,20 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
             lifecycle.jobStarted()
             jobQueue.async { [self] in
                 var err: String?
-                do { _ = try work(e) } catch { err = (error as? LocalizedError)?.errorDescription ?? "\(error)" }
+                config.log?.info("job \(j.jobID.uuidString): started")
+                do { let end = try work(e); config.log?.info("job \(j.jobID.uuidString): ended \(end)") } catch {
+                    err = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+                    config.log?.error("job \(j.jobID.uuidString) failed: \(err ?? "")")
+                }
                 lock.lock(); running.remove(j.jobID); lastError[j.jobID] = err; lock.unlock()
                 lifecycle.jobEnded()
             }
             reply(nil)
-        } catch { reply(Self.nsError(error)) }
+        } catch {
+            let ns = Self.nsError(error)
+            config.log?.error("start \(job) failed: \(ns.localizedDescription)")
+            reply(ns)
+        }
     }
 
     public func removalPlan(installJob: String, reply: @escaping (Data?, NSError?) -> Void) {

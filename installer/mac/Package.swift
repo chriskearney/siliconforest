@@ -53,7 +53,7 @@ let package = Package(
         .target(name: "SFCopy", dependencies: ["SFInstallKit"], swiftSettings: ui),
         .target(name: "SFDesign", dependencies: ["SFInstallKit", "SFCopy"], swiftSettings: ui),
         .target(name: "SFFlow", dependencies: ["SFInstallKit", "SFCopy", "SFDesign", "SFAppEngine", "SFHelperKit", "SFEngine", "SFLiveDisk"], swiftSettings: ui),
-        .executableTarget(name: "SFInstaller", dependencies: ["SFInstallKit", "SFCopy", "SFDesign", "SFFlow", "SFAppEngine", "SFHelperKit"], swiftSettings: ui),
+        .executableTarget(name: "SFInstaller", dependencies: ["SFInstallKit", "SFCopy", "SFDesign", "SFFlow", "SFAppEngine", "SFHelperKit", "SFLiveDisk"], swiftSettings: ui),
         // The live disk backend (ENGINE §12): protection receipt, target authority, pre-write release checks and the
         // two-key real-disk gate. Without `SF_REAL_DISK_WRITES` its only target is a disk image.
         .target(name: "SFLiveDisk", dependencies: ["SFInstallKit", "SFEngine"]),

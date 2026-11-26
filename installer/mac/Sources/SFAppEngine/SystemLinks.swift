@@ -14,6 +14,8 @@ import AppKit
 public enum SystemLinks {
     public enum Place: Sendable, CaseIterable {
         case storageSettings, softwareUpdate, diskUtility, supportedMacs
+        /// Preview10: Privacy & Security → Full Disk Access (the Privileges screen).
+        case fullDiskAccess
 
         /// The URLs to try, in order.
         public var candidates: [URL] {
@@ -30,6 +32,10 @@ public enum SystemLinks {
                         URL(fileURLWithPath: "/System/Applications/System Settings.app")]
             case .diskUtility:
                 return [URL(fileURLWithPath: "/System/Applications/Utilities/Disk Utility.app")]
+            case .fullDiskAccess:
+                return [u("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"),
+                        u("x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles"),
+                        URL(fileURLWithPath: "/System/Applications/System Settings.app")]
             case .supportedMacs:
                 return [u("https://github.com/chriskearney/siliconforest#readme")]
             }

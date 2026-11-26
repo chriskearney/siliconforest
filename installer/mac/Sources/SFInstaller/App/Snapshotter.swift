@@ -6,6 +6,7 @@ import SFDesign
 import SFFlow
 import SFAppEngine
 import SFHelperKit
+import SFLiveDisk
 
 /// Renders every screen offscreen with ImageRenderer, from the same views the app shows, with the
 /// Grove frozen at a fixed time. Never opens a window.
@@ -204,6 +205,28 @@ struct Snapshotter {
             }
             add("38-live-remove-list\(sfx)", dark: dark) { let s = await liveBase(); s.screen = .liveRemoveList; s.live?.installsLoaded = true; return s }
             add("39-button-states\(sfx)", dark: dark, { await liveBase() }, custom: { dark in AnyView(ButtonStatesSheet()) })
+            // Preview10: the Privileges screen and the error box.
+            add("40-live-privileges-login-items\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .livePrivileges; s.live?.privileges = .needsHelperApproval; return s
+            }
+            add("41-live-privileges-full-disk-access\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .livePrivileges
+                s.live?.appBundle = URL(fileURLWithPath: "/Applications/SiliconForest Installer.app")
+                s.live?.privileges = .needsFullDiskAccess(PrivilegeReport(fullDiskAccess: .missing, probe: "/dev/rdisk0", detail: "Operation not permitted"))
+                return s
+            }
+            add("42-live-privileges-checking\(sfx)", dark: dark) { let s = await liveBase(); s.screen = .livePrivileges; s.live?.privileges = .checking; return s }
+            add("43-live-privileges-failed\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .livePrivileges
+                s.live?.privileges = .failed("The installer's helper didn't answer: The connection to service named org.siliconforest.installer.helper was invalidated.")
+                return s
+            }
+            add("44-live-error-plan\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .liveFetch
+                s.live?.failedDuring = .planning
+                s.live?.activity = .failed("Refused: can't read /dev/rdisk0's partition table (Device not configured)")
+                return s
+            }
         }
         add("02b-check-running") { let s = await base(); s.screen = .check; s.checksRevealed = 4; s.checksRunning = true; return s }
         add("02c-check-no-space") { let s = await base("j293-256-full"); s.screen = .check; return s }

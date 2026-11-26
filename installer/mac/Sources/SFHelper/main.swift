@@ -62,6 +62,11 @@ config.blessRunner = ProcessBlessRunner()
 config.restartAction = SystemRestart.action
 #endif
 if let s = try? HelperResources.stubSource(profileID: profileID, resources: resources) { config.stubSource = s }
+// Preview10: /Library/Logs/SiliconForest/helper.log and the unified log (org.siliconforest.installer).
+let helperLog = InstallerLog(file: InstallerLog.helperLogURL, category: "helper")
+config.log = helperLog
+config.exitForFreshPrivilegeCheck = { exit(0) }
+helperLog.info("SFHelper started: build \(config.helperBuild), profile \(profileID), target \(target), executable \(executable.path)")
 let service = HelperService(config: config)
 let delegate = HelperListenerDelegate(service: service)
 let listener = NSXPCListener(machServiceName: SigningIdentity.helperMachService)

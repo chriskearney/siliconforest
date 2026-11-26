@@ -55,10 +55,13 @@ import SFIdentity
     /// After a finished install whose one-time next boot was set: restarts this Mac. Needs the plan's
     /// confirmation to still be valid; nothing else is touched.
     func restartIntoInstalledSystem(job: String, reply: @escaping (NSError?) -> Void)
+    /// Preview10. The helper's privileges, checked harmlessly (a `PrivilegeReport`): Full Disk Access by
+    /// opening the startup disk's raw device read-only and closing it at once. Nothing is read or written.
+    func checkPrivileges(reply: @escaping (Data?, NSError?) -> Void)
 }
 
 public enum HelperErrorCode: Int, Sendable {
-    case refused = 1, planMismatch, noSuchJob, busy, failed, needsApproval, noTarget, clientTooOld
+    case refused = 1, planMismatch, noSuchJob, busy, failed, needsApproval, noTarget, clientTooOld, needsFullDiskAccess
 }
 
 public enum HelperError {
@@ -78,6 +81,7 @@ public enum HelperVerbs {
         "eventsWithJob:after:reply:", "jobStatusWithJob:reply:", "exportDiagnosticsWithJob:to:reply:",
         "importReleaseFrom:reply:", "planInstallWithRequest:reply:", "confirmWithPlanDigest:typed:authorization:reply:",
         "progressWithJob:after:reply:", "listInstallsWithReply:", "planRemovalWithInstallJob:reply:", "restartIntoInstalledSystemWithJob:reply:",
+        "checkPrivilegesWithReply:",
     ]
 
     public static func selectors() -> Set<String> {
