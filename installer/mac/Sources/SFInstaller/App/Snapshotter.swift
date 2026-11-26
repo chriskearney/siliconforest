@@ -7,6 +7,7 @@ import SFFlow
 import SFAppEngine
 import SFHelperKit
 import SFLiveDisk
+import SFEngine
 
 /// Renders every screen offscreen with ImageRenderer, from the same views the app shows, with the
 /// Grove frozen at a fixed time. Never opens a window.
@@ -158,6 +159,34 @@ struct Snapshotter {
         return s
     }
 
+    /// Preview13: a made-up helper offer, for the Confirm screens' snapshots.
+    func sampleOffer(remove: Bool = false) -> InstallOffer {
+        let gib: Int64 = 1 << 30
+        // The plan's memberwise initializer is internal to SFEngine, so the sample is decoded from JSON.
+        let json: String
+        if remove {
+            json = """
+            {"format":"siliconforest-plan/1","operation":"remove","profile":{"id":"J313","sha256":"x"},"release":"","releaseVersion":"0.1.0-preview13",
+             "layoutDigest":"x","macOS":{"store":"MAC","from":\(196 * gib),"to":\(245 * gib)},"partitions":[],
+             "owned":{"stub":"S","boot":"B","root":"R"},"installJob":"\(UUID().uuidString)","originalLayoutDigest":"x","humanSteps":[],"digest":""}
+            """
+        } else {
+            json = """
+            {"format":"siliconforest-plan/1","operation":"install","profile":{"id":"J313","sha256":"x"},"release":"r","releaseVersion":"0.1.0-preview13",
+             "request":{"siliconForestBytes":\(49 * gib),"installName":"SiliconForest","installID":"a1b2c3d4"},
+             "layoutDigest":"x","macOS":{"store":"MAC","from":\(245 * gib),"to":\(196 * gib)},
+             "partitions":[{"role":"stub","after":"@macos","bytes":\(2 * gib),"content":"Apple_APFS","label":"SiliconForest"},
+                           {"role":"boot","after":"@stub","bytes":\(500 << 20),"content":"EFI","label":"SFBOOT"},
+                           {"role":"root","after":"@boot","bytes":\(46 * gib),"content":"Linux Filesystem","label":"SF root"}],
+             "originalLayoutDigest":"x","humanSteps":[],"digest":""}
+            """
+        }
+        let plan = try! JSONDecoder().decode(SFEngine.EnginePlan.self, from: Data(json.utf8))
+        let steps = [StepTitle(code: "S25", title: "Make room by shrinking macOS", writesDisk: true), StepTitle(code: "S47", title: "Write the Linux system", writesDisk: true)]
+        return InstallOffer(plan: plan, expected: TypedConfirmation(diskName: "Macintosh HD"), gigabytes: remove ? 0 : 49, target: "Apple internal disk (disk0)",
+                            diskUUID: "A1B2C3D4-0000", releaseVersion: "0.1.0-preview13", steps: steps)
+    }
+
     func installed() async -> Session {
         let s = await base()
         s.startInstall()
@@ -194,7 +223,7 @@ struct Snapshotter {
                 let s = await liveBase(); s.screen = .liveFetch; s.live?.activity = .failed("couldn't download SHA256SUMS (HTTP 404)"); return s
             }
             add("36-live-fetching\(sfx)", dark: dark) {
-                let s = await liveBase(); s.screen = .liveFetch; s.live?.activity = .downloading(file: "boot.bin", done: 7, total: 133); return s
+                let s = await liveBase(); s.screen = .liveFetch; s.live?.activity = .downloading(FetchProgress(file: "boot.bin", filesDone: 7, filesTotal: 133, bytes: 41_000_000)); return s
             }
             add("37-live-finish\(sfx)", dark: dark) {
                 let s = await liveBase(); s.screen = .liveFinish
@@ -219,6 +248,37 @@ struct Snapshotter {
             add("43-live-privileges-failed\(sfx)", dark: dark) {
                 let s = await liveBase(); s.screen = .livePrivileges
                 s.live?.privileges = .failed("The installer's helper didn't answer: The connection to service named org.siliconforest.installer.helper was invalidated.")
+                return s
+            }
+            // Preview13: the Confirm screens, the installing screen with the quiet notice, and the finish screen's retry.
+            add("45-live-confirm\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .liveConfirm; s.live?.offer = sampleOffer(); s.live?.release = nil
+                s.live?.startupOwners = StartupDiskOwners(owners: ["chris"], defaultOwner: "chris"); s.live?.startupOwner = "chris"
+                return s
+            }
+            add("46-live-confirm-matched\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .liveConfirm; s.live?.offer = sampleOffer(); s.live?.typedName = "  macintosh   hd "
+                s.live?.startupOwners = StartupDiskOwners(owners: ["chris"], defaultOwner: "chris"); s.live?.startupOwner = "chris"
+                return s
+            }
+            add("47-live-remove-confirm\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .liveRemoveConfirm; s.live?.offer = sampleOffer(remove: true); s.live?.isRemoval = true; return s
+            }
+            add("48-live-installing-resize\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .liveInstalling
+                let t = ["S01": "Check the disk", "S10": "Download the release", "S20": "Read the partition table", "S25": "Make room by shrinking macOS", "S30": "Create the SiliconForest partitions", "S47": "Write the Linux system", "S65": "Set the startup disk"]
+                s.live?.rows = t.keys.sorted().map { c in
+                    LiveRun.StepRow(code: c, title: t[c]!, writesDisk: c >= "S25", state: c < "S25" ? .pass : (c == "S25" ? .working : .waiting), started: nil, seconds: nil)
+                }
+                s.live?.currentCode = "S25"; s.live?.diskutilPercent = 41; s.live?.diskutilLine = "Shrinking APFS container"
+                return s
+            }
+            add("49-live-finish-bless-failed\(sfx)", dark: dark) {
+                let s = await liveBase(); s.screen = .liveFinish
+                let j = #"{"set":false,"volumeName":"SiliconForest","confirmed":false,"note":"macOS needs your login to set the startup disk.","manualCommand":"sudo /usr/sbin/bless --mount /Volumes/SiliconForest --setBoot --nextonly","canRestart":false,"needsPassword":true,"canRetry":true}"#
+                s.live?.blessReport = try? JSONDecoder().decode(BlessReport.self, from: Data(j.utf8))
+                s.live?.startupOwners = StartupDiskOwners(owners: ["chris"], defaultOwner: "chris"); s.live?.startupOwner = "chris"
+                s.live?.job = "20261125-190000-install"
                 return s
             }
             add("44-live-error-plan\(sfx)", dark: dark) {

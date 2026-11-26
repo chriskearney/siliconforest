@@ -16,6 +16,8 @@ public enum SystemLinks {
         case storageSettings, softwareUpdate, diskUtility, supportedMacs
         /// Preview10: Privacy & Security → Full Disk Access (the Privileges screen).
         case fullDiskAccess
+        /// Preview13: General → Login Items & Extensions (fallbacks for `SMAppService.openSystemSettingsLoginItems()`).
+        case loginItems
 
         /// The URLs to try, in order.
         public var candidates: [URL] {
@@ -33,8 +35,18 @@ public enum SystemLinks {
             case .diskUtility:
                 return [URL(fileURLWithPath: "/System/Applications/Utilities/Disk Utility.app")]
             case .fullDiskAccess:
-                return [u("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"),
-                        u("x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles"),
+                // Privacy & Security → Full Disk Access. The "Privacy_AllFiles" anchor selects the Full Disk
+                // Access list; macOS offers no URL parameter that pre-selects, adds or toggles an app in that
+                // list, so the installer also reveals SFHelper in Finder (`HelperReveal`) for dragging in.
+                return [u("x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles"), // macOS 13 and later
+                        u("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"),                // older id, still routed on newer macOS
+                        URL(fileURLWithPath: "/System/Applications/System Settings.app")]
+            case .loginItems:
+                // General → Login Items & Extensions (macOS 15 and later; "Login Items" on 13 and 14). The pane
+                // lists "Open at Login" first, then "Allow in the Background", where the helper's switch is.
+                // The app uses SMAppService.openSystemSettingsLoginItems() first; these are its fallbacks.
+                return [u("x-apple.systempreferences:com.apple.LoginItems-Settings.extension"),
+                        u("x-apple.systempreferences:com.apple.preferences.users?LoginItems"),
                         URL(fileURLWithPath: "/System/Applications/System Settings.app")]
             case .supportedMacs:
                 return [u("https://github.com/chriskearney/siliconforest#readme")]
@@ -69,5 +81,31 @@ public enum SystemLinks {
             if go(url) { return url }
         }
         return nil
+    }
+}
+
+/// Preview13: a settings URL can't add an app to Full Disk Access, so the Permissions screen also shows the helper
+/// in Finder (to drag into the list) and offers its path to copy.
+public enum HelperReveal {
+    /// Selects SFHelper in a Finder window. Returns false when the file isn't there (no installed app bundle).
+    @discardableResult
+    public static func revealInFinder(path: String, using reveal: (([URL]) -> Void)? = nil, exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> Bool {
+        guard exists(path) else { return false }
+        let url = URL(fileURLWithPath: path)
+        #if canImport(AppKit)
+        (reveal ?? { NSWorkspace.shared.activateFileViewerSelecting($0) })([url])
+        #else
+        reveal?([url])
+        #endif
+        return true
+    }
+
+    /// Puts the path on the pasteboard (or hands it to `write`, for tests).
+    public static func copyPath(_ path: String, using write: ((String) -> Void)? = nil) {
+        #if canImport(AppKit)
+        (write ?? { let pb = NSPasteboard.general; pb.clearContents(); pb.setString($0, forType: .string) })(path)
+        #else
+        write?(path)
+        #endif
     }
 }

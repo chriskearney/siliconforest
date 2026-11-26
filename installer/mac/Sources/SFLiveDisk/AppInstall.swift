@@ -48,13 +48,13 @@ public enum StartupDisk {
     }
 }
 
-/// What the person types before the helper may write (preview6's in-app replacement for writing the
-/// authorization file by hand): the name of the macOS volume the space comes from, and the erase phrase
-/// for exactly the space this plan takes. The helper derives both from its own plan and disk read.
+/// What the person types before the helper may write: the name of the macOS volume the space comes from
+/// (preview13: the only thing; the erase phrase was dropped, and the administrator dialog stays as the
+/// second deliberate step). The helper derives the expected name from its own plan and disk read, so a
+/// typed name for some other plan or disk never matches.
 public struct TypedConfirmation: Codable, Sendable, Hashable {
     public var diskName: String
-    public var phrase: String
-    public init(diskName: String, phrase: String) { self.diskName = diskName; self.phrase = phrase }
+    public init(diskName: String) { self.diskName = diskName }
 
     /// The macOS System volume's name in the container the plan shrinks ("Macintosh HD").
     public static func diskName(plan: EnginePlan, topology: ImageTopology) -> String? {
@@ -69,18 +69,19 @@ public struct TypedConfirmation: Codable, Sendable, Hashable {
         return (taken + 999_999_999) / 1_000_000_000
     }
 
-    public static func phrase(plan: EnginePlan) -> String {
-        plan.operation == .remove ? "REMOVE SILICONFOREST" : "ERASE \(gigabytes(plan: plan)) GB"
-    }
-
     public static func expected(plan: EnginePlan, topology: ImageTopology) -> TypedConfirmation? {
-        diskName(plan: plan, topology: topology).map { TypedConfirmation(diskName: $0, phrase: phrase(plan: plan)) }
+        diskName(plan: plan, topology: topology).map { TypedConfirmation(diskName: $0) }
     }
 
-    /// Exact match after trimming surrounding white space; nothing else is forgiven.
+    /// Case and spacing are forgiven: surrounding white space is dropped and any run of white space inside
+    /// counts as one space. Different letters (or an empty name) never match.
+    public static func normalized(_ s: String) -> String {
+        s.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ").lowercased()
+    }
+
     public func matches(_ expected: TypedConfirmation) -> Bool {
-        func t(_ s: String) -> String { s.trimmingCharacters(in: .whitespacesAndNewlines) }
-        return !t(expected.diskName).isEmpty && t(diskName) == t(expected.diskName) && t(phrase) == t(expected.phrase)
+        let want = Self.normalized(expected.diskName)
+        return !want.isEmpty && Self.normalized(diskName) == want
     }
 }
 

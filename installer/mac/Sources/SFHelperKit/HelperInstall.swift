@@ -28,17 +28,22 @@ public struct StepTitle: Codable, Sendable, Hashable {
     public var code: String
     public var title: String
     public var writesDisk: Bool
+    public init(code: String, title: String, writesDisk: Bool) { self.code = code; self.title = title; self.writesDisk = writesDisk }
 }
 
 public struct InstallOffer: Codable, Sendable, Hashable {
     public var plan: EnginePlan
-    /// What the person types: the macOS volume's name and the erase phrase.
+    /// What the person types: the macOS volume's name.
     public var expected: TypedConfirmation
     public var gigabytes: Int64
     public var target: String
     public var diskUUID: String?
     public var releaseVersion: String
     public var steps: [StepTitle]
+    public init(plan: EnginePlan, expected: TypedConfirmation, gigabytes: Int64, target: String, diskUUID: String?, releaseVersion: String, steps: [StepTitle]) {
+        self.plan = plan; self.expected = expected; self.gigabytes = gigabytes; self.target = target
+        self.diskUUID = diskUUID; self.releaseVersion = releaseVersion; self.steps = steps
+    }
 }
 
 public struct ConfirmReply: Codable, Sendable, Hashable {
@@ -95,6 +100,10 @@ public struct BlessReport: Codable, Sendable, Hashable {
     public var manualCommand: String
     /// The helper can restart this Mac for them now.
     public var canRestart: Bool
+    /// Preview13: a volume owner's login would let the helper set it (macOS asked for owner authentication, or none was given).
+    public var needsPassword: Bool? = nil
+    /// The helper can retry just the bless with a login.
+    public var canRetry: Bool? = nil
 }
 
 public struct InstalledInstall: Codable, Sendable, Hashable {
@@ -149,7 +158,7 @@ extension HelperService {
         guard config.requireConfirmation else { return }
         lock.lock(); let until = confirmed[digest]; lock.unlock()
         guard let until, until > Date() else {
-            throw HelperError.make(.refused, "this plan hasn't been confirmed: type the disk name and the erase phrase, then approve as an administrator")
+            throw HelperError.make(.refused, "this plan hasn't been confirmed: type the name of the macOS volume, then approve as an administrator")
         }
     }
 
@@ -289,7 +298,7 @@ extension HelperService {
             guard let entry else { throw HelperError.make(.planMismatch, "the helper didn't offer this plan") }
             let t = try Canonical.decoder().decode(TypedConfirmation.self, from: typed)
             guard t.matches(entry.expected) else {
-                throw HelperError.make(.refused, "what you typed doesn't match: type “\(entry.expected.diskName)” and “\(entry.expected.phrase)” exactly")
+                throw HelperError.make(.refused, "what you typed doesn't match the name of the macOS volume (“\(entry.expected.diskName)”)")
             }
             guard config.adminCheck.verify(authorization) else { throw HelperError.make(.refused, "an administrator didn't approve this change") }
             let auth = AuthorizationFile.authorization(planDigest: planDigest, diskUUID: entry.diskUUID ?? "")
@@ -353,7 +362,9 @@ extension HelperService {
         return BlessReport(set: set, volumeName: name, confirmed: (ev["confirmed"]?.string ?? "").hasPrefix("getBoot names"),
                            note: set ? (ev["confirmed"]?.string ?? "") : (ev["why"]?.string ?? "bless didn't run"),
                            manualCommand: ev["manual"]?.string ?? BlessGuard.manual(volumeName: name),
-                           canRestart: set && config.restartAction != nil)
+                           canRestart: set && config.restartAction != nil,
+                           needsPassword: set ? false : (ev["needsPassword"]?.string == "yes"),
+                           canRetry: !set && config.blessRunner is PasswordBlessRunner)
     }
 
     // MARK: Remove SiliconForest
@@ -407,6 +418,29 @@ extension HelperService {
             return try Canonical.data(InstallOffer(plan: plan, expected: exp, gigabytes: TypedConfirmation.gigabytes(plan: plan), target: label,
                                                    diskUUID: read.diskUUID, releaseVersion: plan.releaseVersion,
                                                    steps: StepCode.order(plan).map { StepTitle(code: $0.rawValue, title: $0.title, writesDisk: $0.writesDisk) }))
+        }
+    }
+
+    public func startupOwners(reply: @escaping (Data?, NSError?) -> Void) {
+        self.reply(reply) { try Canonical.data(config.startupOwners()) }
+    }
+
+    public func retryStartupSelection(job: String, owner: String, password: Data, reply: @escaping (Data?, NSError?) -> Void) {
+        let secret = SecureBytes(password)
+        defer { secret.wipe() }
+        self.reply(reply) {
+            let j = try journal(job)
+            let st = JobState(j.records)
+            guard let plan = st.plan, plan.operation == .install, st.end == .handedOff else { throw HelperError.make(.refused, "this job isn't a finished install") }
+            guard finishedInstalls().contains(where: { $0.job == job }) else { throw HelperError.make(.refused, "that install has been removed") }
+            guard config.blessRunner is PasswordBlessRunner else { throw HelperError.make(.refused, "this build doesn't change the startup disk") }
+            try requireOwner(owner)
+            let e = try engine(j, planDigest: plan.digest)
+            let cred = BlessCredential(owner: owner, secret: secret)
+            e.blessCredential = { cred }
+            try e.retryNextBoot()
+            guard let report = blessReport(JobState(j.records)) else { throw HelperError.make(.failed, "the startup disk step left no record") }
+            return try Canonical.data(report)
         }
     }
 

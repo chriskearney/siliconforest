@@ -94,4 +94,84 @@ struct BlessTests {
     @Test func verbsAreListedAndSelectorsStayClean() {
         for v in ["listInstallsWithReply:", "planRemovalWithInstallJob:reply:", "restartIntoInstalledSystemWithJob:reply:"] { #expect(HelperVerbs.expected.contains(v)) }
     }
+
+    // MARK: preview13: the volume owner's login for bless (owner authentication on Apple Silicon)
+
+    @Test func theOwnerFlagsAreWidenedNarrowlyAndOnlyTogether() throws {
+        let stub = Self.partition(system: "disk10s1")
+        let argv = try BlessGuard.setNextBoot(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub, owner: "chris.k") { _ in "/dev/disk10s1" }
+        #expect(argv == ["/usr/sbin/bless", "--mount", "/Volumes/SiliconForest", "--setBoot", "--nextonly", "--user", "chris.k", "--stdinpass"])
+        #expect(BlessGuard.isAllowed(argv) && BlessGuard.usesPassword(argv))
+        let base = Array(argv.prefix(5))
+        for bad: [String] in [
+            base + ["--user", "chris"],                                                  // no --stdinpass
+            base + ["--stdinpass"],                                                      // a password with no account
+            base + ["--stdinpass", "--user", "chris"],                                   // wrong order
+            base + ["--user", "-x", "--stdinpass"],                                      // not an account name
+            base + ["--user", "a b", "--stdinpass"], base + ["--user", "../root", "--stdinpass"], base + ["--user", "", "--stdinpass"],
+            base + ["--user", "chris", "--stdinpass", "--passwd", "x"],                  // extra flags
+            ["/usr/sbin/bless", "--mount", "/", "--setBoot", "--nextonly", "--user", "chris", "--stdinpass"],  // not a /Volumes mount
+            ["/usr/sbin/bless", "--mount", "/Volumes/x", "--setBoot", "--user", "chris", "--stdinpass"],       // not one-time
+            ["/usr/sbin/bless", "--mount", "/Volumes/x", "--setBoot", "--nextonly", "--user", "chris", "--password", "pw"],
+        ] { #expect(!BlessGuard.isAllowed(bad), "\(bad)") }
+        // The password is never an argument anywhere in what the guard builds.
+        #expect(throws: BlessGuard.Refusal.self) {
+            _ = try BlessGuard.setNextBoot(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub, owner: "--evil") { _ in "/dev/disk10s1" }
+        }
+    }
+
+    @Test func theRunnerRefusesAMismatchedPasswordAndTheStdinFeedIsExact() throws {
+        let stub = Self.partition(system: "disk10s1")
+        let withUser = try BlessGuard.setNextBoot(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub, owner: "chris") { _ in "/dev/disk10s1" }
+        let r = ProcessBlessRunner()
+        // Not root in tests: refused before anything runs, and a password is never sent to a command without --stdinpass.
+        #expect(r.execute(withUser).status == 126)
+        let secret = SecureBytes(Data("correct horse".utf8))
+        #expect(r.execute(BlessGuard.getBoot, password: secret).status == 126)
+        #expect(!secret.isWiped, "the runner doesn't wipe; the engine does")
+        // The bytes reach the descriptor, then a newline: nothing else.
+        var fds: [Int32] = [0, 0]
+        #expect(pipe(&fds) == 0)
+        StdinFeed.send(secret, to: fds[1]); close(fds[1])
+        var buf = [UInt8](repeating: 0, count: 64)
+        let n = read(fds[0], &buf, 64); close(fds[0])
+        #expect(String(decoding: buf.prefix(max(0, n)), as: UTF8.self) == "correct horse\n")
+        secret.wipe()
+        #expect(secret.isZeroed)
+    }
+
+    @Test func outputIsScrubbedAndAuthFailuresAreRecognised() {
+        #expect(BlessGuard.scrub("bad: correct horse here", password: "correct horse") == "bad: ••• here")
+        #expect(BlessGuard.scrub("unchanged", password: "") == "unchanged")
+        #expect(BlessGuard.looksLikeOwnerAuthFailure("bless: owner authentication required"))
+        #expect(!BlessGuard.looksLikeOwnerAuthFailure("simulated failure"))
+        #expect(BlessGuard.validOwner("chris") && BlessGuard.validOwner("_svc") && BlessGuard.validOwner("a.b-c_1"))
+        #expect(!BlessGuard.validOwner("") && !BlessGuard.validOwner("-a") && !BlessGuard.validOwner("a b") && !BlessGuard.validOwner(String(repeating: "a", count: 65)))
+    }
+
+    @Test func ownersAreTheLocalVolumeOwnersConsoleUserFirst() {
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Users</key><array>
+        <dict><key>APFSCryptoUserType</key><string>LocalOpenDirectory</string><key>APFSCryptoUserUUID</key><string>5375F0A7-328F-4639-861A-164784DFA657</string><key>VolumeOwner</key><true/></dict>
+        <dict><key>APFSCryptoUserType</key><string>LocalOpenDirectory</string><key>APFSCryptoUserUUID</key><string>AAAAAAAA-0000-0000-0000-000000000001</string><key>VolumeOwner</key><true/></dict>
+        <dict><key>APFSCryptoUserType</key><string>LocalOpenDirectory</string><key>APFSCryptoUserUUID</key><string>BBBBBBBB-0000-0000-0000-000000000002</string><key>VolumeOwner</key><false/></dict>
+        <dict><key>APFSCryptoUserType</key><string>MDMRecovery</string><key>APFSCryptoUserUUID</key><string>2457711A-523C-4604-B75A-F48A571D5036</string><key>VolumeOwner</key><true/></dict>
+        </array></dict></plist>
+        """
+        let dscl = """
+        admin                    AAAAAAAA-0000-0000-0000-000000000001
+        chriskearney             5375F0A7-328F-4639-861A-164784DFA657
+        guest                    BBBBBBBB-0000-0000-0000-000000000002
+        root                     FFFFEEEE-DDDD-CCCC-BBBB-AAAA00000000
+        """
+        let a = StartupDiskOwners.parse(listUsersPlist: Data(plist.utf8), accounts: dscl, console: "chriskearney")
+        #expect(a.owners == ["chriskearney", "admin"] && a.defaultOwner == "chriskearney")
+        let b = StartupDiskOwners.parse(listUsersPlist: Data(plist.utf8), accounts: dscl, console: "guest")
+        #expect(b.owners == ["admin", "chriskearney"] && b.defaultOwner == "admin", "a console user who isn't an owner is not the default")
+        let none = StartupDiskOwners.parse(listUsersPlist: Data("garbage".utf8), accounts: dscl, console: "admin")
+        #expect(none.owners.isEmpty && none.defaultOwner == nil)
+        let found = StartupDiskOwners.find(run: { exe, _ in exe.hasSuffix("diskutil") ? Data(plist.utf8) : Data(dscl.utf8) }, console: nil)
+        #expect(found.owners.count == 2)
+        #expect(StartupDiskOwners.find(run: { _, _ in nil }, console: "x").owners.isEmpty)
+    }
 }

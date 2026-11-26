@@ -265,12 +265,123 @@ public enum Copy {
         public static let diskRow = "The helper has Full Disk Access"
         public static let openLoginItems = "Open Login Items"
         public static let openFullDiskAccess = "Open Full Disk Access Settings"
+        public static let showHelper = "Show SFHelper in Finder"
+        public static let copyHelperPath = "Copy SFHelper path"
+        public static let fdaStep1 = "Click Open Full Disk Access Settings. A Finder window shows SFHelper."
+        public static let fdaStep2 = "Turn on SFHelper in the list. macOS may ask for your password."
+        public static let fdaStep3 = "Not in the list? Drag SFHelper from the Finder window into the list. Or click +, press ⌘⇧G, paste the path below, click Open, then turn SFHelper on."
         public static let restarting = "Restarting the installer's helper…"
         public static let waiting = "Waiting for approval…"
         public static let waitingBody = "The installer's helper does the disk work, and macOS needs your approval to run it. Click Open Login Items, then under Allow in the Background turn on “SiliconForest Installer”. The installer continues automatically."
         public static let waitingLine = "Checking every few seconds. System Settings opens only when you click."
         public static let checking = "Checking…"
         public static let continuing = "Continuing…"
+    }
+
+    // MARK: Startup disk login (preview13)
+    /// macOS needs a volume owner's login to change the startup disk on Apple Silicon.
+    public enum Startup {
+        public static let header = "Start SiliconForest next time"
+        public static func body(volume: String) -> String { "To set your Mac to start SiliconForest, macOS needs the login password of a user who can unlock \(volume). This is your Mac login password." }
+        public static let account = "Account"
+        public static func field(owner: String) -> String { owner.isEmpty ? "Mac login password" : "Mac login password for \(owner)" }
+        public static let optionalNote = "Optional. The installer uses it once, at the end. It stays in memory and is never saved or logged. Leave it empty to do this at the end instead."
+        public static let finishNote = "Type the login password of a user who can unlock your Mac's startup disk. The installer uses it once and doesn't keep it."
+        public static let setButton = "Set Startup Disk"
+        public static let setting = "Setting the startup disk…"
+        public static func failed(_ why: String) -> String { "The startup disk wasn't set: \(why)" }
+        public static let noAccounts = "The installer couldn't find a user who can unlock this Mac's startup disk. Use the command below instead."
+    }
+
+    // MARK: Download row (preview13)
+    public enum Download {
+        public static let working = "Downloading…"
+        public static let verifying = "Verifying…"
+        /// The row's trailing text. `total` 0 means the file list isn't known yet: no counts, only the bytes so far.
+        public static func label(done: Int64, total: Int64, bytes: Int64) -> String {
+            if total > 0 {
+                return done >= total ? verifying : "\(done) of \(total) files"
+            }
+            return bytes > 0 ? "\(working) \(Bytes.format(bytes))" : working
+        }
+    }
+
+    // MARK: Confirm the change (preview13): one short block per partition
+    /// The summary on the Confirm screens. Pure text from numbers, so a test can check every line.
+    public enum Confirm {
+        public static let installHeader = "What will change"
+        public static let removeHeader = "What will be removed"
+        public static let warning = "Back up your Mac first. This changes your disk."
+        public static let filesStay = "Your files stay."
+
+        public struct Block: Identifiable, Equatable, Sendable {
+            public var name: String
+            public var change: String
+            public var detail: String?
+            public var id: String { name }
+            public init(name: String, change: String, detail: String? = nil) { self.name = name; self.change = change; self.detail = detail }
+        }
+        /// The partitions of a plan: the role ("stub", "boot", "root") and its size (zero when the plan doesn't say).
+        public struct Part: Equatable, Sendable {
+            public var role: String
+            public var bytes: Int64
+            public init(role: String, bytes: Int64) { self.role = role; self.bytes = bytes }
+        }
+
+        /// "245 GB", "2.5 GB", "512 MB": whole gigabytes (10^9, as Finder shows them) from 10 GB up.
+        public static func size(_ bytes: Int64) -> String {
+            let gb = Double(bytes) / 1e9
+            if gb >= 10 { return String(format: "%.0f GB", gb) }
+            if gb >= 1 { return String(format: "%.1f GB", gb) }
+            return String(format: "%.0f MB", Double(bytes) / 1e6)
+        }
+
+        public static func partitionName(_ role: String) -> String {
+            switch role {
+            case "stub": return "SiliconForest launcher"
+            case "boot": return "SiliconForest boot"
+            case "root": return "SiliconForest system"
+            default: return "SiliconForest \(role)"
+            }
+        }
+
+        static let order = ["stub", "boot", "root"]
+        private static func sorted(_ parts: [Part]) -> [Part] {
+            parts.sorted { (order.firstIndex(of: $0.role) ?? 9) < (order.firstIndex(of: $1.role) ?? 9) }
+        }
+
+        public static func macOSName(_ volume: String) -> String { "macOS (\(volume))" }
+
+        /// Install: macOS shrinks, then each new partition.
+        public static func installBlocks(volume: String, macOSFrom: Int64, macOSTo: Int64, partitions: [Part]) -> [Block] {
+            var b = [Block(name: macOSName(volume), change: "Shrinks from \(size(macOSFrom)) to \(size(macOSTo)).", detail: filesStay)]
+            for p in sorted(partitions) { b.append(Block(name: partitionName(p.role), change: "New, \(size(p.bytes)).")) }
+            return b
+        }
+
+        /// Removal: macOS grows back, then each SiliconForest partition is deleted.
+        public static func removeBlocks(volume: String, macOSFrom: Int64, macOSTo: Int64, roles: [String]) -> [Block] {
+            var b = [Block(name: macOSName(volume), change: "Grows back from \(size(macOSFrom)) to \(size(macOSTo)).", detail: filesStay)]
+            for r in sorted(roles.map { Part(role: $0, bytes: 0) }) { b.append(Block(name: partitionName(r.role), change: "Deleted.")) }
+            return b
+        }
+
+        /// The quiet footnote: release, signature, plan, and where it happens.
+        public static func footnote(target: String, version: String, stage1: String?, plan: String, removal: Bool) -> String {
+            if removal { return "Disk: \(target). Plan \(plan)." }
+            let stage = stage1.map { " Stage 1 \($0) (pinned v2)." } ?? ""
+            return "Release \(version), signature verified.\(stage) Disk: \(target). Plan \(plan)."
+        }
+
+        public static func installButton(gigabytes: Int64) -> String { "Erase \(gigabytes) GB and Install" }
+        public static let removeButton = "Remove SiliconForest"
+
+        /// The single typed confirmation.
+        public static func typeName(_ volume: String) -> String { "Type the name of your macOS volume to confirm: \(volume)" }
+        public static func typeNameAgain(_ volume: String) -> String { "To continue, confirm again. Type the name of your macOS volume: \(volume)" }
+        public static let thenAdmin = "Then macOS asks an administrator to approve."
+        public static let installAfter = "The installer writes a short-lived permission (2 hours) for exactly this plan and this disk."
+        public static let removeIfStartup = "If the startup disk points at SiliconForest, it is set back to macOS first."
     }
 
     // MARK: 7. Approve the installer

@@ -87,7 +87,7 @@ struct HelperTrustTests {
         let j = try ChainJournal(directory: dir); try j.append(.begin)
         let h = InProcessHelper(config(journal: dir))
         let c = h.client()
-        do { try c.callVoid { $0.authorizeBless(job: j.jobID.uuidString, password: Data("correct horse".utf8), reply: $1) }; Issue.record("should say needs approval") }
+        do { try c.callVoid { $0.authorizeBless(job: j.jobID.uuidString, owner: "chris", password: Data("correct horse".utf8), reply: $1) }; Issue.record("should say needs approval") }
         catch let e as NSError { #expect(e.code == HelperErrorCode.needsApproval.rawValue) }
         let secret = try #require(h.service.lastPassword)
         #expect(secret.isWiped && secret.isZeroed)
@@ -172,5 +172,52 @@ struct HelperImageTests {
         let rs = try client.wait(rjob)
         #expect(rs.end == "committed", "\(rs)")
         #expect(try c.backend.topology().digestForm == original.digestForm)
+    }
+}
+
+
+@Suite("Preview13: the owner's login for bless, in the helper")
+struct StartupLoginTests {
+    struct FakeBless: PasswordBlessRunner {
+        func execute(_ argv: [String]) -> BlessResult { BlessResult(status: 0, output: "") }
+        func execute(_ argv: [String], password: any SecretBytesProvider) -> BlessResult { BlessResult(status: 0, output: "") }
+    }
+
+    @Test func onlyVolumeOwnersAreAccepted() throws {
+        var c = config(); c.blessRunner = FakeBless()
+        c.startupOwners = { StartupDiskOwners(owners: ["chris"], defaultOwner: "chris") }
+        let svc = HelperService(config: c)
+        try svc.requireOwner("chris")
+        for bad in ["admin", "root", "--user", "", "chris "] {
+            #expect(throws: (any Error).self) { try svc.requireOwner(bad) }
+        }
+    }
+
+    @Test func theCredentialIsTakenOnceAndExpires() {
+        var c = config(); c.blessRunner = FakeBless()
+        let svc = HelperService(config: c)
+        let id = UUID()
+        let s1 = SecureBytes(Data("pw".utf8))
+        svc.holdCredential(job: id, owner: "chris", secret: s1)
+        let cred = svc.takeCredential(id)
+        #expect(cred?.owner == "chris")
+        #expect(svc.takeCredential(id) == nil, "one use")
+        cred?.secret.wipe()
+        #expect(s1.isWiped && s1.isZeroed)
+
+        let old = SecureBytes(Data("pw".utf8))
+        svc.holdCredential(job: id, owner: "chris", secret: old, at: Date().addingTimeInterval(-4 * 3600))
+        #expect(svc.takeCredential(id) == nil && old.isWiped, "expired after three hours, and wiped")
+        // A second login for the same job replaces and wipes the first.
+        let a = SecureBytes(Data("a".utf8)), b = SecureBytes(Data("b".utf8))
+        svc.holdCredential(job: id, owner: "chris", secret: a); svc.holdCredential(job: id, owner: "chris", secret: b)
+        #expect(a.isWiped)
+        _ = svc.takeCredential(id)?.secret.wipe()
+    }
+
+    @Test func theNewVerbsAreListedAndCarryNoCommand() {
+        for v in ["authorizeBlessWithJob:owner:password:reply:", "startupOwnersWithReply:", "retryStartupSelectionWithJob:owner:password:reply:"] {
+            #expect(HelperVerbs.expected.contains(v) && HelperVerbs.selectors().contains(v))
+        }
     }
 }

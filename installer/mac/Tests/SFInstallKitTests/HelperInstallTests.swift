@@ -80,7 +80,7 @@ struct HelperInstallVerbTests {
 
     @Test func confirmRefusesWhatWasNotOfferedAndBeginNeedsAConfirmation() throws {
         let (h, app) = helper(tmp(), admin: AdminCheck { $0 == Data("ok".utf8) })
-        let t = TypedConfirmation(diskName: "Macintosh HD", phrase: "ERASE 30 GB")
+        let t = TypedConfirmation(diskName: "Macintosh HD")
         #expect(refused { _ = try app.confirm(planDigest: "0123", typed: t, authorization: Data("ok".utf8)) } != nil)
         let plan = try StubOnlyPlanTests.plan()
         do { _ = try h.client().begin(plan); Issue.record("begin without a confirmation") } catch let e as NSError {
@@ -90,17 +90,26 @@ struct HelperInstallVerbTests {
         #expect(try app.info().target == "none")
     }
 
-    @Test func theTypedConfirmationIsExact() {
-        let want = TypedConfirmation(diskName: "Macintosh HD", phrase: "ERASE 30 GB")
-        #expect(TypedConfirmation(diskName: " Macintosh HD\n", phrase: "ERASE 30 GB ").matches(want))
-        for wrong in [("macintosh hd", "ERASE 30 GB"), ("Macintosh HD", "erase 30 gb"), ("Macintosh HD", "ERASE 31 GB"), ("Macintosh  HD", "ERASE 30 GB"), ("", "")] {
-            #expect(!TypedConfirmation(diskName: wrong.0, phrase: wrong.1).matches(want), "\(wrong)")
+    @Test func theTypedConfirmationForgivesCaseAndSpacingOnly() {
+        let want = TypedConfirmation(diskName: "Macintosh HD")
+        for ok in ["Macintosh HD", " Macintosh HD\n", "macintosh hd", "MACINTOSH HD", "Macintosh   HD", "\tmacintosh\u{00A0}hd  "] {
+            #expect(TypedConfirmation(diskName: ok).matches(want), "\(ok.debugDescription)")
         }
-        #expect(!TypedConfirmation(diskName: "", phrase: "ERASE 30 GB").matches(TypedConfirmation(diskName: "", phrase: "ERASE 30 GB")))
-        var p = try! StubOnlyPlanTests.plan()
-        #expect(TypedConfirmation.phrase(plan: p) == "ERASE 22 GB")   // 100 GiB → 80 GiB is 21.47 GB, rounded up
-        p.operation = .remove
-        #expect(TypedConfirmation.phrase(plan: p) == "REMOVE SILICONFOREST")
+        for wrong in ["Macintosh", "MacintoshHD", "Macintosh HD 2", "Macintosh H", "Macintosh  HDD", "", "   ", "ERASE 30 GB"] {
+            #expect(!TypedConfirmation(diskName: wrong).matches(want), "\(wrong.debugDescription)")
+        }
+        #expect(!TypedConfirmation(diskName: "").matches(TypedConfirmation(diskName: "")), "an empty expected name never matches")
+        #expect(!TypedConfirmation(diskName: "Macintosh HD").matches(TypedConfirmation(diskName: "Data")), "another volume's name")
+        let p = try! StubOnlyPlanTests.plan()
+        #expect(TypedConfirmation.gigabytes(plan: p) == 22)   // 100 GiB → 80 GiB is 21.47 GB, rounded up
+    }
+
+    @Test func theConfirmationHasNoPhraseOnTheWire() throws {
+        let json = String(decoding: try JSONEncoder().encode(TypedConfirmation(diskName: "Macintosh HD")), as: UTF8.self)
+        #expect(!json.contains("phrase"))
+        // A preview12 app still sends a phrase; the helper ignores it and checks only the name.
+        let old = Data(#"{"diskName":"Macintosh HD","phrase":"ERASE 30 GB"}"#.utf8)
+        #expect(try JSONDecoder().decode(TypedConfirmation.self, from: old) == TypedConfirmation(diskName: "Macintosh HD"))
     }
 
     @Test func theAdministratorCheckFailsClosed() {

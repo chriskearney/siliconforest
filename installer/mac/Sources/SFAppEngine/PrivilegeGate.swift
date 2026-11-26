@@ -39,6 +39,13 @@ public enum PrivilegeStage: Equatable, Sendable {
         }
     }
 
+    /// The Full Disk Access row is a button whenever it is not passing (a failed check or an unapproved helper
+    /// can hide missing access, so the pane is one click away).
+    public var fullDiskAccessRowIsTappable: Bool {
+        if case .ready = self { return false }
+        return true
+    }
+
     /// The failed message is about Full Disk Access (the footer should offer that settings pane).
     public var failedMentionsFullDiskAccess: Bool {
         if case .failed(let m) = self { return m.localizedCaseInsensitiveContains("full disk access") }
@@ -100,8 +107,8 @@ public final class PrivilegeGate: @unchecked Sendable {
         }
     }
 
-    /// Where the person enables Full Disk Access (the first URL SystemLinks tries).
-    public static let fullDiskAccessURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
+    /// Where the person enables Full Disk Access (the first URL SystemLinks tries; the pane's list, not a specific app: macOS has no URL that adds or selects one).
+    public static let fullDiskAccessURL = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles")!
 
     /// SFHelper inside the app: what the person adds with "+" if it isn't in the Full Disk Access list.
     public static func helperPath(appBundle: URL) -> String {

@@ -201,13 +201,12 @@ struct RootView: View {
             case .needsHelperApproval:
                 return Footer(leading: [details], trailing: [back, again, BarAction(title: Copy.Privileges.openLoginItems, style: .primary, isDefault: true) { l.openLoginItems() }])
             case .needsFullDiskAccess:
-                return Footer(leading: [details], trailing: [back, again, BarAction(title: Copy.Privileges.openFullDiskAccess, style: .primary, isDefault: true) { l.openFullDiskAccess() }])
+                return Footer(leading: [details], trailing: [back, again, BarAction(title: Copy.Privileges.openFullDiskAccess, style: .primary, isDefault: true) { l.openFullDiskAccessAndRevealHelper() }])
             case .failed:
                 var t = [back, BarAction(title: Copy.Common.checkAgain) { l.checkPrivilegesAgain() },
                          BarAction(title: Copy.Privileges.openLoginItems, style: .primary, isDefault: !l.privileges.failedMentionsFullDiskAccess) { l.openLoginItems() }]
-                if l.privileges.failedMentionsFullDiskAccess {
-                    t.append(BarAction(title: Copy.Privileges.openFullDiskAccess, style: .primary, isDefault: true) { l.openFullDiskAccess() })
-                }
+                // The Full Disk Access pane is always one click away from a failure (the row is a button too).
+                t.append(BarAction(title: Copy.Privileges.openFullDiskAccess, style: .primary, isDefault: l.privileges.failedMentionsFullDiskAccess) { l.openFullDiskAccessAndRevealHelper() })
                 return Footer(leading: [details], trailing: t)
             case .checking, .ready, .restartingHelper:
                 return Footer(leading: [details], trailing: [back])
@@ -221,7 +220,7 @@ struct RootView: View {
             return Footer(leading: [details])
         case .liveConfirm:
             // The point of no return: no default key; Return does nothing.
-            return Footer(leading: [details], trailing: [back, BarAction(title: "Install", style: .primary,
+            return Footer(leading: [details], trailing: [back, BarAction(title: Copy.Confirm.installButton(gigabytes: s.live?.offer?.gigabytes ?? 0), style: .destructive,
                                                                          enabled: (s.live?.typedMatches ?? false) && !(s.live?.isWorking ?? true)) { s.live?.install() }])
         case .liveInstalling:
             return Footer(leading: [details], trailing: [BarAction(title: "Quit (the helper keeps going)") { s.requestQuit() }])
@@ -244,11 +243,16 @@ struct RootView: View {
                                                              BarAction(title: l.restarting ? "Restarting…" : "Restart into SiliconForest", style: .primary,
                                                                        enabled: !l.restarting && l.blessReport?.canRestart == true) { l.restart() }])
             }
+            if l.blessReport?.canRetry != false {
+                return Footer(leading: [details], trailing: [BarAction(title: Copy.Common.quit) { s.terminate() },
+                                                             BarAction(title: Copy.Startup.setButton, style: .primary,
+                                                                       enabled: !l.settingStartupDisk && !l.startupPassword.isEmpty && !l.startupOwner.isEmpty) { l.setStartupDisk() }])
+            }
             return Footer(leading: [details], trailing: [BarAction(title: Copy.Common.quit, style: .primary) { s.terminate() }])
         case .liveRemoveList:
             return Footer(leading: [details], trailing: [back])
         case .liveRemoveConfirm:
-            return Footer(leading: [details], trailing: [back, BarAction(title: "Remove SiliconForest", style: .destructive,
+            return Footer(leading: [details], trailing: [back, BarAction(title: Copy.Confirm.removeButton, style: .destructive,
                                                                          enabled: (s.live?.typedMatches ?? false) && !(s.live?.isWorking ?? true)) { s.live?.install() }])
         case .liveRemoved:
             return Footer(leading: [details], trailing: [BarAction(title: Copy.Common.done, style: .primary, isDefault: true) { s.terminate() }])

@@ -202,13 +202,37 @@ struct PrivilegeGateTests {
         #expect(HelperBuildMemory.stamp().contains("/"))
     }
 
+    @Test func theFullDiskAccessRowIsTappableUnlessItPasses() {
+        for stage: PrivilegeStage in [.checking, .restartingHelper, .needsHelperApproval, .needsFullDiskAccess(PrivilegeReport(fullDiskAccess: .missing, probe: "/dev/rdisk0")), .failed("x")] {
+            #expect(stage.fullDiskAccessRowIsTappable, "\(stage)")
+        }
+        #expect(!PrivilegeStage.ready.fullDiskAccessRowIsTappable)
+    }
+
+    @Test func revealAndCopyTheHelper() {
+        var revealed: [URL] = [], copied: [String] = []
+        #expect(HelperReveal.revealInFinder(path: "/Applications/X.app/Contents/MacOS/SFHelper", using: { revealed = $0 }, exists: { _ in true }))
+        #expect(revealed.map(\.path) == ["/Applications/X.app/Contents/MacOS/SFHelper"])
+        #expect(!HelperReveal.revealInFinder(path: "/nope", using: { revealed = $0 + $0 }, exists: { _ in false }))
+        #expect(revealed.count == 1, "nothing revealed when the file isn't there")
+        HelperReveal.copyPath("/p/SFHelper", using: { copied.append($0) })
+        #expect(copied == ["/p/SFHelper"])
+        #expect(SystemLinks.Place.loginItems.candidates.first?.absoluteString == "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")
+    }
+
     @Test func helperPathAndSettingsURL() {
         #expect(PrivilegeGate.helperPath(appBundle: URL(fileURLWithPath: "/Applications/SiliconForest Installer.app"))
                 == "/Applications/SiliconForest Installer.app/Contents/MacOS/SFHelper")
-        #expect(PrivilegeGate.fullDiskAccessURL.absoluteString == "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+        #expect(PrivilegeGate.fullDiskAccessURL.absoluteString == "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles")
         var tried: [String] = []
         _ = SystemLinks.open(.fullDiskAccess) { u in tried.append(u.absoluteString); return true }
-        #expect(tried == ["x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"])
+        #expect(tried == ["x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles"])
+        // The first URL macOS refuses falls through to the older id, then to the Settings app.
+        var order: [String] = []
+        _ = SystemLinks.open(.fullDiskAccess) { u in order.append(u.absoluteString); return false }
+        #expect(order == ["x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles",
+                          "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+                          "file:///System/Applications/System%20Settings.app/"])
         #expect(HelperBundle.launchdPlist()["BundleProgram"] as? String == "Contents/MacOS/SFHelper")
     }
 }

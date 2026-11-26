@@ -208,8 +208,8 @@ func main() async throws {
             do { try body(); print("NOT REFUSED: \(what)") } catch { refused += 1; print("refused as it should: \(what): \((error as NSError).localizedDescription)") }
         }
         expectRefusal("begin before any confirmation") { _ = try ctl.begin(offer.plan) }
-        expectRefusal("wrong disk name") { _ = try ctl.confirm(planDigest: offer.plan.digest, typed: TypedConfirmation(diskName: "Macintosh HD", phrase: offer.expected.phrase), authorization: testApproval) }
-        expectRefusal("wrong phrase") { _ = try ctl.confirm(planDigest: offer.plan.digest, typed: TypedConfirmation(diskName: offer.expected.diskName, phrase: "ERASE"), authorization: testApproval) }
+        expectRefusal("wrong disk name") { _ = try ctl.confirm(planDigest: offer.plan.digest, typed: TypedConfirmation(diskName: "Macintosh HD"), authorization: testApproval) }
+        expectRefusal("empty name") { _ = try ctl.confirm(planDigest: offer.plan.digest, typed: TypedConfirmation(diskName: "  "), authorization: testApproval) }
         expectRefusal("no administrator approval") { _ = try ctl.confirm(planDigest: offer.plan.digest, typed: offer.expected, authorization: Data()) }
         expectRefusal("a plan the helper never offered") { _ = try ctl.confirm(planDigest: String(repeating: "0", count: 64), typed: offer.expected, authorization: testApproval) }
         var tampered = offer.plan; tampered.macOS.to -= Bytes.gb
@@ -222,7 +222,7 @@ func main() async throws {
         print("\(stamp())  helper: \(try ctl.info().target)")
         // Screen: Getting the release (download or local folder → cache → local verify → helper import + verify)
         let rel = try await ReleaseFetcher(cache: try a.url("state").appendingPathComponent("cache"),
-                                           allowedSigners: h.service.config.allowedSigners).fetch(.folder(try a.url("release-dir"))) { n, d, t in
+                                           allowedSigners: h.service.config.allowedSigners).fetch(.folder(try a.url("release-dir"))) { n, d, t, _ in
             if d == t || d % 20 == 0 { print("\(stamp())     fetched \(d)/\(t) (\(n))") }
         }
         print("\(stamp())  release \(rel.manifest.version) verified in the app's cache (\(rel.dir.lastPathComponent))")
@@ -234,7 +234,7 @@ func main() async throws {
         for p in offer.plan.partitions { print("        new \(p.role) \(p.bytes) B \(p.content) “\(p.label)”") }
         print("        steps: \(offer.steps.map(\.code).joined(separator: " "))")
         // Screen: Confirm (type the disk name and the phrase; administrator approval)
-        print("\(stamp())  typing “\(offer.expected.diskName)” and “\(offer.expected.phrase)”; administrator approval (image stand-in)")
+        print("\(stamp())  typing “\(offer.expected.diskName.uppercased())” (case is forgiven); administrator approval (image stand-in)")
         let c = try ctl.confirm(planDigest: offer.plan.digest, typed: offer.expected, authorization: testApproval)
         print("\(stamp())  confirmed until \(c.validUntil) (authorization file written: \(c.authorizationFileWritten), images need none)")
         // Screen: Installing
@@ -263,12 +263,12 @@ func main() async throws {
         guard let target = list.first(where: \.removable) else { throw LiveError("nothing removable") }
         let before = try hc.topology()
         let offer = try ctl.offerRemoval(target.job)
-        print("\(stamp())  removal plan \(offer.plan.digest.prefix(16))…: macOS \(offer.plan.macOS.from) → \(offer.plan.macOS.to) B; steps \(offer.steps.map(\.code).joined(separator: " ")); type “\(offer.expected.diskName)” and “\(offer.expected.phrase)”")
+        print("\(stamp())  removal plan \(offer.plan.digest.prefix(16))…: macOS \(offer.plan.macOS.from) → \(offer.plan.macOS.to) B; steps \(offer.steps.map(\.code).joined(separator: " ")); type “\(offer.expected.diskName)”")
         func expectRefusal(_ what: String, _ body: () throws -> Void) {
             do { try body(); print("NOT REFUSED: \(what)"); exit(1) } catch { print("refused as it should: \(what): \((error as NSError).localizedDescription)") }
         }
         expectRefusal("removal begun before any confirmation") { _ = try ctl.beginRemoval(installJob: target.job, plan: offer.plan) }
-        expectRefusal("removal with the install phrase") { _ = try ctl.confirm(planDigest: offer.plan.digest, typed: TypedConfirmation(diskName: offer.expected.diskName, phrase: "ERASE 30 GB"), authorization: testApproval) }
+        expectRefusal("removal with another volume's name") { _ = try ctl.confirm(planDigest: offer.plan.digest, typed: TypedConfirmation(diskName: "Some Other Volume"), authorization: testApproval) }
         let c = try ctl.confirm(planDigest: offer.plan.digest, typed: offer.expected, authorization: testApproval)
         print("\(stamp())  confirmed until \(c.validUntil)")
         let job = try ctl.beginRemoval(installJob: target.job, plan: offer.plan)

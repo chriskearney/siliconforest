@@ -53,6 +53,8 @@ public struct HelperConfig: Sendable {
     public var log: InstallerLog?
     /// Preview10: the Full Disk Access probe (injectable for tests).
     public var privilegeProbe: @Sendable () -> PrivilegeReport = { FullDiskAccessProbe.run() }
+    /// Preview13: the volume owners who can authorise `bless` (read-only; injectable for tests).
+    public var startupOwners: @Sendable () -> StartupDiskOwners = { StartupDiskOwners.find(run: ProcessCapture.run, console: StartupDiskOwners.consoleUser()) }
     /// Preview10: set in the shipped helper (exit(0)); nil in tests.
     public var exitForFreshPrivilegeCheck: (@Sendable () -> Void)?
 
@@ -102,7 +104,7 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
     /// Live events per job (not journaled): step titles, SFStub progress, bytes, diskutil percentages.
     var live: [UUID: [LiveEvent]] = [:]
     var liveSeq: UInt64 = 0
-    private var passwords: [UUID: SecureBytes] = [:]
+    private var passwords: [UUID: (owner: String, secret: SecureBytes, at: Date)] = [:]
     /// Tests look at this to prove the password was wiped.
     public private(set) var lastPassword: SecureBytes?
 
@@ -174,6 +176,9 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
         e.recoveryBinary = config.recoveryBinary
         e.stubSource = config.stubSource
         e.bless = config.blessRunner
+        let jobID = j.jobID
+        e.blessCredential = { [weak self] in self?.takeCredential(jobID) }
+        e.log = { [weak self] line in self?.config.log?.info(line) }
         if (operation ?? st.plan?.operation ?? .install) == .install, e.stubSource == nil, case .internalDisk = config.target {
             throw HelperError.make(.refused, "the helper can't build the stub (no profile, icon or admin list)")
         }
@@ -332,18 +337,48 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
         }
     }
 
-    public func authorizeBless(job: String, password: Data, reply: @escaping (NSError?) -> Void) {
+    /// Preview13: the volume owner's login for the one-time bless (S65). Held in locked memory until S65 takes
+    /// it (or three hours pass, or the job ends), sent only on bless's stdin, then wiped. Never logged or journaled.
+    /// Without a real bless runner (disk images, lab builds) it is wiped unused, as before.
+    public func authorizeBless(job: String, owner: String, password: Data, reply: @escaping (NSError?) -> Void) {
         let secret = SecureBytes(password)
         lastPassword = secret
-        defer { secret.wipe() }
+        var keep = false
+        defer { if !keep { secret.wipe() } }
         do {
             let j = try journal(job)
-            lock.lock(); passwords[j.jobID]?.wipe(); passwords[j.jobID] = nil; lock.unlock()
-            // On a disk image there is no startup disk to change: S65 is simulated and recorded as
-            // needing Chris's approval. The password is wiped without being used or stored.
-            reply(HelperError.make(.needsApproval, "bless needs root and a real startup disk; on a disk image it is simulated",
-                                   detail: "the password was held in locked memory and wiped unused"))
-        } catch { reply(Self.nsError(error)) }
+            lock.lock(); passwords[j.jobID]?.secret.wipe(); passwords[j.jobID] = nil; lock.unlock()
+            guard config.blessRunner is PasswordBlessRunner else {
+                reply(HelperError.make(.needsApproval, "bless needs root and a real startup disk; on a disk image it is simulated",
+                                       detail: "the password was held in locked memory and wiped unused"))
+                return
+            }
+            let st = JobState(j.records)
+            guard st.plan?.operation == .install, st.end == nil else { throw HelperError.make(.refused, "this job doesn't set a startup disk") }
+            try requireOwner(owner)
+            holdCredential(job: j.jobID, owner: owner, secret: secret)
+            keep = true
+            config.log?.info("authorizeBless: ok (account \(owner); the password is held in memory only)")
+            reply(nil)
+        } catch { reply(logged(error)) }
+    }
+
+    func holdCredential(job: UUID, owner: String, secret: SecureBytes, at: Date = Date()) {
+        lock.lock(); passwords[job]?.secret.wipe(); passwords[job] = (owner, secret, at); lock.unlock()
+    }
+
+    func requireOwner(_ owner: String) throws {
+        guard BlessGuard.validOwner(owner), config.startupOwners().owners.contains(owner) else {
+            throw HelperError.make(.refused, "\(owner) isn't an account that can unlock this Mac's startup disk")
+        }
+    }
+
+    /// S65 takes the credential once; it is the engine's to wipe. Expired ones are wiped here.
+    func takeCredential(_ id: UUID) -> BlessCredential? {
+        lock.lock(); defer { lock.unlock() }
+        guard let p = passwords.removeValue(forKey: id) else { return nil }
+        guard Date().timeIntervalSince(p.at) < 3 * 3600 else { p.secret.wipe(); return nil }
+        return BlessCredential(owner: p.owner, secret: p.secret)
     }
 
     public func events(job: String, after sequence: UInt64, reply: @escaping (Data?, NSError?) -> Void) {

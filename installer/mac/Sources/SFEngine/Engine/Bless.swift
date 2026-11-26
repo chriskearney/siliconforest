@@ -20,6 +20,25 @@ public protocol BlessRunner: Sendable {
     func execute(_ argv: [String]) -> BlessResult
 }
 
+/// Preview13: bytes that live in locked memory and are zeroed on `wipe()` (SFHelperKit's `SecureBytes`).
+public protocol SecretBytesProvider: AnyObject, Sendable {
+    func withBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R
+    func wipe()
+}
+
+/// A volume owner's login for `bless` on Apple Silicon (owner authentication). Only the short name is ever
+/// logged or journaled; the password is never printed, stored or journaled, and is wiped after one use.
+public final class BlessCredential: @unchecked Sendable {
+    public let owner: String
+    public let secret: any SecretBytesProvider
+    public init(owner: String, secret: any SecretBytesProvider) { self.owner = owner; self.secret = secret }
+}
+
+/// A runner that can send a password on `bless`'s standard input (`--user <owner> --stdinpass`), and only that.
+public protocol PasswordBlessRunner: BlessRunner {
+    func execute(_ argv: [String], password: any SecretBytesProvider) -> BlessResult
+}
+
 public enum BlessGuard {
     public static let tool = "/usr/sbin/bless"
 
@@ -67,14 +86,40 @@ public enum BlessGuard {
 
     /// The one-time selection of the stub this install created: `bless --mount <its System volume>
     /// --setBoot --nextonly`. Refused unless the mount point is a /Volumes mount of the stub container's System volume.
-    public static func setNextBoot(mount: URL, stub: ImagePartition, mountedFrom: (String) -> String?) throws -> [String] {
+    public static func setNextBoot(mount: URL, stub: ImagePartition, owner: String? = nil, mountedFrom: (String) -> String?) throws -> [String] {
         let p = mount.path
         guard safePath(p), p.hasPrefix("/Volumes/"), p.count > "/Volumes/".count else { throw Refusal("the stub's mount point isn't a volume under /Volumes: \(p)") }
         guard let apfs = stub.apfs, let sys = apfs.volumes.first(where: { $0.roles.contains("System") }) else { throw Refusal("the stub has no System volume") }
         guard let dev = mountedFrom(p), (try? baseVolume(mountedFrom: dev)) == sys.identifier else {
             throw Refusal("\(p) isn't the stub's System volume (\(sys.identifier))")
         }
-        return [tool, "--mount", p, "--setBoot", "--nextonly"]
+        var argv = [tool, "--mount", p, "--setBoot", "--nextonly"]
+        if let owner {
+            // Preview13: the owner's password goes on stdin (`--stdinpass`), never on the command line.
+            guard validOwner(owner) else { throw Refusal("not a valid user name for bless: \(owner)") }
+            argv += ["--user", owner, "--stdinpass"]
+        }
+        return argv
+    }
+
+    /// A macOS short account name: letters, digits, dot, underscore, hyphen. Nothing that could be an option or a path.
+    public static func validOwner(_ s: String) -> Bool {
+        s.range(of: #"^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$"#, options: .regularExpression) != nil
+    }
+
+    /// The command sends a password on stdin.
+    public static func usesPassword(_ argv: [String]) -> Bool { argv.contains("--stdinpass") }
+
+    /// bless's output with the password (and its line) removed, in case a tool ever echoes it.
+    public static func scrub(_ text: String, password: String) -> String {
+        guard !password.isEmpty else { return text }
+        return text.replacingOccurrences(of: password, with: "•••")
+    }
+
+    /// bless said the account isn't allowed to change the startup disk, or needs a password.
+    public static func looksLikeOwnerAuthFailure(_ output: String) -> Bool {
+        let o = output.lowercased()
+        return o.contains("owner authentication") || o.contains("authentication required") || o.contains("not authorized") || o.contains("incorrect password")
     }
 
     public static let getBoot = [tool, "--getBoot"]
@@ -94,6 +139,11 @@ public enum BlessGuard {
     public static func isAllowed(_ argv: [String]) -> Bool {
         guard argv.first == tool else { return false }
         if argv == getBoot { return true }
+        // Preview13: exactly `--mount /Volumes/x --setBoot --nextonly --user <owner> --stdinpass`, and no other use of those flags.
+        if argv.count == 8 {
+            return argv[1] == "--mount" && safePath(argv[2]) && argv[2].hasPrefix("/Volumes/") && argv[3] == "--setBoot" && argv[4] == "--nextonly"
+                && argv[5] == "--user" && validOwner(argv[6]) && argv[7] == "--stdinpass"
+        }
         guard argv.count >= 4, argv.count <= 5, argv[1] == "--mount", argv[3] == "--setBoot", safePath(argv[2]) else { return false }
         if argv.count == 5 { return argv[4] == "--nextonly" && argv[2].hasPrefix("/Volumes/") }
         return argv[2] == "/" || argv[2].hasPrefix("/Volumes/")

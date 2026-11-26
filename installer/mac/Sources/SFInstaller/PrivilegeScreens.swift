@@ -96,13 +96,9 @@ struct LivePrivilegesScreen: View {
         default: return true
         }
     }
-    private var diskRowIsTappable: Bool {
-        switch live.privileges {
-        case .needsFullDiskAccess: return true
-        case .failed: return live.privileges.failedMentionsFullDiskAccess
-        default: return false
-        }
-    }
+    /// Preview13: the Full Disk Access row is a button whenever it is not passing (a failed check or a helper
+    /// that isn't approved yet can hide a missing Full Disk Access, so the pane is one click away).
+    private var diskRowIsTappable: Bool { live.privileges.fullDiskAccessRowIsTappable }
 
     @ViewBuilder private var helperRow: some View {
         if helperRowIsTappable {
@@ -113,7 +109,7 @@ struct LivePrivilegesScreen: View {
     }
     @ViewBuilder private var diskRow: some View {
         if diskRowIsTappable {
-            TappablePhaseRow(Copy.Privileges.diskRow, state: diskState) { live.openFullDiskAccess() }
+            TappablePhaseRow(Copy.Privileges.diskRow, state: diskState) { live.openFullDiskAccessAndRevealHelper() }
         } else {
             PhaseRow(Copy.Privileges.diskRow, state: diskState)
         }
@@ -128,12 +124,13 @@ struct LivePrivilegesScreen: View {
         case .needsHelperApproval:
             LoginItemsHelp()
         case .needsFullDiskAccess(let r):
-            FullDiskAccessHelp(report: r, helperPath: PrivilegeGate.helperPath(appBundle: live.appBundle))
+            FullDiskAccessHelp(report: r, helperPath: PrivilegeGate.helperPath(appBundle: live.appBundle), live: live)
         case .ready:
             Label(Copy.Privileges.continuing, systemImage: "checkmark.circle.fill").font(SFType.bodyStrong).foregroundStyle(theme.text)
         case .failed(let m):
             LiveErrorBox(message: m, live: live)
             LoginItemsHelp()
+            if live.privileges.failedMentionsFullDiskAccess { HelperFileButtons(live: live) }
         }
     }
 }
@@ -185,9 +182,22 @@ struct LoginItemsHelp: View {
     }
 }
 
+/// Preview13: macOS can't add an app to Full Disk Access from a link, so these two put the helper where the
+/// person can drag it into the list (Finder) or paste its path (the + button, ⌘⇧G).
+struct HelperFileButtons: View {
+    @ObservedObject var live: LiveRun
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(Copy.Privileges.showHelper) { live.revealHelper() }.buttonStyle(SFQuietButtonStyle()).fixedSize()
+            Button(Copy.Privileges.copyHelperPath) { live.copyHelperPath() }.buttonStyle(SFQuietButtonStyle()).fixedSize()
+        }
+    }
+}
+
 struct FullDiskAccessHelp: View {
     var report: PrivilegeReport
     var helperPath: String
+    @ObservedObject var live: LiveRun
     @Environment(\.theme) private var theme
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -201,13 +211,14 @@ struct FullDiskAccessHelp: View {
     }
     private var steps: some View {
         VStack(alignment: .leading, spacing: 6) {
-            step(1, "Click Open Full Disk Access Settings.")
-            step(2, "Turn on SFHelper in the list. macOS may ask for your password.")
-            step(3, "Not in the list? Click +, press ⌘⇧G, paste the path below, click Open, then turn SFHelper on.")
+            step(1, Copy.Privileges.fdaStep1)
+            step(2, Copy.Privileges.fdaStep2)
+            step(3, Copy.Privileges.fdaStep3)
             Text(helperPath).font(SFType.log).foregroundStyle(theme.text).textSelection(.enabled)
                 .padding(.vertical, 6).padding(.horizontal, 10)
                 .background(RoundedRectangle(cornerRadius: 8).fill(theme.text.opacity(0.06)))
                 .padding(.leading, 26)
+            HelperFileButtons(live: live).padding(.leading, 26)
         }
     }
     private func step(_ n: Int, _ t: String) -> some View {

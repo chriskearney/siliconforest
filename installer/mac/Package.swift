@@ -79,9 +79,9 @@ let package = Package(
         // The app's install path end to end against a disk image, with a kill and resume (lab tool, not in the app).
         .executableTarget(name: "sfappimage", dependencies: ["SFAppEngine", "SFHelperKit", "SFEngine", "SFLiveDisk", "SFInstallKit", "SFStub"]),
         // Same tests as an executable, for Command Line Tools-only Macs (see scripts/test.sh).
-        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub", "SFAppEngine"], path: "Tests/CLTRunner",
+        .executableTarget(name: "sfinstallkit-selftest", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub", "SFAppEngine", "SFCopy", "SFFlow"], path: "Tests/CLTRunner",
                           swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
-        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub", "SFAppEngine"],
+        .testTarget(name: "SFInstallKitTests", dependencies: ["SFInstallKit", "SFEngine", "SFLiveDisk", "SFHelperKit", "SFRecoveryKit", "SFStub", "SFAppEngine", "SFCopy", "SFFlow"],
                     swiftSettings: testSwiftSettings, linkerSettings: testLinkerSettings),
     ]
 )

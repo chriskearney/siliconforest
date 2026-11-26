@@ -22,13 +22,16 @@ public final class LiveRun: ObservableObject {
         public var started: Date?
         public var seconds: Double?
         public var id: String { code }
+        public init(code: String, title: String, writesDisk: Bool, state: RowState, started: Date? = nil, seconds: Double? = nil) {
+            self.code = code; self.title = title; self.writesDisk = writesDisk; self.state = state; self.started = started; self.seconds = seconds
+        }
     }
 
     public enum Activity: Equatable, Sendable {
         case idle
         case registering
         case waitingForHelperApproval
-        case downloading(file: String, done: Int64, total: Int64)
+        case downloading(FetchProgress)
         case importing
         case planning
         case waitingForAdmin
@@ -41,7 +44,6 @@ public final class LiveRun: ObservableObject {
     @Published public var activity: Activity = .idle
     @Published public var offer: InstallOffer?
     @Published public var typedName = ""
-    @Published public var typedPhrase = ""
     @Published public var release: ReleaseSummary?
     @Published public var job: String?
     @Published public var rows: [StepRow] = []
@@ -73,6 +75,12 @@ public final class LiveRun: ObservableObject {
     @Published public var blessReport: BlessReport?
     @Published public var restarting = false
     @Published public var restartError: String?
+    /// Preview13: the volume owner's login for `bless`. Typed on the Confirm screen (optional) or the finish screen.
+    @Published public var startupOwners: StartupDiskOwners?
+    @Published public var startupOwner = ""
+    @Published public var startupPassword = ""
+    @Published public var settingStartupDisk = false
+    @Published public var startupDiskError: String?
     private var removalTarget: String?
     // Preview10: the up-front privilege check.
     /// Where the person goes once every privilege is in place.
@@ -119,7 +127,7 @@ public final class LiveRun: ObservableObject {
             register: { try reg?() ?? .enabled },
             status: { st?() ?? (reg == nil ? .enabled : .notRegistered) },
             probe: { [controller] in try controller.privileges() },
-            openLoginItems: { DispatchQueue.main.async { if #available(macOS 13.0, *) { HelperRegistration.openLoginItems() } } },
+            openLoginItems: { DispatchQueue.main.async { if #available(macOS 13.0, *) { HelperRegistration.openLoginItems() } else { SystemLinks.open(.loginItems) } } },
             openFullDiskAccess: { DispatchQueue.main.async { SystemLinks.open(.fullDiskAccess) } },
             unregister: { try unreg?() ?? .notRegistered },
             reconnect: { [controller] in controller.reconnect() },
@@ -141,7 +149,7 @@ public final class LiveRun: ObservableObject {
     }
     public var typedMatches: Bool {
         guard let e = offer?.expected ?? resumeExpected else { return false }
-        return TypedConfirmation(diskName: typedName, phrase: typedPhrase).matches(e)
+        return TypedConfirmation(diskName: typedName).matches(e)
     }
     public var isWorking: Bool {
         switch activity { case .registering, .waitingForHelperApproval, .downloading, .importing, .planning, .waitingForAdmin, .starting: return true; default: return false }
@@ -178,6 +186,20 @@ public final class LiveRun: ObservableObject {
     public func openLoginItems() { gate.userOpensLoginItems(); startPolling() }
     /// "Open Full Disk Access Settings": one System Settings open for this click.
     public func openFullDiskAccess() { gate.userOpensFullDiskAccess(); startPolling() }
+    /// Preview13: the Full Disk Access pane opens, and SFHelper is selected in Finder so it can be dragged into the list.
+    public func openFullDiskAccessAndRevealHelper() {
+        openFullDiskAccess()
+        revealHelper()
+    }
+    /// Shows SFHelper in a Finder window (no Settings open).
+    public func revealHelper() {
+        let path = helperPath
+        if !HelperReveal.revealInFinder(path: path) { log.info("privileges: SFHelper not found at \(path); nothing to reveal") }
+        else { log.info("privileges: revealed SFHelper in Finder") }
+    }
+    /// Copies the helper's path to the pasteboard.
+    public func copyHelperPath() { HelperReveal.copyPath(helperPath); log.info("privileges: copied the SFHelper path") }
+    public var helperPath: String { PrivilegeGate.helperPath(appBundle: appBundle) }
 
     private func runPrivilegeCheck(byPerson: Bool) {
         Task {
@@ -277,10 +299,16 @@ public final class LiveRun: ObservableObject {
             do {
                 guard await privilegesStillReady(.install(bytes: bytes, name: name)) else { return }
                 log.info("fetch: downloading the release (\(origin))")
-                activity = .downloading(file: "SHA256SUMS", done: 0, total: 0)
+                activity = .downloading(FetchProgress(file: "SHA256SUMS", filesDone: 0, filesTotal: 0, bytes: 0))
                 let fetcher = ReleaseFetcher()
-                let local = try await fetcher.fetch(origin) { [weak self] f, d, t in
-                    Task { @MainActor in self?.activity = .downloading(file: f, done: d, total: t) }
+                let smoother = FetchProgressSmoother()
+                let local = try await fetcher.fetch(origin) { [weak self] f, d, t, b in
+                    guard let p = smoother.accept(file: f, done: d, total: t, bytes: b) else { return }
+                    Task { @MainActor in
+                        // Never let a late update replace a newer one, or the total change on screen.
+                        if case .downloading(let old) = self?.activity, old.filesTotal > 0, p.filesTotal != old.filesTotal || p.filesDone < old.filesDone { return }
+                        self?.activity = .downloading(p)
+                    }
                 }
                 activity = .importing
                 log.info("fetch: verified \(local.dir.lastPathComponent); handing it to the helper")
@@ -290,7 +318,8 @@ public final class LiveRun: ObservableObject {
                 log.info("plan: asking the helper to read the disk and plan")
                 offer = try await background { try c.offer(bytes: bytes, name: name) }
                 log.info("plan: offered \(offer?.plan.digest.prefix(12) ?? "")")
-                typedName = ""; typedPhrase = ""
+                if offer?.plan.operation == .install { await loadStartupOwners() }
+                typedName = ""
                 activity = .idle
                 session?.go(.liveConfirm)
             } catch {
@@ -303,18 +332,19 @@ public final class LiveRun: ObservableObject {
     /// authorization for this plan and disk), then begin and start.
     public func install() {
         guard let offer, typedMatches else { return }
-        let typed = TypedConfirmation(diskName: typedName, phrase: typedPhrase)
+        let typed = TypedConfirmation(diskName: typedName)
         Task {
             do {
                 activity = .waitingForAdmin
                 let c = controller
-                let auth = try await background { try c.requestAdmin(prompt: "SiliconForest Installer wants to change your disk: \(offer.expected.phrase).") }
+                let auth = try await background { try c.requestAdmin(prompt: "SiliconForest Installer \(offer.plan.operation == .remove ? "wants to remove SiliconForest from your disk." : "wants to take \(offer.gigabytes) GB from macOS to install SiliconForest.")") }
                 _ = try await background { try c.confirm(planDigest: offer.plan.digest, typed: typed, authorization: auth) }
                 activity = .starting
                 let removeJob = removalTarget
                 let removing = offer.plan.operation == .remove
                 let j = try await background { removing ? try c.beginRemoval(installJob: removeJob ?? "", plan: offer.plan) : try c.begin(offer.plan) }
                 job = j
+                if !removing { await passStartupLogin(job: j) }
                 isRemoval = removing
                 startedAt = nil; journal = []; blessReport = nil
                 installName = offer.plan.request?.installName ?? installName
@@ -361,7 +391,7 @@ public final class LiveRun: ObservableObject {
                 removalTarget = install.job
                 installName = install.name
                 isRemoval = true
-                typedName = ""; typedPhrase = ""
+                typedName = ""
                 activity = .idle
                 session?.go(.liveRemoveConfirm)
             } catch {
@@ -369,6 +399,58 @@ public final class LiveRun: ObservableObject {
                 lastError = describe(error); activity = .idle
                 log.error("remove: couldn't plan the removal: \(lastError ?? "")")
             }
+        }
+    }
+
+    // MARK: the startup disk's owner login (preview13)
+
+    /// The accounts that can unlock the startup disk, for the picker. Never fatal: without them the install still runs.
+    public func loadStartupOwners() async {
+        if startupOwners != nil { return }
+        let c = controller
+        do {
+            let o = try await background { try c.startupDiskOwners() }
+            startupOwners = o
+            if startupOwner.isEmpty || !o.owners.contains(startupOwner) { startupOwner = o.defaultOwner ?? "" }
+            log.info("startup disk: \(o.owners.count) account(s) can unlock it\(o.defaultOwner.map { " (default \($0))" } ?? "")")
+        } catch { log.error("startup disk: couldn't read the accounts that can unlock it: \(describe(error))") }
+    }
+
+    /// Before the job starts: hands the helper the login the person typed (if they did). It is cleared here at once.
+    private func passStartupLogin(job j: String) async {
+        guard !startupPassword.isEmpty, !startupOwner.isEmpty else { return }
+        let owner = startupOwner
+        let pw = Data(startupPassword.utf8)
+        startupPassword = ""
+        let c = controller
+        do {
+            try await background { try c.authorizeBless(job: j, owner: owner, password: pw) }
+            log.info("startup disk: the helper holds the login for \(owner) (in memory only)")
+        } catch {
+            log.error("startup disk: the helper didn't take the login: \(describe(error)); the finish screen can set it")
+        }
+    }
+
+    /// The finish screen's "Set Startup Disk": only the bless again, with the login typed there.
+    public func setStartupDisk() {
+        guard let j = job, !settingStartupDisk, !startupPassword.isEmpty, !startupOwner.isEmpty else { return }
+        settingStartupDisk = true; startupDiskError = nil
+        let owner = startupOwner
+        let pw = Data(startupPassword.utf8)
+        startupPassword = ""
+        Task {
+            do {
+                let c = controller
+                let r = try await background { try c.retryStartupSelection(job: j, owner: owner, password: pw) }
+                blessReport = r
+                if r.set { log.info("startup disk: set for the next start (as \(owner))") }
+                else { startupDiskError = r.note; log.error("startup disk: bless failed (as \(owner)): \(r.note)") }
+            } catch {
+                startupDiskError = describe(error)
+                let ns = error as NSError
+                log.error("startup disk: \(describe(error)) [\(ns.domain) \(ns.code)]")
+            }
+            settingStartupDisk = false
         }
     }
 
@@ -411,7 +493,7 @@ public final class LiveRun: ObservableObject {
     /// Re-confirm for an unfinished job (its own plan), then continue.
     public func reconfirmAndResume() {
         guard let j = job else { return }
-        let typed = TypedConfirmation(diskName: typedName, phrase: typedPhrase)
+        let typed = TypedConfirmation(diskName: typedName)
         Task {
             do {
                 let c = controller

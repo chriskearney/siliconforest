@@ -179,6 +179,10 @@ public final class InstallEngine: @unchecked Sendable {
     public var proof: InstallProof?
     /// The shipped app's helper only: runs the one-time `bless` (S65) and the removal's reset (U10). Nil: simulated.
     public var bless: BlessRunner?
+    /// Preview13: the volume owner's login for S65 (taken once, wiped after use). Nil: bless runs without one.
+    public var blessCredential: (@Sendable () -> BlessCredential?)?
+    /// A line for the helper's own log (never carries a password).
+    public var log: (@Sendable (String) -> Void)?
     /// A mount point's backing device (statfs); tests may replace it.
     public var mountedFrom: @Sendable (String) -> String? = BlessGuard.systemMountedFrom
     /// Where an APFS volume is already mounted (never mounts it): macOS's System volume, for the reset.

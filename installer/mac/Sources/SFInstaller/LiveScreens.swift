@@ -49,6 +49,10 @@ struct LiveFetchScreen: View {
                 VStack(alignment: .leading, spacing: 10) {
                     PhaseRow("Turn on the installer's helper", state: state(for: 0))
                     PhaseRow("Download and verify the release", state: state(for: 1), trailing: downloadText)
+                    if let f = downloadFraction {
+                        ProgressLine(value: f).padding(.leading, 36)
+                            .accessibilityLabel("Download progress")
+                    }
                     PhaseRow("Hand it to the helper (verified again there)", state: state(for: 2))
                     PhaseRow("Read this Mac's disk and make the plan", state: state(for: 3))
                 }
@@ -77,8 +81,13 @@ struct LiveFetchScreen: View {
         if case .failed = live.activity { return i == stage ? .fail : (i < stage ? .pass : .waiting) }
         return i < stage ? .pass : (i == stage ? .working : .waiting)
     }
+    /// Indeterminate (name and bytes only) until the file total is known; then "N of M files" and a bar.
     private var downloadText: String? {
-        if case .downloading(_, let d, let t) = live.activity, t > 0 { return "\(d)/\(t) files" }
+        if case .downloading(let p) = live.activity { return Copy.Download.label(done: p.filesDone, total: p.filesTotal, bytes: p.bytes) }
+        return nil
+    }
+    private var downloadFraction: Double? {
+        if case .downloading(let p) = live.activity { return p.fraction }
         return nil
     }
 }
@@ -93,28 +102,98 @@ struct LiveConfirmScreen: View {
                 ScreenHead(title: "Confirm the change", lead: "The helper made this plan from its own read of the disk. It does only what is listed here.")
                 LiveWarning()
                 if let o = live.offer {
-                    Panel {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Target: \(o.target)\(o.diskUUID.map { " (GPT \($0.prefix(8))…)" } ?? "")").font(SFType.bodyStrong).foregroundStyle(theme.text)
-                            Text("macOS (“\(o.expected.diskName)”) gives up \(o.gigabytes) GB: \(gb(o.plan.macOS.from)) → \(gb(o.plan.macOS.to)). Your files stay where they are.")
-                                .font(SFType.body).foregroundStyle(theme.text)
-                            ForEach(o.plan.partitions, id: \.role) { p in
-                                Text("New \(p.role) partition: \(gb(p.bytes)), \(p.content) “\(p.label)”").font(SFType.label).foregroundStyle(theme.textSecondary)
-                            }
-                            Text("Release \(o.releaseVersion), signature verified; stage 1 \(live.release?.stage1SHA256.prefix(8) ?? "")… (pinned v2). Plan \(o.plan.digest.prefix(12))….")
-                                .font(SFType.caption).foregroundStyle(theme.textTertiary)
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("To approve, type the name of the macOS volume: \(o.expected.diskName)").font(SFType.body).foregroundStyle(theme.text)
-                        SFTextField(o.expected.diskName, text: $live.typedName, width: 420)
-                        Text("and type: \(o.expected.phrase)").font(SFType.body).foregroundStyle(theme.text)
-                        SFTextField(o.expected.phrase, text: $live.typedPhrase, width: 420)
-                        Text("Then an administrator approves in the macOS dialog. The helper writes a short-lived authorization (2 hours) for exactly this plan and this disk.")
-                            .font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
-                    }
+                    ReviewSummary(offer: o, release: live.release, removal: false)
+                    ConfirmField(live: live, prompt: Copy.Confirm.typeName(o.expected.diskName), volume: o.expected.diskName,
+                                 note: Copy.Confirm.thenAdmin + " " + Copy.Confirm.installAfter)
+                    StartupDiskLogin(live: live, volume: o.expected.diskName, optional: true)
                 }
                 if case .failed(let m) = live.activity { LiveErrorBox(message: m, note: "Nothing was written: the disk changes only after you click Install.", live: live) }
+            }
+        }
+    }
+}
+
+/// Preview13: "What will change", one short block per partition, then the warning and a quiet footnote.
+struct ReviewSummary: View {
+    var offer: InstallOffer
+    var release: ReleaseSummary?
+    var removal: Bool
+    @Environment(\.theme) private var theme
+    var blocks: [Copy.Confirm.Block] {
+        let p = offer.plan
+        if removal {
+            let roles = ["stub": p.owned?.stub, "boot": p.owned?.boot, "root": p.owned?.root].compactMap { $0.value == nil ? nil : $0.key }
+            return Copy.Confirm.removeBlocks(volume: offer.expected.diskName, macOSFrom: p.macOS.from, macOSTo: p.macOS.to, roles: roles)
+        }
+        return Copy.Confirm.installBlocks(volume: offer.expected.diskName, macOSFrom: p.macOS.from, macOSTo: p.macOS.to,
+                                         partitions: p.partitions.map { Copy.Confirm.Part(role: $0.role, bytes: $0.bytes) })
+    }
+    var body: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(removal ? Copy.Confirm.removeHeader : Copy.Confirm.installHeader).font(SFType.bodyStrong).foregroundStyle(theme.text)
+                ForEach(blocks) { b in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(b.name).font(SFType.bodyStrong).foregroundStyle(theme.text)
+                        Text(b.change + (b.detail.map { " " + $0 } ?? "")).font(SFType.body).foregroundStyle(theme.text)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                if removal { Text(Copy.Confirm.removeIfStartup).font(SFType.label).foregroundStyle(theme.textSecondary) }
+                Label(Copy.Confirm.warning, systemImage: "exclamationmark.triangle.fill").font(SFType.bodyStrong).foregroundStyle(theme.caution)
+                Text(Copy.Confirm.footnote(target: offer.target + (offer.diskUUID.map { " (GPT \($0.prefix(8))…)" } ?? ""), version: offer.releaseVersion,
+                                          stage1: release.map { "\($0.stage1SHA256.prefix(8))…" }, plan: "\(offer.plan.digest.prefix(12))…", removal: removal))
+                    .font(SFType.caption).foregroundStyle(theme.textTertiary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// One typed confirmation: the macOS volume's name (case and spacing forgiven), with a green check when it matches.
+struct ConfirmField: View {
+    @ObservedObject var live: LiveRun
+    var prompt: String
+    var volume: String
+    var note: String?
+    @Environment(\.theme) private var theme
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(prompt).font(SFType.body).foregroundStyle(theme.text)
+            HStack(spacing: 10) {
+                SFTextField(volume, text: $live.typedName, width: 420)
+                if live.typedMatches {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(theme.ok).font(.system(size: 20))
+                        .accessibilityLabel("The name matches")
+                }
+            }
+            if let note { Text(note).font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true) }
+        }
+    }
+}
+
+/// Preview13: the volume owner's login for `bless`. Plain words; never "root". The password is only typed here and
+/// sent to the helper, which keeps it in memory for one use.
+struct StartupDiskLogin: View {
+    @ObservedObject var live: LiveRun
+    var volume: String
+    var optional: Bool
+    @Environment(\.theme) private var theme
+    var body: some View {
+        let owners = live.startupOwners?.owners ?? []
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Copy.Startup.header).font(SFType.bodyStrong).foregroundStyle(theme.text)
+            if owners.isEmpty && live.startupOwners != nil {
+                Text(Copy.Startup.noAccounts).font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(optional ? Copy.Startup.body(volume: volume) : Copy.Startup.finishNote).font(SFType.body).foregroundStyle(theme.text).fixedSize(horizontal: false, vertical: true)
+                if owners.count > 1 {
+                    Picker(Copy.Startup.account, selection: $live.startupOwner) { ForEach(owners, id: \.self) { Text($0).tag($0) } }
+                        .pickerStyle(.menu).frame(width: 420, alignment: .leading)
+                }
+                SecureField(Copy.Startup.field(owner: live.startupOwner), text: $live.startupPassword)
+                    .textFieldStyle(.roundedBorder).frame(width: 420)
+                    .disabled(live.settingStartupDisk || owners.isEmpty)
+                if optional { Text(Copy.Startup.optionalNote).font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true) }
             }
         }
     }
@@ -144,20 +223,62 @@ struct LiveInstallingScreen: View {
                     ProgressLine(value: Double(live.bytesDone) / Double(live.bytesTotal), height: 3)
                 }
             }
-            if live.currentCode == "S25" {
-                Text("diskutil: \(live.diskutilPercent.map { "\($0)% · " } ?? "")\(live.diskutilLine). macOS is still working on this; it can take a long time and may look stuck. Don't shut down.")
-                    .font(SFType.label).foregroundStyle(theme.caution).fixedSize(horizontal: false, vertical: true)
-            }
+            // The diskutil line and the "still working" notice share one reserved block under the bars, so
+            // nothing above or below moves when the shrink step starts or ends. The notice is only for that step.
+            ResizeNotice(visible: live.currentCode == "S25",
+                         line: "diskutil: \(live.diskutilPercent.map { "\($0)% · " } ?? "")\(live.diskutilLine)")
             if !live.detail.isEmpty { Text(live.detail).font(SFType.caption).foregroundStyle(theme.textSecondary).lineLimit(1) }
+            StepList(rows: live.rows)
+            LiveJournal(lines: live.journal)
+        }
+    }
+}
+
+/// "macOS is still working on this…": quiet, under the progress, in a fixed-height block (faded, not removed).
+struct ResizeNotice: View {
+    var visible: Bool
+    var line: String
+    @Environment(\.theme) private var theme
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(line).font(SFType.caption).foregroundStyle(theme.textSecondary).lineLimit(1)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "info.circle").font(.system(size: 11)).foregroundStyle(theme.textSecondary)
+                Text(Copy.Installing.stall).font(SFType.caption).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(minHeight: 40, alignment: .topLeading)
+        .opacity(visible ? 1 : 0)
+        .animation(.easeInOut(duration: 0.2), value: visible)
+        .accessibilityHidden(!visible)
+    }
+}
+
+/// The steps, all visible in a scrolling list that follows the one in progress (see `ScrollFollow`).
+struct StepList: View {
+    var rows: [LiveRun.StepRow]
+    @State private var follow = ScrollFollow()
+    private var activeIndex: Int? { rows.lastIndex { $0.state == .working } }
+    var body: some View {
+        ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(live.rows) { r in
+                // Lazy, so a row's appear/disappear means visible/not visible. Ids are the row positions:
+                // two steps can share a state code (S47 writes, then checks).
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
                         PhaseRow("\(r.code)  \(r.title)", state: r.state, trailing: r.seconds.map { duration($0) } ?? (r.state == .working ? "…" : nil), emphasized: r.state == .working)
+                            .id(i)
+                            .onAppear { follow.rowAppeared(i) }
+                            .onDisappear { follow.rowDisappeared(i) }
                     }
                 }
             }
             .frame(maxHeight: 300)
-            LiveJournal(lines: live.journal)
+            .onChange(of: activeIndex) { new in
+                guard follow.activeChanged(to: new), let new else { return }
+                withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(new, anchor: .center) }
+            }
+            .onAppear { if let a = activeIndex, follow.activeChanged(to: a) { proxy.scrollTo(a, anchor: .center) } }
         }
     }
 }
@@ -199,9 +320,7 @@ struct LiveStoppedScreen: View {
                     if let e = live.lastError { LiveErrorBox(message: e, note: nil, live: live) }
                     if let x = live.resumeExpected {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("To continue, confirm again: type \(x.diskName) and \(x.phrase).").font(SFType.body).foregroundStyle(theme.text)
-                            SFTextField(x.diskName, text: $live.typedName, width: 420)
-                            SFTextField(x.phrase, text: $live.typedPhrase, width: 420)
+                            ConfirmField(live: live, prompt: Copy.Confirm.typeNameAgain(x.diskName), volume: x.diskName, note: nil)
                         }
                     }
                     Text("Job \(live.job ?? "")").font(SFType.caption).foregroundStyle(theme.textTertiary).textSelection(.enabled)
@@ -247,7 +366,19 @@ struct LiveFinishScreen: View {
                     if live.restarting { Text("Restarting…").font(SFType.body).foregroundStyle(theme.text) }
                     Text(AfterHandoff.fallback).font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
                 } else {
-                    ScreenHead(title: "One last step", lead: "SiliconForest is on your disk and checked, but the installer couldn't set your Mac to start it\(b.map { $0.note.isEmpty ? "" : " (\($0.note))" } ?? ""). Do this yourself:")
+                    ScreenHead(title: "One last step", lead: "SiliconForest is on your disk and checked, but your Mac isn't set to start it yet\(b.map { $0.note.isEmpty ? "" : " (\($0.note))" } ?? ""). Set it here, or do it yourself below.")
+                    if b?.canRetry != false {
+                        Panel {
+                            VStack(alignment: .leading, spacing: 10) {
+                                StartupDiskLogin(live: live, volume: "your Mac's startup disk", optional: false)
+                                if live.settingStartupDisk { Text(Copy.Startup.setting).font(SFType.body).foregroundStyle(theme.text) }
+                                if let e = live.startupDiskError {
+                                    Label(Copy.Startup.failed(e), systemImage: "exclamationmark.triangle.fill").font(SFType.body).foregroundStyle(theme.caution).fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                        .task { await live.loadStartupOwners() }
+                    }
                     Panel {
                         VStack(alignment: .leading, spacing: 8) {
                             ForEach(Array(AfterHandoff.manualSteps(installName: live.installName, command: b?.manualCommand).enumerated()), id: \.offset) { i, t in
@@ -313,21 +444,8 @@ struct LiveRemoveConfirmScreen: View {
                 ScreenHead(title: "Confirm the removal", lead: "The helper made this plan from its own read of the disk and the install's journal. It deletes only the partitions that install created.")
                 LiveWarning()
                 if let o = live.offer {
-                    Panel {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Target: \(o.target)\(o.diskUUID.map { " (GPT \($0.prefix(8))…)" } ?? "")").font(SFType.bodyStrong).foregroundStyle(theme.text)
-                            Text("Deletes SiliconForest's stub, boot partition and root partition. macOS (“\(o.expected.diskName)”) grows back: \(gb(o.plan.macOS.from)) → \(gb(o.plan.macOS.to)). Your macOS files stay where they are.")
-                                .font(SFType.body).foregroundStyle(theme.text).fixedSize(horizontal: false, vertical: true)
-                            Text("If the startup disk points at SiliconForest it is set back to macOS first. Plan \(o.plan.digest.prefix(12))….").font(SFType.caption).foregroundStyle(theme.textTertiary)
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("To approve, type the name of the macOS volume: \(o.expected.diskName)").font(SFType.body).foregroundStyle(theme.text)
-                        SFTextField(o.expected.diskName, text: $live.typedName, width: 420)
-                        Text("and type: \(o.expected.phrase)").font(SFType.body).foregroundStyle(theme.text)
-                        SFTextField(o.expected.phrase, text: $live.typedPhrase, width: 420)
-                        Text("Then an administrator approves in the macOS dialog.").font(SFType.label).foregroundStyle(theme.textSecondary)
-                    }
+                    ReviewSummary(offer: o, release: live.release, removal: true)
+                    ConfirmField(live: live, prompt: Copy.Confirm.typeName(o.expected.diskName), volume: o.expected.diskName, note: Copy.Confirm.thenAdmin)
                 }
                 if case .failed(let m) = live.activity { LiveErrorBox(message: m, note: "Nothing was removed.", live: live) }
             }

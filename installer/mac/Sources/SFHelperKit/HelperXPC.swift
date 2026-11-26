@@ -22,8 +22,15 @@ import SFIdentity
     func removalPlan(installJob: String, reply: @escaping (Data?, NSError?) -> Void)
     /// Opens a removal job, if the helper's plan still has the digest the person approved.
     func beginRemoval(installJob: String, planDigest: String, reply: @escaping (String?, NSError?) -> Void)
-    /// The owner's password for `bless`: held in locked memory, sent on stdin, then wiped.
-    func authorizeBless(job: String, password: Data, reply: @escaping (NSError?) -> Void)
+    /// Preview13. The volume owner's login for `bless` (Apple Silicon needs owner authentication): the account's
+    /// short name (one of `startupOwners`) and its password, held in locked memory, sent only on bless's stdin,
+    /// then wiped. Never logged or journaled.
+    func authorizeBless(job: String, owner: String, password: Data, reply: @escaping (NSError?) -> Void)
+    /// Preview13. The local accounts that can authorise `bless` (`StartupDiskOwners`), read-only.
+    func startupOwners(reply: @escaping (Data?, NSError?) -> Void)
+    /// Preview13. For a finished install whose one-time next boot wasn't set: runs only the bless again with this
+    /// login (the same rules as `authorizeBless`). Replies with the job's `BlessReport`.
+    func retryStartupSelection(job: String, owner: String, password: Data, reply: @escaping (Data?, NSError?) -> Void)
     /// Journal records after `sequence` (the app's live view and its way to reattach).
     func events(job: String, after sequence: UInt64, reply: @escaping (Data?, NSError?) -> Void)
     /// The job's state, derived from its journal.
@@ -77,11 +84,11 @@ public enum HelperError {
 public enum HelperVerbs {
     public static let expected: Set<String> = [
         "helperInfoWithReply:", "readTopologyWithReply:", "beginWithPlan:reply:", "resumeWithJob:reply:", "rollbackWithJob:reply:",
-        "removalPlanWithInstallJob:reply:", "beginRemovalWithInstallJob:planDigest:reply:", "authorizeBlessWithJob:password:reply:",
+        "removalPlanWithInstallJob:reply:", "beginRemovalWithInstallJob:planDigest:reply:", "authorizeBlessWithJob:owner:password:reply:",
         "eventsWithJob:after:reply:", "jobStatusWithJob:reply:", "exportDiagnosticsWithJob:to:reply:",
         "importReleaseFrom:reply:", "planInstallWithRequest:reply:", "confirmWithPlanDigest:typed:authorization:reply:",
         "progressWithJob:after:reply:", "listInstallsWithReply:", "planRemovalWithInstallJob:reply:", "restartIntoInstalledSystemWithJob:reply:",
-        "checkPrivilegesWithReply:",
+        "checkPrivilegesWithReply:", "startupOwnersWithReply:", "retryStartupSelectionWithJob:owner:password:reply:",
     ]
 
     public static func selectors() -> Set<String> {

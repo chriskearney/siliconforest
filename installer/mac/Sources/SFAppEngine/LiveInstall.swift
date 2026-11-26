@@ -40,8 +40,9 @@ public final class ReleaseFetcher: @unchecked Sendable {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("org.siliconforest.installer/releases", isDirectory: true)
     }
 
-    /// (file, bytes so far, total bytes of this file)
-    public typealias Progress = @Sendable (String, Int64, Int64) -> Void
+    /// (file now being fetched, files finished, files in the release, bytes of finished files).
+    /// The file total is the length of SHA256SUMS: fixed from the first call, never the loop index.
+    public typealias Progress = @Sendable (String, Int64, Int64, Int64) -> Void
 
     public func fetch(_ origin: ReleaseOrigin, progress: Progress? = nil) async throws -> (dir: URL, manifest: ReleaseManifest) {
         let dir: URL
@@ -71,15 +72,22 @@ public final class ReleaseFetcher: @unchecked Sendable {
         }
         try sums.write(to: dir.appendingPathComponent("SHA256SUMS"), options: .atomic)
         try sig.write(to: dir.appendingPathComponent("SHA256SUMS.sig"), options: .atomic)
+        let total = Int64(entries.count)
+        var bytes: Int64 = 0
+        func size(_ u: URL) -> Int64 { ((try? FileManager.default.attributesOfItem(atPath: u.path)[.size]) as? NSNumber)?.int64Value ?? 0 }
+        progress?("SHA256SUMS", 0, total, 0)
         for (i, e) in entries.enumerated() {
             let dest = dir.appendingPathComponent(e.name)
-            if let h = try? FileHandle(forReadingFrom: dest), (try? SHA256Hasher.stream(h, limit: Int64.max)) == e.sha256 { try? h.close(); continue }
-            progress?(e.name, 0, Int64(i))
+            if let h = try? FileHandle(forReadingFrom: dest), (try? SHA256Hasher.stream(h, limit: Int64.max)) == e.sha256 {
+                try? h.close(); bytes += size(dest); progress?(e.name, Int64(i + 1), total, bytes); continue
+            }
+            progress?(e.name, Int64(i), total, bytes)
             switch origin {
             case .github(let tag):
                 let url = URL(string: "https://github.com/\(ReleaseOrigin.repository)/releases/download/\(tag)/\(e.name)")!
-                let (tmp, resp) = try await session.download(from: url)
-                guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw LiveError("couldn't download \(e.name)") }
+                let base = bytes
+                let (tmp, resp) = try await downloadWithBytes(url) { got in progress?(e.name, Int64(i), total, base + got) }
+                guard (resp as? HTTPURLResponse)?.statusCode == 200 else { try? FileManager.default.removeItem(at: tmp); throw LiveError("couldn't download \(e.name)") }
                 try? FileManager.default.removeItem(at: dest)
                 try FileManager.default.moveItem(at: tmp, to: dest)
             case .folder(let u):
@@ -88,13 +96,32 @@ public final class ReleaseFetcher: @unchecked Sendable {
             }
             let h = try FileHandle(forReadingFrom: dest); defer { try? h.close() }
             guard try SHA256Hasher.stream(h, limit: Int64.max) == e.sha256 else { throw LiveError("\(e.name) doesn't match SHA256SUMS") }
-            progress?(e.name, Int64(i + 1), Int64(entries.count))
+            bytes += size(dest)
+            progress?(e.name, Int64(i + 1), total, bytes)
         }
         let m: ReleaseManifest
         do { m = try SFRelease.verify(directory: dir, allowedSigners: allowedSigners, allowRehearsal: false) }
         catch let r as SFRelease.Refusal { throw LiveError("the release doesn't verify: \(r.reason)") }
         try StagePin.check(m)
         return (dir, m)
+    }
+
+    /// A download that reports the bytes received so far (the 300 MB root image is one file). The file is moved
+    /// out of the system's temporary location before the completion handler returns, as the system requires.
+    func downloadWithBytes(_ url: URL, onBytes: @escaping @Sendable (Int64) -> Void) async throws -> (URL, URLResponse) {
+        try await withCheckedThrowingContinuation { cont in
+            let keep = FileManager.default.temporaryDirectory.appendingPathComponent("sf-fetch-\(UUID().uuidString)")
+            let task = session.downloadTask(with: url) { tmp, resp, error in
+                if let error { cont.resume(throwing: error); return }
+                guard let tmp, let resp else { cont.resume(throwing: LiveError("the download returned nothing")); return }
+                do { try FileManager.default.moveItem(at: tmp, to: keep); cont.resume(returning: (keep, resp)) }
+                catch { cont.resume(throwing: error) }
+            }
+            // Foundation's Progress for the task is observable; its units are bytes once the length is known.
+            let obs = task.progress.observe(\.completedUnitCount, options: [.new]) { p, _ in onBytes(p.completedUnitCount) }
+            ObservationBox.hold(obs, for: task)
+            task.resume()
+        }
     }
 
     static func parseSums(_ d: Data) throws -> [(sha256: String, name: String)] {
@@ -162,6 +189,20 @@ public final class LiveInstallController: @unchecked Sendable {
     }
 
     public func begin(_ plan: EnginePlan) throws -> String { try call { try $0.begin(plan) } }
+
+    // Preview13: the volume owner's login for the one-time bless (owner authentication on Apple Silicon).
+    /// The local accounts that can unlock this Mac's startup disk (read-only).
+    public func startupDiskOwners() throws -> StartupDiskOwners {
+        try call { c in try Canonical.decoder().decode(StartupDiskOwners.self, from: try c.call(timeout: 30) { $0.startupOwners(reply: $1) }) }
+    }
+    /// Hands the helper the owner's login for this job's bless. The helper keeps it in locked memory, uses it once, wipes it.
+    public func authorizeBless(job: String, owner: String, password: Data) throws {
+        try call { c in try c.callVoid { $0.authorizeBless(job: job, owner: owner, password: password, reply: $1) } }
+    }
+    /// The finish screen's "Set Startup Disk": only the bless again, with this login.
+    public func retryStartupSelection(job: String, owner: String, password: Data) throws -> BlessReport {
+        try call { c in try Canonical.decoder().decode(BlessReport.self, from: try c.call(timeout: 90) { $0.retryStartupSelection(job: job, owner: owner, password: password, reply: $1) }) }
+    }
 
     // Preview7: Remove SiliconForest, and the restart after a one-time bless.
     public func installs() throws -> [InstalledInstall] {
@@ -283,6 +324,20 @@ public enum HelperRegistrar {
             return .notRegistered
         } catch {
             return status()
+        }
+    }
+}
+
+/// Keeps a KVO observation alive for as long as its URLSession task, then drops it.
+enum ObservationBox {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var held: [Int: NSKeyValueObservation] = [:]
+    static func hold(_ o: NSKeyValueObservation, for task: URLSessionTask) {
+        lock.lock(); held[task.taskIdentifier] = o; lock.unlock()
+        // Released when the task is gone: poll cheaply instead of subclassing the session.
+        DispatchQueue.global().async {
+            while task.state == .running || task.state == .suspended { Thread.sleep(forTimeInterval: 0.5) }
+            lock.lock(); held[task.taskIdentifier] = nil; lock.unlock()
         }
     }
 }

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import SFEngine
+@testable import SFHelperKit
 import SFInstallKit
 
 /// Real `hdiutil`/`diskutil` against disk images only (every mutating call passes the chokepoint).
@@ -149,5 +150,57 @@ struct ImageEngineTests {
         let ev = try #require(JobState(j.records).evidence[.S65])
         #expect(ev["blessed"]?.string == "no" && ev["exit"]?.int == 1)
         #expect(ev["manual"]?.string?.hasPrefix("sudo /usr/sbin/bless --mount \"/Volumes/") == true)
+    }
+
+    /// Preview13: the volume owner's login. The fake sees the password only through the secret's bytes (its stdin),
+    /// the journal never has it, it is wiped after the one use, and a retry after a failure uses a fresh login.
+    final class PasswordBlessRunner: SFEngine.PasswordBlessRunner, @unchecked Sendable {
+        private let lock = NSLock()
+        var calls: [[String]] = [], passwords: [String] = [], failFirst = true
+        func execute(_ argv: [String]) -> BlessResult {
+            lock.lock(); defer { lock.unlock() }
+            calls.append(argv)
+            if argv == BlessGuard.getBoot { return BlessResult(status: 0, output: "") }
+            return BlessResult(status: 1, output: "bless: owner authentication required")
+        }
+        func execute(_ argv: [String], password: any SecretBytesProvider) -> BlessResult {
+            lock.lock(); defer { lock.unlock() }
+            calls.append(argv)
+            let pw = password.withBytes { String(decoding: $0, as: UTF8.self) }
+            passwords.append(pw)
+            if failFirst && passwords.count == 1 { failFirst = false; return BlessResult(status: 1, output: "bless: incorrect password \(pw)") }
+            return BlessResult(status: 0, output: "")
+        }
+    }
+
+    @Test(.enabled(if: ImageLab.long)) func theOwnersLoginGoesOnlyToStdinAndIsNeverJournaled() throws {
+        let c = try ImageLab.fresh(.j293); defer { c.finish() }
+        let profile = try ImageLab.profile()
+        let plan = try ImageLab.plan(c, profile: profile)
+        let j = try ChainJournal(directory: c.journalDir)
+        let e = try ImageLab.engine(c, journal: j, profile: profile)
+        let runner = PasswordBlessRunner()
+        e.bless = runner
+        let secret = SecureBytes(Data("hunter2 hunter2".utf8))
+        e.blessCredential = { BlessCredential(owner: "chris", secret: secret) }
+        try e.begin(plan)
+        #expect(try e.run() == .handedOff, "a bless that fails must not fail the install")
+        #expect(runner.passwords == ["hunter2 hunter2"])
+        let call = try #require(runner.calls.first)
+        #expect(Array(call.suffix(3)) == ["--user", "chris", "--stdinpass"] && !call.joined(separator: " ").contains("hunter2"), "never an argument")
+        #expect(secret.isWiped && secret.isZeroed, "wiped after the one use")
+        let ev = try #require(JobState(j.records).evidence[.S65])
+        #expect(ev["blessed"]?.string == "no" && ev["needsPassword"]?.string == "yes" && ev["as"]?.string == "chris")
+        let text = try String(contentsOf: j.url, encoding: .utf8)
+        #expect(!text.contains("hunter2"), "the password is scrubbed from what bless said and never journaled")
+
+        // The finish screen's retry: only the bless, with a new login, on the finished job.
+        let retry = SecureBytes(Data("second try".utf8))
+        e.blessCredential = { BlessCredential(owner: "chris", secret: retry) }
+        try e.retryNextBoot()
+        #expect(runner.passwords == ["hunter2 hunter2", "second try"] && retry.isWiped)
+        let ev2 = try #require(JobState(j.records).evidence[.S65])
+        #expect(ev2["blessed"]?.string == "next boot only" && ev2["as"]?.string == "chris")
+        #expect(!(try String(contentsOf: j.url, encoding: .utf8)).contains("second try"))
     }
 }

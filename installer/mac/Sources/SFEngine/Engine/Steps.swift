@@ -488,24 +488,58 @@ extension InstallEngine {
         breadcrumb = nil
         let manual = vol.path.hasPrefix("/Volumes/") ? BlessGuard.manual(mountPath: vol.path) : BlessGuard.manual(volumeName: sys.name)
         let argv: [String]
-        do { argv = try BlessGuard.setNextBoot(mount: vol, stub: stub, mountedFrom: mountedFrom) } catch {
+        let cred = blessCredential?()
+        do { argv = try BlessGuard.setNextBoot(mount: vol, stub: stub, owner: cred?.owner, mountedFrom: mountedFrom) } catch {
+            cred?.secret.wipe()
             // Refusing to bless is not an install failure; nothing was run.
             try journal.append(.evidence, step: c, result: ["blessed": .s("no"), "why": .s("\(error)"), "manual": .s(manual)])
             return
         }
         try gate.admitBless(partition: stubUUID, now: topo)
-        let r = bless.execute(argv)
+        try runBless(argv: argv, owner: cred?.owner, credential: cred, sys: sys, vol: vol, manual: manual, code: c)
+    }
+
+    /// Runs the one-time bless and journals the outcome. A password, when there is one, goes only to the runner's
+    /// stdin, is wiped here after the one use, and is never journaled or logged (only the account's short name is).
+    private func runBless(argv: [String], owner: String?, credential: BlessCredential?, sys: ImageVolume, vol: URL, manual: String, code c: String) throws {
+        guard let bless else { return }
+        defer { credential?.secret.wipe() }
+        let r: BlessResult
+        var password = ""
+        if let credential, BlessGuard.usesPassword(argv), let pr = bless as? PasswordBlessRunner {
+            password = credential.secret.withBytes { String(decoding: $0, as: UTF8.self) }
+            r = pr.execute(argv, password: credential.secret)
+        } else {
+            r = bless.execute(argv)
+        }
+        let output = BlessGuard.scrub(r.output, password: password)
+        password = ""
+        let who: [String: JValue] = owner.map { ["as": .s($0)] } ?? [:]
         guard r.status == 0 else {
-            try journal.append(.evidence, step: c, result: ["blessed": .s("no"), "exit": .i(Int64(r.status)), "why": .s(String(r.output.prefix(300))), "manual": .s(manual)])
+            let authProblem = BlessGuard.looksLikeOwnerAuthFailure(output)
+            log?("bless failed: exit \(r.status)\(owner.map { " as \($0)" } ?? ""): \(output.prefix(2000))")
+            try journal.append(.evidence, step: c, result: who.merging(["blessed": .s("no"), "exit": .i(Int64(r.status)), "why": .s(String(output.prefix(1500))),
+                                                                       "needsPassword": .s(authProblem || owner == nil ? "yes" : "no"), "manual": .s(manual)]) { a, _ in a })
             return
         }
         // Confirm with `bless --getBoot` where it says anything: with --nextonly it may still report the
         // persistent selection, so "not reported" isn't a failure.
         let g = bless.execute(BlessGuard.getBoot)
         let named = g.status == 0 && BlessGuard.names(getBootOutput: g.output, volume: sys, mount: vol.path)
-        try journal.append(.evidence, step: c, result: ["blessed": .s("next boot only"), "exit": .i(0), "volume": .s(vol.path), "name": .s(sys.name),
-                                                         "confirmed": .s(named ? "getBoot names the stub" : "getBoot doesn't report the one-time selection"),
-                                                         "getboot": .s(String(g.output.prefix(200))), "manual": .s(manual)])
+        log?("bless: next boot set\(owner.map { " as \($0)" } ?? "")")
+        try journal.append(.evidence, step: c, result: who.merging(["blessed": .s("next boot only"), "exit": .i(0), "volume": .s(vol.path), "name": .s(sys.name),
+                                                                   "confirmed": .s(named ? "getBoot names the stub" : "getBoot doesn't report the one-time selection"),
+                                                                   "getboot": .s(String(g.output.prefix(200))), "manual": .s(manual)]) { a, _ in a })
+    }
+
+    /// The finish screen's "Set Startup Disk": only the bless again, for a finished install whose bless didn't take.
+    public func retryNextBoot() throws {
+        let st = state
+        guard let plan = st.plan, plan.operation == .install, let original = st.original else { throw EngineError(.blocked, "this isn't an install") }
+        guard st.end == .handedOff else { throw EngineError(.blocked, "this install isn't finished") }
+        try backend.arm(plan: plan, original: original)
+        let gate = Gate(plan: plan, original: original, created: st.created)
+        try setNextBoot(plan: plan, gate: gate)
     }
 
     /// U10, preview7: if the startup selection points at the stub this install made, set it back to macOS.

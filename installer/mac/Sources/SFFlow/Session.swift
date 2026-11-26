@@ -174,6 +174,10 @@ public final class Session: ObservableObject {
 
     /// The real install's state and actions (RunMode.live only).
     public private(set) var live: LiveRun?
+    /// Preview13: LiveRun's changes (every keystroke in the confirmation field, every progress tick) also
+    /// invalidate views that observe only the Session, such as the footer. Before this the footer's button
+    /// stayed disabled after the name matched until a click or focus change redrew it.
+    private var liveChanges: AnyCancellable?
 
     private var runner: InstallRunner?
     public private(set) var runTask: Task<Void, Never>?
@@ -194,6 +198,7 @@ public final class Session: ObservableObject {
         self.init(mode: .live, backend: backend, release: release)
         self.live = LiveRun(controller: controller, origin: origin, register: register, status: status, unregister: unregister)
         self.live?.session = self
+        self.liveChanges = self.live?.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
     public var isLive: Bool { mode == .live }
