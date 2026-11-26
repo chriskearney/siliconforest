@@ -33,7 +33,7 @@ public enum Copy {
     // MARK: 1. Welcome
     public enum Welcome {
         public static let title = "SiliconForest"
-        public static let lead = "A Darwin-based system that boots next to macOS."
+        public static let lead = "Built on Darwin and XNU. Runs Mac apps."
         public static let body = "macOS and your files are not changed. You choose which system to start when you turn on your Mac."
         public static let primary = "Get Started"
         public static let whatIs = "What is SiliconForest?"
