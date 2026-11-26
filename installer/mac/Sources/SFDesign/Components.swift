@@ -29,70 +29,119 @@ struct SFButtonFace: View {
     @Environment(\.buttonStateOverride) private var forced
     @State private var hovering = false
 
+    private var pressed: Bool { enabled && (isPressed || forced == .pressed) }
+    private var hover: Bool { enabled && !pressed && (hovering || forced == .hover) }
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: kind == .quiet ? 9 : 12, style: .continuous) }
+
     var body: some View {
-        let pressed = enabled && (isPressed || forced == .pressed)
-        let hover = enabled && !pressed && (hovering || forced == .hover)
-        let radius: CGFloat = kind == .quiet ? 9 : 12
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         switch kind {
-        case .primary:
-            label
-                .lineLimit(1)
-                .font(SFType.button)
-                .foregroundStyle(theme.onAccent)
-                .padding(.horizontal, 22)
-                .frame(minWidth: 120, minHeight: 44)
-                .fixedSize(horizontal: true, vertical: false)
-                .background(
-                    shape.fill(theme.accent)
-                        .overlay(shape.fill(LinearGradient(colors: [Color.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center)))
-                        .overlay(shape.fill(Color.white.opacity(hover ? 0.14 : 0)))
-                        .overlay(shape.fill(Color.black.opacity(pressed ? 0.16 : 0)))
-                        .overlay(shape.strokeBorder(Color.white.opacity(hover ? 0.35 : 0.0), lineWidth: 1))
-                )
-                .shadow(color: theme.accent.opacity(enabled ? (theme.isDark ? 0.35 : 0.2) : 0), radius: hover ? 18 : 14, y: pressed ? 2 : 4)
-                .opacity(enabled ? 1 : 0.4)
-                .saturation(enabled ? 1 : 0.3)
-                .scaleEffect(pressed ? 0.98 : 1)
-                .contentShape(shape)
-                .onHover { hovering = $0 }
-        case .secondary, .quiet:
-            let quiet = kind == .quiet
-            let ink = tint ?? theme.text
-            label
-                .lineLimit(1)
-                .font(quiet ? SFType.label.weight(.semibold) : SFType.button.weight(.medium))
-                .foregroundStyle(ink)
-                .padding(.horizontal, quiet ? 14 : 18)
-                .frame(minWidth: quiet ? 0 : 96, minHeight: quiet ? 34 : 44)
-                .fixedSize(horizontal: true, vertical: false)
-                .background(
-                    shape.fill(theme.isDark ? Color.white.opacity(pressed ? 0.05 : (hover ? 0.17 : 0.09)) : Color.white.opacity(pressed ? 0.55 : (hover ? 0.95 : 0.78)))
-                        .overlay(shape.fill(Color.black.opacity(pressed ? 0.10 : 0)))
-                        .overlay(shape.strokeBorder(hover || pressed ? (tint ?? theme.accent) : (tint ?? theme.textSecondary).opacity(0.62), lineWidth: hover || pressed ? 1.6 : 1.25))
-                )
-                .shadow(color: theme.shadow.opacity(enabled && !pressed ? 0.35 : 0), radius: hover ? 10 : 6, y: hover ? 3 : 2)
-                .opacity(enabled ? 1 : 0.42)
-                .scaleEffect(pressed ? 0.98 : 1)
-                .contentShape(shape)
-                .onHover { hovering = $0 }
-        case .destructive:
-            label
-                .lineLimit(1)
-                .font(SFType.button)
-                .foregroundStyle(enabled ? (theme.isDark ? Color(hex: 0x1A0D09) : .white) : theme.critical)
-                .padding(.horizontal, 22).frame(minWidth: 120, minHeight: 44)
-                .fixedSize(horizontal: true, vertical: false)
-                .background(
-                    shape.fill(enabled ? theme.critical : (theme.isDark ? Color.white.opacity(0.05) : Color.white.opacity(0.6)))
-                        .overlay(shape.fill(Color.white.opacity(hover ? 0.14 : 0)))
-                        .overlay(shape.fill(Color.black.opacity(pressed ? 0.18 : 0)))
-                        .overlay(shape.strokeBorder(theme.critical.opacity(enabled ? 0 : 0.8), lineWidth: 1.4))
-                )
-                .scaleEffect(pressed ? 0.98 : 1)
-                .contentShape(shape)
-                .onHover { hovering = $0 }
+        case .primary: primaryFace
+        case .secondary, .quiet: borderedFace
+        case .destructive: destructiveFace
         }
+    }
+
+    // MARK: primary
+
+    private var primaryFill: some View {
+        let top: LinearGradient = LinearGradient(colors: [Color.white.opacity(0.16), Color.clear], startPoint: .top, endPoint: .center)
+        let lift: Double = hover ? 0.14 : 0
+        let dim: Double = pressed ? 0.16 : 0
+        let rim: Double = hover ? 0.35 : 0
+        return shape.fill(theme.accent)
+            .overlay(shape.fill(top))
+            .overlay(shape.fill(Color.white.opacity(lift)))
+            .overlay(shape.fill(Color.black.opacity(dim)))
+            .overlay(shape.strokeBorder(Color.white.opacity(rim), lineWidth: 1))
+    }
+
+    private var primaryFace: some View {
+        let glow: Double = enabled ? (theme.isDark ? 0.35 : 0.2) : 0
+        let blur: CGFloat = hover ? 18 : 14
+        let drop: CGFloat = pressed ? 2 : 4
+        return label
+            .lineLimit(1)
+            .font(SFType.button)
+            .foregroundStyle(theme.onAccent)
+            .padding(.horizontal, 22)
+            .frame(minWidth: 120, minHeight: 44)
+            .fixedSize(horizontal: true, vertical: false)
+            .background(primaryFill)
+            .shadow(color: theme.accent.opacity(glow), radius: blur, y: drop)
+            .opacity(enabled ? 1 : 0.4)
+            .saturation(enabled ? 1 : 0.3)
+            .scaleEffect(pressed ? 0.98 : 1)
+            .contentShape(shape)
+            .onHover { hovering = $0 }
+    }
+
+    // MARK: secondary and quiet
+
+    private var borderedFill: Color {
+        if theme.isDark { return Color.white.opacity(pressed ? 0.05 : (hover ? 0.17 : 0.09)) }
+        return Color.white.opacity(pressed ? 0.55 : (hover ? 0.95 : 0.78))
+    }
+
+    private var borderedBackground: some View {
+        let accented: Bool = hover || pressed
+        let base: Color = tint ?? theme.textSecondary
+        let edge: Color = accented ? (tint ?? theme.accent) : base.opacity(0.62)
+        let width: CGFloat = accented ? 1.6 : 1.25
+        let dim: Double = pressed ? 0.10 : 0
+        return shape.fill(borderedFill)
+            .overlay(shape.fill(Color.black.opacity(dim)))
+            .overlay(shape.strokeBorder(edge, lineWidth: width))
+    }
+
+    private var borderedFace: some View {
+        let quiet: Bool = kind == .quiet
+        let ink: Color = tint ?? theme.text
+        let font: Font = quiet ? SFType.label.weight(.semibold) : SFType.button.weight(.medium)
+        let lift: Double = (enabled && !pressed) ? 0.35 : 0
+        let blur: CGFloat = hover ? 10 : 6
+        let drop: CGFloat = hover ? 3 : 2
+        return label
+            .lineLimit(1)
+            .font(font)
+            .foregroundStyle(ink)
+            .padding(.horizontal, quiet ? 14 : 18)
+            .frame(minWidth: quiet ? 0 : 96, minHeight: quiet ? 34 : 44)
+            .fixedSize(horizontal: true, vertical: false)
+            .background(borderedBackground)
+            .shadow(color: theme.shadow.opacity(lift), radius: blur, y: drop)
+            .opacity(enabled ? 1 : 0.42)
+            .scaleEffect(pressed ? 0.98 : 1)
+            .contentShape(shape)
+            .onHover { hovering = $0 }
+    }
+
+    // MARK: destructive
+
+    private var destructiveBackground: some View {
+        let armed: Color = theme.critical
+        let idle: Color = theme.isDark ? Color.white.opacity(0.05) : Color.white.opacity(0.6)
+        let lift: Double = hover ? 0.14 : 0
+        let dim: Double = pressed ? 0.18 : 0
+        let edge: Double = enabled ? 0 : 0.8
+        return shape.fill(enabled ? armed : idle)
+            .overlay(shape.fill(Color.white.opacity(lift)))
+            .overlay(shape.fill(Color.black.opacity(dim)))
+            .overlay(shape.strokeBorder(theme.critical.opacity(edge), lineWidth: 1.4))
+    }
+
+    private var destructiveFace: some View {
+        let armedInk: Color = theme.isDark ? Color(hex: 0x1A0D09) : Color.white
+        return label
+            .lineLimit(1)
+            .font(SFType.button)
+            .foregroundStyle(enabled ? armedInk : theme.critical)
+            .padding(.horizontal, 22)
+            .frame(minWidth: 120, minHeight: 44)
+            .fixedSize(horizontal: true, vertical: false)
+            .background(destructiveBackground)
+            .scaleEffect(pressed ? 0.98 : 1)
+            .contentShape(shape)
+            .onHover { hovering = $0 }
     }
 }
 
