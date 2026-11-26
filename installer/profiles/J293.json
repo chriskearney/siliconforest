@@ -23,7 +23,7 @@
         "major": 27,
         "gate": "S11",
         "passed": false,
-        "reason": "macOS 27 is a required target. An APFS container resize failure (-69606) was reported on an M1 Pro running 27.0.1, so release builds refuse it until a real shrink passes on T8103.",
+        "reason": "A resize failure (APFS -69606) was reported on an M1 Pro running macOS 27.0.1 (asahi-installer #448). Release builds no longer refuse macOS 27 (Chris, 25 Nov 2026); a real shrink on T8103 has not been verified yet. If the resize fails, the installer stops, the journal shows it, and Undo Everything restores the layout.",
         "source": "https://github.com/AsahiLinux/asahi-installer/issues/448"
       }
     ]

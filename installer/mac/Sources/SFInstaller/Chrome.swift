@@ -520,6 +520,11 @@ struct DetailsDrawer: View {
         if let f = s.facts {
             out.append(LogLine(time: t, level: .info, text: "hw.model \(f.hwModel ?? "?") · target \(f.board ?? "?") · \(f.chipName ?? "?")"))
             out.append(LogLine(time: t, level: .info, text: "macOS \(f.macOSVersion ?? "?") (\(f.macOSBuild ?? "?")) · firmware \(f.systemFirmware ?? "?")"))
+            // A major the profile still flags (macOS 27): allowed, but its note stays visible here (preview9).
+            if let major = f.macOSVersion.flatMap({ OSVersion($0).parts.first }),
+               let g = s.profile?.support.gatedMajors.first(where: { $0.major == major && !$0.passed }) {
+                out.append(LogLine(time: t, level: .info, text: "note: macOS \(g.major) is allowed. \(g.reason)"))
+            }
         }
         if let d = s.disk {
             let cls = d.classify()

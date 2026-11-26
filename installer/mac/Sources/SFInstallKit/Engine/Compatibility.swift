@@ -20,8 +20,6 @@ public enum Finding: Sendable, Hashable {
     case macOSTooOld(have: String, need: String)
     case macOSBlocked(major: Int, reason: String)
     case macOSUntested(have: String, newestTested: Int)
-    /// A required target still behind its gate: refused in release builds, allowed in dry runs.
-    case macOSGated(major: Int, gate: String, reason: String)
     case macOSUnknown
     case firmwareCurrent
     case firmwareOld(have: String, need: String)
@@ -39,6 +37,8 @@ public enum Finding: Sendable, Hashable {
     case noMacOSContainer
     case powerConnected
     case onBattery(percent: Int?)
+    /// On battery, but above `CompatibilityChecker.minimumBatteryPercent`: allowed.
+    case onBatteryEnough(percent: Int)
     case internetConnected
     case internetOffline
     case internetNotChecked
@@ -55,9 +55,13 @@ public enum EntryState: Sendable, Hashable {
 
 public enum CompatibilityChecker {
     /// The checks, in the order the UI reveals them.
-    /// `allowGatedMajors`: dev builds and dry runs may pass a gated major (D11); release builds refuse it.
+    /// On battery, the install is refused at or below this charge (preview9). On AC power it never is.
+    public static let minimumBatteryPercent = 50
+
+    /// A "gated" major (macOS 27) is no longer refused (preview9, Chris): it passes, and the details list carries
+    /// the profile's note about the resize error reported on it (`DeviceProfile.Support.gatedMajors`).
     public static func run(facts: SystemFacts, snapshot: DiskSnapshot, profile: DeviceProfile?,
-                           release: ReleaseInfo = .placeholder, allowGatedMajors: Bool = false) -> [CompatibilityCheck] {
+                           release: ReleaseInfo = .placeholder) -> [CompatibilityCheck] {
         var out: [CompatibilityCheck] = []
         func add(_ k: CompatibilityCheck.Kind, _ s: CompatibilityCheck.Status, _ f: Finding) { out.append(.init(kind: k, status: s, finding: f)) }
 
@@ -69,7 +73,7 @@ public enum CompatibilityChecker {
             add(.thisMac, .fail, .unsupportedMac(this: this.isEmpty ? "This Mac" : this, supported: "MacBook Pro (13-inch, M1, 2020)"))
         }
 
-        // macOS: within the profile's range (D11 blocks untested new majors)
+        // macOS: within the profile's range (D11 still refuses majors above the profile's newest allowed one)
         let minimum = profile?.support.minMacOS ?? "13.5"
         if let v = facts.macOSVersion {
             let major = OSVersion(v).parts.first ?? 0
@@ -77,9 +81,6 @@ public enum CompatibilityChecker {
                 add(.macOS, .fail, .macOSTooOld(have: v, need: minimum))
             } else if let b = profile?.support.blockedMajors.first(where: { $0.major == major }) {
                 add(.macOS, .fail, .macOSBlocked(major: b.major, reason: b.reason))
-            } else if let g = profile?.support.gatedMajors.first(where: { $0.major == major && !$0.passed }) {
-                add(.macOS, allowGatedMajors ? .warning : .fail,
-                    allowGatedMajors ? .macOSGated(major: g.major, gate: g.gate, reason: g.reason) : .macOSBlocked(major: g.major, reason: g.reason))
             } else if let max = profile?.support.maximumTestedMajor, major > max {
                 add(.macOS, .fail, .macOSBlocked(major: major, reason: "Not tested yet."))
             } else {
@@ -135,8 +136,15 @@ public enum CompatibilityChecker {
             add(.freeSpace, .fail, .noMacOSContainer)
         }
 
-        // Power: AC required (ENGINE §2 blocks Install until connected)
-        add(.power, facts.power.onACPower ? .pass : .fail, facts.power.onACPower ? .powerConnected : .onBattery(percent: facts.power.batteryPercent))
+        // Power: AC always passes. On battery it passes above 50% and is refused at 50% or lower; a charge that can't
+        // be read counts as low (the check can't show it is above 50%).
+        if facts.power.onACPower {
+            add(.power, .pass, .powerConnected)
+        } else if let pct = facts.power.batteryPercent, pct > minimumBatteryPercent {
+            add(.power, .pass, .onBatteryEnough(percent: pct))
+        } else {
+            add(.power, .fail, .onBattery(percent: facts.power.batteryPercent))
+        }
 
         // Internet
         switch facts.internet {

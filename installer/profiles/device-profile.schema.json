@@ -49,7 +49,7 @@
         },
         "gated_majors": {
           "type": "array",
-          "description": "Majors the product must support but release builds refuse until the named spike has passed on real hardware.",
+          "description": "Majors the product supports that carry a note: a spike that has not yet passed on real hardware. Since preview9 they are allowed (not refused); the note is shown in the installer's details.",
           "items": {
             "type": "object",
             "additionalProperties": false,

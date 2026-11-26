@@ -318,7 +318,7 @@ public final class Session: ObservableObject {
         let matched = ProfileStore.profile(matching: f)
         // The real install has no fallback profile: an unsupported Mac fails the first check.
         profile = matched ?? (isLive ? nil : ProfileStore.profile(id: "J293"))
-        checks = CompatibilityChecker.run(facts: f, snapshot: s, profile: matched, release: release, allowGatedMajors: isDryRun)
+        checks = CompatibilityChecker.run(facts: f, snapshot: s, profile: matched, release: release)
         entry = CompatibilityChecker.entryState(snapshot: s, journal: nil)
         selectedInstall = ownedInstall
         if let c = constraints, siliconForestSize == 0 || siliconForestSize > c.maximum { setSize(c.recommended) }

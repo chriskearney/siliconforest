@@ -4,6 +4,7 @@ import Testing
 
 private func fixture(_ name: String) throws -> DiskFixture { try DiskFixture.named(name) }
 private func j293() throws -> DeviceProfile { try #require(ProfileStore.profile(id: "J293")) }
+private func j313() throws -> DeviceProfile { try #require(ProfileStore.profile(id: "J313")) }
 
 /// Enlarge a fixture disk so the macOS container (and the disk) have `capacity` bytes, leaving used space unchanged.
 private func diskWithCapacity(_ capacity: Int64, from base: PhysicalDisk) -> PhysicalDisk {
@@ -172,12 +173,40 @@ struct CompatibilityTests {
         #expect(checks.first?.kind == .thisMac)
     }
 
-    @Test func fullDiskAndBatteryBlock() throws {
+    @Test func fullDiskBlocks() throws {
         let f = try fixture("j293-256-full")
         let checks = CompatibilityChecker.run(facts: f.facts, snapshot: f.snapshot, profile: try j293())
         #expect(!CompatibilityChecker.canProceed(checks))
         #expect(checks.first { $0.kind == .freeSpace }?.status == .fail)
-        #expect(checks.first { $0.kind == .power }?.status == .fail)   // AC is required
+        // The fixture is on battery at 64%: above 50%, so power passes (preview9). Free space is what blocks.
+        #expect(f.facts.power.onACPower == false && f.facts.power.batteryPercent == 64)
+        #expect(checks.first { $0.kind == .power }?.status == .pass)
+    }
+
+    /// Preview9: on battery it blocks only at 50% or lower; AC always passes.
+    @Test func batteryBlocksOnlyAtFiftyPercentOrLessOffAC() throws {
+        let f = try fixture("j293-512")
+        func power(ac: Bool, _ pct: Int?) -> (CompatibilityCheck.Status?, Finding?) {
+            var facts = f.facts
+            facts.power = PowerState(onACPower: ac, batteryPercent: pct)
+            let c = CompatibilityChecker.run(facts: facts, snapshot: f.snapshot, profile: try! j293()).first { $0.kind == .power }
+            return (c?.status, c?.finding)
+        }
+        #expect(power(ac: false, 50).0 == .fail, "50% on battery blocks")
+        #expect(power(ac: false, 51).0 == .pass, "51% on battery passes")
+        #expect(power(ac: false, 100).0 == .pass, "100% on battery passes")
+        #expect(power(ac: false, 0).0 == .fail)
+        #expect(power(ac: false, nil).0 == .fail, "a charge that can't be read is not shown to be above 50%")
+        #expect(power(ac: true, 10).0 == .pass, "AC always passes, even at 10%")
+        #expect(power(ac: true, nil).0 == .pass)
+        #expect(power(ac: true, 100).1 == .powerConnected)
+        #expect(power(ac: false, 50).1 == .onBattery(percent: 50))
+        #expect(power(ac: false, 51).1 == .onBatteryEnough(percent: 51))
+        // Only the power row changes the verdict.
+        var low = f.facts; low.power = PowerState(onACPower: false, batteryPercent: 50)
+        #expect(!CompatibilityChecker.canProceed(CompatibilityChecker.run(facts: low, snapshot: f.snapshot, profile: try j293())))
+        var ok = f.facts; ok.power = PowerState(onACPower: false, batteryPercent: 51)
+        #expect(CompatibilityChecker.canProceed(CompatibilityChecker.run(facts: ok, snapshot: f.snapshot, profile: try j293())))
     }
 
     @Test func unsupportedMacFails() throws {
@@ -192,13 +221,17 @@ struct CompatibilityTests {
         facts.macOSVersion = "13.4"
         let checks = CompatibilityChecker.run(facts: facts, snapshot: try fixture("j293-512").snapshot, profile: try j293())
         #expect(checks.first { $0.kind == .macOS }?.status == .fail)
+        // macOS 27 is no longer refused (preview9): it passes in release builds and dry runs alike.
         facts.macOSVersion = "27.0"
-        let blocked = CompatibilityChecker.run(facts: facts, snapshot: try fixture("j293-512").snapshot, profile: try j293())
-        if case .macOSBlocked(let major, _)? = blocked.first(where: { $0.kind == .macOS })?.finding { #expect(major == 27) } else { Issue.record("27 not blocked in a release build") }
-        let dev = CompatibilityChecker.run(facts: facts, snapshot: try fixture("j293-512").snapshot, profile: try j293(), allowGatedMajors: true)
-        #expect(dev.first { $0.kind == .macOS }?.status == .warning)
+        let m27 = CompatibilityChecker.run(facts: facts, snapshot: try fixture("j293-512").snapshot, profile: try j293())
+        #expect(m27.first { $0.kind == .macOS }?.status == .pass)
+        facts.macOSVersion = "27.2.1"
+        let m2721 = CompatibilityChecker.run(facts: facts, snapshot: try fixture("j293-512").snapshot, profile: try j313())
+        #expect(m2721.first { $0.kind == .macOS }?.status == .pass)
+        let m2721Pro = CompatibilityChecker.run(facts: facts, snapshot: try fixture("j293-512").snapshot, profile: try j293())
+        #expect(CompatibilityChecker.canProceed(m2721Pro))   // nothing else blocks the ready fixture on 27.2.1
         facts.macOSVersion = "28.0"
-        let tooNew = CompatibilityChecker.run(facts: facts, snapshot: try fixture("j293-512").snapshot, profile: try j293(), allowGatedMajors: true)
+        let tooNew = CompatibilityChecker.run(facts: facts, snapshot: try fixture("j293-512").snapshot, profile: try j293())
         #expect(tooNew.first { $0.kind == .macOS }?.status == .fail)
         #expect(OSVersion("12.3") > OSVersion("12.2.1"))
         #expect(OSVersion("26.5.2") > OSVersion("15.6"))

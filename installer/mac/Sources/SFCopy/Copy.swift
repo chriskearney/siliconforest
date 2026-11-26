@@ -75,7 +75,6 @@ public enum Copy {
             case .macOSTooOld(let have, let need): return "macOS \(have). Needs \(need) or later"
             case .macOSBlocked(let major, _): return "macOS \(major) isn't tested yet"
             case .macOSUntested(let have, _): return "macOS \(have) isn't tested yet"
-            case .macOSGated(let major, let gate, _): return "macOS \(major): allowed in this dry run; release builds wait for test \(gate)"
             case .macOSUnknown: return "Couldn't read the macOS version"
             case .firmwareCurrent: return "Up to date"
             case .firmwareOld: return "Needs a macOS update"
@@ -94,6 +93,7 @@ public enum Copy {
             case .noMacOSContainer: return "macOS's container wasn't found"
             case .powerConnected: return "Connected"
             case .onBattery(let pct): return pct.map { "On battery (\($0)%). Connect the charger" } ?? "On battery. Connect the charger"
+            case .onBatteryEnough(let pct): return "On battery (\(pct)%). Enough to continue"
             case .internetConnected: return "Connected"
             case .internetOffline: return "Not connected"
             case .internetNotChecked: return "Checked before downloading"
@@ -129,7 +129,7 @@ public enum Copy {
                              body: "SiliconForest needs at least \(Bytes.format(need)), and macOS must keep \(Bytes.format(reserve)). Free up \(Bytes.format(short)), then check again.",
                              actions: ["Open Storage Settings", Common.checkAgain])
             case .onBattery:
-                return .init(title: "Connect your charger", body: "The disk can't be resized on battery. Plug in your Mac, then check again.",
+                return .init(title: "Connect your charger", body: "The battery is at 50% or lower, and the disk shouldn't be resized on a low battery. Plug in your Mac, then check again.",
                              actions: [Common.checkAgain])
             case .firmwareOld:
                 return .init(title: "Update macOS first", body: "Your Mac's startup firmware is older than SiliconForest needs. A macOS update brings it up to date.",

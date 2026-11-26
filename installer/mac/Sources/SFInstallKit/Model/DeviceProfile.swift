@@ -40,7 +40,7 @@ public struct DeviceProfile: Codable, Sendable, Identifiable, Hashable {
         public var maximumTestedMajor: Int? = nil
         /// macOS majors the installer refuses, with the reason shown to the user.
         public var blockedMajors: [BlockedMajor] = []
-        /// Majors that are targets but stay refused by release builds until a named gate passes (D11).
+        /// Majors that are targets and carry a note: a gate (spike) that has not passed on real hardware. Since preview9 they are allowed; the note shows in the details (D11).
         public var gatedMajors: [GatedMajor] = []
         /// macOS build of the stub (e.g. "22G74").
         public var stubBuild: String? = nil
