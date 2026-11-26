@@ -1,0 +1,138 @@
+--- /dev/null
++++ b/src/Frameworks/AppKit/NSView+Accessibility.h
+@@ -0,0 +1,46 @@
++// NSView+Accessibility.h — AX protocol conformance for all NSView subclasses
++// Copyright (c) 2026 The SiliconForest Project, SPDX-License-Identifier: MPL-2.0 OR BSD-2-Clause
++//
++// Every NSView automatically becomes accessible. Subclasses override the
++// property accessors to return their actual role/label/value. The IPC layer
++// (SFAccessibilityServer) reads these when the focused view changes.
++
++#import <AppKit/NSView.h>
++#import <AppKit/NSAccessibility.h>
++
++// AXRole constants (subset of AXAttributeConstants.h, used without HIServices)
++extern NSString * const SFAXRoleButton;
++extern NSString * const SFAXRoleStaticText;
++extern NSString * const SFAXRoleTextField;
++extern NSString * const SFAXRoleTextArea;
++extern NSString * const SFAXRoleGroup;
++extern NSString * const SFAXRoleWindow;
++extern NSString * const SFAXRoleApplication;
++extern NSString * const SFAXRoleUnknown;
++
++@interface NSView (SFAccessibility)
++
++// Return YES for views that have semantic accessibility meaning (default: NO for
++// plain NSView; YES for controls, text views, buttons). Override in subclasses.
++- (BOOL)isAccessibilityElement;
++
++// AX role string. Default: SFAXRoleGroup (a container).
++- (NSString *)accessibilityRole;
++
++// Human-readable label (title, placeholder, tooltip). Default: nil.
++- (NSString *)accessibilityLabel;
++
++// Current value (text content, checkbox state, slider position). Default: nil.
++- (id)accessibilityValue;
++
++// Focused descendant. Default: returns self if isFocused, else first focused child.
++- (id)accessibilityFocusedUIElement;
++
++// Parent in the AX tree. Default: [self superview] ?? [self window].
++- (id)accessibilityParent;
++
++// AX children: visible subviews that are accessibility elements.
++- (NSArray *)accessibilityChildren;
++
++// Post an AX notification to SFAccessibilityServer when focus enters this view.
++- (void)sfPostFocusGained;
++
++@end
+--- /dev/null
++++ b/src/Frameworks/AppKit/NSView+Accessibility.m
+@@ -0,0 +1,112 @@
++// NSView+Accessibility.m — AX protocol conformance for all NSView subclasses
++// Copyright (c) 2026 The SiliconForest Project, SPDX-License-Identifier: MPL-2.0 OR BSD-2-Clause
++
++#import <AppKit/NSView+Accessibility.h>
++#import <AppKit/NSWindow.h>
++#import <Foundation/Foundation.h>
++#import "SFAccessibilityServer.h"
++
++NSString * const SFAXRoleButton     = @"AXButton";
++NSString * const SFAXRoleStaticText = @"AXStaticText";
++NSString * const SFAXRoleTextField  = @"AXTextField";
++NSString * const SFAXRoleTextArea   = @"AXTextArea";
++NSString * const SFAXRoleGroup      = @"AXGroup";
++NSString * const SFAXRoleWindow     = @"AXWindow";
++NSString * const SFAXRoleApplication = @"AXApplication";
++NSString * const SFAXRoleUnknown    = @"AXUnknown";
++
++@implementation NSView (SFAccessibility)
++
++- (BOOL)isAccessibilityElement {
++    // Plain views are containers, not semantic elements.
++    // NSControl, NSTextView etc. override this to YES.
++    return NO;
++}
++
++- (NSString *)accessibilityRole {
++    return SFAXRoleGroup;
++}
++
++- (NSString *)accessibilityLabel {
++    // Check for tooltip as a fallback label (set by IB / accessibility inspectors)
++    return [self toolTip];
++}
++
++- (id)accessibilityValue {
++    return nil;
++}
++
++- (id)accessibilityParent {
++    if ([self superview] != nil)
++        return [self superview];
++    return [self window];
++}
++
++- (NSArray *)accessibilityChildren {
++    NSMutableArray *result = [NSMutableArray array];
++    NSView *subview;
++
++    for (subview in [self subviews]) {
++        if ([subview isAccessibilityElement] || [[subview accessibilityChildren] count] > 0)
++            [result addObject:subview];
++    }
++    return result;
++}
++
++- (id)accessibilityFocusedUIElement {
++    if ([self isAccessibilityElement])
++        return self;
++    for (NSView *child in [self subviews]) {
++        id focused = [child accessibilityFocusedUIElement];
++        if (focused != nil)
++            return focused;
++    }
++    return nil;
++}
++
++- (void)sfPostFocusGained {
++    NSString *role   = [self accessibilityRole]  ?: SFAXRoleUnknown;
++    NSString *label  = [self accessibilityLabel] ?: @"";
++    id        value  = [self accessibilityValue];
++    NSString *valStr = (value != nil) ? [NSString stringWithFormat:@"%@", value] : @"";
++    NSRect    frame  = [self accessibilityFocusedUIElement] != nil
++                       ? [(NSView *)[self accessibilityFocusedUIElement] frame]
++                       : [self frame];
++
++    [[SFAccessibilityServer sharedServer]
++        postFocusChangedWithRole:role
++                           label:label
++                           value:valStr
++                             pid:[[NSProcessInfo processInfo] processIdentifier]
++                           frame:frame];
++}
++
++@end
