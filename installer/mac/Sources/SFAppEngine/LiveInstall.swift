@@ -8,6 +8,7 @@
 import Foundation
 import ServiceManagement
 import SFEngine
+import SFInstallKit
 import SFHelperKit
 import SFLiveDisk
 
@@ -212,7 +213,12 @@ public final class LiveInstallController: @unchecked Sendable {
         try call { c in try Canonical.decoder().decode(InstallOffer.self, from: try c.call(timeout: 120) { $0.planRemoval(installJob: installJob, reply: $1) }) }
     }
     public func beginRemoval(installJob: String, plan: EnginePlan) throws -> String { try call { try $0.beginRemoval(installJob, digest: plan.digest) } }
-    public func restart(_ job: String) throws { try call { c in try c.callVoid { $0.restartIntoInstalledSystem(job: job, reply: $1) } } }
+    /// Preview13: asks an older helper process to exit so launchd starts the current binary at the next connection.
+    /// Best effort and never fatal: a helper that doesn't know the verb (preview12 and earlier) idles out by itself.
+    public func retireHelper() {
+        _ = try? call { c in try c.callVoid { $0.retire(reply: $1) } }
+    }
+    public func shutDown(_ job: String) throws { try call { c in try c.callVoid { $0.shutDownToFinishSetup(job: job, reply: $1) } } }
     public func start(_ job: String) throws { try call { try $0.resume(job) } }
     public func rollback(_ job: String) throws { try call { try $0.rollback(job) } }
 
@@ -242,21 +248,22 @@ public final class LiveInstallController: @unchecked Sendable {
     }
 }
 
-/// What the app tells the person after the hand-off (preview7): the helper already set the one-time
-/// next boot, so "Restart into SiliconForest" is a button. If it couldn't, the manual command is shown.
+/// What the app tells the person after the hand-off. Preview13: the helper made the stub the startup disk (a
+/// persistent selection), so the next step is to shut down and start SiliconForest from startup options; a normal
+/// start opens macOS until Setup has run. If bless failed, the manual command is shown.
 public enum AfterHandoff {
     public static func blessCommand(installName: String) -> String { BlessGuard.manual(volumeName: installName) }
 
     /// The fallback every outcome shows.
-    public static let fallback = "If it doesn't come up: shut down, wait for the screen to go dark, then hold the power button until you see “Loading startup options”, and pick SiliconForest."
+    public static var fallback: String { StartupOptionsCopy.fallback("SiliconForest") }
 
     /// `command`: the exact command the helper worked out (it names the volume's real mount point); default: by name.
     public static func manualSteps(installName: String, command: String? = nil) -> [String] {
         ["In Terminal (macOS), if the volume isn't mounted: diskutil mount \"\(installName)\"",
          "Then: \(command ?? blessCommand(installName: installName))   (your Mac password)",
          "Shut down. Wait for the screen to go dark, then 25 more seconds.",
-         "Press and hold the power button until you see “Loading startup options”.",
-         "Choose \(installName), then Continue. Enter your Mac password when asked: SiliconForest Setup finishes in recoveryOS (bputil, kmutil configure-boot), then restarts into SiliconForest."]
+         StartupOptionsCopy.hold,
+         "\(StartupOptionsCopy.choose(installName)) Enter your Mac password when asked: SiliconForest Setup finishes in recoveryOS (bputil, kmutil configure-boot), then starts SiliconForest."]
     }
 }
 
@@ -271,6 +278,23 @@ public enum HelperRegistrationState: Sendable, Equatable {
 }
 
 public enum HelperRegistrar {
+    /// Where register failures are logged with the NSError's domain and code (the app log).
+    nonisolated(unsafe) public static var log: (@Sendable (String) -> Void)?
+
+    /// Preview13. `register()` failed. If macOS lists the helper but it is off ("Operation not permitted", "Job is not
+    /// allowed to bootstrap", SMAppService error 1: a disabled Background Task Management item), that is the person's
+    /// switch, not a failure of ours: ask them to turn it on. Anything else is refused, with the domain and code.
+    public static func stateAfterRegisterError(domain: String, code: Int, message: String, status: HelperRegistrationState) -> HelperRegistrationState {
+        if status == .enabled { return .enabled }
+        if status == .requiresApproval { return .requiresApproval }
+        let m = message.lowercased()
+        if m.contains("operation not permitted") || m.contains("not allowed to bootstrap") || m.contains("not permitted")
+            || ((domain == "SMAppServiceErrorDomain" || domain == NSPOSIXErrorDomain) && code == 1) {
+            return .requiresApproval
+        }
+        return .refused("macOS didn't register the installer's helper: \(message) [\(domain) \(code)]")
+    }
+
     /// Preview10: the status only (SMAppService.status). Never registers, never opens System Settings;
     /// the Privileges screen polls this quietly while the person approves the helper.
     public static func status() -> HelperRegistrationState {
@@ -304,9 +328,9 @@ public enum HelperRegistrar {
             @unknown default: return .refused("macOS reported an unknown helper state.")
             }
         } catch {
-            if HelperRegistration.status() == .requiresApproval { return .requiresApproval }
-            if HelperRegistration.status() == .enabled { return .enabled }
-            return .refused("macOS didn't register the installer's helper: \(error.localizedDescription)")
+            let ns = error as NSError
+            log?("helper register failed: \(ns.localizedDescription) [\(ns.domain) \(ns.code)]")
+            return stateAfterRegisterError(domain: ns.domain, code: ns.code, message: ns.localizedDescription, status: status())
         }
     }
 

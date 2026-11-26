@@ -176,14 +176,14 @@ Numbering leaves gaps for later insertions. **Recorded in the journal; the journ
 | `S52 receipt-slot` | Write header and install ID | Read back | Compare | Covered by root erase |
 | `S55 boot-object` | Stage 1 + variables into the app (`SiliconForest Setup.app/Contents/Resources/boot.bin`), in `m1n1.build`'s format (stage 1, each variable + newline, four NULs: the bytes SFStub stages) | Bytes equal | StubVerifier | Covered by stub delete |
 | `S60 recovery-stage` | SFStub: `SFInstall/`, `plan.json`, `state/` (StubPlanner's extras). Older rehearsal path: copy app, plan, marker | Bytes equal | StubVerifier | Covered by stub delete |
-| `S65 blessed` | `bless --setBoot` on stub (needs password) | **Read back** default volume | Read | Restore previous default, verify |
+| `S65 blessed` | `bless --mount <stub> --setBoot [--user <owner> --stdinpass]` on the stub: persistent (preview13; no `--nextonly`) | **Read back** default volume | Read | Restore previous default, verify |
 | `S68 handoff` | Hide `SystemVersion.plist`, enable marker | Files | Check | Restore |
 | `S70 awaiting-recovery` | The Mac shuts down | | | Restore previous default, then full rollback |
 | `R10 gate` | Recovery checks | Paired + 1TR | Rerun | Explain, shut down |
 | `R20 policy` | `bputil -nc` | `bputil -d` shows Permissive | Read policy | **None.** See below |
 | `R30 boot-object` | `kmutil configure-boot` | Custom object present | Read policy | **None.** Forward only |
 | `R40 markers` | Disable marker, restore version file | Files | Check | |
-| `R50 boot-select` | Previous default restored, SiliconForest next (S5, S12) | Read back | Read | |
+| `R50 boot-select` | `bless --mount <stub> --setBoot --nextonly` in recoveryOS (see below) | Read back | Read | |
 | `S80 first-boot` | SiliconForest starts | Receipt | Read slot | Use Remove |
 | `S90 installed` | Verified in macOS | `desktop-ready` | Terminal state | Use Remove |
 
@@ -359,3 +359,12 @@ Every failure maps to one of these, and each has a screen in [`UX-FLOW.md`](UX-F
 | `internal` | A bug | Roll Back, Export Diagnostics |
 
 Known Apple errors have specific entries: `bless` Code 112, 103 and 302; resize `-69606` and `-69850`; `bputil` "User not found"; recovery pairing error 17.
+
+### R50 and the persistent startup disk (preview13)
+
+S65 (in macOS, as the helper) makes the stub the **persistent** startup disk: `bless --mount <stub> --setBoot`, optionally `--user <owner> --stdinpass`. `BlessGuard.isAllowed` accepts only `--getBoot`, the 4-element `--mount … --setBoot`, and the 7-element form with the owner flags; the helper never runs `--nextonly`. Until Setup has run, the stub's `SystemVersion.plist` is hidden (S68), so a normal power-on falls back to macOS, which is expected; the person holds power and picks SiliconForest (the stub's one true recoveryOS), where `SFRecovery` runs R10–R50.
+
+R50 stays `bless --mount <stub> --setBoot --nextonly`, run by SFRecoveryKit after `kmutil configure-boot` (R30) and the marker cleanup (R40). It is redundant when S65 worked; it is what steers the restart to SiliconForest when the persistent selection wasn't set. It does not change the persistent default. **The default therefore stays on SiliconForest after Setup** until U10 (Remove) resets it to macOS (when `--getBoot` names the stub; with the owner's login; a failure is journaled `reset: no` and does not fail the removal) or the person chooses macOS in Startup Disk. Resetting the default to macOS from R50 is a design question and is not implemented.
+
+`plan.json` (S60) carries `owners` (`[{short, full}]`) and `owner` for SFRecovery's password screen. XPC verbs added: `shutDownToFinishSetup(job:)` (was `restartIntoInstalledSystem`; runs `shutdown -h now`) and `retire()` (the helper exits so the next connection starts the current build; refused while a job runs). The app never unregisters an approved helper.
+

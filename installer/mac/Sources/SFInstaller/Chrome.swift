@@ -240,8 +240,8 @@ struct RootView: View {
             guard let l = s.live else { return Footer() }
             if l.blessReport?.set == true {
                 return Footer(leading: [details], trailing: [BarAction(title: "Quit") { s.terminate() },
-                                                             BarAction(title: l.restarting ? "Restarting…" : "Restart into SiliconForest", style: .primary,
-                                                                       enabled: !l.restarting && l.blessReport?.canRestart == true) { l.restart() }])
+                                                             BarAction(title: l.shuttingDown ? Copy.StartupFinish.shuttingDown : Copy.StartupFinish.button, style: .primary,
+                                                                       enabled: !l.shuttingDown && l.blessReport?.canShutDown == true) { l.shutDown() }])
             }
             if l.blessReport?.canRetry != false {
                 return Footer(leading: [details], trailing: [BarAction(title: Copy.Common.quit) { s.terminate() },

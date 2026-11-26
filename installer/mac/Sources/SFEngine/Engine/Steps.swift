@@ -263,8 +263,8 @@ extension InstallEngine {
             try journal.append(.evidence, step: c, result: ev)
 
         case .S65:
-            if bless != nil { try setNextBoot(plan: plan, gate: gate) } else {
-                try simulate(code, command: ["/usr/sbin/bless", "--mount", "<stub System volume>", "--setBoot", "--nextonly"],
+            if bless != nil { try setStartupDisk(plan: plan, gate: gate) } else {
+                try simulate(code, command: ["/usr/sbin/bless", "--mount", "<stub System volume>", "--setBoot"],
                              reason: "needs root and the owner's password; on an image there is no startup disk to change")
             }
         case .S70:
@@ -472,10 +472,12 @@ extension InstallEngine {
 
     // MARK: simulated steps
 
-    /// S65, preview7: the one-time next boot (`--nextonly`, never a persistent default) into the stub this
-    /// job created. A failure doesn't fail the install: the evidence says so and carries the manual command,
+    /// S65, preview13: the startup disk becomes the stub this job created (`--setBoot`, persistent; Asahi's way).
+    /// What that means until Setup has run: a normal power-on starts the stub, whose SystemVersion is hidden (S68),
+    /// so macOS falls back to itself; the person starts SiliconForest from startup options (hold the power button),
+    /// and that boot is the stub's own recoveryOS. A failure doesn't fail the install: the evidence says so and carries the manual command,
     /// and the app's finish screen shows it (the stub, boot partition and root are all in place either way).
-    func setNextBoot(plan: EnginePlan, gate: Gate) throws {
+    func setStartupDisk(plan: EnginePlan, gate: Gate) throws {
         guard let bless, let stubUUID = gate.created["stub"] else { throw EngineError(.inconsistent, "no stub to start from") }
         let c = StepCode.S65.rawValue
         try journal.append(.intent, step: c)
@@ -489,7 +491,7 @@ extension InstallEngine {
         let manual = vol.path.hasPrefix("/Volumes/") ? BlessGuard.manual(mountPath: vol.path) : BlessGuard.manual(volumeName: sys.name)
         let argv: [String]
         let cred = blessCredential?()
-        do { argv = try BlessGuard.setNextBoot(mount: vol, stub: stub, owner: cred?.owner, mountedFrom: mountedFrom) } catch {
+        do { argv = try BlessGuard.setStartupDisk(mount: vol, stub: stub, owner: cred?.owner, mountedFrom: mountedFrom) } catch {
             cred?.secret.wipe()
             // Refusing to bless is not an install failure; nothing was run.
             try journal.append(.evidence, step: c, result: ["blessed": .s("no"), "why": .s("\(error)"), "manual": .s(manual)])
@@ -499,21 +501,13 @@ extension InstallEngine {
         try runBless(argv: argv, owner: cred?.owner, credential: cred, sys: sys, vol: vol, manual: manual, code: c)
     }
 
-    /// Runs the one-time bless and journals the outcome. A password, when there is one, goes only to the runner's
+    /// Runs the bless and journals the outcome. A password, when there is one, goes only to the runner's
     /// stdin, is wiped here after the one use, and is never journaled or logged (only the account's short name is).
     private func runBless(argv: [String], owner: String?, credential: BlessCredential?, sys: ImageVolume, vol: URL, manual: String, code c: String) throws {
         guard let bless else { return }
         defer { credential?.secret.wipe() }
-        let r: BlessResult
-        var password = ""
-        if let credential, BlessGuard.usesPassword(argv), let pr = bless as? PasswordBlessRunner {
-            password = credential.secret.withBytes { String(decoding: $0, as: UTF8.self) }
-            r = pr.execute(argv, password: credential.secret)
-        } else {
-            r = bless.execute(argv)
-        }
-        let output = BlessGuard.scrub(r.output, password: password)
-        password = ""
+        let r = runBlessCommand(argv, credential: credential)
+        let output = r.output
         let who: [String: JValue] = owner.map { ["as": .s($0)] } ?? [:]
         guard r.status == 0 else {
             let authProblem = BlessGuard.looksLikeOwnerAuthFailure(output)
@@ -522,24 +516,40 @@ extension InstallEngine {
                                                                        "needsPassword": .s(authProblem || owner == nil ? "yes" : "no"), "manual": .s(manual)]) { a, _ in a })
             return
         }
-        // Confirm with `bless --getBoot` where it says anything: with --nextonly it may still report the
-        // persistent selection, so "not reported" isn't a failure.
+        // Confirm with `bless --getBoot`: a persistent selection should be named. If it isn't, that is noted, not a failure.
         let g = bless.execute(BlessGuard.getBoot)
         let named = g.status == 0 && BlessGuard.names(getBootOutput: g.output, volume: sys, mount: vol.path)
-        log?("bless: next boot set\(owner.map { " as \($0)" } ?? "")")
-        try journal.append(.evidence, step: c, result: who.merging(["blessed": .s("next boot only"), "exit": .i(0), "volume": .s(vol.path), "name": .s(sys.name),
-                                                                   "confirmed": .s(named ? "getBoot names the stub" : "getBoot doesn't report the one-time selection"),
+        log?("bless: startup disk set\(owner.map { " as \($0)" } ?? "")")
+        try journal.append(.evidence, step: c, result: who.merging(["blessed": .s("startup disk"), "exit": .i(0), "volume": .s(vol.path), "name": .s(sys.name),
+                                                                   "confirmed": .s(named ? "getBoot names the stub" : "getBoot doesn't name the stub"),
                                                                    "getboot": .s(String(g.output.prefix(200))), "manual": .s(manual)]) { a, _ in a })
     }
 
+    /// Runs one allowed bless command. A password, when there is one, goes only to the runner's stdin; the output comes
+    /// back with it scrubbed out (in case a tool ever echoes it).
+    func runBlessCommand(_ argv: [String], credential: BlessCredential?) -> BlessResult {
+        guard let bless else { return BlessResult(status: 127, output: "no bless runner") }
+        var password = ""
+        var r: BlessResult
+        if let credential, BlessGuard.usesPassword(argv), let pr = bless as? PasswordBlessRunner {
+            password = credential.secret.withBytes { String(decoding: $0, as: UTF8.self) }
+            r = pr.execute(argv, password: credential.secret)
+        } else {
+            r = bless.execute(argv)
+        }
+        r.output = BlessGuard.scrub(r.output, password: password)
+        password = ""
+        return r
+    }
+
     /// The finish screen's "Set Startup Disk": only the bless again, for a finished install whose bless didn't take.
-    public func retryNextBoot() throws {
+    public func retryStartupDisk() throws {
         let st = state
         guard let plan = st.plan, plan.operation == .install, let original = st.original else { throw EngineError(.blocked, "this isn't an install") }
         guard st.end == .handedOff else { throw EngineError(.blocked, "this install isn't finished") }
         try backend.arm(plan: plan, original: original)
         let gate = Gate(plan: plan, original: original, created: st.created)
-        try setNextBoot(plan: plan, gate: gate)
+        try setStartupDisk(plan: plan, gate: gate)
     }
 
     /// U10, preview7: if the startup selection points at the stub this install made, set it back to macOS.
@@ -569,10 +579,24 @@ extension InstallEngine {
             try journal.append(.evidence, step: c, result: ["reset": .s("no"), "why": .s("macOS's System volume isn't mounted, so the selection couldn't be set back; choose Macintosh HD in System Settings › Startup Disk"),
                                                              "getboot": .s(String(g.output.prefix(200)))]); return
         }
-        let argv = try BlessGuard.restoreBoot(mount: m, macOS: mac, mountedFrom: mountedFrom)
-        let r = bless.execute(argv)
-        guard r.status == 0 else { throw EngineError(.appleTool, "bless couldn't set the startup disk back to macOS (exit \(r.status)): \(r.output.prefix(200))") }
-        try journal.append(.evidence, step: c, result: ["reset": .s("macOS"), "exit": .i(0), "mount": .s(m)])
+        // Preview13: with a persistent selection of the stub, putting macOS back needs the owner's login on Apple
+        // Silicon just as setting it did. Without one the bless is tried as it was; if it fails the removal still
+        // finishes (the partitions are removed either way) and the evidence says how to choose macOS by hand.
+        let cred = blessCredential?()
+        defer { cred?.secret.wipe() }
+        let manual = "choose Macintosh HD in System Settings › Startup Disk, or run: " + (m == "/" ? "sudo /usr/sbin/bless --mount / --setBoot" : "sudo /usr/sbin/bless --mount \"\(m)\" --setBoot")
+        let argv: [String]
+        do { argv = try BlessGuard.restoreBoot(mount: m, macOS: mac, owner: cred?.owner, mountedFrom: mountedFrom) } catch {
+            try journal.append(.evidence, step: c, result: ["reset": .s("no"), "why": .s("\(error)"), "manual": .s(manual)]); return
+        }
+        let r = runBlessCommand(argv, credential: cred)
+        guard r.status == 0 else {
+            log?("bless couldn't set the startup disk back to macOS: exit \(r.status)\(cred.map { " as \($0.owner)" } ?? ""): \(r.output.prefix(2000))")
+            try journal.append(.evidence, step: c, result: ["reset": .s("no"), "exit": .i(Int64(r.status)), "why": .s(String(r.output.prefix(1500))), "manual": .s(manual),
+                                                             "needsPassword": .s(BlessGuard.looksLikeOwnerAuthFailure(r.output) || cred == nil ? "yes" : "no")])
+            return
+        }
+        try journal.append(.evidence, step: c, result: ["reset": .s("macOS"), "exit": .i(0), "mount": .s(m)].merging(cred.map { ["as": JValue.s($0.owner)] } ?? [:]) { a, _ in a })
     }
 
     func simulate(_ code: StepCode, command: [String], reason: String) throws {
@@ -774,12 +798,21 @@ extension InstallEngine {
 
     /// SFInstall/plan.json (what SFRecovery and sf-step2.sh read).
     func recoveryPlanJSON(plan: EnginePlan, gate: Gate) throws -> Data {
-        struct RecoveryPlan: Codable { var job: String; var installID: String; var stub: String; var boot: String; var root: String; var planDigest: String }
+        struct Owner: Codable { var short: String; var full: String }
+        struct RecoveryPlan: Codable {
+            var job: String; var installID: String; var stub: String; var boot: String; var root: String; var planDigest: String
+            var owners: [Owner]?; var owner: String?
+        }
         // A stub-only run has no SFBOOT or root: boot is the absent PARTUUID stage 1 names, root "none".
         let boot = gate.created["boot"] ?? (plan.isStubOnly ? plan.absentBootPartUUID : "")
         let root = gate.created["root"] ?? (plan.isStubOnly ? "none" : "")
-        let rp = RecoveryPlan(job: journal.jobID.uuidString, installID: plan.request?.installID ?? "", stub: gate.created["stub"] ?? "",
+        var rp = RecoveryPlan(job: journal.jobID.uuidString, installID: plan.request?.installID ?? "", stub: gate.created["stub"] ?? "",
                               boot: boot, root: root, planDigest: plan.digest)
+        if let found = recoveryOwners?(), !found.owners.owners.isEmpty {
+            rp.owners = found.owners.owners.map { Owner(short: $0, full: found.owners.fullNames?[$0] ?? "") }
+            let pick = found.chosen.flatMap { found.owners.owners.contains($0) ? $0 : nil } ?? found.owners.defaultOwner
+            rp.owner = pick
+        }
         return try Canonical.data(rp)
     }
 

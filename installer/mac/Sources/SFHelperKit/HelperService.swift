@@ -42,13 +42,17 @@ public struct HelperConfig: Sendable {
     public var allowRehearsalRelease = false
     /// The release key's allowed_signers (nil: SFRelease's lookup, the app bundle's copy).
     public var allowedSigners: URL?
-    /// Runs the one-time bless after the stub is staged (S65), and the removal's reset (U10). Only SFHelper
+    /// Runs the startup-disk bless after the stub is staged (S65), and the removal's reset (U10). Only SFHelper
     /// in a SF_REAL_DISK_WRITES build sets a real one; tests set a recorder; nil simulates (the lab tools).
     public var blessRunner: BlessRunner?
-    /// Restarts this Mac (`restartIntoInstalledSystem`). Same rules: nil refuses.
-    public var restartAction: (@Sendable () -> Void)?
-    /// Seconds between the restart verb's reply and the restart itself.
-    public var restartDelay: TimeInterval = 3
+    /// Shuts this Mac down (`shutDownToFinishSetup`). Same rules: nil refuses.
+    public var shutdownAction: (@Sendable () -> Void)?
+    /// Preview13: ends this helper process (`retire`). Nil refuses. SFHelper sets it to exit(0); launchd starts the
+    /// binary on disk, which is the new build, at the next connection.
+    public var retireAction: (@Sendable () -> Void)?
+    public var retireDelay: TimeInterval = 0.4
+    /// Seconds between the shut-down verb's reply and the shut down itself.
+    public var shutdownDelay: TimeInterval = 3
     /// Preview10: the helper's log (/Library/Logs/SiliconForest/helper.log in the shipped helper; nil in tests).
     public var log: InstallerLog?
     /// Preview10: the Full Disk Access probe (injectable for tests).
@@ -179,6 +183,10 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
         let jobID = j.jobID
         e.blessCredential = { [weak self] in self?.takeCredential(jobID) }
         e.log = { [weak self] line in self?.config.log?.info(line) }
+        e.recoveryOwners = { [weak self] in
+            guard let self else { return (StartupDiskOwners(owners: [], defaultOwner: nil), nil) }
+            return (self.config.startupOwners(), self.heldOwner(jobID))
+        }
         if (operation ?? st.plan?.operation ?? .install) == .install, e.stubSource == nil, case .internalDisk = config.target {
             throw HelperError.make(.refused, "the helper can't build the stub (no profile, icon or admin list)")
         }
@@ -337,7 +345,7 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
         }
     }
 
-    /// Preview13: the volume owner's login for the one-time bless (S65). Held in locked memory until S65 takes
+    /// Preview13: the volume owner's login for the startup-disk bless (S65, and U10 on removal). Held in locked memory until S65 takes
     /// it (or three hours pass, or the job ends), sent only on bless's stdin, then wiped. Never logged or journaled.
     /// Without a real bless runner (disk images, lab builds) it is wiped unused, as before.
     public func authorizeBless(job: String, owner: String, password: Data, reply: @escaping (NSError?) -> Void) {
@@ -354,7 +362,8 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
                 return
             }
             let st = JobState(j.records)
-            guard st.plan?.operation == .install, st.end == nil else { throw HelperError.make(.refused, "this job doesn't set a startup disk") }
+            // An install (S65 selects the stub) or a removal (U10 puts macOS back): both need the owner's login on Apple Silicon.
+            guard st.plan != nil, st.end == nil else { throw HelperError.make(.refused, "this job doesn't set a startup disk") }
             try requireOwner(owner)
             holdCredential(job: j.jobID, owner: owner, secret: secret)
             keep = true
@@ -371,6 +380,12 @@ public final class HelperService: NSObject, SFHelperXPC, @unchecked Sendable {
         guard BlessGuard.validOwner(owner), config.startupOwners().owners.contains(owner) else {
             throw HelperError.make(.refused, "\(owner) isn't an account that can unlock this Mac's startup disk")
         }
+    }
+
+    /// The account whose login is held for this job (the name only; the password is never read here).
+    func heldOwner(_ id: UUID) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return passwords[id]?.owner
     }
 
     /// S65 takes the credential once; it is the engine's to wipe. Expired ones are wiped here.

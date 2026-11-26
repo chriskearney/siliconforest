@@ -1,13 +1,24 @@
 import AppKit
 import CoreText
+import SFCopy
+import SFInstallKit
+import SFRecoveryKit
 
 /// SFRecovery's one screen (DESIGN §7.4): the Grove as a still, the mark, one title, the owner's
 /// password, and two buttons. AppKit and Core Graphics only (§7.3: no SwiftUI in recoveryOS 13.5).
 final class RecoveryView: NSView {
-    enum Stage { case password, working(step: Int), failed(String), notRecovery }
+    enum Stage { case password, working(step: Int), failed(String), notRecovery, macOSRecovery }
 
     var stage: Stage = .password { didSet { rebuild() } }
-    var ownerName = "Chris"
+    /// The accounts that can authorise the change (from plan.json); none means "your Mac login password".
+    var owners: [RecoverySetup.Owner] = [] { didSet { updateOwnerPicker() } }
+    /// The one whose password the person is typing: the only owner, the plan's choice, or the one picked.
+    var selectedOwner: RecoverySetup.Owner? { owners.isEmpty ? nil : owners[max(0, min(owners.count - 1, ownerPicker.indexOfSelectedItem))] }
+    var ownerName: String? { selectedOwner?.display }
+    /// The name SiliconForest goes by on the startup menu (the stub's volume name).
+    var installName = "SiliconForest"
+    private let ownerPicker = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let ownerPickerLabel = NSTextField(labelWithString: Copy.InRecovery.pickOwner)
     var onContinue: ((Data) -> Void)?
     var onShutDown: (() -> Void)?
 
@@ -26,8 +37,11 @@ final class RecoveryView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         Fonts.register()
-        for v in [title, lead, passwordLabel, password, note, primary, secondary] as [NSView] { addSubview(v) }
+        for v in [title, lead, passwordLabel, password, note, primary, secondary, ownerPicker, ownerPickerLabel] as [NSView] { addSubview(v) }
+        ownerPickerLabel.font = Fonts.inter(13, .semibold); ownerPickerLabel.textColor = Palette.textSecondary
+        ownerPicker.font = Fonts.inter(15, .regular); ownerPicker.target = self; ownerPicker.action = #selector(ownerChanged)
         title.font = Fonts.inter(40, .semibold); title.textColor = Palette.text
+        title.lineBreakMode = .byWordWrapping; title.maximumNumberOfLines = 0   // "This is macOS Recovery, not SiliconForest's." is two lines
         lead.font = Fonts.inter(17, .regular); lead.textColor = Palette.textSecondary
         passwordLabel.font = Fonts.inter(13, .semibold); passwordLabel.textColor = Palette.textSecondary
         note.font = Fonts.inter(13, .regular); note.textColor = Palette.textSecondary
@@ -46,15 +60,21 @@ final class RecoveryView: NSView {
 
     private func rebuild() {
         rows.forEach { $0.removeFromSuperview() }; rows = []
-        secondary.title = "Shut Down"
+        secondary.title = Copy.InRecovery.shutDown
+        let pick = owners.count > 1
+        ownerPicker.isHidden = true; ownerPickerLabel.isHidden = true
+        func showPasswordFields() {
+            password.isHidden = false; passwordLabel.isHidden = false
+            ownerPicker.isHidden = !pick; ownerPickerLabel.isHidden = !pick
+            passwordLabel.stringValue = Copy.InRecovery.passwordLabel(ownerName).uppercased()
+        }
         switch stage {
         case .password:
             title.stringValue = "Finish installing SiliconForest"
-            lead.stringValue = "Enter the password for \(ownerName) to allow SiliconForest to start on this Mac. This lowers security for SiliconForest only; macOS isn't affected."
-            passwordLabel.stringValue = "PASSWORD FOR \(ownerName.uppercased())"
-            note.stringValue = "Only this Mac's owner can approve a new operating system. Your password stays on this Mac."
-            primary.title = "Allow SiliconForest"; primary.isHidden = false; primary.isEnabled = true
-            password.isHidden = false; passwordLabel.isHidden = false
+            lead.stringValue = (ownerName.map { Copy.InRecovery.lead($0) } ?? Copy.InRecovery.leadGeneric) + " " + Copy.InRecovery.lowers
+            note.stringValue = Copy.InRecovery.ownerNote
+            primary.title = Copy.InRecovery.allow; primary.isHidden = false; primary.isEnabled = true
+            showPasswordFields()
         case .working(let step):
             title.stringValue = "Setting up SiliconForest"
             lead.stringValue = "This takes about a minute. Your Mac restarts into SiliconForest when it's done."
@@ -70,15 +90,24 @@ final class RecoveryView: NSView {
         case .failed(let message):
             title.stringValue = "SiliconForest isn't set up yet"
             lead.stringValue = message
-            passwordLabel.stringValue = "PASSWORD FOR \(ownerName.uppercased())"
             note.stringValue = "Nothing else was changed. You can try again, or choose Utilities → Terminal to finish in Terminal."
             primary.title = "Try Again"; primary.isHidden = false
-            password.isHidden = false; passwordLabel.isHidden = false
+            showPasswordFields()
         case .notRecovery:
             title.stringValue = "Open this from recoveryOS"
-            lead.stringValue = "SiliconForest Setup runs in SiliconForest's own recovery. Shut down, then hold the power button until you see startup options, and choose SiliconForest."
+            lead.stringValue = StartupOptionsCopy.macOSRecoveryLead(installName)
             password.isHidden = true; passwordLabel.isHidden = true; primary.isHidden = true
             note.stringValue = "Nothing was changed."
+        case .macOSRecovery:
+            title.stringValue = Copy.InRecovery.macOSRecoveryTitle
+            lead.stringValue = Copy.InRecovery.macOSRecoveryLead(installName)
+            password.isHidden = true; passwordLabel.isHidden = true; primary.isHidden = true
+            note.stringValue = Copy.InRecovery.macOSRecoveryNote
+            for (i, t) in Copy.InRecovery.macOSRecoverySteps(installName).enumerated() {
+                let f = NSTextField(wrappingLabelWithString: "\(i + 1)  \(t)")
+                f.font = Fonts.inter(17, .regular); f.textColor = Palette.text
+                addSubview(f); rows.append(f)
+            }
         }
         needsLayout = true; needsDisplay = true
     }
@@ -90,14 +119,19 @@ final class RecoveryView: NSView {
         let x = (w - column) / 2
         var y = max(64, h * 0.22)
         y += 96 + 28   // the mark (drawn) above the title
-        title.frame = NSRect(x: x, y: y, width: column, height: 50); y += 62
+        let titleH = max(50, title.sizeThatFits(NSSize(width: column, height: 300)).height)
+        title.frame = NSRect(x: x, y: y, width: column, height: titleH); y += titleH + 12
         let leadH = lead.sizeThatFits(NSSize(width: column, height: 400)).height
         lead.frame = NSRect(x: x, y: y, width: column, height: leadH); y += leadH + 30
+        if !ownerPicker.isHidden {
+            ownerPickerLabel.frame = NSRect(x: x, y: y, width: column, height: 18); y += 24
+            ownerPicker.frame = NSRect(x: x, y: y, width: 360, height: 28); y += 44
+        }
         if !password.isHidden {
             passwordLabel.frame = NSRect(x: x, y: y, width: column, height: 18); y += 24
             password.frame = NSRect(x: x, y: y, width: 360, height: 32); y += 52
         }
-        for r in rows { r.frame = NSRect(x: x, y: y, width: column, height: 26); y += 34 }
+        for r in rows { let rh = max(26, r.sizeThatFits(NSSize(width: column, height: 300)).height); r.frame = NSRect(x: x, y: y, width: column, height: rh); y += rh + 8 }
         let noteH = note.sizeThatFits(NSSize(width: column, height: 200)).height
         note.frame = NSRect(x: x, y: y, width: column, height: noteH)
         let by = h - 88
@@ -121,6 +155,21 @@ final class RecoveryView: NSView {
         password.stringValue = ""
         onContinue?(pw)
     }
+    private func updateOwnerPicker() {
+        let keep = ownerPicker.titleOfSelectedItem
+        ownerPicker.removeAllItems()
+        // The full name; the short name too when two accounts share a full name.
+        let dup = Dictionary(grouping: owners, by: { $0.display }).filter { $0.value.count > 1 }.keys
+        ownerPicker.addItems(withTitles: owners.map { dup.contains($0.display) ? "\($0.display) (\($0.short))" : $0.display })
+        if let keep, ownerPicker.itemTitles.contains(keep) { ownerPicker.selectItem(withTitle: keep) }
+        rebuild()
+    }
+    /// Starts on this short name (the plan's choice) when it's one of the owners.
+    func select(owner short: String?) {
+        guard let short, let i = owners.firstIndex(where: { $0.short == short }) else { return }
+        ownerPicker.selectItem(at: i); rebuild()
+    }
+    @objc private func ownerChanged() { rebuild() }
     @objc private func shutDownPressed() { onShutDown?() }
 }
 

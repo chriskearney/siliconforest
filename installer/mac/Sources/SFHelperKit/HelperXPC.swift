@@ -28,7 +28,7 @@ import SFIdentity
     func authorizeBless(job: String, owner: String, password: Data, reply: @escaping (NSError?) -> Void)
     /// Preview13. The local accounts that can authorise `bless` (`StartupDiskOwners`), read-only.
     func startupOwners(reply: @escaping (Data?, NSError?) -> Void)
-    /// Preview13. For a finished install whose one-time next boot wasn't set: runs only the bless again with this
+    /// Preview13. For a finished install whose startup disk wasn't set: runs only the bless again with this
     /// login (the same rules as `authorizeBless`). Replies with the job's `BlessReport`.
     func retryStartupSelection(job: String, owner: String, password: Data, reply: @escaping (Data?, NSError?) -> Void)
     /// Journal records after `sequence` (the app's live view and its way to reattach).
@@ -59,12 +59,16 @@ import SFIdentity
     /// Reads the target now and offers the removal plan of one finished install (an `InstallOffer`: the plan
     /// and what the person must type), exactly as `planInstall` does for an install.
     func planRemoval(installJob: String, reply: @escaping (Data?, NSError?) -> Void)
-    /// After a finished install whose one-time next boot was set: restarts this Mac. Needs the plan's
+    /// After a finished install whose startup disk was set: shuts this Mac down (a restart would only open macOS until Setup has run). Needs the plan's
     /// confirmation to still be valid; nothing else is touched.
-    func restartIntoInstalledSystem(job: String, reply: @escaping (NSError?) -> Void)
+    func shutDownToFinishSetup(job: String, reply: @escaping (NSError?) -> Void)
     /// Preview10. The helper's privileges, checked harmlessly (a `PrivilegeReport`): Full Disk Access by
     /// opening the startup disk's raw device read-only and closing it at once. Nothing is read or written.
     func checkPrivileges(reply: @escaping (Data?, NSError?) -> Void)
+    /// Preview13. A new app build asks an older helper process to exit so launchd starts the new binary on the next
+    /// connection (instead of unregistering and registering it again, which macOS turns into "not allowed").
+    /// Replies at once; refuses while a job is running; the process exits a moment later.
+    func retire(reply: @escaping (NSError?) -> Void)
 }
 
 public enum HelperErrorCode: Int, Sendable {
@@ -87,8 +91,8 @@ public enum HelperVerbs {
         "removalPlanWithInstallJob:reply:", "beginRemovalWithInstallJob:planDigest:reply:", "authorizeBlessWithJob:owner:password:reply:",
         "eventsWithJob:after:reply:", "jobStatusWithJob:reply:", "exportDiagnosticsWithJob:to:reply:",
         "importReleaseFrom:reply:", "planInstallWithRequest:reply:", "confirmWithPlanDigest:typed:authorization:reply:",
-        "progressWithJob:after:reply:", "listInstallsWithReply:", "planRemovalWithInstallJob:reply:", "restartIntoInstalledSystemWithJob:reply:",
-        "checkPrivilegesWithReply:", "startupOwnersWithReply:", "retryStartupSelectionWithJob:owner:password:reply:",
+        "progressWithJob:after:reply:", "listInstallsWithReply:", "planRemovalWithInstallJob:reply:", "shutDownToFinishSetupWithJob:reply:",
+        "checkPrivilegesWithReply:", "retireWithReply:", "startupOwnersWithReply:", "retryStartupSelectionWithJob:owner:password:reply:",
     ]
 
     public static func selectors() -> Set<String> {

@@ -59,7 +59,7 @@ struct RecordingBless: BlessRunner {
         log(argv.joined(separator: " "))
         let selection = dir.appendingPathComponent("bless-selection.txt")
         if argv == BlessGuard.getBoot { return BlessResult(status: 0, output: (try? String(contentsOf: selection, encoding: .utf8)) ?? "/dev/disk0s1\n") }
-        if failSet && argv.contains("--nextonly") { return BlessResult(status: 1, output: "bless: simulated failure") }
+        if failSet && argv.contains("--setBoot") { return BlessResult(status: 1, output: "bless: simulated failure") }
         // --mount P --setBoot: the pretend selection becomes P's device.
         var fs = statfs()
         let dev = statfs(argv[2], &fs) == 0 ? withUnsafeBytes(of: fs.f_mntfromname) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) } : "?"
@@ -101,8 +101,8 @@ final class Helper {
         cfg.releaseStore = state.appendingPathComponent("releases")
         cfg.adminCheck = AdminCheck { $0 == testApproval }
         cfg.blessRunner = RecordingBless(dir: state, failSet: ProcessInfo.processInfo.environment["SF_FAKE_BLESS"] == "fail")
-        cfg.restartDelay = 0.2
-        cfg.restartAction = { try? Data("restart requested\n".utf8).write(to: state.appendingPathComponent("restart-requested.txt")) }
+        cfg.shutdownDelay = 0.2
+        cfg.shutdownAction = { try? Data("shut down requested\n".utf8).write(to: state.appendingPathComponent("shutdown-requested.txt")) }
         cfg.allowedSigners = SourceTree.installerRoot.appendingPathComponent("payload/release/allowed_signers")
         let rec = SourceTree.packageRoot.appendingPathComponent(".build-unit/debug/SFRecovery")
         if fm.fileExists(atPath: rec.path) { cfg.recoveryBinary = rec }
@@ -174,7 +174,7 @@ func report(_ p: LiveProgress) {
     if p.end == "handed-off" {
         print("Finish screen:")
         if let b = p.bless, b.set {
-            print("  SiliconForest is installed. One-time next boot set for “\(b.volumeName)” (\(b.confirmed ? "bless --getBoot confirmed it" : "not reported by --getBoot")). Button: Restart into SiliconForest (enabled: \(b.canRestart))")
+            print("  SiliconForest is installed. Startup disk set to “\(b.volumeName)” (\(b.confirmed ? "bless --getBoot confirmed it" : "not reported by --getBoot")). Button: Shut Down (enabled: \(b.canShutDown))")
             print("  · \(AfterHandoff.fallback)")
         } else {
             print("  The installer couldn't set the next boot (\(p.bless?.note ?? "no report")). Manual steps:")
@@ -245,14 +245,14 @@ func main() async throws {
         report(p)
         if p.end != "handed-off" { exit(1) }
     case "restart":
-        // The finish screen's button: the helper's restart verb (a recorder here; the real one is shutdown -r now).
+        // The finish screen's button: the helper's restart verb (a recorder here; the real one is shutdown -h now).
         let h = try Helper(image: try a.url("image"), state: try a.url("state"), ipsw: a.kv["ipsw"])
         let ctl = h.controller()
         guard let job = try ctl.installs().first?.job else { throw LiveError("no finished install") }
-        let st = try a.url("state").appendingPathComponent("restart-requested.txt")
+        let st = try a.url("state").appendingPathComponent("shutdown-requested.txt")
         try? FileManager.default.removeItem(at: st)
-        do { try ctl.restart(job); try await Task.sleep(nanoseconds: 1_000_000_000) } catch { print("restart refused: \((error as NSError).localizedDescription)") }
-        print("restart recorder: \(FileManager.default.fileExists(atPath: st.path) ? "restart requested" : "NOT requested")")
+        do { try ctl.shutDown(job); try await Task.sleep(nanoseconds: 1_000_000_000) } catch { print("shut down refused: \((error as NSError).localizedDescription)") }
+        print("restart recorder: \(FileManager.default.fileExists(atPath: st.path) ? "shut down requested" : "NOT requested")")
     case "remove":
         // The Remove SiliconForest screens through the app's code path: list, plan, type, administrator, begin, follow.
         let h = try Helper(image: try a.url("image"), state: try a.url("state"), ipsw: a.kv["ipsw"])

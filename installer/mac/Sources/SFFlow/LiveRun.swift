@@ -71,10 +71,10 @@ public final class LiveRun: ObservableObject {
     @Published public var installsLoaded = false
     /// The current job (or the offer being confirmed) is a removal.
     @Published public var isRemoval = false
-    /// What S65 did (the one-time next boot), once the install has finished.
+    /// What S65 did (the startup disk), once the install has finished.
     @Published public var blessReport: BlessReport?
-    @Published public var restarting = false
-    @Published public var restartError: String?
+    @Published public var shuttingDown = false
+    @Published public var shutDownError: String?
     /// Preview13: the volume owner's login for `bless`. Typed on the Confirm screen (optional) or the finish screen.
     @Published public var startupOwners: StartupDiskOwners?
     @Published public var startupOwner = ""
@@ -132,8 +132,10 @@ public final class LiveRun: ObservableObject {
             unregister: { try unreg?() ?? .notRegistered },
             reconnect: { [controller] in controller.reconnect() },
             // Tests and snapshots pass no registrar: don't touch UserDefaults or restart a helper.
-            build: reg == nil ? nil : HelperBuildMemory.app()))
+            build: reg == nil ? nil : HelperBuildMemory.app(),
+            retire: { [controller] in controller.retireHelper() }))
         gate.log = { [log] in log.info($0) }
+        if reg != nil { HelperRegistrar.log = { [log] in log.error($0) } }
     }
 
     // MARK: derived
@@ -217,7 +219,7 @@ public final class LiveRun: ObservableObject {
             guard session?.screen == .livePrivileges else { return }
             continueAfterPrivileges()
         case .needsHelperApproval, .needsFullDiskAccess: startPolling()
-        case .failed(let m): stopPolling(); log.error("privileges: \(m)")
+        case .failed(let m): startPolling(); log.error("privileges: \(m)")
         case .checking, .restartingHelper: break
         }
     }
@@ -318,7 +320,7 @@ public final class LiveRun: ObservableObject {
                 log.info("plan: asking the helper to read the disk and plan")
                 offer = try await background { try c.offer(bytes: bytes, name: name) }
                 log.info("plan: offered \(offer?.plan.digest.prefix(12) ?? "")")
-                if offer?.plan.operation == .install { await loadStartupOwners() }
+                await loadStartupOwners()
                 typedName = ""
                 activity = .idle
                 session?.go(.liveConfirm)
@@ -344,7 +346,7 @@ public final class LiveRun: ObservableObject {
                 let removing = offer.plan.operation == .remove
                 let j = try await background { removing ? try c.beginRemoval(installJob: removeJob ?? "", plan: offer.plan) : try c.begin(offer.plan) }
                 job = j
-                if !removing { await passStartupLogin(job: j) }
+                await passStartupLogin(job: j)
                 isRemoval = removing
                 startedAt = nil; journal = []; blessReport = nil
                 installName = offer.plan.request?.installName ?? installName
@@ -392,6 +394,7 @@ public final class LiveRun: ObservableObject {
                 installName = install.name
                 isRemoval = true
                 typedName = ""
+                await loadStartupOwners()
                 activity = .idle
                 session?.go(.liveRemoveConfirm)
             } catch {
@@ -454,13 +457,13 @@ public final class LiveRun: ObservableObject {
         }
     }
 
-    /// The finish screen's "Restart into SiliconForest": the helper restarts the Mac (it has set the one-time next boot).
-    public func restart() {
-        guard let j = job, !restarting else { return }
-        restarting = true; restartError = nil
+    /// The finish screen's "Shut Down": the helper shuts the Mac down (the startup disk is set; SiliconForest is started from startup options).
+    public func shutDown() {
+        guard let j = job, !shuttingDown else { return }
+        shuttingDown = true; shutDownError = nil
         Task {
-            do { let c = controller; try await background { try c.restart(j) } }
-            catch { restarting = false; restartError = describe(error); log.error("restart failed: \(restartError ?? "")") }
+            do { let c = controller; try await background { try c.shutDown(j) } }
+            catch { shuttingDown = false; shutDownError = describe(error); log.error("shut down failed: \(shutDownError ?? "")") }
         }
     }
 

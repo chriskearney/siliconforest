@@ -11,10 +11,15 @@
 // Checking is quiet: `check(byPerson: false)` reads SMAppService.status and asks the helper's harmless probe,
 // and never registers again or opens anything, so polling can't pull the app out of full screen.
 //
-// Preview12: if this app build is not the one that last registered the helper, and the helper is already
-// enabled, unregister, register and reconnect before probing, so a leftover helper from an older preview
-// is replaced. The same restart happens once if a probe fails because the connection was invalidated or
-// the helper does not know the verb (a preview9 helper drops `checkPrivileges`).
+// Preview12 unregistered and registered an approved helper when this app build was new. macOS then turned the
+// helper off ("Job is not allowed to bootstrap") and the X never cleared (Job C, 26 November 2026).
+// Preview13: an approved, enabled helper is NEVER unregistered. A stale one (a new app build, or a probe that
+// fails because the connection was invalidated or the helper doesn't know the verb) is asked to exit with the
+// `retire` verb (or idles out by itself, as preview12 and earlier do), our connection is dropped, and launchd
+// starts the binary on disk at the next connection. Registering happens only for `.notRegistered`, once; a
+// register that macOS answers with "not allowed" or error 1 means the switch is off, which is
+// `.needsHelperApproval` (the person's toggle), not a failure. Every stage that is not `.ready`, `.failed`
+// included, keeps being checked quietly, so a stale X clears by itself.
 
 import Foundation
 import SFLiveDisk
@@ -31,10 +36,11 @@ public enum PrivilegeStage: Equatable, Sendable {
     /// Something the person can't fix here (not in /Applications, not our signature, the helper didn't answer).
     case failed(String)
 
-    /// Keep checking quietly while the person is in System Settings.
+    /// Keep checking quietly: while the person is in System Settings, and after a failure (the cause may be gone
+    /// by itself: a helper that was restarting, a switch turned on), so the X clears without a click.
     public var isWaiting: Bool {
         switch self {
-        case .needsHelperApproval, .needsFullDiskAccess: return true
+        case .needsHelperApproval, .needsFullDiskAccess, .failed: return true
         default: return false
         }
     }
@@ -90,7 +96,10 @@ public final class PrivilegeGate: @unchecked Sendable {
         public var probe: @Sendable () throws -> PrivilegeReport
         public var openLoginItems: @Sendable () -> Void
         public var openFullDiskAccess: @Sendable () -> Void
+        /// Kept for callers that pass it; the gate no longer calls it (preview13).
         public var unregister: @Sendable () throws -> HelperRegistrationState
+        /// Preview13: asks a stale helper process to exit (best effort), before reconnecting.
+        public var retire: @Sendable () -> Void
         public var reconnect: @Sendable () -> Void
         public var build: HelperBuildMemory?
         public init(register: @escaping @Sendable () throws -> HelperRegistrationState,
@@ -100,10 +109,11 @@ public final class PrivilegeGate: @unchecked Sendable {
                     openFullDiskAccess: @escaping @Sendable () -> Void,
                     unregister: @escaping @Sendable () throws -> HelperRegistrationState = { .notRegistered },
                     reconnect: @escaping @Sendable () -> Void = {},
-                    build: HelperBuildMemory? = nil) {
+                    build: HelperBuildMemory? = nil,
+                    retire: @escaping @Sendable () -> Void = {}) {
             self.register = register; self.status = status; self.probe = probe
             self.openLoginItems = openLoginItems; self.openFullDiskAccess = openFullDiskAccess
-            self.unregister = unregister; self.reconnect = reconnect; self.build = build
+            self.unregister = unregister; self.reconnect = reconnect; self.build = build; self.retire = retire
         }
     }
 
@@ -120,6 +130,9 @@ public final class PrivilegeGate: @unchecked Sendable {
     private var _stage: PrivilegeStage = .checking
     private var _loginItemsOpened = 0, _fullDiskAccessOpened = 0, _registerCalls = 0
     private var _didBuildRefresh = false, _didStaleRefresh = false
+    /// macOS lists the helper but it is off: it answered register with "not allowed" (or error 1). Registering again
+    /// can't turn the switch on, so the quiet checks only wait for the person (the status turns to enabled).
+    private var _approvalPending = false
     public var log: (String) -> Void = { _ in }
 
     public init(_ hooks: Hooks) { self.hooks = hooks }
@@ -131,7 +144,7 @@ public final class PrivilegeGate: @unchecked Sendable {
     public var didBuildRefresh: Bool { lock.lock(); defer { lock.unlock() }; return _didBuildRefresh }
     public var didStaleRefresh: Bool { lock.lock(); defer { lock.unlock() }; return _didStaleRefresh }
 
-    /// True when the next `check` will unregister and register the helper because this app build is
+    /// True when the next `check` will ask the running helper to restart because this app build is
     /// not the one that last registered it, and the helper is already enabled.
     public func willRefreshHelper() -> Bool {
         guard let build = hooks.build, !_didBuildRefresh, build.read() != build.current else { return false }
@@ -202,10 +215,17 @@ public final class PrivilegeGate: @unchecked Sendable {
 
     private func runCheck(byPerson: Bool, allowStaleRefresh: Bool) -> PrivilegeStage {
         var st = hooks.status()
-        if st == .notRegistered, byPerson {
+        if st == .enabled { lock.lock(); _approvalPending = false; lock.unlock() }
+        lock.lock(); let pending = _approvalPending; lock.unlock()
+        if st == .notRegistered, byPerson, !pending {
             lock.lock(); _registerCalls += 1; lock.unlock()
-            do { st = try hooks.register() } catch { st = .refused("macOS didn't register the installer's helper: \(error.localizedDescription)") }
+            do { st = try hooks.register() } catch {
+                let ns = error as NSError
+                log("privileges: register failed: \(ns.localizedDescription) [\(ns.domain) \(ns.code)]")
+                st = HelperRegistrar.stateAfterRegisterError(domain: ns.domain, code: ns.code, message: ns.localizedDescription, status: hooks.status())
+            }
             if st == .enabled { rememberBuild() }
+            if st == .requiresApproval { lock.lock(); _approvalPending = true; lock.unlock() }
         }
         let next: PrivilegeStage
         switch st {
@@ -249,18 +269,14 @@ public final class PrivilegeGate: @unchecked Sendable {
         return next
     }
 
+    /// Replaces a stale helper process WITHOUT touching its registration: ask it to exit, drop our connection,
+    /// and let launchd start the current binary at the next connection.
     private func restartHelper(reason: String) {
         lock.lock(); _stage = .restartingHelper; lock.unlock()
-        log("privileges: restarting the installer's helper (\(reason))")
-        do { _ = try hooks.unregister() } catch { log("privileges: unregister failed: \(error.localizedDescription)") }
-        do {
-            let st = try hooks.register()
-            hooks.reconnect()
-            if st == .enabled { rememberBuild() }
-        } catch {
-            log("privileges: register after restart failed: \(error.localizedDescription)")
-            hooks.reconnect()
-        }
+        log("privileges: restarting the installer's helper (\(reason)); it stays registered")
+        hooks.retire()
+        hooks.reconnect()
+        if hooks.status() == .enabled { rememberBuild() }
     }
 
     private func rememberBuild() {

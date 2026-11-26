@@ -5,6 +5,7 @@ import SFEngine
 import SFLiveDisk
 import SFAppEngine
 import SFIdentity
+import SFCopy
 
 /// Preview10: the up-front privilege check, opening System Settings only on a click, and the logs.
 private final class FakeMac: @unchecked Sendable {
@@ -13,7 +14,10 @@ private final class FakeMac: @unchecked Sendable {
     var afterRegister: HelperRegistrationState = .requiresApproval
     var fda: [PrivilegeReport.FullDiskAccess] = [.granted]   // one per probe; the last one repeats
     var probeError: Error?
-    var registers = 0, unregisters = 0, reconnects = 0, probes = 0, loginItemsOpens = 0, fdaOpens = 0
+    var registers = 0, unregisters = 0, retires = 0, reconnects = 0, probes = 0, loginItemsOpens = 0, fdaOpens = 0
+    /// A register that throws (e.g. error 1, "Job is not allowed to bootstrap"); the status after it is `statusAfterRegisterError`.
+    var registerError: Error?
+    var statusAfterRegisterError: HelperRegistrationState = .notRegistered
     var tracksBuild = false
     var currentBuild = "0.1.0-preview12/26"
     var storedBuild: String?
@@ -22,7 +26,12 @@ private final class FakeMac: @unchecked Sendable {
 
     var hooks: PrivilegeGate.Hooks {
         PrivilegeGate.Hooks(
-            register: { [self] in lock.lock(); defer { lock.unlock() }; registers += 1; status = afterRegister; return status },
+            register: { [self] in
+                lock.lock(); defer { lock.unlock() }
+                registers += 1
+                if let registerError { status = statusAfterRegisterError; throw registerError }
+                status = afterRegister; return status
+            },
             status: { [self] in lock.lock(); defer { lock.unlock() }; return status },
             probe: { [self] in
                 lock.lock(); defer { lock.unlock() }
@@ -36,8 +45,15 @@ private final class FakeMac: @unchecked Sendable {
             openFullDiskAccess: { [self] in lock.lock(); fdaOpens += 1; lock.unlock() },
             unregister: { [self] in lock.lock(); defer { lock.unlock() }; unregisters += 1; status = .notRegistered; return status },
             reconnect: { [self] in lock.lock(); reconnects += 1; lock.unlock() },
-            build: tracksBuild ? HelperBuildMemory(current: currentBuild, read: { [self] in lock.lock(); defer { lock.unlock() }; return storedBuild }, write: { [self] v in lock.lock(); storedBuild = v; lock.unlock() }) : nil)
+            build: tracksBuild ? HelperBuildMemory(current: currentBuild, read: { [self] in lock.lock(); defer { lock.unlock() }; return storedBuild }, write: { [self] v in lock.lock(); storedBuild = v; lock.unlock() }) : nil,
+            retire: { [self] in lock.lock(); retires += 1; lock.unlock() })
     }
+}
+
+private final class LogBox: @unchecked Sendable {
+    private let lock = NSLock(); private var _lines: [String] = []
+    var lines: [String] { lock.lock(); defer { lock.unlock() }; return _lines }
+    func add(_ l: String) { lock.lock(); _lines.append(l); lock.unlock() }
 }
 
 @Suite("Privileges: the up-front check")
@@ -84,8 +100,10 @@ struct PrivilegeGateTests {
         mac.status = .refused("Move SiliconForest Installer to the Applications folder, then open it again.")
         let g = PrivilegeGate(mac.hooks)
         #expect(g.check(byPerson: true) == .failed("Move SiliconForest Installer to the Applications folder, then open it again."))
-        #expect(!g.stage.isWaiting)
+        #expect(g.stage.isWaiting, "preview13: a failure is polled too, so the X clears without a click")
         #expect(mac.probes == 0)
+        mac.status = .enabled
+        #expect(g.check(byPerson: false) == .ready, "the quiet poll clears a failure that went away")
 
         let mac2 = FakeMac()
         mac2.afterRegister = .enabled
@@ -93,7 +111,7 @@ struct PrivilegeGateTests {
         let g2 = PrivilegeGate(mac2.hooks)
         guard case .failed(let m) = g2.check(byPerson: true) else { Issue.record("expected failed"); return }
         #expect(m.contains("didn't answer") && m.contains("invalidated"))
-        #expect(mac2.unregisters == 1 && mac2.registers == 1 && mac2.reconnects == 1, "one restart, then the same error is a failure")
+        #expect(mac2.retires == 1 && mac2.reconnects == 1 && mac2.unregisters == 0 && mac2.registers == 0, "one restart (the helper exits, never unregistered), then the same error is a failure")
         #expect(mac2.probes == 2)
     }
 
@@ -144,11 +162,11 @@ struct PrivilegeGateTests {
         mac.probeErrors = [NSError(domain: NSCocoaErrorDomain, code: 4097, userInfo: [NSLocalizedDescriptionKey: "Couldn’t communicate with a helper application."])]
         let g = PrivilegeGate(mac.hooks)
         #expect(g.check(byPerson: true) == .ready)
-        #expect(mac.unregisters == 1 && mac.registers == 1 && mac.reconnects == 1)
+        #expect(mac.retires == 1 && mac.reconnects == 1 && mac.unregisters == 0 && mac.registers == 0, "never unregistered: that is what disabled the helper in preview12")
         #expect(mac.probes == 2)
         #expect(g.didStaleRefresh)
         #expect(g.check(byPerson: true) == .ready)
-        #expect(mac.unregisters == 1, "the restart happens only once")
+        #expect(mac.retires == 1, "the restart happens only once")
     }
 
     @Test func aNewAppBuildRestartsAnEnabledHelper() {
@@ -159,12 +177,12 @@ struct PrivilegeGateTests {
         let g = PrivilegeGate(mac.hooks)
         #expect(g.willRefreshHelper())
         #expect(g.check(byPerson: true) == .ready)
-        #expect(mac.unregisters == 1 && mac.registers == 1 && mac.reconnects == 1)
+        #expect(mac.retires == 1 && mac.reconnects == 1 && mac.unregisters == 0 && mac.registers == 0, "an approved, enabled helper is never unregistered")
         #expect(mac.storedBuild == "0.1.0-preview12/26")
         #expect(g.didBuildRefresh)
         #expect(!g.willRefreshHelper())
         #expect(g.check(byPerson: true) == .ready)
-        #expect(mac.unregisters == 1, "the same build is not registered again")
+        #expect(mac.retires == 1, "the same build is not restarted again")
     }
 
     @Test func theSameAppBuildDoesNotRestartTheHelper() {
@@ -189,6 +207,57 @@ struct PrivilegeGateTests {
         #expect(g.check(byPerson: true) == .ready)
         #expect(mac.unregisters == 0 && mac.registers == 1 && mac.reconnects == 0, "a first-time register is not a restart")
         #expect(mac.storedBuild == "0.1.0-preview12/26")
+    }
+
+    // MARK: preview13: the re-registration bug (an unregister disabled the approved helper)
+
+    @Test func registerErrorOneMapsToApprovalNotFailure() {
+        for (domain, code, msg) in [("SMAppServiceErrorDomain", 1, "Operation not permitted"),
+                                    ("SMAppServiceErrorDomain", 1, "Job is not allowed to bootstrap"),
+                                    (NSPOSIXErrorDomain, 1, "anything"),
+                                    ("SMAppServiceErrorDomain", 2, "The operation couldn’t be completed. Job is not allowed to bootstrap")] {
+            #expect(HelperRegistrar.stateAfterRegisterError(domain: domain, code: code, message: msg, status: .notRegistered) == .requiresApproval, "\(domain) \(code) \(msg)")
+        }
+        #expect(HelperRegistrar.stateAfterRegisterError(domain: "x", code: 9, message: "boom", status: .enabled) == .enabled, "it was on after all")
+        #expect(HelperRegistrar.stateAfterRegisterError(domain: "x", code: 9, message: "boom", status: .requiresApproval) == .requiresApproval)
+        guard case .refused(let why) = HelperRegistrar.stateAfterRegisterError(domain: "SMAppServiceErrorDomain", code: 3, message: "Launch constraint violation", status: .notRegistered) else { Issue.record("expected refused"); return }
+        #expect(why.contains("SMAppServiceErrorDomain 3") && why.contains("Launch constraint violation"), "the domain and code are in the message")
+    }
+
+    @Test func aThrownRegisterThatMapsToApprovalShowsTheApprovalScreenOnce() {
+        let mac = FakeMac()
+        mac.status = .notRegistered
+        mac.registerError = NSError(domain: "SMAppServiceErrorDomain", code: 1, userInfo: [NSLocalizedDescriptionKey: "Operation not permitted"])
+        mac.statusAfterRegisterError = .requiresApproval
+        let logs = LogBox()
+        let g = PrivilegeGate(mac.hooks)
+        g.log = { logs.add($0) }
+        #expect(g.check(byPerson: true) == .needsHelperApproval, "not .failed")
+        #expect(logs.lines.contains { $0.contains("SMAppServiceErrorDomain") && $0.contains("1") }, "the NSError domain and code are logged")
+        for _ in 0..<5 { _ = g.check(byPerson: true) }
+        #expect(mac.registers == 1, "it doesn't register over and over while waiting for the switch")
+        mac.status = .enabled
+        #expect(g.check(byPerson: false) == .ready)
+    }
+
+    @Test func onlyNotRegisteredRegistersAndOnlyByPerson() {
+        for st: HelperRegistrationState in [.requiresApproval, .refused("x"), .enabled] {
+            let mac = FakeMac(); mac.status = st
+            let g = PrivilegeGate(mac.hooks)
+            _ = g.check(byPerson: true); _ = g.check(byPerson: false)
+            #expect(mac.registers == 0, "\(st)")
+        }
+        let mac = FakeMac(); mac.status = .notRegistered
+        let g = PrivilegeGate(mac.hooks)
+        _ = g.check(byPerson: false)
+        #expect(mac.registers == 0, "a quiet poll never registers")
+        _ = g.check(byPerson: true)
+        #expect(mac.registers == 1)
+    }
+
+    @Test func theToggleIsNamedInTheCopy() {
+        #expect(Copy.Privileges.toggleName == "Allow in the Background → SiliconForest Installer")
+        #expect(Copy.Privileges.waitingBody.contains(Copy.Privileges.toggleName) && Copy.Privileges.approvalLine.contains(Copy.Privileges.toggleName))
     }
 
     @Test func staleHelperErrorsAreRecognised() {

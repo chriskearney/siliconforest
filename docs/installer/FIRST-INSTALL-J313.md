@@ -186,17 +186,16 @@ Preview6's app performs the real install itself (preview7 adds the steps marked 
    the default is the profile's recommended root (or a fraction of the disk), clamped into that range. The helper plans
    from its own read of the disk and refuses any size outside the range, so the screen cannot ask for more than fits.
    macOS is shrunk to exactly what is left (S25); nothing is formatted or moved.
-9. **Finish** (preview7, the installer does the one-time bless): after S60/S68 hand off, S65 runs, inside the same confirmed
-   job and the same administrator approval, `/usr/sbin/bless --mount "/Volumes/<name>" --setBoot --nextonly`. The helper runs
-   it (as root, no shell) only if the mount point is the System volume of the stub container **this plan created** on this
-   Mac's startup disk, always with `--nextonly` (never a persistent default). It checks the exit code and then reads
-   `bless --getBoot`; if `--getBoot` doesn't name the stub (it may not report a one-time selection) the screen says so and still
-   offers the restart. The finish screen shows **Restart into SiliconForest** (the helper runs `shutdown -r now`, only for a
-   finished, not-removed install, for a day after it finished) and a fallback: shut down, hold the power button until
-   "Loading startup options", choose SiliconForest. SiliconForest Setup then finishes in recoveryOS (it asks for your password;
-   `bputil`, `kmutil configure-boot`) and restarts into SiliconForest. If `bless` fails, the install is **not** failed: the screen
-   shows the manual command (`sudo /usr/sbin/bless --mount "/Volumes/<name>" --setBoot --nextonly`, with "Copy the bless command")
-   and the startup-menu steps.
+9. **Finish** (preview7; **changed in preview13**, see "Preview13: persistent startup disk" below): after S60/S68 hand off, S65
+   runs, inside the same confirmed job and the same administrator approval,
+   `/usr/sbin/bless --mount "/Volumes/<name>" --setBoot [--user <owner> --stdinpass]`: a **persistent** selection of the stub
+   (no `--nextonly`). The helper runs it (as root, no shell) only if the mount point is the System volume of the stub container
+   **this plan created** on this Mac's startup disk. It checks the exit code and then reads `bless --getBoot`. The finish screen
+   shows **Shut Down** (the helper runs `shutdown -h now`, only for a finished, not-removed install, for a day after it
+   finished) and the steps: hold the power button until "Loading startup options", choose SiliconForest, **not Options**.
+   SiliconForest Setup then finishes in the stub's own recoveryOS (it asks for your password; `bputil`, `kmutil configure-boot`)
+   and starts SiliconForest. If `bless` fails, the install is **not** failed: the screen shows the manual command
+   (`sudo /usr/sbin/bless --mount "/Volumes/<name>" --setBoot`, with "Copy the bless command") and the startup-menu steps.
 10. **Remove SiliconForest** (preview7; Welcome, or the "already installed" Check screen, then "Remove SiliconForest…"):
     the app lists the installs the helper's own journals prove (finished, not already removed), shows what will be deleted
     (the stub, its boot partition and the root partition, and the recovery setup the install added with the stub), and
@@ -298,3 +297,56 @@ Preview12 changes the following:
 - **If it fails.** The install stays successful. The journal's S65 evidence and helper.log carry bless's full output (up to 1.5 KB), the exit status and the account name. The app logs the error domain and code. **Set Startup Disk** (`retryStartupSelection`) runs only the bless again with a fresh login. The manual `sudo /usr/sbin/bless …` command and the Copy button stay.
 - **Fallback if owner authentication still fails from the daemon.** Run bless in the person's own session instead of in the root daemon: the app, which already holds the administrator authorization (`AdminAuthorization`), would run `/usr/sbin/bless --mount "/Volumes/<stub>" --setBoot --nextonly` through that authorization (an `osascript … with administrator privileges` or `AuthorizationExecuteWithPrivileges` call from the user session). That is the same security context as the `sudo` that worked by hand. It is not built in preview13; it needs a new, narrowly guarded app-side runner.
 - **Versions.** The new verbs (`authorizeBless` with an owner, `startupOwners`, `retryStartupSelection`) are unknown to an older helper, which drops them; the app treats that as a stale helper and the login step as non-fatal. The CI build number is `CFBundleVersion`, which is the helper's `helperBuild` and its `minimumClientBuild`, so it rises with each release build.
+
+### Preview13: persistent startup disk, macOS Recovery vs SiliconForest's, owners, and the helper registration bug
+
+**Why S65 changed.** On the Air the person ended up in macOS's own paired 1TR (the **Options** entry). There the stub is only
+mounted at `/Volumes/SiliconForest`, and `.IAPhysicalMedia` is never read, so SiliconForest Setup never launched. And
+`bless --setBoot --nextonly` on the stub's System volume is a one-shot *OS* boot of the stub, whose `SystemVersion.plist` is hidden
+at S68, so the Mac falls back to macOS and never reaches the stub's recoveryOS. Asahi's way (RESEARCH.md, `bless --setBoot
+--device <sys> --user <admin> --stdinpass`, no `--nextonly`, then hide SystemVersion, write the marker, shut down; the person holds
+power and picks the new OS) makes the stub's boot the one true recoveryOS.
+
+- **S65 is a persistent bless of the stub**: `bless --mount <stub System volume> --setBoot` and, with the owner's login,
+  `--user <owner> --stdinpass` (password on stdin only). `BlessGuard.isAllowed` accepts exactly: `--getBoot`;
+  `--mount <"/" or /Volumes/x> --setBoot` (4 elements); and the same plus `--user <owner> --stdinpass` (7 elements). `--nextonly`
+  is **not** accepted by the helper at all. It remains only in SFRecoveryKit's R50 (`bless --mount <stub> --setBoot --nextonly`),
+  run in recoveryOS after `kmutil configure-boot`.
+- **What a normal power-on does before Setup has run.** The default points at the stub, whose SystemVersion is hidden, so the
+  Mac falls back to macOS. This is expected, and the finish screen says so: "Until Setup has run, a normal start opens macOS. That
+  is expected." The installer never says "Restart" any more; the button is **Shut Down** and the steps are: shut down, hold the
+  power button until you see "Loading startup options", choose SiliconForest, not Options.
+- **R50's role.** Redundant when S65's persistent bless worked; it makes the restart after Setup come back to SiliconForest (one
+  time) even if the startup disk was changed in between, and covers an S65 that failed (manual path). It does not change the
+  persistent default.
+- **Flagged design question: the persistent default stays on SiliconForest after Setup** until **Remove** (U10) or the person
+  chooses macOS in Startup Disk. A failed SiliconForest start would then not fall back to macOS by itself (D5 is relaxed). Putting
+  macOS back as the default from R50 needs the owner's login and a mount of macOS's System volume in recoveryOS; it is not built.
+- **Remove (U10)** resets the startup disk to macOS when `bless --getBoot` names SiliconForest (always the case now). It takes the
+  owner's login through the same `--user/--stdinpass` shape (the removal confirm screen has the optional field: "Set macOS as the
+  startup disk again"). If bless fails the removal is **not** failed: U10's evidence says `reset: no` with the reason and the
+  manual command.
+- **Copy, everywhere** (`StartupOptionsCopy`, `Copy.Recovery.steps`, `AfterHandoff.manualSteps/fallback`, `Copy.StartupFinish`):
+  "Hold the power button until you see “Loading startup options”." and "Choose SiliconForest, not Options. Options opens macOS
+  Recovery, which can't finish the setup."
+- **SFRecovery knows which recovery it is in.** Its gate runs `bputil -d` (no `-v`: the recovery that is running). Not "one true
+  recoveryOS", or "Not Paired", or no "one true recoveryOS" for the stub's group (`-d -v <VGID>`), or (when bputil prints nothing) the stub
+  mounted under `/Volumes/`, means macOS's Recovery. Nothing is changed; the screen is titled **This is macOS Recovery, not
+  SiliconForest's.**, with steps (shut down; hold power until Loading startup options; choose SiliconForest, not Options) and a
+  **Shut Down** button. The same check is in `sf-step2.sh`. Not yet exercised on real hardware.
+- **Owners instead of "Chris".** S60 writes `owners` (short and full names, from `StartupOwners`, which now also reads `RealName`)
+  and `owner` (the one whose login was given for bless) into `plan.json`. SFRecovery shows the full name ("Password for Chris
+  Kearney"), a picker when there are several, and "Your Mac login password" when none are known. If the plan has none it parses the
+  stub's Preboot `AdminUserRecoveryInfo.plist` tolerantly (layout undocumented: **unverified on a real Mac**).
+- **Username prompts.** The PTY rules for `bputil -nc` and `kmutil configure-boot` answer a prompt containing "username", "user
+  name", "name of an administrator" or "name of an admin" with the owner's short name, unless the same output also asks for the
+  password. The real wording isn't recorded in the repo (Asahi's docs only say "Enter the username… / enter the password…"), so
+  this is **unverified on hardware**. Password redaction is unchanged.
+- **The helper registration bug (preview12's "Job is not allowed to bootstrap").** `PrivilegeGate.refreshIfBuildChanged` /
+  `restartHelper` unregistered an already-approved helper; macOS then disabled it, and `.failed` was never polled again. Now: an
+  approved, enabled helper is **never unregistered**. A stale helper is replaced by the new `retire` XPC verb (it exits itself;
+  launchd starts the current binary at the next connection; older helpers idle out). The gate registers **only for `.notRegistered`**
+  (by a person's click), and a register error 1 / "Operation not permitted" / "not allowed to bootstrap" maps to the approval screen
+  (not `.failed`) and doesn't retry until the status changes. `.failed` is polled too, so the X clears. The NSError domain and code
+  are logged. The copy names the toggle: "Allow in the Background → SiliconForest Installer".
+

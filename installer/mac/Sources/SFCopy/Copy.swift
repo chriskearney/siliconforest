@@ -272,7 +272,10 @@ public enum Copy {
         public static let fdaStep3 = "Not in the list? Drag SFHelper from the Finder window into the list. Or click +, press ⌘⇧G, paste the path below, click Open, then turn SFHelper on."
         public static let restarting = "Restarting the installer's helper…"
         public static let waiting = "Waiting for approval…"
-        public static let waitingBody = "The installer's helper does the disk work, and macOS needs your approval to run it. Click Open Login Items, then under Allow in the Background turn on “SiliconForest Installer”. The installer continues automatically."
+        /// The switch is named for the app, not for the helper, and it is under Allow in the Background.
+        public static let toggleName = "Allow in the Background → SiliconForest Installer"
+        public static let waitingBody = "The installer's helper does the disk work, and macOS needs your approval to run it. Click Open Login Items, then turn on \(toggleName). If it is already on, turn it off and on again. The installer continues automatically."
+        public static let approvalLine = "Turn on \(toggleName) in System Settings → General → Login Items & Extensions. The installer continues by itself."
         public static let waitingLine = "Checking every few seconds. System Settings opens only when you click."
         public static let checking = "Checking…"
         public static let continuing = "Continuing…"
@@ -281,8 +284,10 @@ public enum Copy {
     // MARK: Startup disk login (preview13)
     /// macOS needs a volume owner's login to change the startup disk on Apple Silicon.
     public enum Startup {
-        public static let header = "Start SiliconForest next time"
-        public static func body(volume: String) -> String { "To set your Mac to start SiliconForest, macOS needs the login password of a user who can unlock \(volume). This is your Mac login password." }
+        public static let header = "Make SiliconForest the startup disk"
+        public static let removeHeader = "Set macOS as the startup disk again"
+        public static func removeBody(volume: String) -> String { "SiliconForest is the startup disk now. To set it back to macOS, macOS needs the login password of a user who can unlock \(volume). This is your Mac login password." }
+        public static func body(volume: String) -> String { "macOS needs the login password of a user who can unlock \(volume) to make SiliconForest the startup disk. This is your Mac login password." }
         public static let account = "Account"
         public static func field(owner: String) -> String { owner.isEmpty ? "Mac login password" : "Mac login password for \(owner)" }
         public static let optionalNote = "Optional. The installer uses it once, at the end. It stays in memory and is never saved or logged. Leave it empty to do this at the end instead."
@@ -291,6 +296,25 @@ public enum Copy {
         public static let setting = "Setting the startup disk…"
         public static func failed(_ why: String) -> String { "The startup disk wasn't set: \(why)" }
         public static let noAccounts = "The installer couldn't find a user who can unlock this Mac's startup disk. Use the command below instead."
+    }
+
+    // MARK: Finish screen after the startup disk is set (preview13)
+    public enum StartupFinish {
+        public static let title = "SiliconForest is installed"
+        public static let lead = "Your Mac is set to start SiliconForest, but Setup hasn't run yet. Save your work in other apps, then shut down."
+        public static let stepsHeader = "To finish the setup"
+        public static func steps(_ name: String) -> [String] {
+            ["Shut down this Mac. A normal restart won't finish it: until Setup has run, your Mac opens macOS.",
+             StartupOptionsCopy.hold,
+             StartupOptionsCopy.choose(name),
+             "Enter your Mac password when asked. SiliconForest Setup runs in its own recovery, then starts SiliconForest."]
+        }
+        public static let expected = StartupOptionsCopy.normalStartIsMacOS
+        public static let button = "Shut Down"
+        public static let shuttingDown = "Shutting down…"
+        public static let confirmed = "The installer confirmed the startup disk with bless."
+        public static let notConfirmed = "The startup disk is set. macOS didn't report it, so the installer couldn't read it back."
+        public static func shutDownFailed(_ why: String) -> String { "The installer couldn't shut down your Mac: \(why)" }
     }
 
     // MARK: Download row (preview13)
@@ -446,13 +470,16 @@ public enum Copy {
 
     // MARK: 10. Get ready for Recovery
     public enum Recovery {
+        /// The same sentences everywhere the installer says how to start SiliconForest (see `StartupOptionsCopy`).
+        public static let hold = StartupOptionsCopy.hold
+        public static func choose(_ name: String) -> String { StartupOptionsCopy.choose(name) }
         public static let title = "Approve SiliconForest in Recovery"
         public static let lead = "macOS requires you to approve a new operating system in Recovery. This takes about two minutes."
         public static func steps(holdCopy: String?, name: String) -> [String] {
             ["Your Mac will shut down.",
              "Wait for the screen to go dark, then 25 more seconds.",
-             holdCopy ?? "Press and HOLD the power button until you see “Loading startup options”.",
-             "Choose \(name), then click Continue.",
+             holdCopy ?? StartupOptionsCopy.hold,
+             StartupOptionsCopy.choose(name) + " Then click Continue.",
              "Enter your Mac password when asked."]
         }
         public static let practice = "Practice"
@@ -471,6 +498,17 @@ public enum Copy {
         public static let title = "Finish installing SiliconForest"
         public static func lead(_ user: String) -> String { "Enter the password for \(user) to allow SiliconForest to start on this Mac." }
         public static let lowers = "This lowers security for SiliconForest only. macOS isn't affected."
+        /// Preview13: no owner name could be found (older plan, or the lookup failed).
+        public static let leadGeneric = "Enter your Mac login password to allow SiliconForest to start on this Mac."
+        public static func passwordLabel(_ user: String?) -> String { user.map { "Password for \($0)" } ?? "Your Mac login password" }
+        public static let pickOwner = "Whose password?"
+        public static let ownerNote = "Only this Mac's owner can approve a new operating system. Your password stays on this Mac."
+        // This is macOS Recovery, not SiliconForest's (the person chose Options). See StartupOptionsCopy.
+        public static let macOSRecoveryTitle = StartupOptionsCopy.macOSRecoveryTitle
+        public static func macOSRecoveryLead(_ name: String) -> String { StartupOptionsCopy.macOSRecoveryLead(name) }
+        public static func macOSRecoverySteps(_ name: String) -> [String] { StartupOptionsCopy.macOSRecoverySteps(name) }
+        public static let macOSRecoveryNote = StartupOptionsCopy.macOSRecoveryNote
+        public static let shutDown = "Shut Down"
         public static let allow = "Allow SiliconForest"
         public static let workingTitle = "Setting up SiliconForest"
         public static let working = ["Checking this recovery system", "Allowing SiliconForest to start", "Installing the startup software", "Finishing up"]

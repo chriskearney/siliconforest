@@ -64,7 +64,8 @@ config.recoveryBinary = contents.appendingPathComponent("Helpers/SFRecovery")
 #if SF_REAL_DISK_WRITES
 // Preview7: the shipped app sets the one-time next boot itself and can restart the Mac (never a persistent default).
 config.blessRunner = ProcessBlessRunner()
-config.restartAction = SystemRestart.action
+config.shutdownAction = SystemShutdown.action
+config.retireAction = { exit(0) }
 #endif
 if let s = try? HelperResources.stubSource(profileID: profileID, resources: resources) { config.stubSource = s }
 // Preview10: /Library/Logs/SiliconForest/helper.log and the unified log (org.siliconforest.installer).

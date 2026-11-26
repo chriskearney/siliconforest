@@ -1,5 +1,6 @@
 import AppKit
 import SFRecoveryKit
+import SFCopy
 
 // SFRecovery: SiliconForest Setup in recoveryOS (DESIGN §7). AppKit only; launched by sf-launcher.
 //
@@ -7,7 +8,7 @@ import SFRecoveryKit
 // else, including a crash or a dyld failure, makes sf-launcher open Terminal with sf-step2.sh.
 //
 //   SFRecovery                               recoveryOS: the setup screen
-//   SFRecovery --snapshot OUT.png [--size 1512x982@2] [--stage password|working|failed|not-recovery]
+//   SFRecovery --snapshot OUT.png [--size 1512x982@2] [--stage password|password-owners|password-generic|working|failed|not-recovery|macos-recovery]
 //                                            render the screen offscreen to PNG (no window)
 
 let args = CommandLine.arguments
@@ -25,7 +26,14 @@ if let out = arg("--snapshot") {
     case "working": v.stage = .working(step: 2)
     case "failed": v.stage = .failed("That password didn't work. Try again.")
     case "not-recovery": v.stage = .notRecovery
-    default: v.stage = .password; v.password.stringValue = "correct horse"
+    case "macos-recovery": v.stage = .macOSRecovery
+    case "password-generic": v.stage = .password
+    case "password-owners":
+        v.owners = [.init(short: "chris", full: "Chris Kearney"), .init(short: "connor", full: "Connor K")]
+        v.stage = .password; v.password.stringValue = "correct horse"
+    default:
+        v.owners = [.init(short: "chris", full: "Chris Kearney")]
+        v.stage = .password; v.password.stringValue = "correct horse"
     }
     v.layoutSubtreeIfNeeded()
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
@@ -50,6 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view = RecoveryView(frame: NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1280, height: 800))
     }
 
+    /// The short name whose password is being typed (the picker's choice, or the only owner), for bputil's user-name prompt.
+    var owner: String? { view.selectedOwner?.short }
+
     func applicationDidFinishLaunching(_ n: Notification) {
         let frame = NSScreen.main?.frame ?? view.frame
         // Spike S3 decides full screen in recoveryOS; until then a borderless window over the display.
@@ -59,23 +70,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         buildMenu()
         view.onShutDown = { exit(75) }
-        do { _ = try setup.gate() } catch {
-            view.stage = FileManager.default.fileExists(atPath: "/System/Installation/CDIS") ? .failed(error.localizedDescription) : .notRecovery
+        let plan: RecoverySetup.Plan
+        do { plan = try setup.gate() } catch {
+            let kind = (error as? RecoverySetup.Failure)?.kind ?? .other
+            switch kind {
+            case .macOSRecovery: view.stage = .macOSRecovery                 // the person chose Options
+            case .notRecoveryOS: view.stage = .notRecovery
+            case .other: view.stage = FileManager.default.fileExists(atPath: "/System/Installation/CDIS") ? .failed(error.localizedDescription) : .notRecovery
+            }
             return
         }
+        view.owners = setup.owners(plan: plan)
+        view.select(owner: plan.owner)
         view.onContinue = { [weak self] pw in self?.finish(pw) }
         window.makeFirstResponder(view.password)
     }
 
     func finish(_ password: Data) {
         view.stage = .working(step: 1)
+        let owner = self.owner
         DispatchQueue.global().async { [setup] in
             var pw = password
             defer { pw.resetBytes(in: 0..<pw.count) }
             do {
-                _ = try setup.allowSiliconForest(password: pw)
+                _ = try setup.allowSiliconForest(password: pw, owner: owner)
                 DispatchQueue.main.async { self.view.stage = .working(step: 2) }
-                _ = try setup.installBootObject(password: pw)
+                _ = try setup.installBootObject(password: pw, owner: owner)
                 DispatchQueue.main.async { self.view.stage = .working(step: 3) }
                 try setup.cleanUpMarkers()
                 try setup.setNextBoot()

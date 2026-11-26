@@ -227,7 +227,7 @@ struct Snapshotter {
             }
             add("37-live-finish\(sfx)", dark: dark) {
                 let s = await liveBase(); s.screen = .liveFinish
-                let j = #"{"set":true,"volumeName":"SiliconForest","confirmed":false,"note":"","manualCommand":"","canRestart":true}"#
+                let j = #"{"set":true,"volumeName":"SiliconForest","confirmed":false,"note":"","manualCommand":"","canShutDown":true}"#
                 s.live?.blessReport = try? JSONDecoder().decode(BlessReport.self, from: Data(j.utf8))
                 s.live?.job = "20261125-190000-install"
                 return s
@@ -275,7 +275,7 @@ struct Snapshotter {
             }
             add("49-live-finish-bless-failed\(sfx)", dark: dark) {
                 let s = await liveBase(); s.screen = .liveFinish
-                let j = #"{"set":false,"volumeName":"SiliconForest","confirmed":false,"note":"macOS needs your login to set the startup disk.","manualCommand":"sudo /usr/sbin/bless --mount /Volumes/SiliconForest --setBoot --nextonly","canRestart":false,"needsPassword":true,"canRetry":true}"#
+                let j = #"{"set":false,"volumeName":"SiliconForest","confirmed":false,"note":"macOS needs your login to set the startup disk.","manualCommand":"sudo /usr/sbin/bless --mount /Volumes/SiliconForest --setBoot --nextonly","canShutDown":false,"needsPassword":true,"canRetry":true}"#
                 s.live?.blessReport = try? JSONDecoder().decode(BlessReport.self, from: Data(j.utf8))
                 s.live?.startupOwners = StartupDiskOwners(owners: ["chris"], defaultOwner: "chris"); s.live?.startupOwner = "chris"
                 s.live?.job = "20261125-190000-install"

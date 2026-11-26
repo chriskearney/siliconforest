@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
 //
 // The two things the shipped helper may do to this Mac's startup settings (preview7), as injectable
-// actions: the one-time bless, and the restart. SFHelper installs them only in a build with
+// actions: the startup-disk bless, and the shut down. SFHelper installs them only in a build with
 // SF_REAL_DISK_WRITES; everything else (tests, lab tools, other builds) has none, and tests use recorders.
 
 import Foundation
@@ -42,7 +42,7 @@ public enum ProcessCapture {
 }
 
 /// Runs `/usr/sbin/bless` for the engine, and only the shapes `BlessGuard.isAllowed` lists: `--getBoot`,
-/// `--mount <volume> --setBoot [--nextonly]`, and (preview13) the same with `--user <owner> --stdinpass`, where
+/// `--mount <volume> --setBoot`, and (preview13) the same with `--user <owner> --stdinpass`, where
 /// the password goes only to bless's standard input. Refuses unless root. Never a shell; a 30 s limit.
 public struct ProcessBlessRunner: PasswordBlessRunner {
     public init() {}
@@ -77,13 +77,13 @@ public struct ProcessBlessRunner: PasswordBlessRunner {
     }
 }
 
-public enum SystemRestart {
-    /// `/sbin/shutdown -r now`: the verb that calls it has checked the job and the confirmation.
+public enum SystemShutdown {
+    /// `/sbin/shutdown -h now`: the verb that calls it has checked the job and the confirmation.
     public static let action: @Sendable () -> Void = {
         guard geteuid() == 0 else { return }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/sbin/shutdown")
-        p.arguments = ["-r", "now"]
+        p.arguments = ["-h", "now"]
         try? p.run()
     }
 }

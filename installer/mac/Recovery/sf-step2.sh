@@ -38,16 +38,24 @@ echo "This finishes installing SiliconForest. macOS and your files are not chang
 
 # R10: gate, fail closed.
 if [ "${SF_TEST_MODE:-0}" != 1 ]; then
-  [ -e /System/Installation/CDIS ] || fail "This isn't recoveryOS. Shut down, then hold the power button and choose SiliconForest."
+  [ -e /System/Installation/CDIS ] || fail "This isn't recoveryOS. Shut down, then hold the power button until you see “Loading startup options”, and choose SiliconForest, not Options."
   [ "$(id -u)" -eq 0 ] || fail "SiliconForest Setup must run as the recoveryOS user."
 fi
 [ -f "$plan" ] || fail "The installer's plan is missing from this volume ($plan)."
 vgid="$("$DISKUTIL" info -plist "$system" | plutil -extract APFSVolumeGroupID raw -o - - 2>/dev/null)"
 [ -n "$vgid" ] || fail "Couldn't find this volume's group."
+# macOS's own Recovery (the person chose Options): `bputil -d` for the recovery that is running says "ordinary
+# recovery OS", not paired. That recovery can't finish the setup.
+msg="This is macOS Recovery, not SiliconForest's. Shut down, then hold the power button until you see “Loading startup options”, and choose SiliconForest, not Options."
+running="$("$BPUTIL" -d 2>&1)"
+case "$running" in
+  *"one true recoveryOS"*) case "$running" in *"Not Paired"*) fail "$msg" ;; esac ;;
+  *) fail "$msg" ;;
+esac
 policy="$("$BPUTIL" -d -v "$vgid" 2>&1)"
 case "$policy" in
   *"one true recoveryOS"*) ;;
-  *) fail "This is not SiliconForest's own recovery. Shut down, then hold the power button until you see startup options, and choose SiliconForest." ;;
+  *) fail "$msg" ;;
 esac
 case "$policy" in *Paired*) ;; *) fail "This recovery isn't paired with SiliconForest." ;; esac
 done_step R10
@@ -76,7 +84,9 @@ if ! is_done R40; then
   done_step R40
 fi
 
-# R50: SiliconForest starts next time only; the previous default stays the default (D5).
+# R50: this start is SiliconForest's (one time, --nextonly). Since preview13 the installer already set SiliconForest as the
+# startup disk (persistent, S65), so this is redundant when that worked, and it is what makes the restart come back
+# to SiliconForest when it didn't. It doesn't change the persistent default either way.
 if ! is_done R50; then
   say "Step 3 of 3: start SiliconForest once"
   "$BLESS" --mount "$system" --setBoot --nextonly || fail "Couldn't choose SiliconForest for the next startup."

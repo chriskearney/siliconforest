@@ -12,7 +12,10 @@ public final class PTYDriver {
         /// Lowercased substring of the tool's output that triggers the rule.
         public var prompt: String
         public var reply: Reply
-        public init(_ prompt: String, _ reply: Reply) { self.prompt = prompt; self.reply = reply }
+        /// Lowercased substring that, when it is in the same new output, stops the rule firing (a username rule
+        /// must never answer a password prompt).
+        public var unless: String?
+        public init(_ prompt: String, _ reply: Reply, unless: String? = nil) { self.prompt = prompt; self.reply = reply; self.unless = unless }
     }
     public enum Reply: Sendable { case password, text(String) }
 
@@ -102,6 +105,7 @@ public final class PTYDriver {
             for (i, r) in rules.enumerated() where !fired.contains(i) || r.prompt.hasSuffix("*") {
                 let key = r.prompt.hasSuffix("*") ? String(r.prompt.dropLast()) : r.prompt
                 guard text.contains(key) else { continue }
+                if let u = r.unless, text.contains(u) { continue }
                 switch r.reply {
                 case .password:
                     guard let password else { continue }

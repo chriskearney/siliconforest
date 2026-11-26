@@ -84,22 +84,22 @@ public struct LiveProgress: Codable, Sendable, Hashable {
     public var confirmedUntil: String?
     /// What to type to confirm this job's plan again (only while it isn't running).
     public var expected: TypedConfirmation?
-    /// What the one-time bless did (S65), once it has run.
+    /// What the startup-disk bless did (S65), once it has run.
     public var bless: BlessReport?
 }
 
 /// Preview7: the outcome of S65 for the finish screen.
 public struct BlessReport: Codable, Sendable, Hashable {
-    /// The one-time next boot is set (bless exited 0).
+    /// The startup disk is set (bless exited 0).
     public var set: Bool
     public var volumeName: String
-    /// `bless --getBoot` named the stub (it may not report a one-time selection).
+    /// `bless --getBoot` named the stub (a persistent selection should be named).
     public var confirmed: Bool
     public var note: String
     /// What the person runs themselves if it wasn't set.
     public var manualCommand: String
-    /// The helper can restart this Mac for them now.
-    public var canRestart: Bool
+    /// The helper can shut this Mac down for them now.
+    public var canShutDown: Bool
     /// Preview13: a volume owner's login would let the helper set it (macOS asked for owner authentication, or none was given).
     public var needsPassword: Bool? = nil
     /// The helper can retry just the bless with a login.
@@ -353,16 +353,16 @@ extension HelperService {
         guard st.plan?.operation == .install, let ev = st.evidence[.S65], let r = ev["blessed"]?.string else {
             if st.plan?.operation == .install, st.status[.S65] == .simulated {
                 return BlessReport(set: false, volumeName: st.plan?.request?.installName ?? "SiliconForest", confirmed: false,
-                                   note: "This build doesn't change the startup disk.", manualCommand: BlessGuard.manual(volumeName: st.plan?.request?.installName ?? "SiliconForest"), canRestart: false)
+                                   note: "This build doesn't change the startup disk.", manualCommand: BlessGuard.manual(volumeName: st.plan?.request?.installName ?? "SiliconForest"), canShutDown: false)
             }
             return nil
         }
         let name = ev["name"]?.string ?? st.plan?.request?.installName ?? "SiliconForest"
-        let set = r == "next boot only"
+        let set = r == "startup disk" || r == "next boot only"   // the second is what preview7 to 12 journals say
         return BlessReport(set: set, volumeName: name, confirmed: (ev["confirmed"]?.string ?? "").hasPrefix("getBoot names"),
                            note: set ? (ev["confirmed"]?.string ?? "") : (ev["why"]?.string ?? "bless didn't run"),
                            manualCommand: ev["manual"]?.string ?? BlessGuard.manual(volumeName: name),
-                           canRestart: set && config.restartAction != nil,
+                           canShutDown: set && config.shutdownAction != nil,
                            needsPassword: set ? false : (ev["needsPassword"]?.string == "yes"),
                            canRetry: !set && config.blessRunner is PasswordBlessRunner)
     }
@@ -438,26 +438,35 @@ extension HelperService {
             let e = try engine(j, planDigest: plan.digest)
             let cred = BlessCredential(owner: owner, secret: secret)
             e.blessCredential = { cred }
-            try e.retryNextBoot()
+            try e.retryStartupDisk()
             guard let report = blessReport(JobState(j.records)) else { throw HelperError.make(.failed, "the startup disk step left no record") }
             return try Canonical.data(report)
         }
     }
 
-    public func restartIntoInstalledSystem(job: String, reply: @escaping (NSError?) -> Void) {
+    public func retire(reply: @escaping (NSError?) -> Void) {
+        lock.lock(); let busy = !running.isEmpty; lock.unlock()
+        guard !busy else { reply(HelperError.make(.busy, "a job is running; the helper can't restart now")); return }
+        guard let action = config.retireAction else { reply(HelperError.make(.refused, "this build doesn't restart the helper")); return }
+        config.log?.info("retire: exiting so the next connection starts the current build")
+        DispatchQueue.global().asyncAfter(deadline: .now() + config.retireDelay) { action() }
+        reply(nil)
+    }
+
+    public func shutDownToFinishSetup(job: String, reply: @escaping (NSError?) -> Void) {
         do {
             let j = try journal(job)
             let st = JobState(j.records)
             guard let plan = st.plan, plan.operation == .install, st.end == .handedOff else { throw HelperError.make(.refused, "this job isn't a finished install") }
-            guard let report = blessReport(st), report.set else { throw HelperError.make(.refused, "the one-time startup selection wasn't set; restart from the startup menu instead") }
+            guard let report = blessReport(st), report.set else { throw HelperError.make(.refused, "the startup disk wasn't set; shut down and choose SiliconForest from startup options instead") }
             // The in-memory confirmation may be gone (the helper exits when idle); the journal proves it: begin needed it.
             // Only a finished, not-yet-removed install, and only for a day after it finished.
             guard finishedInstalls().contains(where: { $0.job == job }) else { throw HelperError.make(.refused, "that install has been removed") }
             if let t = j.records.last?.t, let d = ISO8601DateFormatter().date(from: t), Date().timeIntervalSince(d) > 24 * 3600 {
-                throw HelperError.make(.refused, "that install finished more than a day ago; restart from the startup menu instead")
+                throw HelperError.make(.refused, "that install finished more than a day ago; shut down and choose SiliconForest from startup options instead")
             }
-            guard let action = config.restartAction else { throw HelperError.make(.refused, "this build doesn't restart the Mac") }
-            let delay = config.restartDelay
+            guard let action = config.shutdownAction else { throw HelperError.make(.refused, "this build doesn't shut the Mac down") }
+            let delay = config.shutdownDelay
             DispatchQueue.global().asyncAfter(deadline: .now() + delay) { action() }
             reply(nil)
         } catch { reply(logged(error)) }

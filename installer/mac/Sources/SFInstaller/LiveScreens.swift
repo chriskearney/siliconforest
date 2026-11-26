@@ -58,7 +58,7 @@ struct LiveFetchScreen: View {
                 }
             }
             if case .waitingForHelperApproval = live.activity {
-                Text("Turn on “SiliconForest Installer” in System Settings → General → Login Items. The installer continues by itself.")
+                Text(Copy.Privileges.approvalLine)
                     .font(SFType.body).foregroundStyle(theme.caution)
             }
             if case .failed(let m) = live.activity { LiveErrorBox(message: m, live: live) }
@@ -177,15 +177,16 @@ struct StartupDiskLogin: View {
     @ObservedObject var live: LiveRun
     var volume: String
     var optional: Bool
+    var removal = false
     @Environment(\.theme) private var theme
     var body: some View {
         let owners = live.startupOwners?.owners ?? []
         VStack(alignment: .leading, spacing: 8) {
-            Text(Copy.Startup.header).font(SFType.bodyStrong).foregroundStyle(theme.text)
+            Text(removal ? Copy.Startup.removeHeader : Copy.Startup.header).font(SFType.bodyStrong).foregroundStyle(theme.text)
             if owners.isEmpty && live.startupOwners != nil {
                 Text(Copy.Startup.noAccounts).font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             } else {
-                Text(optional ? Copy.Startup.body(volume: volume) : Copy.Startup.finishNote).font(SFType.body).foregroundStyle(theme.text).fixedSize(horizontal: false, vertical: true)
+                Text(removal ? Copy.Startup.removeBody(volume: volume) : optional ? Copy.Startup.body(volume: volume) : Copy.Startup.finishNote).font(SFType.body).foregroundStyle(theme.text).fixedSize(horizontal: false, vertical: true)
                 if owners.count > 1 {
                     Picker(Copy.Startup.account, selection: $live.startupOwner) { ForEach(owners, id: \.self) { Text($0).tag($0) } }
                         .pickerStyle(.menu).frame(width: 420, alignment: .leading)
@@ -352,19 +353,25 @@ struct LiveFinishScreen: View {
         SnapScroll {
             VStack(alignment: .leading, spacing: 14) {
                 if b?.set == true {
-                    ScreenHead(title: "SiliconForest is installed", lead: "Your Mac is set to start SiliconForest once, the next time it starts. Save your work in other apps, then restart. SiliconForest Setup finishes in recoveryOS (it asks for your Mac password), then restarts into SiliconForest.")
+                    ScreenHead(title: Copy.StartupFinish.title, lead: Copy.StartupFinish.lead)
                     Panel {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Restart into SiliconForest").font(SFType.bodyStrong).foregroundStyle(theme.text)
-                            Text(b?.confirmed == true ? "The installer confirmed the selection with bless." : "The selection is a one-time next boot; macOS doesn't always report it, so this couldn't be read back.")
-                                .font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(Copy.StartupFinish.stepsHeader).font(SFType.bodyStrong).foregroundStyle(theme.text)
+                            ForEach(Array(Copy.StartupFinish.steps(live.installName).enumerated()), id: \.offset) { i, t in
+                                HStack(alignment: .top, spacing: 10) {
+                                    Text("\(i + 1)").font(SFType.bodyStrong).foregroundStyle(theme.accent).frame(width: 18)
+                                    Text(t).font(SFType.body).foregroundStyle(theme.text).fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            Text(Copy.StartupFinish.expected).font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+                            Text(b?.confirmed == true ? Copy.StartupFinish.confirmed : Copy.StartupFinish.notConfirmed)
+                                .font(SFType.caption).foregroundStyle(theme.textTertiary).fixedSize(horizontal: false, vertical: true)
                         }
                     }
-                    if let e = live.restartError {
-                        Label("The installer couldn't restart your Mac: \(e)", systemImage: "exclamationmark.triangle.fill").font(SFType.body).foregroundStyle(theme.caution).fixedSize(horizontal: false, vertical: true)
+                    if let e = live.shutDownError {
+                        Label(Copy.StartupFinish.shutDownFailed(e), systemImage: "exclamationmark.triangle.fill").font(SFType.body).foregroundStyle(theme.caution).fixedSize(horizontal: false, vertical: true)
                     }
-                    if live.restarting { Text("Restarting…").font(SFType.body).foregroundStyle(theme.text) }
-                    Text(AfterHandoff.fallback).font(SFType.label).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+                    if live.shuttingDown { Text(Copy.StartupFinish.shuttingDown).font(SFType.body).foregroundStyle(theme.text) }
                 } else {
                     ScreenHead(title: "One last step", lead: "SiliconForest is on your disk and checked, but your Mac isn't set to start it yet\(b.map { $0.note.isEmpty ? "" : " (\($0.note))" } ?? ""). Set it here, or do it yourself below.")
                     if b?.canRetry != false {
@@ -446,6 +453,7 @@ struct LiveRemoveConfirmScreen: View {
                 if let o = live.offer {
                     ReviewSummary(offer: o, release: live.release, removal: true)
                     ConfirmField(live: live, prompt: Copy.Confirm.typeName(o.expected.diskName), volume: o.expected.diskName, note: Copy.Confirm.thenAdmin)
+                    StartupDiskLogin(live: live, volume: o.expected.diskName, optional: true, removal: true)
                 }
                 if case .failed(let m) = live.activity { LiveErrorBox(message: m, note: "Nothing was removed.", live: live) }
             }

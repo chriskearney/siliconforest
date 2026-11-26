@@ -61,7 +61,7 @@ macOS. The same app removes SiliconForest and gives the space back.
 | **D2** | **SMAppService daemon, registered only while needed** | The supported API. Short life avoids its weakest area, upgrades | Requires Login Items approval. 13.x is the riskiest range (spikes S1, S2) |
 | **D3** | **Recovery step is a small AppKit app started by a shell launcher**, which falls back to Terminal and our script if the app cannot start | SwiftUI and Python are absent from the 13.5 recoveryOS. The script launch path is the one Asahi ships | Fullscreen in recoveryOS is unproven (spike S3) |
 | **D4** | **"Installed" means a boot receipt exists** | Omacom's J293 boot loop shows that enrollment is not success | Needs a small first-boot job and a reserved slot in the root image |
-| **D5** | **The previous default stays the default. The first SiliconForest start is one-shot** | A failed start must land in a working system, because SiliconForest cannot change NVRAM. On the Air that system is Linux, not macOS | Depends on `bless --nextonly` in recovery (spike S5). Fallback in [section 8.3](#83-first-boot-and-the-boot-receipt) |
+| **D5** | **(Changed in preview13: S65 now sets SiliconForest as the persistent startup disk; see ENGINE.md "R50 and the persistent startup disk".) The previous default stays the default. The first SiliconForest start is one-shot** | A failed start must land in a working system, because SiliconForest cannot change NVRAM. On the Air that system is Linux, not macOS | Depends on `bless --nextonly` in recovery (spike S5). Fallback in [section 8.3](#83-first-boot-and-the-boot-receipt) |
 | **D6** | **All downloads and hashes finish before the first disk write** | A network failure then costs nothing | Temporary space on macOS, which the plan accounts for |
 | **D7** | **Firmware comes from Apple's 13.5 recovery image for this Mac, extracted on the Mac** | The same version on every install, matching the one our drivers were brought up on. Nothing Apple-owned ships with us | **Accepted by Chris.** It differs from the live macOS, whose firmware version varies |
 | **D8** | **No telemetry, no accounts, no background agent after install** | Trust | We learn about failures only from diagnostics users choose to send |
@@ -238,7 +238,7 @@ So **a recovery UI failure cannot strand the user.** The worst case is exactly t
 4. **`bputil -nc -v <VGID>`** then **`kmutil configure-boot -c boot.bin --raw --entry-point 2048 --lowest-virtual-address 0 -v <system>`**, each driven through a PTY that waits for echo-off before sending the password and redacts it from logs. Our own code (see the provenance note in [`RESEARCH.md`](RESEARCH.md) section 2).
 5. **Read back** that the policy is Permissive and the custom boot object is present.
 6. **Clean up the markers:** disable `.IAPhysicalMedia`, restore `SystemVersion.plist`.
-7. **Restore the previous default and set SiliconForest for the next boot only** (spikes S5, S12).
+7. **Set SiliconForest for the next boot only** (R50, `--nextonly`; the persistent default was set by S65 in macOS, preview13; spikes S5, S12).
 8. **Restart.**
 
 Each step is journaled in `SFInstall/state/`, so re-entering recovery resumes at the right step. A LocalPolicy change is never

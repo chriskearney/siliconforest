@@ -65,7 +65,7 @@ let package = Package(
         // recoveryOS (DESIGN §7): Foundation-only core (gate, steps, PTY driver) and the AppKit app.
         // scripts/check-recovery-links.sh fails the build if SFRecovery links anything §7.3 forbids.
         .target(name: "SFRecoveryKit", swiftSettings: ui),
-        .executableTarget(name: "SFRecovery", dependencies: ["SFRecoveryKit"], swiftSettings: ui),
+        .executableTarget(name: "SFRecovery", dependencies: ["SFRecoveryKit", "SFCopy"], swiftSettings: ui),
         .executableTarget(name: "sfinstallctl", dependencies: ["SFInstallKit", "SFCopy", "SFEngine"]),
         // The stub builder (DESIGN §6.4, ENGINE §10): Foundation + Compression only, no dependency on the engine (the engine runs it at S10/S32/S35/S55/S60).
         .target(name: "SFStub"),

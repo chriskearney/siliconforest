@@ -7,7 +7,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 BIN="${1:-$(swift build --show-bin-path)/SFRecovery}"
 [ -x "$BIN" ] || { echo "no SFRecovery at $BIN (swift build --product SFRecovery)" >&2; exit 2; }
-allowed_frameworks="AppKit Foundation CoreGraphics CoreText QuartzCore IOKit Security"
+# CoreFoundation (preview13): Foundation and AppKit sit on it, so it is in every recoveryOS; SFRecovery now links it directly
+# because it uses SFCopy -> SFInstallKit (which reads the firmware version through IOKit with CF types).
+allowed_frameworks="AppKit Foundation CoreFoundation CoreGraphics CoreText QuartzCore IOKit Security"
 # libswiftCore, Darwin, Dispatch, ObjectiveC, _Concurrency per §7.3, plus the overlays of allowed
 # frameworks that AppKit pulls in strongly (CoreFoundation, CoreGraphics). Spike S3 confirms these
 # exist in the 13.5 recoveryOS.

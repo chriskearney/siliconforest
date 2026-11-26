@@ -5,9 +5,10 @@ import Testing
 import SFInstallKit
 import SFAppEngine
 
-/// Preview7: the one-time next boot. Nothing here runs bless: argument building, volume validation and
-/// the runner's allow-list are pure; the engine path uses a recording runner.
-@Suite("Bless: one-time next boot, argument building and validation")
+/// Preview7, changed in preview13: the startup disk (a persistent `--setBoot` of the stub; `--nextonly` is only R50's,
+/// in recoveryOS). Nothing here runs bless: argument building, volume validation and the runner's allow-list are
+/// pure; the engine path uses a recording runner.
+@Suite("Bless: the startup disk, argument building and validation")
 struct BlessTests {
     static func partition(system id: String, uuid: String = "AAAA") -> ImagePartition {
         let vols = [ImageVolume(identifier: "\(id)", uuid: "V1", name: "SiliconForest", roles: ["System"]),
@@ -17,20 +18,21 @@ struct BlessTests {
                               apfs: ImageAPFS(reference: "disk10", uuid: "C", capacityCeiling: 1, capacityFree: 1, volumes: vols))
     }
 
-    @Test func buildsTheOneTimeSelectionOnly() throws {
+    @Test func buildsThePersistentSelectionAndNeverNextonly() throws {
         let stub = Self.partition(system: "disk10s1")
-        let argv = try BlessGuard.setNextBoot(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub) { _ in "/dev/disk10s1" }
-        #expect(argv == ["/usr/sbin/bless", "--mount", "/Volumes/SiliconForest", "--setBoot", "--nextonly"])
+        let argv = try BlessGuard.setStartupDisk(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub) { _ in "/dev/disk10s1" }
+        #expect(argv == ["/usr/sbin/bless", "--mount", "/Volumes/SiliconForest", "--setBoot"])
+        #expect(!argv.contains("--nextonly"))
         #expect(BlessGuard.isAllowed(argv))
         // The sealed snapshot of the stub's volume is still the stub's volume.
-        let snap = try BlessGuard.setNextBoot(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub) { _ in "/dev/disk10s1s1" }
+        let snap = try BlessGuard.setStartupDisk(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub) { _ in "/dev/disk10s1s1" }
         #expect(snap == argv)
     }
 
     @Test func refusesAnyOtherVolume() {
         let stub = Self.partition(system: "disk10s1")
         func refused(_ mount: String, _ dev: String?) -> Bool {
-            (try? BlessGuard.setNextBoot(mount: URL(fileURLWithPath: mount), stub: stub) { _ in dev }) == nil
+            (try? BlessGuard.setStartupDisk(mount: URL(fileURLWithPath: mount), stub: stub) { _ in dev }) == nil
         }
         #expect(refused("/Volumes/Macintosh HD", "/dev/disk3s1s1"), "macOS's own volume")
         #expect(refused("/", "/dev/disk10s1"), "the running system, even if the device matched")
@@ -40,7 +42,7 @@ struct BlessTests {
         #expect(refused("/tmp/x", "/dev/disk10s1"))
         #expect(refused("/Volumes/", "/dev/disk10s1"))
         #expect(refused("/Volumes/SiliconForest", "/dev/sda1"), "not an APFS volume device")
-        #expect((try? BlessGuard.setNextBoot(mount: URL(fileURLWithPath: "/Volumes/x"), stub: ImagePartition(uuid: "u", identifier: "disk9s2", content: "Apple_APFS", offset: 0, size: 1, volumeName: nil, filesystem: nil, apfs: nil)) { _ in "/dev/disk10s1" }) == nil, "a stub with no System volume")
+        #expect((try? BlessGuard.setStartupDisk(mount: URL(fileURLWithPath: "/Volumes/x"), stub: ImagePartition(uuid: "u", identifier: "disk9s2", content: "Apple_APFS", offset: 0, size: 1, volumeName: nil, filesystem: nil, apfs: nil)) { _ in "/dev/disk10s1" }) == nil, "a stub with no System volume")
     }
 
     @Test func restoreBuildsThePersistentSelectionForMacOSOnly() throws {
@@ -51,13 +53,24 @@ struct BlessTests {
         #expect((try? BlessGuard.restoreBoot(mount: "/private", macOS: mac) { _ in "/dev/disk3s1" }) == nil)
     }
 
+    @Test func restoreTakesTheOwnersLoginTheSameWay() throws {
+        let mac = Self.partition(system: "disk3s1", uuid: "MAC")
+        let argv = try BlessGuard.restoreBoot(mount: "/", macOS: mac, owner: "chris") { _ in "/dev/disk3s1s1" }
+        #expect(argv == ["/usr/sbin/bless", "--mount", "/", "--setBoot", "--user", "chris", "--stdinpass"])
+        #expect(BlessGuard.isAllowed(argv))
+        #expect(throws: BlessGuard.Refusal.self) { _ = try BlessGuard.restoreBoot(mount: "/", macOS: mac, owner: "-x") { _ in "/dev/disk3s1s1" } }
+    }
+
     @Test func theAllowListIsExact() {
         let t = BlessGuard.tool
         #expect(BlessGuard.isAllowed([t, "--getBoot"]))
         #expect(BlessGuard.isAllowed([t, "--mount", "/", "--setBoot"]))
-        #expect(BlessGuard.isAllowed([t, "--mount", "/Volumes/A B", "--setBoot", "--nextonly"]))
-        #expect(!BlessGuard.isAllowed([t, "--mount", "/", "--setBoot", "--nextonly"]), "next-boot only ever targets a /Volumes mount, never the running system")
-        #expect(!BlessGuard.isAllowed([t, "--mount", "/Volumes/A", "--setBoot", "--nextonly", "--legacy"]))
+        #expect(BlessGuard.isAllowed([t, "--mount", "/Volumes/A B", "--setBoot"]))
+        // The helper never sets a one-time boot: `--nextonly` belongs to SFRecoveryKit's R50, in recoveryOS.
+        #expect(!BlessGuard.isAllowed([t, "--mount", "/Volumes/A B", "--setBoot", "--nextonly"]))
+        #expect(!BlessGuard.isAllowed([t, "--mount", "/", "--setBoot", "--nextonly"]))
+        #expect(!BlessGuard.isAllowed([t, "--mount", "/Volumes/A", "--setBoot", "--nextonly", "--user", "chris", "--stdinpass"]))
+        #expect(!BlessGuard.isAllowed([t, "--mount", "/Volumes/A", "--setBoot", "--legacy"]))
         #expect(!BlessGuard.isAllowed([t, "--mount", "/Volumes/A", "--bootefi", "x"]))
         #expect(!BlessGuard.isAllowed([t, "--mount", "/Volumes/A", "--setBoot", "--personalize"]))
         #expect(!BlessGuard.isAllowed(["/bin/sh", "--getBoot"]))
@@ -79,7 +92,7 @@ struct BlessTests {
 
     @Test func theManualCommandIsTheSameShape() {
         let m = BlessGuard.manual(volumeName: "SiliconForest")
-        #expect(m == "sudo /usr/sbin/bless --mount \"/Volumes/SiliconForest\" --setBoot --nextonly")
+        #expect(m == "sudo /usr/sbin/bless --mount \"/Volumes/SiliconForest\" --setBoot", "persistent: no --nextonly")
         #expect(AfterHandoff.blessCommand(installName: "SiliconForest") == m)
         #expect(!AfterHandoff.manualSteps(installName: "SiliconForest").isEmpty && AfterHandoff.fallback.contains("power button"))
     }
@@ -92,17 +105,17 @@ struct BlessTests {
     }
 
     @Test func verbsAreListedAndSelectorsStayClean() {
-        for v in ["listInstallsWithReply:", "planRemovalWithInstallJob:reply:", "restartIntoInstalledSystemWithJob:reply:"] { #expect(HelperVerbs.expected.contains(v)) }
+        for v in ["listInstallsWithReply:", "planRemovalWithInstallJob:reply:", "shutDownToFinishSetupWithJob:reply:", "retireWithReply:"] { #expect(HelperVerbs.expected.contains(v)) }
     }
 
     // MARK: preview13: the volume owner's login for bless (owner authentication on Apple Silicon)
 
     @Test func theOwnerFlagsAreWidenedNarrowlyAndOnlyTogether() throws {
         let stub = Self.partition(system: "disk10s1")
-        let argv = try BlessGuard.setNextBoot(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub, owner: "chris.k") { _ in "/dev/disk10s1" }
-        #expect(argv == ["/usr/sbin/bless", "--mount", "/Volumes/SiliconForest", "--setBoot", "--nextonly", "--user", "chris.k", "--stdinpass"])
+        let argv = try BlessGuard.setStartupDisk(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub, owner: "chris.k") { _ in "/dev/disk10s1" }
+        #expect(argv == ["/usr/sbin/bless", "--mount", "/Volumes/SiliconForest", "--setBoot", "--user", "chris.k", "--stdinpass"])
         #expect(BlessGuard.isAllowed(argv) && BlessGuard.usesPassword(argv))
-        let base = Array(argv.prefix(5))
+        let base = Array(argv.prefix(4))
         for bad: [String] in [
             base + ["--user", "chris"],                                                  // no --stdinpass
             base + ["--stdinpass"],                                                      // a password with no account
@@ -110,19 +123,19 @@ struct BlessTests {
             base + ["--user", "-x", "--stdinpass"],                                      // not an account name
             base + ["--user", "a b", "--stdinpass"], base + ["--user", "../root", "--stdinpass"], base + ["--user", "", "--stdinpass"],
             base + ["--user", "chris", "--stdinpass", "--passwd", "x"],                  // extra flags
-            ["/usr/sbin/bless", "--mount", "/", "--setBoot", "--nextonly", "--user", "chris", "--stdinpass"],  // not a /Volumes mount
-            ["/usr/sbin/bless", "--mount", "/Volumes/x", "--setBoot", "--user", "chris", "--stdinpass"],       // not one-time
-            ["/usr/sbin/bless", "--mount", "/Volumes/x", "--setBoot", "--nextonly", "--user", "chris", "--password", "pw"],
+            ["/usr/sbin/bless", "--mount", "/private", "--setBoot", "--user", "chris", "--stdinpass"],          // not a volume mount
+            ["/usr/sbin/bless", "--mount", "/Volumes/x", "--setBoot", "--nextonly", "--user", "chris", "--stdinpass"],  // never one-time
+            ["/usr/sbin/bless", "--mount", "/Volumes/x", "--setBoot", "--user", "chris", "--password", "pw"],
         ] { #expect(!BlessGuard.isAllowed(bad), "\(bad)") }
         // The password is never an argument anywhere in what the guard builds.
         #expect(throws: BlessGuard.Refusal.self) {
-            _ = try BlessGuard.setNextBoot(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub, owner: "--evil") { _ in "/dev/disk10s1" }
+            _ = try BlessGuard.setStartupDisk(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub, owner: "--evil") { _ in "/dev/disk10s1" }
         }
     }
 
     @Test func theRunnerRefusesAMismatchedPasswordAndTheStdinFeedIsExact() throws {
         let stub = Self.partition(system: "disk10s1")
-        let withUser = try BlessGuard.setNextBoot(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub, owner: "chris") { _ in "/dev/disk10s1" }
+        let withUser = try BlessGuard.setStartupDisk(mount: URL(fileURLWithPath: "/Volumes/SiliconForest"), stub: stub, owner: "chris") { _ in "/dev/disk10s1" }
         let r = ProcessBlessRunner()
         // Not root in tests: refused before anything runs, and a password is never sent to a command without --stdinpass.
         #expect(r.execute(withUser).status == 126)

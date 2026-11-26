@@ -177,10 +177,13 @@ public final class InstallEngine: @unchecked Sendable {
     public var stubSource: StubSource?
     /// For removal: the install's proof.
     public var proof: InstallProof?
-    /// The shipped app's helper only: runs the one-time `bless` (S65) and the removal's reset (U10). Nil: simulated.
+    /// The shipped app's helper only: runs the startup-disk `bless` (S65) and the removal's reset (U10). Nil: simulated.
     public var bless: BlessRunner?
     /// Preview13: the volume owner's login for S65 (taken once, wiped after use). Nil: bless runs without one.
     public var blessCredential: (@Sendable () -> BlessCredential?)?
+    /// Preview13: the volume owners and the one whose login was given (when it was), for SFInstall/plan.json at S60,
+    /// so SFRecovery can say whose password it wants and answer a user-name prompt. Nil: no names are written.
+    public var recoveryOwners: (@Sendable () -> (owners: StartupDiskOwners, chosen: String?))?
     /// A line for the helper's own log (never carries a password).
     public var log: (@Sendable (String) -> Void)?
     /// A mount point's backing device (statfs); tests may replace it.

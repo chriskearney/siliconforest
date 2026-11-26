@@ -177,3 +177,40 @@ struct FooterInvalidationTests {
         #expect(!live.typedMatches)
     }
 }
+
+@Suite("Preview13: startup options say SiliconForest, not Options")
+struct StartupOptionsCopyTests {
+    /// Every place the installer tells the person how to start SiliconForest.
+    static var everyStepList: [(String, [String])] {
+        [("Recovery.steps", Copy.Recovery.steps(holdCopy: nil, name: "SiliconForest")),
+         ("StartupFinish.steps", Copy.StartupFinish.steps("SiliconForest")),
+         ("AfterHandoff.manualSteps", AfterHandoff.manualSteps(installName: "SiliconForest")),
+         ("AfterHandoff.fallback", [AfterHandoff.fallback]),
+         ("macOSRecoverySteps", StartupOptionsCopy.macOSRecoverySteps("SiliconForest"))]
+    }
+
+    @Test func everyListHoldsPowerUntilLoadingStartupOptionsAndSaysNotOptions() {
+        for (name, lines) in Self.everyStepList {
+            let all = lines.joined(separator: "\n")
+            #expect(all.contains("Loading startup options"), "\(name)")
+            #expect(all.contains("Choose SiliconForest, not Options.") || all.contains("choose SiliconForest, not Options."), "\(name)")
+            #expect(all.contains("power button"), "\(name)")
+        }
+        #expect(Copy.StartupFinish.steps("SiliconForest").joined().contains("Options opens macOS Recovery, which can't finish the setup."))
+        #expect(AfterHandoff.fallback.contains("Options opens macOS Recovery, which can't finish the setup."))
+        #expect(AfterHandoff.fallback.contains("normally it opens macOS"))
+    }
+
+    @Test func theFinishScreenExplainsTheNormalStartAndShutsDown() {
+        #expect(Copy.StartupFinish.expected == "Until Setup has run, a normal start opens macOS. That is expected.")
+        #expect(Copy.StartupFinish.button == "Shut Down")
+        #expect(Copy.StartupFinish.steps("SiliconForest")[0].hasPrefix("Shut down this Mac. A normal restart won't finish it"))
+        #expect(!Copy.StartupFinish.steps("SiliconForest").joined().lowercased().contains("restart now"))
+    }
+
+    @Test func theOwnerPasswordCopyHasAGenericForm() {
+        #expect(Copy.InRecovery.passwordLabel("Chris Kearney") == "Password for Chris Kearney")
+        #expect(Copy.InRecovery.passwordLabel(nil) == "Your Mac login password")
+        #expect(Copy.InRecovery.leadGeneric == "Enter your Mac login password to allow SiliconForest to start on this Mac.")
+    }
+}

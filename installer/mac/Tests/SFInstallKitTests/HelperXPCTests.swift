@@ -215,7 +215,27 @@ struct StartupLoginTests {
         _ = svc.takeCredential(id)?.secret.wipe()
     }
 
+    @Test func retireMakesAStaleHelperExitAndNeverTouchesTheRegistration() {
+        final class Flag: @unchecked Sendable { let l = NSLock(); var n = 0; func hit() { l.lock(); n += 1; l.unlock() }; var count: Int { l.lock(); defer { l.unlock() }; return n } }
+        let flag = Flag()
+        var c = config()
+        c.retireAction = { flag.hit() }; c.retireDelay = 0.05
+        let svc = HelperService(config: c)
+        var err: NSError? = NSError(domain: "x", code: 0)
+        svc.retire { err = $0 }
+        #expect(err == nil)
+        let until = Date().addingTimeInterval(3)
+        while flag.count == 0 && Date() < until { usleep(20_000) }
+        #expect(flag.count == 1, "the helper exits itself; launchd starts the current build on the next connection")
+        // A build with no retire action refuses.
+        var c2 = config(); c2.retireAction = nil
+        var err2: NSError?
+        HelperService(config: c2).retire { err2 = $0 }
+        #expect(err2?.code == HelperErrorCode.refused.rawValue)
+    }
+
     @Test func theNewVerbsAreListedAndCarryNoCommand() {
+        for v in ["retireWithReply:", "shutDownToFinishSetupWithJob:reply:"] { #expect(HelperVerbs.expected.contains(v) && HelperVerbs.selectors().contains(v)) }
         for v in ["authorizeBlessWithJob:owner:password:reply:", "startupOwnersWithReply:", "retryStartupSelectionWithJob:owner:password:reply:"] {
             #expect(HelperVerbs.expected.contains(v) && HelperVerbs.selectors().contains(v))
         }

@@ -136,7 +136,7 @@ all of it back. S42 copies stage 2 and a kernel personalised with the root's UUI
 write the firmware and receipt slots. S55, S60 and S68 stage the boot object, `SiliconForest Setup.app`,
 `plan.json` and the markers on the stub. Two steps need root and a real Mac, so they are journaled as
 `simulated` and listed as needing approval: **S20** (`diskutil apfs updatePreboot`) and **S65**
-(`bless --setBoot --nextonly`), with **U10** (restore the startup disk) in removal. Removal (U20–U40)
+(`bless --setBoot`, persistent, preview13), with **U10** (restore the startup disk) in removal. Removal (U20–U40)
 deletes exactly the UUIDs the install's journal proves, regrows macOS, and checks the table against
 the one saved before the install.
 
@@ -197,7 +197,7 @@ Nothing below has been attempted. Each item is recorded instead of being worked 
 | Item | Why it can't run here | What it unblocks |
 |---|---|---|
 | `diskutil apfs updatePreboot` (S20) | Needs root and a live macOS volume group. Simulated on images | Stale admin lists before recovery |
-| `bless --setBoot --nextonly` (S65) and restoring the startup disk (U10, rollback of S65) | Needs root and the owner's password, and changes the Mac's startup disk. Simulated on images. `bless` is on the never-run list | One-shot first start (D5, spikes S5, S12) |
+| `bless --setBoot` (S65, persistent) and restoring the startup disk (U10, rollback of S65) | Needs root and the owner's password, and changes the Mac's startup disk. Simulated on images. `bless` is on the never-run list | One-shot first start (D5, spikes S5, S12) |
 | Developer ID signing (team `Z642ZK8JK4`) and notarization | Pending Chris's go. Ad hoc only | `SMAppService` registration (S1, S2, S7) and the pinned XPC trust for real |
 | Registering `SFHelper` with SMAppService | Would prompt at the console. Needs a signed app | The helper as a real LaunchDaemon |
 | SFRecovery in recoveryOS | Needs the Air, the power-button step and Chris's go. `bputil` and `kmutil` are never run here | Spikes S3 (AppKit launch via `.IAPhysicalMedia`, full screen), S6 (PTY `bputil`/`kmutil`) |

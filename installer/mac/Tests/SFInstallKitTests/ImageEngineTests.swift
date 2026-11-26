@@ -97,7 +97,7 @@ struct ImageEngineTests {
             _calls.append(argv)
             guard BlessGuard.isAllowed(argv) else { return BlessResult(status: 126, output: "refused") }
             if argv == BlessGuard.getBoot { return BlessResult(status: 0, output: selection) }
-            if failSet && argv.contains("--nextonly") { return BlessResult(status: 1, output: "simulated failure") }
+            if failSet && argv.contains("--setBoot") { return BlessResult(status: 1, output: "simulated failure") }
             selection = (BlessGuard.systemMountedFrom(argv[2]) ?? "?") + "\n"
             return BlessResult(status: 0, output: "")
         }
@@ -116,9 +116,10 @@ struct ImageEngineTests {
         #expect(try e.run() == .handedOff)
         let st = JobState(j.records)
         let ev = try #require(st.evidence[.S65])
-        #expect(ev["blessed"]?.string == "next boot only" && ev["exit"]?.int == 0)
+        #expect(ev["blessed"]?.string == "startup disk" && ev["exit"]?.int == 0)
         #expect(ev["confirmed"]?.string == "getBoot names the stub")
-        #expect(runner.calls.first?.contains("--nextonly") == true)
+        #expect(runner.calls.first?.contains("--setBoot") == true && runner.calls.first?.contains("--nextonly") == false, "persistent: the stub becomes the startup disk")
+        #expect(runner.calls.allSatisfy { !$0.contains("--nextonly") }, "the helper never sets a one-time boot")
         #expect(runner.calls.allSatisfy { BlessGuard.isAllowed($0) })
         #expect(!st.approvals.map(\.step).contains("S65"), "a real bless is not left as a simulated approval")
 
@@ -133,7 +134,8 @@ struct ImageEngineTests {
         #expect(try re.run() == .committed)
         let u10 = try #require(JobState(rj.records).evidence[.U10])
         #expect(u10["reset"]?.string == "macOS" || (u10["reset"]?.string == "no" && u10["why"]?.string?.contains("isn't mounted") == true))
-        #expect(runner.calls.filter { $0.contains("--setBoot") && !$0.contains("--nextonly") }.count == (u10["reset"]?.string == "macOS" ? 1 : 0))
+        // S65's persistent selection of the stub, then (because getBoot names the stub) U10's reset to macOS.
+        #expect(runner.calls.filter { $0.contains("--setBoot") }.count == 1 + (u10["reset"]?.string == "macOS" ? 1 : 0))
         #expect(try c.backend.topology().digestForm == original.digestForm)
     }
 
@@ -157,10 +159,12 @@ struct ImageEngineTests {
     final class PasswordBlessRunner: SFEngine.PasswordBlessRunner, @unchecked Sendable {
         private let lock = NSLock()
         var calls: [[String]] = [], passwords: [String] = [], failFirst = true
+        private var selection = "/dev/disk0s1\n"
         func execute(_ argv: [String]) -> BlessResult {
             lock.lock(); defer { lock.unlock() }
             calls.append(argv)
-            if argv == BlessGuard.getBoot { return BlessResult(status: 0, output: "") }
+            guard BlessGuard.isAllowed(argv) else { return BlessResult(status: 126, output: "refused") }
+            if argv == BlessGuard.getBoot { return BlessResult(status: 0, output: selection) }
             return BlessResult(status: 1, output: "bless: owner authentication required")
         }
         func execute(_ argv: [String], password: any SecretBytesProvider) -> BlessResult {
@@ -169,6 +173,7 @@ struct ImageEngineTests {
             let pw = password.withBytes { String(decoding: $0, as: UTF8.self) }
             passwords.append(pw)
             if failFirst && passwords.count == 1 { failFirst = false; return BlessResult(status: 1, output: "bless: incorrect password \(pw)") }
+            selection = (BlessGuard.systemMountedFrom(argv[2]) ?? "?") + "\n"
             return BlessResult(status: 0, output: "")
         }
     }
@@ -197,10 +202,29 @@ struct ImageEngineTests {
         // The finish screen's retry: only the bless, with a new login, on the finished job.
         let retry = SecureBytes(Data("second try".utf8))
         e.blessCredential = { BlessCredential(owner: "chris", secret: retry) }
-        try e.retryNextBoot()
+        try e.retryStartupDisk()
         #expect(runner.passwords == ["hunter2 hunter2", "second try"] && retry.isWiped)
         let ev2 = try #require(JobState(j.records).evidence[.S65])
-        #expect(ev2["blessed"]?.string == "next boot only" && ev2["as"]?.string == "chris")
+        #expect(ev2["blessed"]?.string == "startup disk" && ev2["as"]?.string == "chris")
         #expect(!(try String(contentsOf: j.url, encoding: .utf8)).contains("second try"))
+
+        // Remove: the startup disk names the stub (persistent), so U10 puts macOS back, with the owner's login on stdin too.
+        let proof = try InstallProofReader.proof(from: j)
+        let removal = try EnginePlanner.removalPlan(topology: try c.backend.topology(), profile: profile, proof: proof)
+        let rj = try ChainJournal(directory: c.journalDir)
+        let re = try ImageLab.engine(c, journal: rj, profile: profile)
+        re.proof = proof; re.bless = runner
+        let third = SecureBytes(Data("third try".utf8))
+        re.blessCredential = { BlessCredential(owner: "chris", secret: third) }
+        try re.begin(removal)
+        #expect(try re.run() == .committed)
+        let u10 = try #require(JobState(rj.records).evidence[.U10])
+        if u10["reset"]?.string == "macOS" {
+            #expect(runner.passwords.last == "third try" && third.isWiped && u10["as"]?.string == "chris")
+            #expect(runner.calls.last(where: { $0.contains("--setBoot") })?.suffix(3) == ["--user", "chris", "--stdinpass"])
+        } else {
+            #expect(u10["why"]?.string?.contains("isn't mounted") == true, "macOS's volume can't be mounted on an image rehearsal")
+        }
+        #expect(!(try String(contentsOf: rj.url, encoding: .utf8)).contains("third try"))
     }
 }

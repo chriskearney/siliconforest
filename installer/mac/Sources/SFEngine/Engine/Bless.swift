@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Chris Kearney and the SiliconForest contributors
 //
-// Preview7: the shipped app's helper sets the ONE-TIME next boot to the stub this install created
-// (S65), and a removal resets the startup disk to macOS if the selection points at SiliconForest
-// (U10). The engine never runs a tool itself: it builds an argument list here, from the plan's own
+// Preview7: the shipped app's helper selects the stub this install created as the startup disk (S65),
+// and a removal resets the startup disk to macOS if the selection points at SiliconForest (U10).
+// Preview13 (Chris, 26 November 2026): S65 is a PERSISTENT selection (`--setBoot`, no `--nextonly`), as Asahi's
+// installer does (docs/installer/RESEARCH.md), so that the next boot the person starts from startup options is
+// the stub's one true recoveryOS. `--nextonly` stays only in SFRecoveryKit's R50. The engine never runs a tool itself: it builds an argument list here, from the plan's own
 // partitions, and hands it to an injectable `BlessRunner`. No runner (the default; every lab tool and
 // every test) means the old behaviour: the command is journaled as simulated and nothing runs.
 
@@ -84,22 +86,24 @@ public enum BlessGuard {
         p.hasPrefix("/") && !p.contains("..") && !p.contains("//") && p.unicodeScalars.allSatisfy { $0.value >= 0x20 && $0.value != 0x7f } && p.utf8.count < 1024
     }
 
-    /// The one-time selection of the stub this install created: `bless --mount <its System volume>
-    /// --setBoot --nextonly`. Refused unless the mount point is a /Volumes mount of the stub container's System volume.
-    public static func setNextBoot(mount: URL, stub: ImagePartition, owner: String? = nil, mountedFrom: (String) -> String?) throws -> [String] {
+    /// The selection of the stub this install created: `bless --mount <its System volume> --setBoot` (persistent, no
+    /// `--nextonly`), with `--user <owner> --stdinpass` when a volume owner's login is given. Refused unless the mount
+    /// point is a /Volumes mount of the stub container's System volume.
+    public static func setStartupDisk(mount: URL, stub: ImagePartition, owner: String? = nil, mountedFrom: (String) -> String?) throws -> [String] {
         let p = mount.path
         guard safePath(p), p.hasPrefix("/Volumes/"), p.count > "/Volumes/".count else { throw Refusal("the stub's mount point isn't a volume under /Volumes: \(p)") }
         guard let apfs = stub.apfs, let sys = apfs.volumes.first(where: { $0.roles.contains("System") }) else { throw Refusal("the stub has no System volume") }
         guard let dev = mountedFrom(p), (try? baseVolume(mountedFrom: dev)) == sys.identifier else {
             throw Refusal("\(p) isn't the stub's System volume (\(sys.identifier))")
         }
-        var argv = [tool, "--mount", p, "--setBoot", "--nextonly"]
-        if let owner {
-            // Preview13: the owner's password goes on stdin (`--stdinpass`), never on the command line.
-            guard validOwner(owner) else { throw Refusal("not a valid user name for bless: \(owner)") }
-            argv += ["--user", owner, "--stdinpass"]
-        }
-        return argv
+        return [tool, "--mount", p, "--setBoot"] + (try ownerArguments(owner))
+    }
+
+    /// `--user <owner> --stdinpass`: the owner's password goes on stdin, never on the command line.
+    static func ownerArguments(_ owner: String?) throws -> [String] {
+        guard let owner else { return [] }
+        guard validOwner(owner) else { throw Refusal("not a valid user name for bless: \(owner)") }
+        return ["--user", owner, "--stdinpass"]
     }
 
     /// A macOS short account name: letters, digits, dot, underscore, hyphen. Nothing that could be an option or a path.
@@ -126,27 +130,25 @@ public enum BlessGuard {
 
     /// Removal: back to macOS. `mount` is the macOS container's System volume ("/" for the running startup volume,
     /// or its /Volumes mount); it must resolve to that container's System volume.
-    public static func restoreBoot(mount: String, macOS: ImagePartition, mountedFrom: (String) -> String?) throws -> [String] {
+    public static func restoreBoot(mount: String, macOS: ImagePartition, owner: String? = nil, mountedFrom: (String) -> String?) throws -> [String] {
         guard safePath(mount), mount == "/" || mount.hasPrefix("/Volumes/") else { throw Refusal("not a volume mount: \(mount)") }
         guard let apfs = macOS.apfs, let sys = apfs.volumes.first(where: { $0.roles.contains("System") }) else { throw Refusal("the macOS container has no System volume") }
         guard let dev = mountedFrom(mount), (try? baseVolume(mountedFrom: dev)) == sys.identifier else {
             throw Refusal("\(mount) isn't macOS's System volume (\(sys.identifier))")
         }
-        return [tool, "--mount", mount, "--setBoot"]
+        return [tool, "--mount", mount, "--setBoot"] + (try ownerArguments(owner))
     }
 
-    /// The shapes a runner may execute, and nothing else.
+    /// The shapes a runner may execute, and nothing else: `--getBoot`; `--mount <"/" or /Volumes/x> --setBoot`; and the
+    /// same with `--user <owner> --stdinpass` (the owner's login on stdin). `--nextonly` is not one of them: the
+    /// helper never sets a one-time boot (SFRecoveryKit's R50 does, in recoveryOS, with its own tools).
     public static func isAllowed(_ argv: [String]) -> Bool {
         guard argv.first == tool else { return false }
         if argv == getBoot { return true }
-        // Preview13: exactly `--mount /Volumes/x --setBoot --nextonly --user <owner> --stdinpass`, and no other use of those flags.
-        if argv.count == 8 {
-            return argv[1] == "--mount" && safePath(argv[2]) && argv[2].hasPrefix("/Volumes/") && argv[3] == "--setBoot" && argv[4] == "--nextonly"
-                && argv[5] == "--user" && validOwner(argv[6]) && argv[7] == "--stdinpass"
-        }
-        guard argv.count >= 4, argv.count <= 5, argv[1] == "--mount", argv[3] == "--setBoot", safePath(argv[2]) else { return false }
-        if argv.count == 5 { return argv[4] == "--nextonly" && argv[2].hasPrefix("/Volumes/") }
-        return argv[2] == "/" || argv[2].hasPrefix("/Volumes/")
+        guard argv.count == 4 || argv.count == 7, argv[1] == "--mount", safePath(argv[2]), argv[3] == "--setBoot",
+              argv[2] == "/" || argv[2].hasPrefix("/Volumes/") else { return false }
+        if argv.count == 7 { return argv[4] == "--user" && validOwner(argv[5]) && argv[6] == "--stdinpass" }
+        return true
     }
 
     /// Whether `bless --getBoot`'s output names this volume (its /dev node, the volume's identifier, or its mount point).
@@ -158,6 +160,6 @@ public enum BlessGuard {
     }
 
     /// What the person runs themselves when bless failed.
-    public static func manual(mountPath: String) -> String { "sudo /usr/sbin/bless --mount \"\(mountPath)\" --setBoot --nextonly" }
-    public static func manual(volumeName: String) -> String { "sudo /usr/sbin/bless --mount \"/Volumes/\(volumeName)\" --setBoot --nextonly" }
+    public static func manual(mountPath: String) -> String { "sudo /usr/sbin/bless --mount \"\(mountPath)\" --setBoot" }
+    public static func manual(volumeName: String) -> String { "sudo /usr/sbin/bless --mount \"/Volumes/\(volumeName)\" --setBoot" }
 }
