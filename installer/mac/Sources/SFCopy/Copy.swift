@@ -257,8 +257,25 @@ public enum Copy {
         public static let commandsLead = "Every command the installer would run, in order."
     }
 
+    // MARK: Permissions (preview10, preview12)
+    public enum Privileges {
+        public static let title = "Permissions"
+        public static let lead = "The installer needs these permissions before it downloads anything or changes your disk. Nothing has been changed."
+        public static let helperRow = "The installer's helper is allowed (Login Items)"
+        public static let diskRow = "The helper has Full Disk Access"
+        public static let openLoginItems = "Open Login Items"
+        public static let openFullDiskAccess = "Open Full Disk Access Settings"
+        public static let restarting = "Restarting the installer's helper…"
+        public static let waiting = "Waiting for approval…"
+        public static let waitingBody = "The installer's helper does the disk work, and macOS needs your approval to run it. Click Open Login Items, then under Allow in the Background turn on “SiliconForest Installer”. The installer continues automatically."
+        public static let waitingLine = "Checking every few seconds. System Settings opens only when you click."
+        public static let checking = "Checking…"
+        public static let continuing = "Continuing…"
+    }
+
     // MARK: 7. Approve the installer
     public enum Approve {
+
         public static let title = "Allow the installer to make changes"
         public static let lead = "macOS asks you to allow a helper. It can do only the steps you reviewed, and it is removed when the installation finishes."
         public static let steps = ["Click Open Login Items.", "Turn on SiliconForest Installer.", "Return to the installer. It continues automatically."]

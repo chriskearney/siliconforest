@@ -50,7 +50,8 @@ func makeSession(_ o: LaunchOptions) -> Session {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
         let origin: ReleaseOrigin = o["release-folder"].map { .folder(URL(fileURLWithPath: $0)) } ?? .github(tag: ReleaseOrigin.tag(forAppVersion: version))
         return Session(live: LiveInstallController { HelperClient() }, origin: origin, backend: RealDiskBackend(),
-                       register: { HelperRegistrar.register() }, status: { HelperRegistrar.status() })
+                       register: { HelperRegistrar.register() }, status: { HelperRegistrar.status() },
+                       unregister: { HelperRegistrar.unregister() })
     }
     if o.has("real") {
         return Session(mode: .readOnly, backend: RealDiskBackend())

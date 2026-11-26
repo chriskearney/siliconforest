@@ -199,12 +199,17 @@ struct RootView: View {
             let again = BarAction(title: Copy.Common.checkAgain) { l.checkPrivilegesAgain() }
             switch l.privileges {
             case .needsHelperApproval:
-                return Footer(leading: [details], trailing: [back, again, BarAction(title: "Open Login Items", style: .primary, isDefault: true) { l.openLoginItems() }])
+                return Footer(leading: [details], trailing: [back, again, BarAction(title: Copy.Privileges.openLoginItems, style: .primary, isDefault: true) { l.openLoginItems() }])
             case .needsFullDiskAccess:
-                return Footer(leading: [details], trailing: [back, again, BarAction(title: "Open Full Disk Access Settings", style: .primary, isDefault: true) { l.openFullDiskAccess() }])
+                return Footer(leading: [details], trailing: [back, again, BarAction(title: Copy.Privileges.openFullDiskAccess, style: .primary, isDefault: true) { l.openFullDiskAccess() }])
             case .failed:
-                return Footer(leading: [details], trailing: [back, BarAction(title: Copy.Common.checkAgain, style: .primary, isDefault: true) { l.checkPrivilegesAgain() }])
-            case .checking, .ready:
+                var t = [back, BarAction(title: Copy.Common.checkAgain) { l.checkPrivilegesAgain() },
+                         BarAction(title: Copy.Privileges.openLoginItems, style: .primary, isDefault: !l.privileges.failedMentionsFullDiskAccess) { l.openLoginItems() }]
+                if l.privileges.failedMentionsFullDiskAccess {
+                    t.append(BarAction(title: Copy.Privileges.openFullDiskAccess, style: .primary, isDefault: true) { l.openFullDiskAccess() })
+                }
+                return Footer(leading: [details], trailing: t)
+            case .checking, .ready, .restartingHelper:
                 return Footer(leading: [details], trailing: [back])
             }
         case .liveFetch:

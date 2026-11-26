@@ -81,6 +81,10 @@ public final class LiveRun: ObservableObject {
     /// What the installer was doing when it failed (so the right row shows the failure).
     @Published public var failedDuring: Activity?
     public private(set) var privilegeNext: PrivilegeNext = .check
+    private var failedPrivilegeMessage: String {
+        if case .failed(let m) = privileges { return m }
+        return lastError ?? ""
+    }
     public let gate: PrivilegeGate
     private var pollTask: Task<Void, Never>?
     /// Seconds between the Privileges screen's quiet checks.
@@ -102,16 +106,25 @@ public final class LiveRun: ObservableObject {
 
     /// `register`/`status`: SMAppService (nil in tests and snapshots: the helper counts as approved).
     /// `hooks` replaces the whole privilege check (tests).
+    private let unregister: (@Sendable () throws -> HelperRegistrationState)?
+
     public init(controller: LiveInstallController, origin: ReleaseOrigin, register: (@Sendable () throws -> HelperRegistrationState)?,
-                status: (@Sendable () -> HelperRegistrationState)? = nil, hooks: PrivilegeGate.Hooks? = nil, log: InstallerLog = InstallerLog.app) {
-        self.controller = controller; self.origin = origin; self.register = register; self.status = status; self.log = log
-        let reg = register, st = status
+                status: (@Sendable () -> HelperRegistrationState)? = nil,
+                unregister: (@Sendable () throws -> HelperRegistrationState)? = nil,
+                hooks: PrivilegeGate.Hooks? = nil, log: InstallerLog = InstallerLog.app) {
+        self.controller = controller; self.origin = origin; self.register = register; self.status = status
+        self.unregister = unregister; self.log = log
+        let reg = register, st = status, unreg = unregister
         gate = PrivilegeGate(hooks ?? PrivilegeGate.Hooks(
             register: { try reg?() ?? .enabled },
             status: { st?() ?? (reg == nil ? .enabled : .notRegistered) },
             probe: { [controller] in try controller.privileges() },
             openLoginItems: { DispatchQueue.main.async { if #available(macOS 13.0, *) { HelperRegistration.openLoginItems() } } },
-            openFullDiskAccess: { DispatchQueue.main.async { SystemLinks.open(.fullDiskAccess) } }))
+            openFullDiskAccess: { DispatchQueue.main.async { SystemLinks.open(.fullDiskAccess) } },
+            unregister: { try unreg?() ?? .notRegistered },
+            reconnect: { [controller] in controller.reconnect() },
+            // Tests and snapshots pass no registrar: don't touch UserDefaults or restart a helper.
+            build: reg == nil ? nil : HelperBuildMemory.app()))
         gate.log = { [log] in log.info($0) }
     }
 
@@ -149,13 +162,18 @@ public final class LiveRun: ObservableObject {
         privilegeNext = next
         lastError = nil
         log.info("privileges: checking before \(next)")
-        if privileges != .ready { privileges = .checking }
+        if privileges != .ready { privileges = gate.willRefreshHelper() ? .restartingHelper : .checking }
         session?.go(.livePrivileges)
         runPrivilegeCheck(byPerson: true)
     }
 
     /// The Privileges screen's "Check Again".
-    public func checkPrivilegesAgain() { runPrivilegeCheck(byPerson: true) }
+    public func checkPrivilegesAgain() {
+        if gate.willRefreshHelper() || PrivilegeGate.isStaleHelperMessage(failedPrivilegeMessage) {
+            privileges = .restartingHelper
+        }
+        runPrivilegeCheck(byPerson: true)
+    }
     /// "Open Login Items": one System Settings open for this click; then the quiet checks carry on.
     public func openLoginItems() { gate.userOpensLoginItems(); startPolling() }
     /// "Open Full Disk Access Settings": one System Settings open for this click.
@@ -178,7 +196,7 @@ public final class LiveRun: ObservableObject {
             continueAfterPrivileges()
         case .needsHelperApproval, .needsFullDiskAccess: startPolling()
         case .failed(let m): stopPolling(); log.error("privileges: \(m)")
-        case .checking: break
+        case .checking, .restartingHelper: break
         }
     }
 

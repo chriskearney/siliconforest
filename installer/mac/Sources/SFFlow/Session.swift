@@ -189,9 +189,10 @@ public final class Session: ObservableObject {
     /// The real install: `controller` talks to the helper; `origin` is where the release comes from.
     public convenience init(live controller: LiveInstallController, origin: ReleaseOrigin, backend: any DiskBackend, release: ReleaseInfo = .placeholder,
                             register: (@Sendable () throws -> HelperRegistrationState)? = nil,
-                            status: (@Sendable () -> HelperRegistrationState)? = nil) {
+                            status: (@Sendable () -> HelperRegistrationState)? = nil,
+                            unregister: (@Sendable () throws -> HelperRegistrationState)? = nil) {
         self.init(mode: .live, backend: backend, release: release)
-        self.live = LiveRun(controller: controller, origin: origin, register: register, status: status)
+        self.live = LiveRun(controller: controller, origin: origin, register: register, status: status, unregister: unregister)
         self.live?.session = self
     }
 

@@ -13,7 +13,12 @@ private final class FakeMac: @unchecked Sendable {
     var afterRegister: HelperRegistrationState = .requiresApproval
     var fda: [PrivilegeReport.FullDiskAccess] = [.granted]   // one per probe; the last one repeats
     var probeError: Error?
-    var registers = 0, probes = 0, loginItemsOpens = 0, fdaOpens = 0
+    var registers = 0, unregisters = 0, reconnects = 0, probes = 0, loginItemsOpens = 0, fdaOpens = 0
+    var tracksBuild = false
+    var currentBuild = "0.1.0-preview12/26"
+    var storedBuild: String?
+    /// Errors consumed in order by the probe; `probeError` is used when this is empty.
+    var probeErrors: [Error] = []
 
     var hooks: PrivilegeGate.Hooks {
         PrivilegeGate.Hooks(
@@ -22,12 +27,16 @@ private final class FakeMac: @unchecked Sendable {
             probe: { [self] in
                 lock.lock(); defer { lock.unlock() }
                 probes += 1
+                if !probeErrors.isEmpty { throw probeErrors.removeFirst() }
                 if let probeError { throw probeError }
                 let v = fda.count > 1 ? fda.removeFirst() : fda[0]
                 return PrivilegeReport(fullDiskAccess: v, probe: "/dev/rdisk0", detail: v == .missing ? "Operation not permitted" : nil)
             },
             openLoginItems: { [self] in lock.lock(); loginItemsOpens += 1; lock.unlock() },
-            openFullDiskAccess: { [self] in lock.lock(); fdaOpens += 1; lock.unlock() })
+            openFullDiskAccess: { [self] in lock.lock(); fdaOpens += 1; lock.unlock() },
+            unregister: { [self] in lock.lock(); defer { lock.unlock() }; unregisters += 1; status = .notRegistered; return status },
+            reconnect: { [self] in lock.lock(); reconnects += 1; lock.unlock() },
+            build: tracksBuild ? HelperBuildMemory(current: currentBuild, read: { [self] in lock.lock(); defer { lock.unlock() }; return storedBuild }, write: { [self] v in lock.lock(); storedBuild = v; lock.unlock() }) : nil)
     }
 }
 
@@ -79,10 +88,13 @@ struct PrivilegeGateTests {
         #expect(mac.probes == 0)
 
         let mac2 = FakeMac()
+        mac2.afterRegister = .enabled
         mac2.probeError = NSError(domain: NSCocoaErrorDomain, code: 4099, userInfo: [NSLocalizedDescriptionKey: "The connection was invalidated."])
         let g2 = PrivilegeGate(mac2.hooks)
         guard case .failed(let m) = g2.check(byPerson: true) else { Issue.record("expected failed"); return }
         #expect(m.contains("didn't answer") && m.contains("invalidated"))
+        #expect(mac2.unregisters == 1 && mac2.registers == 1 && mac2.reconnects == 1, "one restart, then the same error is a failure")
+        #expect(mac2.probes == 2)
     }
 
     @Test func fullDiskAccessStaysDeniedKeepsWaiting() {
@@ -124,6 +136,70 @@ struct PrivilegeGateTests {
         let mac = FakeMac()
         mac.fda = [.unknown]
         #expect(PrivilegeGate(mac.hooks).check(byPerson: true) == .ready)
+    }
+
+    @Test func aStaleHelperIsRestartedOnceThenSucceeds() {
+        let mac = FakeMac()
+        mac.afterRegister = .enabled
+        mac.probeErrors = [NSError(domain: NSCocoaErrorDomain, code: 4097, userInfo: [NSLocalizedDescriptionKey: "Couldn’t communicate with a helper application."])]
+        let g = PrivilegeGate(mac.hooks)
+        #expect(g.check(byPerson: true) == .ready)
+        #expect(mac.unregisters == 1 && mac.registers == 1 && mac.reconnects == 1)
+        #expect(mac.probes == 2)
+        #expect(g.didStaleRefresh)
+        #expect(g.check(byPerson: true) == .ready)
+        #expect(mac.unregisters == 1, "the restart happens only once")
+    }
+
+    @Test func aNewAppBuildRestartsAnEnabledHelper() {
+        let mac = FakeMac()
+        mac.tracksBuild = true
+        mac.storedBuild = "0.1.0-preview11/25"
+        mac.afterRegister = .enabled
+        let g = PrivilegeGate(mac.hooks)
+        #expect(g.willRefreshHelper())
+        #expect(g.check(byPerson: true) == .ready)
+        #expect(mac.unregisters == 1 && mac.registers == 1 && mac.reconnects == 1)
+        #expect(mac.storedBuild == "0.1.0-preview12/26")
+        #expect(g.didBuildRefresh)
+        #expect(!g.willRefreshHelper())
+        #expect(g.check(byPerson: true) == .ready)
+        #expect(mac.unregisters == 1, "the same build is not registered again")
+    }
+
+    @Test func theSameAppBuildDoesNotRestartTheHelper() {
+        let mac = FakeMac()
+        mac.tracksBuild = true
+        mac.storedBuild = "0.1.0-preview12/26"
+        let g = PrivilegeGate(mac.hooks)
+        #expect(!g.willRefreshHelper())
+        #expect(g.check(byPerson: true) == .ready)
+        #expect(mac.unregisters == 0 && mac.registers == 0 && mac.reconnects == 0)
+        #expect(mac.storedBuild == "0.1.0-preview12/26")
+    }
+
+    @Test func aBuildChangeDoesNotRestartAHelperThatIsNotEnabled() {
+        let mac = FakeMac()
+        mac.tracksBuild = true
+        mac.storedBuild = "0.1.0-preview11/25"
+        mac.status = .notRegistered
+        mac.afterRegister = .enabled
+        let g = PrivilegeGate(mac.hooks)
+        #expect(!g.willRefreshHelper())
+        #expect(g.check(byPerson: true) == .ready)
+        #expect(mac.unregisters == 0 && mac.registers == 1 && mac.reconnects == 0, "a first-time register is not a restart")
+        #expect(mac.storedBuild == "0.1.0-preview12/26")
+    }
+
+    @Test func staleHelperErrorsAreRecognised() {
+        #expect(PrivilegeGate.isStaleHelperError(NSError(domain: NSCocoaErrorDomain, code: 4099, userInfo: [NSLocalizedDescriptionKey: "The connection was invalidated."])))
+        #expect(PrivilegeGate.isStaleHelperError(NSError(domain: NSCocoaErrorDomain, code: 4097, userInfo: [NSLocalizedDescriptionKey: "Couldn’t communicate with a helper application."])))
+        #expect(PrivilegeGate.isStaleHelperMessage("Exception: received a message that is not in the interface of the remote object"))
+        #expect(!PrivilegeGate.isStaleHelperMessage("Move SiliconForest Installer to the Applications folder, then open it again."))
+        #expect(PrivilegeStage.failed("The helper has Full Disk Access missing").failedMentionsFullDiskAccess)
+        #expect(!PrivilegeStage.failed("The installer's helper didn't answer: The connection was invalidated.").failedMentionsFullDiskAccess)
+        #expect(HelperBuildMemory(current: "0.1.0-preview12/26", read: { nil }, write: { _ in }).current == "0.1.0-preview12/26")
+        #expect(HelperBuildMemory.stamp().contains("/"))
     }
 
     @Test func helperPathAndSettingsURL() {

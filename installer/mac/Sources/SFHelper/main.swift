@@ -46,12 +46,17 @@ let target: HelperConfig.Target = .internalDisk
 #else
 let target: HelperConfig.Target = .none
 #endif
+// Preview12: report the helper's real CFBundleVersion so the app can tell a leftover helper
+// from an older preview. The same number is the minimum client build (the app is shipped
+// in the same bundle).
+let helperBuild = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 1
 var config = HelperConfig(target: target,
                           journalDirectory: ChainJournal.defaultDirectory,
                           workDirectory: URL(fileURLWithPath: "/var/db/org.siliconforest.installer/work"),
                           profileID: profileID, release: nil, releaseSource: nil,
-                          policy: ConnectionPolicy(clientRequirement: SigningIdentity.appRequirement, minimumClientBuild: 1),
-                          idleTimeout: 600)
+                          policy: ConnectionPolicy(clientRequirement: SigningIdentity.appRequirement, minimumClientBuild: helperBuild),
+                          idleTimeout: 600,
+                          helperBuild: helperBuild)
 config.releaseStore = URL(fileURLWithPath: "/var/db/org.siliconforest.installer/releases", isDirectory: true)
 config.adminCheck = .system
 config.allowedSigners = resources.appendingPathComponent("allowed_signers")

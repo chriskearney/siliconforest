@@ -7,6 +7,7 @@
 import SwiftUI
 import AppKit
 import SFInstallKit
+import SFCopy
 import SFDesign
 import SFFlow
 import SFHelperKit
@@ -61,11 +62,11 @@ struct LivePrivilegesScreen: View {
     var body: some View {
         SnapScroll {
             VStack(alignment: .leading, spacing: 18) {
-                ScreenHead(title: "Permissions", lead: "The installer needs these permissions before it downloads anything or changes your disk. Nothing has been changed.")
+                ScreenHead(title: Copy.Privileges.title, lead: Copy.Privileges.lead)
                 Panel {
                     VStack(alignment: .leading, spacing: 10) {
-                        PhaseRow("The installer's helper is allowed (Login Items)", state: helperState)
-                        PhaseRow("The helper has Full Disk Access", state: diskState)
+                        helperRow
+                        diskRow
                     }
                 }
                 detail
@@ -75,8 +76,7 @@ struct LivePrivilegesScreen: View {
 
     private var helperState: RowState {
         switch live.privileges {
-        case .checking: return .working
-        case .needsHelperApproval: return .working
+        case .checking, .needsHelperApproval, .restartingHelper: return .working
         case .failed: return .fail
         case .needsFullDiskAccess, .ready: return .pass
         }
@@ -89,19 +89,76 @@ struct LivePrivilegesScreen: View {
         }
     }
 
+    /// The helper row is a button except when the check already passed or is still starting.
+    private var helperRowIsTappable: Bool {
+        switch live.privileges {
+        case .ready, .checking: return false
+        default: return true
+        }
+    }
+    private var diskRowIsTappable: Bool {
+        switch live.privileges {
+        case .needsFullDiskAccess: return true
+        case .failed: return live.privileges.failedMentionsFullDiskAccess
+        default: return false
+        }
+    }
+
+    @ViewBuilder private var helperRow: some View {
+        if helperRowIsTappable {
+            TappablePhaseRow(Copy.Privileges.helperRow, state: helperState) { live.openLoginItems() }
+        } else {
+            PhaseRow(Copy.Privileges.helperRow, state: helperState)
+        }
+    }
+    @ViewBuilder private var diskRow: some View {
+        if diskRowIsTappable {
+            TappablePhaseRow(Copy.Privileges.diskRow, state: diskState) { live.openFullDiskAccess() }
+        } else {
+            PhaseRow(Copy.Privileges.diskRow, state: diskState)
+        }
+    }
+
     @ViewBuilder private var detail: some View {
         switch live.privileges {
         case .checking:
-            HStack(spacing: 10) { Spinner(size: 16, color: theme.accent); Text("Checking…").font(SFType.body).foregroundStyle(theme.text) }
+            HStack(spacing: 10) { Spinner(size: 16, color: theme.accent); Text(Copy.Privileges.checking).font(SFType.body).foregroundStyle(theme.text) }
+        case .restartingHelper:
+            HStack(spacing: 10) { Spinner(size: 16, color: theme.accent); Text(Copy.Privileges.restarting).font(SFType.body).foregroundStyle(theme.text) }
         case .needsHelperApproval:
             LoginItemsHelp()
         case .needsFullDiskAccess(let r):
             FullDiskAccessHelp(report: r, helperPath: PrivilegeGate.helperPath(appBundle: live.appBundle))
         case .ready:
-            Label("Continuing…", systemImage: "checkmark.circle.fill").font(SFType.bodyStrong).foregroundStyle(theme.text)
+            Label(Copy.Privileges.continuing, systemImage: "checkmark.circle.fill").font(SFType.bodyStrong).foregroundStyle(theme.text)
         case .failed(let m):
             LiveErrorBox(message: m, live: live)
+            LoginItemsHelp()
         }
+    }
+}
+
+/// A PhaseRow that is a button: pointer cursor and a chevron, so it reads as clickable.
+struct TappablePhaseRow: View {
+    var title: String
+    var state: RowState
+    var action: () -> Void
+    @Environment(\.theme) private var theme
+    init(_ title: String, state: RowState, action: @escaping () -> Void) {
+        self.title = title; self.state = state; self.action = action
+    }
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                PhaseRow(title, state: state)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme.textTertiary)
+            }
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
     }
 }
 
@@ -120,10 +177,10 @@ struct LoginItemsHelp: View {
     @Environment(\.theme) private var theme
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Waiting for approval…").font(SFType.bodyStrong).foregroundStyle(theme.text)
-            Text("The installer's helper does the disk work, and macOS needs your approval to run it. Click Open Login Items, then under Allow in the Background turn on “SiliconForest Installer”. The installer continues automatically.")
+            Text(Copy.Privileges.waiting).font(SFType.bodyStrong).foregroundStyle(theme.text)
+            Text(Copy.Privileges.waitingBody)
                 .font(SFType.body).foregroundStyle(theme.text).fixedSize(horizontal: false, vertical: true)
-            WaitingLine(text: "Checking every few seconds. System Settings opens only when you click.")
+            WaitingLine(text: Copy.Privileges.waitingLine)
         }
     }
 }

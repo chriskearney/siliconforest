@@ -268,4 +268,21 @@ public enum HelperRegistrar {
             return .refused("macOS didn't register the installer's helper: \(error.localizedDescription)")
         }
     }
+
+
+    /// Drops the helper. Used when this app build is not the one that last registered it.
+    public static func unregister() -> HelperRegistrationState {
+        if let r = HelperRegistration.preflight() {
+            switch r {
+            case .notInApplications: return .refused("Move SiliconForest Installer to the Applications folder, then open it again.")
+            case .notDeveloperIDSigned: return .refused("This copy of the installer isn't signed by SiliconForest's Developer ID.")
+            }
+        }
+        do {
+            try HelperRegistration.unregister()
+            return .notRegistered
+        } catch {
+            return status()
+        }
+    }
 }

@@ -262,3 +262,18 @@ Not verified on hardware yet: the TCC prompts and Full Disk Access list on macOS
 ## Preview11: plainer copy (text only)
 
 Preview11 makes no change to behaviour from preview10. It rewrites user-visible text that read like a brochure: short, plain, standard installer wording. For example, the Welcome lead "A new operating system for your Mac, right beside macOS." becomes "A Darwin-based system that boots next to macOS.". The back-up warning, the "not yet run on a real Mac" warning and the macOS 27 note in Details all stay. No identifiers, log lines or URLs changed. The changed strings are in `SFCopy/Copy.swift`, `SFInstaller/LiveScreens.swift` and `SFInstaller/PrivilegeScreens.swift`.
+
+## Preview12: Welcome lead, and a leftover helper is restarted
+
+The Welcome lead is now "Built on Darwin and XNU. Runs Mac apps." (it was "A Darwin-based system that boots next to macOS.").
+
+Preview11 on Connor's Air talked to a preview9 helper that was still running, from the previous app in the Trash. That helper does not know the `checkPrivileges` verb added in preview10, so it dropped the call and the app showed "The installer's helper didn't answer: Couldn't communicate with a helper application." The Permissions row with the X was not a button, and the failed footer had only Check Again, which tried the same leftover helper again.
+
+Preview12 changes the following:
+
+- **The failed Permissions footer keeps Open Login Items**, and also shows Open Full Disk Access Settings when the failure is about Full Disk Access.
+- **The helper and Full Disk Access rows are buttons** (a chevron and a pointer cursor) that open the matching System Settings pane. The "Waiting for approval…" help is shown for a failed helper check too. The helper row shows a spinner while it waits for approval, not an X.
+- **If this app version or build is not the one that last registered the helper**, and the helper is already enabled, the app unregisters, registers and reconnects. The registered build is stored in UserDefaults (`org.siliconforest.installer.registeredHelperBuild`).
+- **If a privilege probe fails** because the connection was invalidated or the helper does not know the verb, and the helper is enabled, the app does that re-register once and retries, and shows "Restarting the installer's helper…".
+- **SFHelper reports its real `CFBundleVersion` as `helperBuild`**, and requires the same minimum client build, so a leftover helper is detectable.
+- Unchanged from preview11: macOS 27 passes (a note in Details), the battery blocks only when the Mac is unplugged at 50% or lower, and System Settings still opens only on a click.
