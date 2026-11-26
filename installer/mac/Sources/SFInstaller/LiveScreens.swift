@@ -32,7 +32,7 @@ struct LiveWarning: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.caution)
-            Text("This installer writes to your Mac's internal disk. It is a preview that has not yet been run on a real Mac. Back up first (Time Machine or another copy you have checked).")
+            Text("This preview writes to your Mac's internal disk and hasn't been tested on a real Mac yet. Back up first (Time Machine or another copy you have checked).")
                 .font(SFType.label).foregroundStyle(theme.text).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -44,7 +44,7 @@ struct LiveFetchScreen: View {
     @Environment(\.theme) private var theme
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            ScreenHead(title: "Getting SiliconForest ready", lead: "The installer downloads the signed release, checks its signature and every file, and asks its helper to plan the change on this Mac. Nothing on your disk changes yet.")
+            ScreenHead(title: "Preparing the installation", lead: "The installer downloads and verifies the signed release, then its helper plans the changes for this Mac. Your disk isn't changed yet.")
             Panel {
                 VStack(alignment: .leading, spacing: 10) {
                     PhaseRow("Turn on the installer's helper", state: state(for: 0))
@@ -90,7 +90,7 @@ struct LiveConfirmScreen: View {
     var body: some View {
         SnapScroll {
             VStack(alignment: .leading, spacing: 16) {
-                ScreenHead(title: "Confirm the change", lead: "This is the plan the installer's helper made from its own read of the disk. It will do exactly this, and nothing else.")
+                ScreenHead(title: "Confirm the change", lead: "The helper made this plan from its own read of the disk. It does only what is listed here.")
                 LiveWarning()
                 if let o = live.offer {
                     Panel {
@@ -126,7 +126,7 @@ struct LiveInstallingScreen: View {
     @Environment(\.theme) private var theme
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ScreenHead(title: live.isRemoval ? "Removing SiliconForest" : "Installing SiliconForest", lead: "Keep your Mac on power. You can quit the installer: its helper keeps going, and the installer reattaches when you open it again.")
+            ScreenHead(title: live.isRemoval ? "Removing SiliconForest" : "Installing SiliconForest", lead: "Keep your Mac connected to power. If you quit the installer, its helper keeps going; open the installer again to see progress.")
             HStack(spacing: 24) {
                 VStack(alignment: .leading, spacing: 2) {
                     SectionLabel("Elapsed"); Text(duration(live.elapsed)).font(SFType.numerals).foregroundStyle(theme.text)
@@ -191,11 +191,11 @@ struct LiveStoppedScreen: View {
         SnapScroll {
             VStack(alignment: .leading, spacing: 14) {
                 if live.end == "rolled-back" {
-                    ScreenHead(title: "Your Mac is back as it was", lead: "The installer undid every change it had made. macOS has its space back.")
+                    ScreenHead(title: "Changes undone", lead: "The installer undid all of its changes. macOS has its space back.")
                 } else {
                     ScreenHead(title: "The installer stopped", lead: live.noChangesMade
                                ? "Nothing on your disk was changed."
-                               : "Your Mac is safe to use. The journal knows exactly what was done: continue from where it stopped, or undo everything.")
+                               : "You can keep using your Mac. The journal records each completed step: continue from where it stopped, or undo everything.")
                     if let e = live.lastError { LiveErrorBox(message: e, note: nil, live: live) }
                     if let x = live.resumeExpected {
                         VStack(alignment: .leading, spacing: 8) {
@@ -218,7 +218,7 @@ struct LiveResumeScreen: View {
     @Environment(\.theme) private var theme
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ScreenHead(title: "Continue installing SiliconForest?", lead: "An installation didn't finish (the installer quit, crashed or the Mac restarted). Its journal records every step, so it can carry on from exactly where it stopped, or undo everything.")
+            ScreenHead(title: "Continue installing SiliconForest?", lead: "An installation didn't finish (the installer quit, crashed or the Mac restarted). It can continue from the last completed step, or undo everything.")
             ForEach(live.unfinished, id: \.self) { j in Text("Job \(j)").font(SFType.label).foregroundStyle(theme.textSecondary).textSelection(.enabled) }
         }
     }
@@ -310,7 +310,7 @@ struct LiveRemoveConfirmScreen: View {
     var body: some View {
         SnapScroll {
             VStack(alignment: .leading, spacing: 16) {
-                ScreenHead(title: "Confirm the removal", lead: "The installer's helper made this plan from its own read of the disk and the install's journal. It deletes only the partitions that install created, and nothing else.")
+                ScreenHead(title: "Confirm the removal", lead: "The helper made this plan from its own read of the disk and the install's journal. It deletes only the partitions that install created.")
                 LiveWarning()
                 if let o = live.offer {
                     Panel {

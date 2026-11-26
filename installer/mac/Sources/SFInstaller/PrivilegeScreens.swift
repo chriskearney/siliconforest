@@ -61,7 +61,7 @@ struct LivePrivilegesScreen: View {
     var body: some View {
         SnapScroll {
             VStack(alignment: .leading, spacing: 18) {
-                ScreenHead(title: "Permissions first", lead: "Before it downloads anything or touches your disk, the installer makes sure it has every permission it needs. Nothing on your Mac has changed.")
+                ScreenHead(title: "Permissions", lead: "The installer needs these permissions before it downloads anything or changes your disk. Nothing has been changed.")
                 Panel {
                     VStack(alignment: .leading, spacing: 10) {
                         PhaseRow("The installer's helper is allowed (Login Items)", state: helperState)
@@ -98,7 +98,7 @@ struct LivePrivilegesScreen: View {
         case .needsFullDiskAccess(let r):
             FullDiskAccessHelp(report: r, helperPath: PrivilegeGate.helperPath(appBundle: live.appBundle))
         case .ready:
-            Label("All set. Continuing…", systemImage: "checkmark.circle.fill").font(SFType.bodyStrong).foregroundStyle(theme.text)
+            Label("Continuing…", systemImage: "checkmark.circle.fill").font(SFType.bodyStrong).foregroundStyle(theme.text)
         case .failed(let m):
             LiveErrorBox(message: m, live: live)
         }
@@ -121,9 +121,9 @@ struct LoginItemsHelp: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Waiting for approval…").font(SFType.bodyStrong).foregroundStyle(theme.text)
-            Text("macOS asks you to allow the installer's helper, which does the disk work. Click Open Login Items, then under Allow in the Background turn on “SiliconForest Installer”. Come back here: the installer notices by itself and continues.")
+            Text("The installer's helper does the disk work, and macOS needs your approval to run it. Click Open Login Items, then under Allow in the Background turn on “SiliconForest Installer”. The installer continues automatically.")
                 .font(SFType.body).foregroundStyle(theme.text).fixedSize(horizontal: false, vertical: true)
-            WaitingLine(text: "Checking quietly every few seconds. System Settings opens only when you click.")
+            WaitingLine(text: "Checking every few seconds. System Settings opens only when you click.")
         }
     }
 }
@@ -135,10 +135,10 @@ struct FullDiskAccessHelp: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Turn on Full Disk Access for SFHelper").font(SFType.bodyStrong).foregroundStyle(theme.text)
-            Text("macOS protects the internal disk even from administrators. The installer's helper needs Full Disk Access to read your disk's partition table (that is how it identifies the disk exactly) and to write the new partitions. It doesn't read your files.")
+            Text("Even administrators need Full Disk Access to read or write the internal disk directly. The helper uses it to read the partition table, which identifies the disk, and to write the new partitions. It doesn't read your files.")
                 .font(SFType.body).foregroundStyle(theme.text).fixedSize(horizontal: false, vertical: true)
             steps
-            WaitingLine(text: "Checking again every few seconds. The installer continues by itself once it's on.")
+            WaitingLine(text: "Checking every few seconds. The installer continues when access is on.")
             Text("macOS answered: \(report.detail ?? "access denied") (\(report.probe))").font(SFType.caption).foregroundStyle(theme.textTertiary)
         }
     }

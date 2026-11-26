@@ -258,3 +258,7 @@ Preview10 changes the following:
 - **Unchanged from preview9:** macOS 27 passes (a note in Details), and the battery blocks only when the Mac is unplugged at 50% or lower.
 
 Not verified on hardware yet: the TCC prompts and Full Disk Access list on macOS 27, and whether a helper that is already running sees a new grant without restarting. The helper exits when idle, and launchd starts a fresh one for the next check.
+
+## Preview11: plainer copy (text only)
+
+Preview11 makes no change to behaviour from preview10. It rewrites user-visible text that read like a brochure: short, plain, standard installer wording. For example, the Welcome lead "A new operating system for your Mac, right beside macOS." becomes "A Darwin-based system that boots next to macOS.". The back-up warning, the "not yet run on a real Mac" warning and the macOS 27 note in Details all stay. No identifiers, log lines or URLs changed. The changed strings are in `SFCopy/Copy.swift`, `SFInstaller/LiveScreens.swift` and `SFInstaller/PrivilegeScreens.swift`.

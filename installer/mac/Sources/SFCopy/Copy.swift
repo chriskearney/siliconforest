@@ -33,14 +33,14 @@ public enum Copy {
     // MARK: 1. Welcome
     public enum Welcome {
         public static let title = "SiliconForest"
-        public static let lead = "A new operating system for your Mac, right beside macOS."
-        public static let body = "macOS and your files stay where they are. You choose which one to start, every time you turn on your Mac."
+        public static let lead = "A Darwin-based system that boots next to macOS."
+        public static let body = "macOS and your files are not changed. You choose which system to start when you turn on your Mac."
         public static let primary = "Get Started"
         public static let whatIs = "What is SiliconForest?"
         public static let remove = "Remove SiliconForest…"
         public static func footer(model: String, macOS: String) -> String { "\(model) · macOS \(macOS)" }
         public static let whatIsTitle = "What is SiliconForest?"
-        public static let whatIsBody = "SiliconForest is an open-source operating system built on Darwin, the core that macOS shares, grown for Apple silicon. It installs into its own space on your Mac's disk and starts only when you choose it."
+        public static let whatIsBody = "SiliconForest is an open-source operating system based on Darwin, the core of macOS, for Macs with Apple silicon. It installs in its own partitions and starts only when you choose it."
         public static let moveTitle = "Move to Applications first"
         public static let moveBody = "SiliconForest Installer needs to run from your Applications folder."
         public static let moveAndReopen = "Move and Reopen"
@@ -51,7 +51,7 @@ public enum Copy {
         public static let title = "Checking your Mac"
         public static let lead = "This doesn't change anything."
         public static let ready = "Your Mac is ready"
-        public static let readyLead = "Everything SiliconForest needs is in place."
+        public static let readyLead = "All requirements are met."
 
         public static func label(_ k: CompatibilityCheck.Kind) -> String {
             switch k {
@@ -81,14 +81,14 @@ public enum Copy {
             case .firmwareUnknown: return "Couldn't read the firmware version"
             case .admin(let u): return "\(u) is an administrator"
             case .notAdmin(let u): return "\(u) isn't an administrator"
-            case .fileVaultOn: return "On. That's fine"
-            case .fileVaultOff: return "Off. That's fine"
+            case .fileVaultOn: return "On"
+            case .fileVaultOff: return "Off"
             case .fileVaultConverting(let pct): return pct.map { "Still encrypting, \($0)% done" } ?? "Still encrypting"
             case .fileVaultUnknown: return "Couldn't read FileVault's state"
             case .diskHealthy(let size): return "Healthy layout, \(Bytes.format(size))"
             case .diskNonStandard: return "Not the standard Apple layout"
             case .lockedVolume(let v): return "“\(v)” is locked"
-            case .enoughSpace: return "Enough room for SiliconForest"
+            case .enoughSpace: return "Enough free space"
             case .notEnoughSpace(_, _, let short): return "Free up \(Bytes.format(short))"
             case .noMacOSContainer: return "macOS's container wasn't found"
             case .powerConnected: return "Connected"
@@ -107,7 +107,7 @@ public enum Copy {
             switch f {
             case .unsupportedMac:
                 return .init(title: "This Mac isn't supported yet",
-                             body: "SiliconForest runs on \(profileName). Each Mac is added after it has been tested on real hardware.",
+                             body: "Supported: \(profileName). Other models are added after they are tested on hardware.",
                              actions: ["See Supported Macs", Common.quit])
             case .macOSTooOld(let have, let need):
                 return .init(title: "Update macOS first", body: "SiliconForest needs macOS \(need) or later. You have macOS \(have).",
@@ -138,7 +138,7 @@ public enum Copy {
                 return .init(title: "This disk layout isn't supported", body: "The installer only works with Apple's standard layout. Your Mac hasn't been changed.",
                              actions: [Common.learnMore, Common.quit])
             case .internetOffline:
-                return .init(title: "Connect to the internet", body: "SiliconForest and Apple's startup files are downloaded before anything changes.",
+                return .init(title: "Connect to the internet", body: "The installer downloads SiliconForest and Apple's startup files before it changes anything.",
                              actions: [Common.checkAgain])
             default: return nil
             }
@@ -148,13 +148,13 @@ public enum Copy {
             switch e {
             case .fresh: return nil
             case .handMade:
-                return .init(title: "SiliconForest is already here, but not from this installer",
-                             body: "This installer won't change an installation it didn't create. Your systems are untouched.",
+                return .init(title: "SiliconForest was installed another way",
+                             body: "This installer changes only installations it created. Nothing was changed.",
                              actions: [Common.learnMore, Common.quit])
             case .unfinished(let step):
-                return .init(title: "Pick up where you left off", body: "An earlier installation stopped at “\(step)”.", actions: [Common.continue, "Undo It"])
+                return .init(title: "Resume the installation", body: "An earlier installation stopped at “\(step)”.", actions: [Common.continue, "Undo It"])
             case .awaitingRecovery:
-                return .init(title: "One step left, in Recovery", body: "Your Mac is ready for the final step.", actions: ["Show Me How"])
+                return .init(title: "Finish in Recovery", body: "The last step runs in Recovery.", actions: ["Show Me How"])
             case .installed(let i):
                 return .init(title: "SiliconForest is installed", body: "Version \(i.version ?? "?") on “\(i.name)”.", actions: ["Update", "Remove…", Common.quit])
             }
@@ -164,13 +164,13 @@ public enum Copy {
     // MARK: 3. Before you begin
     public enum Prepare {
         public static let title = "Before you begin"
-        public static let lead = "Here's exactly what the installer will and won't do."
+        public static let lead = "What the installer changes and what it doesn't."
         public static let changesHeader = "What changes"
         public static let keepsHeader = "What doesn't"
         public static let changes = ["macOS's partition gets smaller", "Three new partitions for SiliconForest", "SiliconForest appears at startup"]
         public static let keeps = ["Your files and apps", "macOS's security settings", "Any other system on this Mac"]
         public static let backupTitle = "Back up first."
-        public static let backupBody = "Resizing a disk is safe when it works, but a power cut or existing disk damage can cause data loss."
+        public static let backupBody = "A power failure or existing disk damage during the resize can cause data loss."
         public static func lastBackup(_ when: String, _ disk: String) -> String { "Last Time Machine backup: \(when) on “\(disk)”" }
         public static let noBackupKnown = "No Time Machine backup found on this Mac."
         /// Dry-run sample (the real app reads `tmutil latestbackup` when it can).
@@ -184,8 +184,8 @@ public enum Copy {
 
     // MARK: 4. Choose your space
     public enum Space {
-        public static let title = "Choose your space"
-        public static let lead = "Drag to decide how much goes to SiliconForest. You can remove it later and get the space back."
+        public static let title = "Choose a size"
+        public static let lead = "Drag to set the size of SiliconForest. Removing it later returns the space to macOS."
         public static let macOS = "macOS"
         public static let siliconForest = "SiliconForest"
         public static func used(_ b: Int64) -> String { "used \(Bytes.format(b))" }
@@ -198,8 +198,8 @@ public enum Copy {
         public static func limitReserve(_ b: Int64) -> String { "macOS needs to keep \(Bytes.format(b)) free for updates." }
         public static func limitGrowCap(_ b: Int64) -> String { "This release can grow the SiliconForest root to at most \(Bytes.format(b))." }
         public static func limitMinimum(_ b: Int64) -> String { "SiliconForest needs at least \(Bytes.format(b))." }
-        public static let lowSpace = "That's enough to start, but not for much else."
-        public static func fixed(_ b: Int64) -> String { "This release uses a fixed \(Bytes.format(b)). Larger installations are coming." }
+        public static let lowSpace = "Enough to start, with little room for files."
+        public static func fixed(_ b: Int64) -> String { "This release uses a fixed size of \(Bytes.format(b))." }
         public static let showDetails = "Show partition details"
         public static let hideDetails = "Hide partition details"
         public static func voiceOver(sf: Int64, mac: Int64) -> String { "SiliconForest size, \(Bytes.format(sf)). macOS keeps \(Bytes.format(mac))." }
@@ -214,8 +214,8 @@ public enum Copy {
 
     // MARK: 5. Options
     public enum Options {
-        public static let title = "A few choices"
-        public static let lead = "The defaults are good. Change them only if you want to."
+        public static let title = "Options"
+        public static let lead = "Most people can keep the defaults."
         public static let nameLabel = "Name at startup"
         public static let nameHelp = "The name in the startup picker"
         public static let afterSetup = "After setup"
@@ -249,19 +249,19 @@ public enum Copy {
         public static func downloadValue(release: Int64, apple: Int64) -> String { "\(Bytes.format(release)) from SiliconForest, \(Bytes.format(apple)) from Apple" }
         public static let time = "Time"
         public static let timeValue = "About 25 minutes, then one step from you"
-        public static let oneThingTitle = "You'll need to do one thing yourself."
-        public static let oneThingBody = "After this, you'll restart into Recovery and approve SiliconForest with your password. We'll show you how."
+        public static let oneThingTitle = "One step must be done by you."
+        public static let oneThingBody = "After the installation, you restart into Recovery and approve SiliconForest with your password. The installer shows the steps."
         public static let showWhatWouldHappen = "Show What Would Happen"
         public static let primary = "Install SiliconForest"
         public static let commandsTitle = "What would happen"
-        public static let commandsLead = "Every command the installer would run, in order. Plain text; copy it if you like."
+        public static let commandsLead = "Every command the installer would run, in order."
     }
 
     // MARK: 7. Approve the installer
     public enum Approve {
         public static let title = "Allow the installer to make changes"
-        public static let lead = "macOS will ask you to approve a helper. It can only do the steps you just reviewed, and it's removed when the installation finishes."
-        public static let steps = ["Click Open Login Items.", "Turn on SiliconForest Installer.", "Come back. We'll continue automatically."]
+        public static let lead = "macOS asks you to allow a helper. It can do only the steps you reviewed, and it is removed when the installation finishes."
+        public static let steps = ["Click Open Login Items.", "Turn on SiliconForest Installer.", "Return to the installer. It continues automatically."]
         public static let open = "Open Login Items"
         public static let dryRunNote = "Dry run: no helper is installed. The installer continues on its own."
         public static let allowInBackground = "Allow in the Background"
@@ -270,14 +270,14 @@ public enum Copy {
 
     // MARK: 8. Preparing
     public enum Preparing {
-        public static let title = "Getting everything ready"
+        public static let title = "Preparing"
         public static let lead = "Your disk hasn't been touched. You can still cancel."
         public static func release(_ v: String) -> String { "SiliconForest \(v)" }
         public static let apple = "Apple startup files"
         public static let checking = "Checking every file"
         public static let verified = "verified"
         public static func progress(_ done: Int64, _ total: Int64) -> String { "\(Bytes.format(done)) of \(Bytes.format(total))" }
-        public static let offline = "Waiting for the internet. Downloads will resume on their own."
+        public static let offline = "Waiting for a network connection. Downloads resume automatically."
     }
 
     // MARK: 9. Installing
@@ -309,7 +309,7 @@ public enum Copy {
             return m == 1 ? "About a minute left" : "About \(m) minutes left"
         }
         public static let whyNoStop = "Why can't I stop this?"
-        public static let whyNoStopBody = "Stopping in the middle of this step could leave the disk half-changed. It's safest to let it finish; the installer can undo it afterwards."
+        public static let whyNoStopBody = "Stopping during this step could leave the disk partly changed. Let it finish; the installer can undo it afterwards."
         public static let stall = "macOS is still working on this. It can take a long time and may look stuck. Don't shut down."
         public static let plugIn = "Plug your Mac back in."
         public static let stop = "Stop"
@@ -318,8 +318,8 @@ public enum Copy {
 
     // MARK: 10. Get ready for Recovery
     public enum Recovery {
-        public static let title = "One last step, and it's yours"
-        public static let lead = "Apple requires you to approve a new operating system in person. It takes about two minutes."
+        public static let title = "Approve SiliconForest in Recovery"
+        public static let lead = "macOS requires you to approve a new operating system in Recovery. This takes about two minutes."
         public static func steps(holdCopy: String?, name: String) -> [String] {
             ["Your Mac will shut down.",
              "Wait for the screen to go dark, then 25 more seconds.",
@@ -330,7 +330,7 @@ public enum Copy {
         public static let practice = "Practice"
         public static let practiceHint = "Press and hold Space to feel the timing."
         public static let save = "Save These Steps"
-        public static let note = "If you let go too early, nothing is harmed. The screen will tell you, and you can try again."
+        public static let note = "If you release the button too early, nothing changes. Try again."
         public static let primary = "Shut Down"
         public static let notNow = "Not Now"
         public static let dryRunPrimary = "Shut Down (simulated)"
@@ -346,9 +346,9 @@ public enum Copy {
         public static let allow = "Allow SiliconForest"
         public static let workingTitle = "Setting up SiliconForest"
         public static let working = ["Checking this recovery system", "Allowing SiliconForest to start", "Installing the startup software", "Finishing up"]
-        public static let readyTitle = "All set"
+        public static let readyTitle = "Ready to restart"
         public static func readyBody(_ current: String) -> String {
-            "Your Mac will now start SiliconForest for the first time. If anything goes wrong, turn it off and on and you'll be back in \(current)."
+            "Your Mac will start SiliconForest. If it doesn't start, turn your Mac off and on to return to \(current)."
         }
         public static let restart = "Restart"
         public static func countdown(_ s: Int) -> String { "Restarting in \(s) seconds" }
@@ -368,9 +368,9 @@ public enum Copy {
         public static let switchLabel = "To switch:"
         public static let switchBody = "shut down, then hold the power button and choose."
         public static let partialTitle = "SiliconForest started, but didn't finish"
-        public static func partialLead(_ stage: String) -> String { "It got as far as \(stage). Your Mac and macOS are fine." }
+        public static func partialLead(_ stage: String) -> String { "It stopped at \(stage). macOS isn't affected." }
         public static let failedTitle = "SiliconForest didn't start"
-        public static func failedLead(_ current: String) -> String { "Your Mac went back to \(current) safely. Nothing in macOS was changed." }
+        public static func failedLead(_ current: String) -> String { "Your Mac returned to \(current). Nothing in macOS was changed." }
     }
 
     // MARK: Part 4. Remove
@@ -392,8 +392,8 @@ public enum Copy {
         public static let removingTitle = "Removing SiliconForest"
         public static let removingLead = "Keep your Mac open and plugged in."
         public static let removedTitle = "SiliconForest has been removed"
-        public static func removedLead(_ b: Int64) -> String { "macOS is back to \(Bytes.format(b)). A small, unused security record stays in Apple's system area. It's harmless." }
-        public static let notOursTitle = "This doesn't look like an installation we made"
+        public static func removedLead(_ b: Int64) -> String { "macOS is back to \(Bytes.format(b)). A small unused security record remains in the system area. It has no effect." }
+        public static let notOursTitle = "This installation wasn't made by this installer"
         public static let notOursBody = "Nothing was removed."
     }
 
@@ -401,24 +401,24 @@ public enum Copy {
     public enum Failure {
         public static let stoppedTitle = "The installation stopped"
         public static let nothingChanged = "No changes were made to your disk."
-        public static let canUndo = "macOS and your files are fine. The installer had made some changes, and it can undo them."
+        public static let canUndo = "macOS and your files aren't affected. The installer can undo the changes it made."
         public static let undoChanges = "Undo Changes"
         public static let changesSoFar = "Changes made so far"
-        public static let undoingTitle = "Putting things back"
+        public static let undoingTitle = "Undoing changes"
         public static let undoing = ["Removing the partial installation", "Returning space to macOS", "Checking the result"]
-        public static let undoneTitle = "Everything is back as it was"
+        public static let undoneTitle = "Changes undone"
         public static let undoneLead = "Your disk matches how it was before the installation."
-        public static let attentionTitle = "This needs your attention"
-        public static let attentionLead = "Your disk isn't in the state the installer expected, so it has stopped rather than guess. macOS should still start normally. Don't erase anything."
-        public static let attentionAction = "Export Diagnostics and open an issue. We'll help you sort it out."
+        public static let attentionTitle = "The disk isn't in the expected state"
+        public static let attentionLead = "The installer stopped because the disk isn't in the expected state. macOS should still start. Don't erase anything."
+        public static let attentionAction = "Export diagnostics and open an issue on GitHub."
         public static let resizeRunningTitle = "macOS is still resizing your disk"
         public static let resizeRunningLead = "The installer reconnected to it. Don't shut down."
         public static let repairTitle = "macOS found a problem with your disk"
         public static let repairLead = "This was there before the installer ran. Repair it from Recovery with First Aid, then try again. Nothing was changed."
         public static let removalStoppedTitle = "Removal stopped partway"
-        public static let removalStoppedLead = "Here's what's done and what's left."
+        public static let removalStoppedLead = "Completed and remaining steps are listed below."
         public static let diagnosticsTitle = "Export diagnostics"
-        public static let diagnosticsBody = "A file you can read first and choose to share. It contains no passwords, serial numbers, names or personal files, and nothing is sent automatically."
+        public static let diagnosticsBody = "A text file you can review before sharing. It contains no passwords, serial numbers, names or personal files. Nothing is sent."
         public static let save = "Save…"
     }
 
@@ -427,7 +427,7 @@ public enum Copy {
         public static let title = "Quit the installer?"
         public static let nothingChanged = "Nothing has been changed on your Mac."
         public static let busyTitle = "Stop after this step?"
-        public static let busyBody = "The current step will finish first. Then the installer can undo what it has done, and will say exactly what changed."
+        public static let busyBody = "The current step finishes first. The installer then lists what changed and can undo it."
         public static let busyConfirm = "Stop After This Step"
         public static let keepGoing = "Keep Going"
         public static let recoveryTitle = "Quit before the Recovery step?"
